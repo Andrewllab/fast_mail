@@ -1,0 +1,7 @@
+LIBERO/*
+
+logs/*
+
+**/__pycache__/
+
+.idea/*
