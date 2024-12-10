@@ -3,16 +3,6 @@
 This is an open-source project that aims to provide a set of imitation learning algorithms and environments.
 
 ---
-
-## Desired Features
-
-- **Observations:** support for both state and visual observations, as well as language embeddings.
-- **Encoders:** support for mlp, resnet, vit and other pretrained models.
-- **Architectures:** support for transformer, mamba, xlstm models.
-- **Policy Head:** support for bc, ddpm, beso, flow matching and vqbet.
-- **Environments:** support for push-T, block-push, libero, and other tasks.
-
----
 ## TODO
 
 ### Xiaogang Jia
@@ -26,6 +16,47 @@ This is an open-source project that aims to provide a set of imitation learning 
 
 ### Xuan Zhao
 
+
+---
+
+## Desired Features
+
+- **Observations:** support for both state and visual observations, as well as language embeddings.
+- **Encoders:** support for mlp, resnet, vit and other pretrained models.
+- **Architectures:** support for transformer, mamba, xlstm models.
+- **Policy Head:** support for bc, ddpm, beso, flow matching and vqbet.
+- **Environments:** support for push-T, block-push, libero, and other tasks.
+
+---
+
+## Installation
+
+To begin, clone this repository locally
+```
+git clone git@github.com:xiaogangjia/fast_mail.git
+```
+
+### Installing requirements
+```
+conda create -n mail python=3.10
+conda activate mail
+
+# adapt to your own cuda version if you need
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+pip install -r requirements.txt
+```
+
+### Installing LIBERO Setup
+```
+git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git
+cd LIBERO
+pip install -e .
+```
+### Installing Mamba
+```
+pip install mamba-ssm==1.2.0.post1
+```
 
 ---
 

@@ -1,0 +1,35 @@
+_target_: agents.bc_agent.BC_Agent
+_recursive_: false
+
+action_seq_size: ${act_seq_len}
+obs_seq_len: ${obs_seq_len}
+
+model:
+  _target_: agents.bc_agent.BC_Policy
+  _recursive_: false
+
+  if_film_condition: False
+  device: ${device}
+  state_dim: ${obs_dim}
+  latent_dim: ${latent_dim}
+
+  defaults:
+    - backbones: transformer
+    - obs_encoders: resnet.yaml
+
+
+trainset: ${trainset}
+valset: ${valset}
+
+optimization:
+  _target_: torch.optim.Adam
+  lr: 5e-4
+  weight_decay: 0
+
+train_batch_size: ${train_batch_size}
+val_batch_size: ${val_batch_size}
+num_workers: ${num_workers}
+epoch: ${epoch}
+device: ${device}
+scale_data: ${scale_data}
+eval_every_n_epochs: ${eval_every_n_epochs}
