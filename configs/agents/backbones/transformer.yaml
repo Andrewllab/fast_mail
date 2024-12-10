@@ -1,4 +1,4 @@
-_target_: agents.models.transformer.goal_transformer.EncDec
+_target_: agents.backbones.transformer.transformer.EncDec
 _recursive_: false
 state_dim: ${latent_dim}
 action_dim: ${action_dim}
@@ -13,9 +13,9 @@ device: ${device}
 linear_output: true
 
 encoder:
-  _target_: agents.models.transformer.goal_transformer.TransformerEncoder
+  _target_: agents.backbones.transformer.transformer.TransformerEncoder
   embed_dim: ${n_embd}
-  n_heads: 4
+  n_heads: ${n_heads}
   n_layers: ${encoder_n_layer}
   attn_pdrop: 0.1
   resid_pdrop: 0.1
@@ -23,10 +23,10 @@ encoder:
   block_size: ${add:${window_size}, 5}
 
 decoder:
-  _target_: agents.models.transformer.goal_transformer.TransformerDecoder
+  _target_: agents.backbones.transformer.transformer.TransformerDecoder
   embed_dim: ${n_embd}
   cross_embed: ${n_embd} # allow cross embedding to have different dimension
-  n_heads: 4
+  n_heads: ${n_heads}
   n_layers: ${decoder_n_layer}
   attn_pdrop: 0.1
   resid_pdrop: 0.1

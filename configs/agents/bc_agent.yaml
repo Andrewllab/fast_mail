@@ -5,7 +5,7 @@ action_seq_size: ${act_seq_len}
 obs_seq_len: ${obs_seq_len}
 
 model:
-  _target_: agents.bc_agent.BC_Policy
+  _target_: agents.models.bc.BC_Policy
   _recursive_: false
 
   if_film_condition: False
@@ -16,7 +16,6 @@ model:
   defaults:
     - backbones: transformer
     - obs_encoders: resnet.yaml
-
 
 trainset: ${trainset}
 valset: ${valset}

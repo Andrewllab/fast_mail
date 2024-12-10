@@ -1,8 +1,8 @@
 defaults:
-  - agents: bc_one_cam_agent
+  - agents: bc_agent
 #  - override hydra/launcher: submitit_slurm
 
-agent_name: bc_one_cam
+agent_name: bc
 log_dir: logs/${task_suite}/
 
 # insert wandb here
@@ -38,18 +38,9 @@ task_suite: libero_spatial
 # dataset config
 traj_per_task: 10
 
-
 ## change the path of dataset
-dataset_path: /home/i53/student/boli/mask_pretrain/dataset/${task_suite}
+dataset_path: /home/david/2024/datasets/${task_suite}
 #dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
-mask_dataset_path: /home/i53/student/boli/detic/Detic/segmentation/videos/${task_suite}
-
-# encoder-decoder
-encoder_n_layer: 4
-decoder_n_layer: 6
-n_embd: 256
-goal_dim: 512
-latent_dim: 256
 
 # Model Setting
 window_size: 10
@@ -73,14 +64,6 @@ action_dim: 7
 state_dim: 110
 max_len_data: 260
 
-# simulation
-start_cpu: 0
-render: False
-n_cores: 1
-episode_per_task: 25
-max_step_per_episode: 260
-camera_shape: [ 128, 128 ]
-
 obs_keys: rgb
 dataset_keys:
   - actions
@@ -91,24 +74,26 @@ dataset_keys:
 hdf5_filter_key: # train
 hdf5_validation_filter_key: # valid
 enable_valid: True
-observation:
-  modalities: &obs_modalities_list
-    obs:
-      low_dim:
-        - ee_ori
-        - ee_pos
-        - gripper_states
-        - joint_states
-      rgb:
-        - agentview_rgb
-        - eye_in_hand_rgb
-      depth: []
-      scan: []
-    goal:
-      low_dim: []
-      rgb: []
-      depth: []
-      scan: []
+
+##########################################################################################
+# Transformer Parameters (encoder-decoder)
+##########################################################################################
+encoder_n_layer: 4
+decoder_n_layer: 6
+n_heads: 4
+n_embd: 256
+goal_dim: 512
+latent_dim: 256
+
+##########################################################################################
+# Mamba Parameters
+##########################################################################################
+
+
+##########################################################################################
+# xLSTM Parameters
+##########################################################################################
+
 
 # Dataset
 trainset:
@@ -124,7 +109,6 @@ trainset:
   max_len_data: ${max_len_data}
   window_size: ${window_size}
   traj_per_task: ${traj_per_task}
-  data_aug: False
 
 valset:
   _target_: environments.dataset.libero_dataset_benchmark.LiberoDataset
@@ -140,14 +124,6 @@ valset:
   window_size: ${window_size}
   start_idx: 30
 
-## all_data_dir is folder path of libero dataset
-## folder is a path for original images and masked images
-Maskdataset:
-  _target_: environments.dataset.libero_mask_dataset.ImagesDataset
-  folder: ${mask_dataset_path}
-  all_data_dir: ${dataset_path}
-  task_suite: ${task_suite}
-
 simulation:
   _target_: simulation.libero_sim.MultiTaskSim
   _convert_: all
@@ -155,7 +131,7 @@ simulation:
   use_eye_in_hand: False
   seed: ${seed}
   device: ${device}
-  render: True
-  n_cores: ${n_cores}
+  render: False
+  n_cores: 1
   num_episode: 20
   max_step_per_episode: 600
