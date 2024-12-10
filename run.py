@@ -28,7 +28,7 @@ def set_seed_everywhere(seed):
     random.seed(seed)
 
 
-@hydra.main(config_path="configs", config_name="libero_horeka_config.yaml", version_base="1.3")
+@hydra.main(config_path="configs", config_name="libero_config.yaml", version_base="1.3")
 def main(cfg: DictConfig) -> None:
 
     set_seed_everywhere(cfg.seed)
@@ -40,19 +40,13 @@ def main(cfg: DictConfig) -> None:
         project=cfg.wandb.project,
         entity=cfg.wandb.entity,
         group=cfg.group,
-        # mode="disabled",
+        mode="disabled",
         config=wandb.config
     )
 
     # load vqvae before training the agent: add path to the config file
     # train the agent
     agent = hydra.utils.instantiate(cfg.agents)
-
-    ###################################################
-    # load the mask-pretrained model
-    ###################################################
-    pretrain_dir = sim_framework_path("pretrain_weights")
-    agent.load_pretrained_model(pretrain_dir, sv_name=f"batch{cfg.mask_batch_size}_{cfg.task_suite}_{cfg.agent_name}.pth")
 
     # simulate the model
     env_sim = hydra.utils.instantiate(cfg.simulation)
@@ -61,9 +55,11 @@ def main(cfg: DictConfig) -> None:
 
     for num_epoch in tqdm(range(agent.epoch)):
 
+        env_sim.test_agent(agent, epoch=num_epoch)
+
         agent.train_agent()
 
-        if num_epoch in [49, 69, 89, 99]:
+        if num_epoch in [69, 79, 89, 99]:
 
             env_sim.test_agent(agent, epoch=num_epoch)
 

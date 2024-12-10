@@ -8,7 +8,7 @@ import wandb
 import robosuite
 import multiprocessing as mp
 from .base_sim import BaseSim
-from libero.libero.envs import *
+# from libero.libero.envs import *
 from libero.libero import benchmark
 from libero.libero.envs import OffScreenRenderEnv
 
@@ -22,7 +22,6 @@ def assign_process_to_cpu(pid, cpus):
 def process_image_input(img_tensor):
     # return (img_tensor / 255. - 0.5) * 2.
     return img_tensor / 255.
-
 
 class MultiTaskSim(BaseSim):
     def __init__(self,

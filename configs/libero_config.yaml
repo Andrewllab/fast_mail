@@ -8,7 +8,7 @@ log_dir: logs/${task_suite}/
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: Mask_Pretrain
+  project: fast_mail
 
 group: bc_${task_suite}
 
@@ -33,7 +33,7 @@ hydra:
 
 seed: 42
 
-task_suite: libero_spatial
+task_suite: libero_object
 
 # dataset config
 traj_per_task: 10
@@ -64,16 +64,15 @@ action_dim: 7
 state_dim: 110
 max_len_data: 260
 
-obs_keys: rgb
-dataset_keys:
-  - actions
-  - dones
-  - obs
-  - rewards
-  - states
-hdf5_filter_key: # train
-hdf5_validation_filter_key: # valid
-enable_valid: True
+shape_meta:
+  # acceptable types: rgb, low_dim
+  obs:
+    agentview_rgb:
+      shape: [ 3, 128, 128 ]
+      type: rgb
+    eye_in_hand_rgb:
+      shape: [ 3, 128, 128 ]
+      type: rgb
 
 ##########################################################################################
 # Transformer Parameters (encoder-decoder)
@@ -97,12 +96,8 @@ latent_dim: 256
 
 # Dataset
 trainset:
-  _target_: environments.dataset.libero_dataset_benchmark.LiberoDataset
+  _target_: environments.dataset.libero_dataset.LiberoDataset
   data_directory: ${dataset_path}
-  obs_keys: ${obs_keys}
-  obs_modalities: *obs_modalities_list
-  dataset_keys: ${dataset_keys}
-  filter_by_attribute: ${hdf5_filter_key}
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
   state_dim: ${state_dim}
@@ -111,12 +106,8 @@ trainset:
   traj_per_task: ${traj_per_task}
 
 valset:
-  _target_: environments.dataset.libero_dataset_benchmark.LiberoDataset
+  _target_: environments.dataset.libero_dataset.LiberoDataset
   data_directory: ${dataset_path}
-  obs_keys: ${obs_keys}
-  obs_modalities: *obs_modalities_list
-  dataset_keys: ${dataset_keys}
-  filter_by_attribute: ${hdf5_validation_filter_key}
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
   state_dim: ${state_dim}

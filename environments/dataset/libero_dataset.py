@@ -17,11 +17,6 @@ class LiberoDataset(TrajectoryDataset):
     def __init__(
             self,
             data_directory: os.PathLike,
-            # data='train',
-            obs_keys,  # low_dim or rgb
-            obs_modalities,
-            dataset_keys=None,  # [actions, dones, obs, rewards, states]
-            filter_by_attribute=None,
             device="cpu",
             obs_dim: int = 32,
             action_dim: int = 7,
@@ -40,21 +35,11 @@ class LiberoDataset(TrajectoryDataset):
             window_size=window_size
         )
 
-        logging.info("Loading Libero Dataset")
-
-        self.obs_keys = obs_keys  # low_dim || rgb
-        logging.info("The dataset is {}".format(self.obs_keys))  #show low_dim or rgb
-
         self.data_dir = sim_framework_path(self.data_directory)
         logging.info("The dataset is loading from {}".format(self.data_dir))  # show the dataset directory
 
-        self.obs_modalities = obs_modalities["obs"][self.obs_keys]
-        logging.info("The obs_modalities list is {}".format(self.obs_modalities))
-
         self.obs_dim = obs_dim
         self.state_dim = state_dim
-        self.dataset_keys = dataset_keys  # [actions, dones, obs, rewards, states]
-        self.filter_by_attribute = filter_by_attribute
         self.data_directory = data_directory
 
         task_suite = os.path.basename(data_directory)
@@ -65,9 +50,6 @@ class LiberoDataset(TrajectoryDataset):
 
         data_embs = []
         actions = []
-        states = []
-        rewards = []
-        dones = []
         masks = []
         agentview_rgb = []
         eye_in_hand_rgb = []
@@ -87,22 +69,14 @@ class LiberoDataset(TrajectoryDataset):
 
             log.info("Loading demo: {}".format(file))
 
-            # get the image's basic shape from demo_0
-            if self.obs_keys == "rgb":
-                H, W, C = f["data"]["demo_0"]["obs"][self.obs_modalities[0]].shape[1:]
+            demo_keys_list = list(f["data"].keys())
 
-            # determinate which demo should be loaded using demo_keys_list
-            if filter_by_attribute is not None:
-                self.demo_keys_list = [elem.decode("utf-8") for elem in
-                                       np.array(f["mask/{}".format(filter_by_attribute)][:])]
-            else:
-                self.demo_keys_list = list(f["data"].keys())
-
-            indices = np.argsort([int(elem[5:]) for elem in self.demo_keys_list])
+            indices = np.argsort([int(elem[5:]) for elem in demo_keys_list])
 
             # load the states and actions in demos according to demo_keys_list
             for i in indices[start_idx: start_idx + traj_per_task]:
-                demo_name = f'demo_{i}'
+
+                demo_name = demo_keys_list[i]
                 demo = f["data"][demo_name]
                 demo_length = demo.attrs["num_samples"]
 

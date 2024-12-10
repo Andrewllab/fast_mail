@@ -9,10 +9,10 @@ This is an open-source project that aims to provide a set of imitation learning 
 - 12.10 -> basic structure implementation
   - [x] Implement the basic structure of the project.
   - [x] Libero dataset and environment.
-  - [x] DDPM and BC policy.
-  - [x] Transformer and Mamba/Mamba2 model.
+  - [x] BC policy.
+  - [x] Transformer (encoder_decoder)
   - [x] Basic training scripts and evaluation
-- evaluation and comparison
+- Next -> beso and mamba1/2
 
 ### Xuan Zhao
 
@@ -52,10 +52,6 @@ pip install -r requirements.txt
 git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git
 cd LIBERO
 pip install -e .
-```
-### Installing Mamba
-```
-pip install mamba-ssm==1.2.0.post1
 ```
 
 ---

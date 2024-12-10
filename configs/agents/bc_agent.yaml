@@ -1,21 +1,11 @@
 _target_: agents.bc_agent.BC_Agent
 _recursive_: false
 
+defaults:
+  - model: bc
+
 action_seq_size: ${act_seq_len}
 obs_seq_len: ${obs_seq_len}
-
-model:
-  _target_: agents.models.bc.BC_Policy
-  _recursive_: false
-
-  if_film_condition: False
-  device: ${device}
-  state_dim: ${obs_dim}
-  latent_dim: ${latent_dim}
-
-  defaults:
-    - backbones: transformer
-    - obs_encoders: resnet.yaml
 
 trainset: ${trainset}
 valset: ${valset}
