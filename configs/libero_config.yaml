@@ -95,19 +95,19 @@ n_heads: 4
 ##########################################################################################
 # Mamba Parameters
 ##########################################################################################
-Mamba_type: Mamba1
+Mamba_type: Mamba2
 
 mamba_n_layer_encoder: 10
 mamba_encoder_cfg:
   layer: ${Mamba_type}
-  d_state: 8
+  d_state: 64
   d_conv: 4
   expand: 2
 
 mamba_n_layer_decoder: 10
 mamba_decoder_cfg:
   layer: ${Mamba_type}
-  d_state: 8
+  d_state: 64
   d_conv: 4
   expand: 2
 

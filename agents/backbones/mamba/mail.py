@@ -11,6 +11,30 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+with torch.no_grad():
+    from mamba_ssm import Mamba2
+    from mamba_ssm import Mamba
+
+    x = torch.randn(2, 5, 256).to("cuda")
+    model = Mamba(
+        # This module uses roughly 3 * expand * d_model^2 parameters
+        d_model=256,  # Model dimension d_model
+        d_state=8,  # SSM state expansion factor
+        d_conv=4,  # Local convolution width
+        expand=2,  # Block expansion factor
+    ).to("cuda")
+    y = model(x)  # warm up first
+
+    model = Mamba2(
+        # This module uses roughly 3 * expand * d_model^2 parameters
+        d_model=256,  # Model dimension d_model
+        d_state=8,  # SSM state expansion factor, typically 64 or 128
+        d_conv=4,  # Local convolution width
+        expand=2,  # Block expansion factor
+    ).to("cuda")
+    y = model(x)  # warm up first
+
+
 class Enc_only(nn.Module):
     """Diffusion model with transformer architecture for state, goal, time and action tokens,
     with a context size of block_size"""
