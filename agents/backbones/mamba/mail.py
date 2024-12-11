@@ -11,288 +11,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class LayerNorm(nn.Module):
-    """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
-
-    def __init__(self, ndim, bias):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(ndim))
-        self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
-
-    def forward(self, input):
-        return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
-
-
-class SelfAttention(nn.Module):
-    """
-    A vanilla multi-head masked self-attention layer with a projection at the end.
-    It is possible to use torch.nn.MultiheadAttention here but I am including an
-    explicit implementation here to show that there is nothing too scary here.
-    """
-
-    def __init__(
-            self,
-            n_embd: int,
-            n_heads: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            block_size: int,
-    ):
-        super().__init__()
-        assert n_embd % n_heads == 0
-        # key, query, value projections for all heads
-        self.key = nn.Linear(n_embd, n_embd)
-        self.query = nn.Linear(n_embd, n_embd)
-        self.value = nn.Linear(n_embd, n_embd)
-        # regularization
-        self.attn_drop = nn.Dropout(attn_pdrop)
-        self.resid_drop = nn.Dropout(resid_pdrop)
-        # output projection
-        self.proj = nn.Linear(n_embd, n_embd)
-        # causal mask to ensure that attention is only applied to the left in the input sequence
-        self.register_buffer(
-            "mask",
-            torch.tril(torch.ones(block_size, block_size)).view(
-                1, 1, block_size, block_size
-            ),
-        )
-        self.n_head = n_heads
-
-    def forward(self, x):
-        (
-            B,
-            T,
-            C,
-        ) = x.size()  # batch size, sequence length, embedding dimensionality (n_embd)
-
-        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        k = (self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-             )  # (B, nh, T, hs)
-        q = (
-            self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-        )  # (B, nh, T, hs)
-        v = (
-            self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-        )  # (B, nh, T, hs)
-
-        # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
-        att = F.softmax(att, dim=-1)
-        att = self.attn_drop(att)
-        y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
-        y = (
-            y.transpose(1, 2).contiguous().view(B, T, C)
-        )  # re-assemble all head outputs side by side
-
-        # output projection
-        y = self.resid_drop(self.proj(y))
-        return y
-
-
-class CausalSelfCrossAttention(nn.Module):
-    def __init__(self, n_embd, cross_embed, n_heads, attn_pdrop, resid_pdrop, block_size):
-        super().__init__()
-
-        assert n_embd % n_heads == 0
-
-        # Self-Attention Projections
-        self.key = nn.Linear(n_embd, n_embd)
-        self.query = nn.Linear(n_embd, n_embd)
-        self.value = nn.Linear(n_embd, n_embd)
-
-        # Cross-Attention Projections
-        self.cross_key = nn.Linear(cross_embed, n_embd)
-        self.cross_query = nn.Linear(n_embd, n_embd)
-        self.cross_value = nn.Linear(cross_embed, n_embd)
-
-        # Regularization
-        self.attn_drop = nn.Dropout(attn_pdrop)
-        self.resid_drop = nn.Dropout(resid_pdrop)
-
-        # Output Projection
-        self.proj = nn.Linear(n_embd, n_embd)
-
-        # Causal mask for Self-Attention
-        self.register_buffer("mask", torch.tril(torch.ones(block_size, block_size)).view(1, 1, block_size, block_size))
-
-        self.n_head = n_heads
-
-    def forward(self, x, cross_input=None):
-        B, T, C = x.size()
-
-        # calculate query, key, values for self-attention
-        k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-        q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-        v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-
-        # causal self-attention
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float('-inf'))
-        att = F.softmax(att, dim=-1)
-        att = self.attn_drop(att)
-        y = att @ v
-
-        if cross_input is not None:
-            # calculate query, key, values for cross-attention
-            T_C = cross_input.size(1)
-            k_cross = self.cross_key(cross_input).view(B, T_C, self.n_head, C // self.n_head).transpose(1, 2)
-            v_cross = self.cross_value(cross_input).view(B, T_C, self.n_head, C // self.n_head).transpose(1, 2)
-
-            q_cross = self.cross_query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-            # cross-attention
-            att_cross = (q_cross @ k_cross.transpose(-2, -1)) * (1.0 / math.sqrt(k_cross.size(-1)))
-            att_cross = F.softmax(att_cross, dim=-1)
-            att_cross = self.attn_drop(att_cross)
-            y_cross = att_cross @ v_cross
-
-            # combine self-attention and cross-attention
-            y = y + y_cross  # or any other combination strategy
-
-        y = y.transpose(1, 2).contiguous().view(B, T, C)
-        y = self.resid_drop(self.proj(y))
-
-        return y
-
-
-class DecoderBlock(nn.Module):
-    """an unassuming Transformer block"""
-
-    def __init__(
-            self,
-            n_embd: int,
-            cross_embd: int,
-            n_heads: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            block_size: int,
-
-    ):
-        super().__init__()
-        self.ln1 = LayerNorm(n_embd, bias=False)
-        self.ln2 = LayerNorm(n_embd, bias=False)
-        self.attn = CausalSelfCrossAttention(
-            n_embd,
-            cross_embd,
-            n_heads,
-            attn_pdrop,
-            resid_pdrop,
-            block_size,
-        )
-        self.mlp = nn.Sequential(
-            nn.Linear(n_embd, 4 * n_embd),
-            nn.GELU(),
-            nn.Linear(4 * n_embd, n_embd),
-            nn.Dropout(resid_pdrop),
-        )
-
-    def forward(self, x, cond=None):
-        x = x + self.attn(self.ln1(x), cross_input=cond)
-        x = x + self.mlp(self.ln2(x))
-        return x
-
-
-class EncoderBlock(nn.Module):
-    """an unassuming Transformer block"""
-
-    def __init__(
-            self,
-            n_embd: int,
-            n_heads: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            block_size: int,
-
-    ):
-        super().__init__()
-        self.ln1 = LayerNorm(n_embd, bias=False)
-        self.ln2 = LayerNorm(n_embd, bias=False)
-        self.attn = SelfAttention(
-            n_embd,
-            n_heads,
-            attn_pdrop,
-            resid_pdrop,
-            block_size,
-        )
-        self.mlp = nn.Sequential(
-            nn.Linear(n_embd, 4 * n_embd),
-            nn.GELU(),
-            nn.Linear(4 * n_embd, n_embd),
-            nn.Dropout(resid_pdrop),
-        )
-
-    def forward(self, x):
-        x = x + self.attn(self.ln1(x))
-        x = x + self.mlp(self.ln2(x))
-        return x
-
-
-class TransformerEncoder(nn.Module):
-
-    def __init__(
-            self,
-            embed_dim: int,
-            n_heads: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            n_layers: int,
-            block_size: int,
-            bias: bool = False,
-    ):
-        super().__init__()
-        self.blocks = nn.Sequential(
-            *[EncoderBlock(
-                embed_dim,
-                n_heads,
-                attn_pdrop,
-                resid_pdrop,
-                block_size,
-            )
-                for _ in range(n_layers)]
-        )
-        self.ln = LayerNorm(embed_dim, bias)
-
-    def forward(self, x):
-        for layer in self.blocks:
-            x = layer(x)
-        x = self.ln(x)
-        return x
-
-
-class TransformerDecoder(nn.Module):
-
-    def __init__(
-            self,
-            embed_dim: int,
-            cross_embed: int,
-            n_heads: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            n_layers: int,
-            block_size: int,
-            bias: bool = False,
-    ):
-        super().__init__()
-        self.blocks = nn.Sequential(
-            *[DecoderBlock(
-                embed_dim,
-                cross_embed,
-                n_heads,
-                attn_pdrop,
-                resid_pdrop,
-                block_size,
-            )
-                for _ in range(n_layers)]
-        )
-        self.ln = LayerNorm(embed_dim, bias)
-
-    def forward(self, x, cond=None):
-        for layer in self.blocks:
-            x = layer(x, cond=cond)
-        x = self.ln(x)
-        return x
-
-
 class Enc_only(nn.Module):
     """Diffusion model with transformer architecture for state, goal, time and action tokens,
     with a context size of block_size"""
@@ -495,7 +213,7 @@ class Enc_only(nn.Module):
         return self.parameters()
 
 
-class EncDec(nn.Module):
+class MambaCross(nn.Module):
     """Diffusion model with transformer architecture for state, goal, time and action tokens,
     with a context size of block_size"""
 
@@ -504,9 +222,9 @@ class EncDec(nn.Module):
             encoder: DictConfig,
             decoder: DictConfig,
             state_dim: int,
-            goal_dim: int,
             action_dim: int,
             device: str,
+            goal_conditioned: bool,
             embed_dim: int,
             embed_pdrob: float,
             goal_seq_len: int,
@@ -521,13 +239,15 @@ class EncDec(nn.Module):
         self.decoder = hydra.utils.instantiate(decoder)
 
         self.device = device
-
+        self.goal_conditioned = goal_conditioned
+        if not goal_conditioned:
+            goal_seq_len = 0
         # input embedding stem
         # first we need to define the maximum block size
         # it consists of the goal sequence length plus 1 for the sigma embedding and 2 the obs seq len
         block_size = goal_seq_len + action_seq_len + obs_seq_len + 1
         # the seq_size is a little different since we have state action pairs for every timestep
-        seq_size = goal_seq_len + obs_seq_len + action_seq_len + 1
+        seq_size = goal_seq_len + obs_seq_len + action_seq_len
 
         self.tok_emb = nn.Linear(state_dim, embed_dim)
         self.tok_emb.to(self.device)
@@ -535,8 +255,6 @@ class EncDec(nn.Module):
         self.pos_emb = nn.Parameter(torch.zeros(1, seq_size, embed_dim))
         self.drop = nn.Dropout(embed_pdrob)
         self.drop.to(self.device)
-
-        self.goal_emb = nn.Linear(goal_dim, embed_dim)
 
         # needed for calssifier guidance learning
         self.cond_mask_prob = goal_drop
@@ -552,6 +270,8 @@ class EncDec(nn.Module):
 
         # get an action embedding
         self.action_token = nn.Embedding(action_seq_len, embed_dim)
+        self.action_noise_token = nn.Embedding(action_seq_len, embed_dim)
+        self.state_token = nn.Embedding(obs_seq_len+1, embed_dim)
 
         # action pred module
         if linear_output:
@@ -583,14 +303,18 @@ class EncDec(nn.Module):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
 
+    # x: torch.Tensor, t: torch.Tensor, s: torch.Tensor, g: torch.Tensor
+    # def forward(self, x, t, state, goal):
     def forward(
             self,
             states,
             goals=None,
-            return_encoder_embedding=False
-    ):  
-        # goal is language embedding
-        # states is image embedding
+            uncond: Optional[bool] = False,
+            keep_last_actions: Optional[bool] = False
+    ):
+
+        # actions = actions[:, self.obs_seq_len-1:, :]
+        # states = states[:, :self.obs_seq_len, :]
 
         if len(states.size()) != 3:
             states = states.unsqueeze(0)
@@ -598,29 +322,47 @@ class EncDec(nn.Module):
         b, t, dim = states.size()
         assert t <= self.block_size, "Cannot forward, model block size is exhausted."
 
-        # with torch.no_grad():
+        if self.goal_conditioned:
+
+            if self.training:
+                goals = self.mask_cond(goals)
+            # we want to use unconditional sampling during clasisfier free guidance
+            if uncond:
+                goals = torch.zeros_like(goals).to(self.device)
+
+            goal_embed = self.tok_emb(goals)
 
         # embed them into linear representations for the transformer
         state_embed = self.tok_emb(states)
-        goal_embed = self.goal_emb(goals)
 
         position_embeddings = self.pos_emb[:, :(t + self.goal_seq_len + self.action_seq_len - 1), :]
+        # note, that the goal states are at the beginning of the sequence since they are available
+        # for all states s_1, ..., s_t otherwise the masking would not make sense
+        if self.goal_conditioned:
+            goal_x = self.drop(goal_embed + position_embeddings[:, :self.goal_seq_len, :])
 
-        goal_x = self.drop(goal_embed + position_embeddings[:, :self.goal_seq_len, :])
         state_x = self.drop(state_embed + position_embeddings[:, self.goal_seq_len:(self.goal_seq_len + t), :])
 
-        # encode the state, goal and latent z into the hidden dim
-        encoder_output = self.encoder(torch.cat([goal_x, state_x], dim=1))
-
-        if return_encoder_embedding:
-            return encoder_output
+        # state_x = self.drop(state_embed + position_embeddings[:, self.goal_seq_len:, :])
+        # # the action get the same position embedding as the related states
+        # action_x = self.drop(action_embed + position_embeddings[:, self.goal_seq_len:, :])
 
         # decode the action sequence with cross attention over the encoder output
+        state_token = self.state_token.weight.unsqueeze(0).repeat(b, 1, 1)
         action_seq = self.action_token.weight.unsqueeze(0).repeat(b, 1, 1)
 
-        decoder_output = self.decoder(action_seq, encoder_output)
+        action_noise_seq = self.action_noise_token.weight.unsqueeze(0).repeat(b, 1, 1)
 
-        pred_actions = self.action_pred(decoder_output)
+        # encode the state, goal and latent z into the hidden dim
+        input_seq = torch.cat([state_x, action_seq], dim=1)
+
+        encoder_output = self.encoder(input_seq)
+
+        act_seq = torch.cat([state_token[:, :t, :], action_noise_seq], dim=1)
+
+        decoder_output = self.decoder(act_seq, cond=encoder_output)
+
+        pred_actions = self.action_pred(decoder_output)[:, t:, :]
 
         return pred_actions
 

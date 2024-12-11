@@ -1,0 +1,28 @@
+_target_: agents.mdt_agent.MDTAgent
+_recursive_: false
+
+defaults:
+  - model: mdt
+
+trainset: ${trainset}
+valset: ${valset}
+train_batch_size: ${train_batch_size}
+val_batch_size: ${val_batch_size}
+num_workers: ${num_workers}
+epoch: ${epoch}
+device: ${device}
+scale_data: ${scale_data}
+
+obs_seq_len: ${obs_seq_len}
+
+decay: 0.995
+
+multistep: 20
+#cont_alpha: 1.0
+masked_beta: 1.0
+#use_distributed_clip: True
+use_text_not_embedding: True
+ckpt_path: null
+seed: ${seed}
+
+scaler_type: ${scaler_type}

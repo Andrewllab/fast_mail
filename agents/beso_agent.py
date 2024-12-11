@@ -60,7 +60,7 @@ class MDTAgent(BaseAgent):
 
         self.ema_helper = ExponentialMovingAverage(self.model.parameters(), decay, self.device)
 
-        # self.camera_types = self.trainset.cameras_type
+        self.camera_types = self.trainset.cameras_type
 
         self.decay = decay
 
@@ -82,8 +82,11 @@ class MDTAgent(BaseAgent):
         self.state_recons = False
         self.use_text_not_embedding = use_text_not_embedding
 
-        self.bp_image_context = deque(maxlen=self.obs_seq_len)
-        self.inhand_image_context = deque(maxlen=self.obs_seq_len)
+        self.context_dict = {"front_rgb": deque(maxlen=self.obs_seq_len),
+                             "left_shoulder_rgb": deque(maxlen=self.obs_seq_len),
+                             "right_shoulder_rgb": deque(maxlen=self.obs_seq_len),
+                             "overhead_rgb": deque(maxlen=self.obs_seq_len),
+                             "wrist_rgb": deque(maxlen=self.obs_seq_len)}
 
         if ckpt_path is not None:
             self.load_pretrained_model(ckpt_path)
@@ -115,32 +118,23 @@ class MDTAgent(BaseAgent):
         context = self.model.forward_context_only(perceptual_emb, noised_input, latent_goal, sigmas)
         return context
 
-    def train_vision_agent(self):
+    def train_agent(self):
 
         for num_epoch in tqdm(range(self.epoch)):
 
             epoch_loss = torch.tensor(0.0).to(self.device)
 
             for data in self.train_dataloader:
-                bp_imgs, inhand_imgs, action, task_emb = data
+                obs_dict, action, mask = data
 
-                # for camera in obs_dict.keys():
-                #     obs_dict[camera] = obs_dict[camera].to(self.device)
-                #     obs_dict[camera] = obs_dict[camera][:, :self.obs_seq_len].contiguous()
-
-                bp_imgs = bp_imgs.to(self.device)
-                inhand_imgs = inhand_imgs.to(self.device)
-                task_emb = task_emb.to(self.device)
+                for camera in obs_dict.keys():
+                    obs_dict[camera] = obs_dict[camera].to(self.device)
+                    obs_dict[camera] = obs_dict[camera][:, :self.obs_seq_len].contiguous()
 
                 action = self.scaler.scale_output(action)
-                # action = action[:, self.obs_seq_len - 1:, :].contiguous()
+                action = action[:, self.obs_seq_len - 1:, :].contiguous()
 
-                bp_imgs = bp_imgs[:, :1].contiguous()
-                inhand_imgs = inhand_imgs[:, :1].contiguous()
-
-                state = (bp_imgs, inhand_imgs, task_emb)
-
-                batch_loss = self.train_step(state, action)
+                batch_loss = self.train_step(obs_dict, action)
 
                 epoch_loss += batch_loss
 
@@ -184,32 +178,19 @@ class MDTAgent(BaseAgent):
     @torch.no_grad()
     def predict(self, obs, goal=None):
 
-        # imgs_seq = {}
+        imgs_seq = {}
 
-        bp_image, inhand_image, task_emb = obs
+        for camera, data in obs.items():
+            if 'rgb' not in camera:
+                continue
 
-        bp_image = torch.from_numpy(bp_image).to(self.device).float().permute(2, 0, 1).unsqueeze(0) / 255.
-        inhand_image = torch.from_numpy(inhand_image).to(self.device).float().permute(2, 0, 1).unsqueeze(0) / 255.
+            obs[camera] = torch.from_numpy(data).to(self.device).float().permute(2, 0, 1).unsqueeze(0) / 255.
 
-        self.bp_image_context.append(bp_image)
-        self.inhand_image_context.append(inhand_image)
+            self.context_dict[camera].append(obs[camera])
 
-        bp_image_seq = torch.stack(tuple(self.bp_image_context), dim=1)
-        inhand_image_seq = torch.stack(tuple(self.inhand_image_context), dim=1)
+            imgs_seq[camera] = torch.stack(tuple(self.context_dict[camera]), dim=1)
 
-        # for camera, data in obs.items():
-        #     if 'rgb' not in camera:
-        #         continue
-        #
-        #     obs[camera] = torch.from_numpy(data).to(self.device).float().permute(2, 0, 1).unsqueeze(0) / 255.
-        #
-        #     self.context_dict[camera].append(obs[camera])
-        #
-        #     imgs_seq[camera] = torch.stack(tuple(self.context_dict[camera]), dim=1)
-
-        task_emb = task_emb.to(self.device).unsqueeze(0)
-
-        input_state = (bp_image_seq, inhand_image_seq, task_emb)
+        imgs_seq['lang_emb'] = obs['lang_emb'].to(self.device).unsqueeze(0)
 
         if self.rollout_step_counter % self.multistep == 0:
 
@@ -219,7 +200,7 @@ class MDTAgent(BaseAgent):
             self.model.eval()
 
             # predict action sequence
-            pred_action_seq = self.model(input_state, goal)
+            pred_action_seq = self.model(imgs_seq, goal)
 
             self.ema_helper.restore(self.model.parameters())
 
@@ -239,6 +220,3 @@ class MDTAgent(BaseAgent):
             self.rollout_step_counter = 0
 
         return current_action.detach().cpu().numpy()
-
-    def train_agent(self):
-        pass

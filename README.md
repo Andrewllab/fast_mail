@@ -12,8 +12,9 @@ This is an open-source project that aims to provide a set of imitation learning 
   - [x] BC policy.
   - [x] Transformer (encoder_decoder)
   - [x] Basic training scripts and evaluation
-- Next -> beso and mamba1/2
-
+- 12.11 -> beso and mamba1/2
+  - [x] add beso (with mdt architecture)
+  - [x] add mamba1/2
 ### Xuan Zhao
 
 
@@ -26,6 +27,8 @@ This is an open-source project that aims to provide a set of imitation learning 
 - **Architectures:** support for transformer, mamba, xlstm models.
 - **Policy Head:** support for bc, ddpm, beso, flow matching and vqbet.
 - **Environments:** support for push-T, block-push, libero, and other tasks.
+
+- **Potential:** think about adding point cloud inputs, maybe try 1 or 2 tasks and real robot
 
 ---
 
@@ -54,6 +57,13 @@ cd LIBERO
 pip install -e .
 ```
 
+### Installing packages for beso
+
+
+### Installing packages for mamba1/2
+```
+pip install mamba-ssm
+```
 ---
 
 ## Acknowledgements
