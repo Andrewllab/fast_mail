@@ -10,10 +10,9 @@ import einops
 import torch.optim as optim
 import wandb
 
-from .mdt.models.edm_diffusion.gc_sampling import *
-from .mdt.models.edm_diffusion.utils import append_dims
-from .mdt.models.perceptual_encoders.voltron_encoder import VoltronTokenEncoder
-from .mdt.utils.ema import ExponentialMovingAverage
+from agents.models.beso.models.edm_diffusion.gc_sampling import *
+from agents.models.beso.models.edm_diffusion.utils import append_dims
+from agents.models.beso.utils.ema import ExponentialMovingAverage
 
 from agents.base_agent import BaseAgent
 

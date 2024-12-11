@@ -15,6 +15,8 @@ This is an open-source project that aims to provide a set of imitation learning 
 - 12.11 -> beso and mamba1/2
   - [x] add beso (with mdt architecture)
   - [x] add mamba1/2
+- 12.12
+  - [ ] add adaln layers to mamba (later the film condition should be on all methods)
 ### Xuan Zhao
 
 

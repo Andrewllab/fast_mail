@@ -2,7 +2,7 @@ _target_: agents.models.bc.bc.BC_Policy
 _recursive_: false
 
 defaults:
-  - backbones: mamba
+  - backbones: transformer
   - obs_encoders: resnet
 
 if_robot_states: False
