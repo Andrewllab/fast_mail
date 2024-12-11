@@ -2,6 +2,7 @@ _target_: agents.backbones.transformer.transformer.EncDec
 _recursive_: false
 state_dim: ${latent_dim}
 action_dim: ${action_dim}
+obs_tokens: ${obs_tokens}
 goal_seq_len: 1
 obs_seq_len: ${obs_seq_len}
 action_seq_len: ${act_seq_len}

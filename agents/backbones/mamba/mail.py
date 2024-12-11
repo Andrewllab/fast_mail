@@ -213,18 +213,17 @@ class Enc_only(nn.Module):
         return self.parameters()
 
 
-class MambaCross(nn.Module):
-    """Diffusion model with transformer architecture for state, goal, time and action tokens,
-    with a context size of block_size"""
+class Mamba_EncDec(nn.Module):
 
     def __init__(
             self,
             encoder: DictConfig,
             decoder: DictConfig,
             state_dim: int,
+            goal_dim: int,
             action_dim: int,
+            obs_tokens: int,
             device: str,
-            goal_conditioned: bool,
             embed_dim: int,
             embed_pdrob: float,
             goal_seq_len: int,
@@ -239,15 +238,13 @@ class MambaCross(nn.Module):
         self.decoder = hydra.utils.instantiate(decoder)
 
         self.device = device
-        self.goal_conditioned = goal_conditioned
-        if not goal_conditioned:
-            goal_seq_len = 0
+
         # input embedding stem
         # first we need to define the maximum block size
         # it consists of the goal sequence length plus 1 for the sigma embedding and 2 the obs seq len
         block_size = goal_seq_len + action_seq_len + obs_seq_len + 1
         # the seq_size is a little different since we have state action pairs for every timestep
-        seq_size = goal_seq_len + obs_seq_len + action_seq_len
+        seq_size = obs_tokens + action_seq_len
 
         self.tok_emb = nn.Linear(state_dim, embed_dim)
         self.tok_emb.to(self.device)
@@ -255,6 +252,8 @@ class MambaCross(nn.Module):
         self.pos_emb = nn.Parameter(torch.zeros(1, seq_size, embed_dim))
         self.drop = nn.Dropout(embed_pdrob)
         self.drop.to(self.device)
+
+        self.goal_emb = nn.Linear(goal_dim, embed_dim)
 
         # needed for calssifier guidance learning
         self.cond_mask_prob = goal_drop
@@ -268,10 +267,12 @@ class MambaCross(nn.Module):
         self.obs_seq_len = obs_seq_len
         self.action_seq_len = action_seq_len
 
+        self.obs_tokens = obs_tokens
+
         # get an action embedding
         self.action_token = nn.Embedding(action_seq_len, embed_dim)
         self.action_noise_token = nn.Embedding(action_seq_len, embed_dim)
-        self.state_token = nn.Embedding(obs_seq_len+1, embed_dim)
+        self.state_token = nn.Embedding(obs_tokens, embed_dim)
 
         # action pred module
         if linear_output:
@@ -309,12 +310,8 @@ class MambaCross(nn.Module):
             self,
             states,
             goals=None,
-            uncond: Optional[bool] = False,
-            keep_last_actions: Optional[bool] = False
+            return_encoder_embedding=False
     ):
-
-        # actions = actions[:, self.obs_seq_len-1:, :]
-        # states = states[:, :self.obs_seq_len, :]
 
         if len(states.size()) != 3:
             states = states.unsqueeze(0)
@@ -322,47 +319,32 @@ class MambaCross(nn.Module):
         b, t, dim = states.size()
         assert t <= self.block_size, "Cannot forward, model block size is exhausted."
 
-        if self.goal_conditioned:
-
-            if self.training:
-                goals = self.mask_cond(goals)
-            # we want to use unconditional sampling during clasisfier free guidance
-            if uncond:
-                goals = torch.zeros_like(goals).to(self.device)
-
-            goal_embed = self.tok_emb(goals)
-
         # embed them into linear representations for the transformer
         state_embed = self.tok_emb(states)
+        goal_embed = self.goal_emb(goals)
 
-        position_embeddings = self.pos_emb[:, :(t + self.goal_seq_len + self.action_seq_len - 1), :]
-        # note, that the goal states are at the beginning of the sequence since they are available
-        # for all states s_1, ..., s_t otherwise the masking would not make sense
-        if self.goal_conditioned:
-            goal_x = self.drop(goal_embed + position_embeddings[:, :self.goal_seq_len, :])
+        position_embeddings = self.pos_emb
 
+        goal_x = self.drop(goal_embed + position_embeddings[:, :self.goal_seq_len, :])
         state_x = self.drop(state_embed + position_embeddings[:, self.goal_seq_len:(self.goal_seq_len + t), :])
-
-        # state_x = self.drop(state_embed + position_embeddings[:, self.goal_seq_len:, :])
-        # # the action get the same position embedding as the related states
-        # action_x = self.drop(action_embed + position_embeddings[:, self.goal_seq_len:, :])
 
         # decode the action sequence with cross attention over the encoder output
         state_token = self.state_token.weight.unsqueeze(0).repeat(b, 1, 1)
         action_seq = self.action_token.weight.unsqueeze(0).repeat(b, 1, 1)
-
         action_noise_seq = self.action_noise_token.weight.unsqueeze(0).repeat(b, 1, 1)
 
         # encode the state, goal and latent z into the hidden dim
-        input_seq = torch.cat([state_x, action_seq], dim=1)
-
+        input_seq = torch.cat([goal_x, state_x, action_seq], dim=1)
         encoder_output = self.encoder(input_seq)
 
-        act_seq = torch.cat([state_token[:, :t, :], action_noise_seq], dim=1)
+        if return_encoder_embedding:
+            return encoder_output
 
+        # decoder
+        act_seq = torch.cat([state_token, action_noise_seq], dim=1)
         decoder_output = self.decoder(act_seq, cond=encoder_output)
 
-        pred_actions = self.action_pred(decoder_output)[:, t:, :]
+        pred_actions = self.action_pred(decoder_output)[:, self.obs_tokens:, :]
 
         return pred_actions
 

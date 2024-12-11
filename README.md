@@ -74,6 +74,7 @@ git clone https://github.com/state-spaces/mamba.git
 cd mamba
 pip install setuptools==61.0.0
 python setup.py install
+pip install causal-conv1d>=1.4.0
 ```
 ---
 

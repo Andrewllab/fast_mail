@@ -55,11 +55,9 @@ def main(cfg: DictConfig) -> None:
 
     for num_epoch in tqdm(range(agent.epoch)):
 
-        env_sim.test_agent(agent, epoch=num_epoch)
-
         agent.train_agent()
 
-        if num_epoch in [69, 79, 89, 99]:
+        if num_epoch in [49]:
 
             env_sim.test_agent(agent, epoch=num_epoch)
 

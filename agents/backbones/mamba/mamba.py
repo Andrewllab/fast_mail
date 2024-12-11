@@ -121,7 +121,7 @@ class MixerModel(nn.Module):
         d_model: int,
         n_layer: int,
         d_intermediate: int,
-        vocab_size: int,
+        # vocab_size: int,
         ssm_cfg=None,
         attn_layer_idx=None,
         attn_cfg=None,
@@ -137,7 +137,7 @@ class MixerModel(nn.Module):
         super().__init__()
         self.residual_in_fp32 = residual_in_fp32
 
-        self.embedding = nn.Embedding(vocab_size, d_model, **factory_kwargs)
+        # self.embedding = nn.Embedding(vocab_size, d_model, **factory_kwargs)
 
         # We change the order of residual and layer norm:
         # Instead of LN -> Attn / MLP -> Add, we do:
@@ -187,13 +187,19 @@ class MixerModel(nn.Module):
             for i, layer in enumerate(self.layers)
         }
 
-    def forward(self, input_ids, inference_params=None, **mixer_kwargs):
-        hidden_states = self.embedding(input_ids)
+    def forward(self, hidden_states, inference_params=None, cond=None, **mixer_kwargs):
+        # we did linear layer before, so we just delete this layer
+        # hidden_states = self.embedding(input_ids)
+
         residual = None
         for layer in self.layers:
             hidden_states, residual = layer(
                 hidden_states, residual, inference_params=inference_params, **mixer_kwargs
             )
+
+            if cond is not None:
+                hidden_states = hidden_states + cond
+
         if not self.fused_add_norm:
             residual = (hidden_states + residual) if residual is not None else hidden_states
             hidden_states = self.norm_f(residual.to(dtype=self.norm_f.weight.dtype))

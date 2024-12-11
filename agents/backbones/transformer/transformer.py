@@ -506,6 +506,7 @@ class EncDec(nn.Module):
             state_dim: int,
             goal_dim: int,
             action_dim: int,
+            obs_tokens: int,
             device: str,
             embed_dim: int,
             embed_pdrob: float,
@@ -527,7 +528,7 @@ class EncDec(nn.Module):
         # it consists of the goal sequence length plus 1 for the sigma embedding and 2 the obs seq len
         block_size = goal_seq_len + action_seq_len + obs_seq_len + 1
         # the seq_size is a little different since we have state action pairs for every timestep
-        seq_size = goal_seq_len + obs_seq_len + action_seq_len + 1
+        seq_size = obs_tokens + action_seq_len
 
         self.tok_emb = nn.Linear(state_dim, embed_dim)
         self.tok_emb.to(self.device)
@@ -549,6 +550,8 @@ class EncDec(nn.Module):
         self.goal_seq_len = goal_seq_len
         self.obs_seq_len = obs_seq_len
         self.action_seq_len = action_seq_len
+
+        self.obs_tokens = obs_tokens
 
         # get an action embedding
         self.action_token = nn.Embedding(action_seq_len, embed_dim)
@@ -604,7 +607,7 @@ class EncDec(nn.Module):
         state_embed = self.tok_emb(states)
         goal_embed = self.goal_emb(goals)
 
-        position_embeddings = self.pos_emb[:, :(t + self.goal_seq_len + self.action_seq_len - 1), :]
+        position_embeddings = self.pos_emb
 
         goal_x = self.drop(goal_embed + position_embeddings[:, :self.goal_seq_len, :])
         state_x = self.drop(state_embed + position_embeddings[:, self.goal_seq_len:(self.goal_seq_len + t), :])

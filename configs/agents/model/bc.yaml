@@ -5,6 +5,7 @@ defaults:
   - backbones: transformer
   - obs_encoders: resnet
 
+if_robot_states: False
 if_film_condition: False
 device: ${device}
 state_dim: ${obs_dim}

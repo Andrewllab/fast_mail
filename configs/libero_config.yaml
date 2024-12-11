@@ -33,9 +33,8 @@ hydra:
 
 seed: 42
 
-task_suite: libero_object
-
 # dataset config
+task_suite: libero_object
 traj_per_task: 10
 
 ## change the path of dataset
@@ -48,12 +47,15 @@ obs_seq_len: 1
 act_seq_len: ${window_size}
 goal_window_size: 1
 
+# obs_tokens: goal_window_size + obs_seq_len * len(obs_modalities)
+obs_tokens: 3
+
 # Training
 train_batch_size: 256
 val_batch_size: 32
 num_workers: 4
 device: 'cuda'
-epoch: 100
+epoch: 50
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'standard'
@@ -64,6 +66,8 @@ action_dim: 7
 state_dim: 110
 max_len_data: 260
 
+## Observations
+if_robot_states: False
 shape_meta:
   # acceptable types: rgb, low_dim
   obs:
@@ -75,19 +79,37 @@ shape_meta:
       type: rgb
 
 ##########################################################################################
-# Transformer Parameters (encoder-decoder)
+# Common Parameters
 ##########################################################################################
-encoder_n_layer: 4
-decoder_n_layer: 6
-n_heads: 4
 n_embd: 256
 goal_dim: 512
 latent_dim: 256
 
 ##########################################################################################
+# Transformer Parameters (encoder-decoder)
+##########################################################################################
+encoder_n_layer: 4
+decoder_n_layer: 6
+n_heads: 4
+
+##########################################################################################
 # Mamba Parameters
 ##########################################################################################
+Mamba_type: Mamba1
 
+mamba_n_layer_encoder: 10
+mamba_encoder_cfg:
+  layer: ${Mamba_type}
+  d_state: 8
+  d_conv: 4
+  expand: 2
+
+mamba_n_layer_decoder: 10
+mamba_decoder_cfg:
+  layer: ${Mamba_type}
+  d_state: 8
+  d_conv: 4
+  expand: 2
 
 ##########################################################################################
 # xLSTM Parameters
@@ -123,6 +145,6 @@ simulation:
   seed: ${seed}
   device: ${device}
   render: False
-  n_cores: 1
+  n_cores: 2
   num_episode: 20
   max_step_per_episode: 600

@@ -10,6 +10,7 @@ class BC_Policy(nn.Module):
     def __init__(self,
                  backbones: DictConfig,
                  obs_encoders: DictConfig,
+                 if_robot_states: bool = False,
                  if_film_condition: bool = False,
                  device: str = 'cpu',
                  state_dim: int = 7,
@@ -19,6 +20,8 @@ class BC_Policy(nn.Module):
 
         self.img_encoder = hydra.utils.instantiate(obs_encoders).to(device)
         self.model = hydra.utils.instantiate(backbones).to(device)
+
+        self.if_robot_states = if_robot_states
         self.if_film_condition = if_film_condition
         self.state_emb = nn.Linear(state_dim, latent_dim)
 
@@ -29,9 +32,6 @@ class BC_Policy(nn.Module):
 
         latent_goal = obs_dict['lang_emb']
 
-        if "robot_states" in obs_dict.keys():
-            robot_states = obs_dict['robot_states']
-            robot_states = self.state_emb(robot_states)
         # print(f"the shape of this dict is {obs_dict[list(obs_dict.keys())[0]].shape}")
         B, T, C, H, W = obs_dict[list(obs_dict.keys())[0]].shape
 
@@ -47,7 +47,10 @@ class BC_Policy(nn.Module):
             # obs_dict is a dict with two images and one lang: images are [64,3,256,256]
             perceptual_emb = self.img_encoder(obs_dict)
 
-        if "robot_states" in obs_dict.keys():
+        if self.if_robot_states and "robot_states" in obs_dict.keys():
+            robot_states = obs_dict['robot_states']
+            robot_states = self.state_emb(robot_states)
+
             perceptual_emb = torch.cat([perceptual_emb, robot_states], dim=1)
 
         return perceptual_emb, latent_goal
