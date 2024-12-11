@@ -63,6 +63,17 @@ pip install -e .
 ### Installing packages for mamba1/2
 ```
 pip install mamba-ssm
+
+# if the above command doesn't work, check if the torch cuda version mathes and try the following
+git clone https://github.com/state-spaces/mamba.git
+cd mamba
+pip install -e .
+
+# if you still have errors
+git clone https://github.com/state-spaces/mamba.git
+cd mamba
+pip install setuptools==61.0.0
+python setup.py install
 ```
 ---
 
