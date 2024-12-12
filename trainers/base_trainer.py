@@ -41,7 +41,7 @@ class BaseTrainTester:
         """Initialize."""
 
         self.trainset = hydra.utils.instantiate(trainset)
-        self.valset = hydra.utils.instantiate(valset)
+        # self.valset = hydra.utils.instantiate(valset)
 
         self.train_dataloader = DataLoader(
             self.trainset,
@@ -52,14 +52,14 @@ class BaseTrainTester:
             drop_last=True,
         )
 
-        self.test_dataloader = DataLoader(
-            self.valset,
-            batch_size=val_batch_size,
-            shuffle=False,
-            num_workers=0,
-            pin_memory=True,
-            drop_last=False
-        )
+        # self.test_dataloader = DataLoader(
+        #     self.valset,
+        #     batch_size=val_batch_size,
+        #     shuffle=False,
+        #     num_workers=0,
+        #     pin_memory=True,
+        #     drop_last=False
+        # )
 
         self.obs_seq_len = obs_seq_len
 
@@ -77,7 +77,7 @@ class BaseTrainTester:
         else:
             self.scaler = ActionScaler(self.trainset.get_all_actions(), scale_data, device)
 
-    def main(self):
+    def main(self, agent):
         """Run main training/testing pipeline."""
 
         for num_epoch in tqdm(range(self.epoch)):
@@ -98,7 +98,7 @@ class BaseTrainTester:
                 action = self.scaler.scale_output(action)
                 action = action[:, self.obs_seq_len - 1:, :].contiguous()
 
-                batch_loss = self.train_one_step(obs_dict, action)
+                batch_loss = self.train_one_step(agent, obs_dict, action)
 
                 epoch_loss += batch_loss
 
@@ -108,11 +108,19 @@ class BaseTrainTester:
             log.info("Epoch {}: Mean train loss is {}".format(num_epoch, epoch_loss.item()))
 
         log.info("training done")
-        self.store_model_weights(self.working_dir, sv_name='last_mdt.pth')
+        agent.store_model_weights(agent.working_dir, sv_name='last_model.pth')
 
-    def train_one_step(self, model, criterion, optimizer, step_id, sample):
+    def train_one_step(self, agent, obs_dict, action):
         """Run a single training step."""
-        pass
+        agent.train()
+
+        loss = agent.train_one_step(obs_dict, action)
+
+        agent.optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        agent.optimizer.step()
+
+        return loss
 
     @torch.no_grad()
     def evaluate_nsteps(self, model, criterion, loader, step_id, val_iters,
