@@ -32,7 +32,7 @@ def print_model_parameters(model):
                 print(f"{name} - Total Params: {submodule_params}")
 
 
-class MDTAgent(BaseAgent):
+class BesoAgent(BaseAgent):
     def __init__(
             self,
             model: DictConfig,
@@ -53,7 +53,7 @@ class MDTAgent(BaseAgent):
             seed: int = 42,
             scaler_type: str = 'minmax'
     ):
-        super(MDTAgent, self).__init__(model, trainset=trainset, valset=valset, train_batch_size=train_batch_size,
+        super(BesoAgent, self).__init__(model, trainset=trainset, valset=valset, train_batch_size=train_batch_size,
                                        val_batch_size=val_batch_size, num_workers=num_workers, device=device,
                                        epoch=epoch, scale_data=scale_data, scaler_type=scaler_type)
 

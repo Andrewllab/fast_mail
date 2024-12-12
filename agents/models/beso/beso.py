@@ -11,12 +11,12 @@ from .models.edm_diffusion.gc_sampling import *
 from .utils.lr_schedulers.tri_stage_scheduler import TriStageLRScheduler
 
 
-class MDT(nn.Module):
+class BESO(nn.Module):
     def __init__(
             self,
             model: DictConfig,
             # language_goal: DictConfig,
-            img_encoder: DictConfig,
+            obs_encoders: DictConfig,
             optimizer: DictConfig,
             lr_scheduler: DictConfig,
             latent_dim,
@@ -33,7 +33,7 @@ class MDT(nn.Module):
             device: str = "cpu",
             if_film_condition: bool = False
     ):
-        super(MDT, self).__init__()
+        super(BESO, self).__init__()
 
         self.action_dim = action_dim
         self.action_seq_len = action_seq_len
@@ -48,7 +48,7 @@ class MDT(nn.Module):
         self.model = hydra.utils.instantiate(model).to(self.device)
 
         # self.language_goal = hydra.utils.instantiate(language_goal).to(self.device)
-        self.img_encoder = hydra.utils.instantiate(img_encoder).to(self.device)
+        self.img_encoder = hydra.utils.instantiate(obs_encoders).to(self.device)
 
         # diffusion stuff
         self.sampler_type = sampler_type
