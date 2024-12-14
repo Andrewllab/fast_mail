@@ -40,45 +40,74 @@ class xlstmEncoder(nn.Module):
     def __init__(
             self,
             embed_dim: int,
-            n_heads: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            n_layers: int,
-            block_size: int,
             bias: bool = False,
+            xlstm_config: Optional[DictConfig] = None
     ):
         super().__init__()
-        # self.blocks = nn.ModuleList(
-        #     [mLSTMBlock(config) for _ in range(config.num_blocks)]
+        
+        # Use provided config or default config
+        # if xlstm_config is None:
+        #     xlstm_cfg = """ 
+        #     vocab_size: 50304
+        #     mlstm_block:
+        #         mlstm:
+        #             conv1d_kernel_size: 4
+        #             qkv_proj_blocksize: 4
+        #             num_heads: 4
+        #     slstm_block:
+        #         slstm:
+        #             backend: cuda
+        #             num_heads: 4
+        #             conv1d_kernel_size: 4
+        #             bias_init: powerlaw_blockdependent
+        #     feedforward:
+        #         proj_factor: 1.3
+        #         act_fn: gelu
+        #     context_length: 256
+        #     num_blocks: 7
+        #     embedding_dim: 128
+        #     slstm_at: [1]
+        #     """
+        #     cfg = OmegaConf.create(xlstm_cfg)
+        # else:
+        #     cfg = xlstm_config
+        cfg = xLSTMBlockStackConfig(
+    mlstm_block=mLSTMBlockConfig(
+        mlstm=mLSTMLayerConfig(
+            conv1d_kernel_size=4, qkv_proj_blocksize=4, num_heads=4
+        )
+    ),
+    slstm_block=sLSTMBlockConfig(
+        slstm=sLSTMLayerConfig(
+            backend="cuda",
+            num_heads=4,
+            conv1d_kernel_size=4,
+            bias_init="powerlaw_blockdependent",
+        ),
+        feedforward=FeedForwardConfig(proj_factor=1.3, act_fn="gelu"),
+    ),
+    context_length=12,
+    num_blocks=7,
+    embedding_dim=256,
+    slstm_at=[1],
+
+)
+            
+        # cfg = from_dict(
+        #     data_class=xLSTMBlockStackConfig, 
+        #     data=OmegaConf.to_container(cfg), 
+        #     config=DaciteConfig(strict=True)
         # )
-
-        xlstm_cfg = """ 
-vocab_size: 50304
-mlstm_block:
-mlstm:
-    conv1d_kernel_size: 4
-    qkv_proj_blocksize: 4
-    num_heads: 4
-slstm_block:
-slstm:
-    backend: cuda
-    num_heads: 4
-    conv1d_kernel_size: 4
-    bias_init: powerlaw_blockdependent
-feedforward:
-    proj_factor: 1.3
-    act_fn: gelu
-context_length: 256
-num_blocks: 7
-embedding_dim: 128
-slstm_at: [1]
-"""
-        cfg = OmegaConf.create(xlstm_cfg)
-        cfg = from_dict(data_class=xLSTMBlockStackConfig, data=OmegaConf.to_container(cfg), config=DaciteConfig(strict=True))
         self.xlstm_stack = xLSTMBlockStack(cfg)
-
         self.out_norm = nn.Identity()
         self.ln = LayerNorm(embed_dim, bias)
+
+
+    def forward(self, x):
+        x = self.ln(x)
+        x = self.xlstm_stack(x)
+        x = self.out_norm(x)
+        return x
 
 
     # if self.config.add_out_norm:
@@ -93,11 +122,11 @@ slstm_at: [1]
     #     self.out_norm = nn.Identity()
     #     self.ln = LayerNorm(embed_dim, bias)
     
-    def forward(
-        self, x: torch.Tensor, state: mLSTMStateType | None = None
-    ) -> tuple[torch.Tensor, mLSTMStateType]:
-        if state is None:
-                state = {i: None for i in range(len(self.blocks))}
+    # def forward(
+    #     self, x: torch.Tensor, state: mLSTMStateType | None = None
+    # ) -> tuple[torch.Tensor, mLSTMStateType]:
+    #     if state is None:
+    #             state = {i: None for i in range(len(self.blocks))}
 
     # def forward(self, x):
     #     x = self.ln(x)
@@ -107,7 +136,7 @@ slstm_at: [1]
     
 
 
-class Decoder_only(nn.Module):
+class Enc_only(nn.Module):
     def __init__(
             self,
             encoder: DictConfig,
@@ -177,7 +206,9 @@ class Decoder_only(nn.Module):
             "number of parameters: %e", sum(p.numel() for p in self.parameters())
         )
 
-    def forward(self, states, goals=None, uncond: Optional[bool] = False, keep_last_actions: Optional[bool] = False):
+    def forward(self, states, goals=None, uncond: Optional[bool] = False, 
+                keep_last_actions: Optional[bool] = False, 
+                return_encoder_embedding: Optional[bool] = False):
         if len(states.size()) != 3:
             states = states.unsqueeze(0)
 
@@ -185,16 +216,12 @@ class Decoder_only(nn.Module):
         assert t <= self.block_size, "Cannot forward, model block size is exhausted."
 
         if self.goal_conditioned:
-
             if self.training:
                 goals = self.mask_cond(goals)
-            # we want to use unconditional sampling during clasisfier free guidance
             if uncond:
                 goals = torch.zeros_like(goals).to(self.device)
-
             goal_embed = self.tok_emb(goals)
         
-        # embed the states
         state_embed = self.tok_emb(states)
         if self.goal_conditioned:
             goal_x = self.drop(goal_embed[:, :self.goal_seq_len, :])
@@ -204,7 +231,26 @@ class Decoder_only(nn.Module):
         action_seq = self.query_embed.weight.unsqueeze(0).repeat(b, 1, 1)
         input_seq = torch.cat([state_x, action_seq], dim=1)
 
-        # add main decoder only blocks
+        # encode the state, goal and latent z into the hidden dim
+        encoder_output = self.encoder(input_seq)
 
+        if return_encoder_embedding:
+            return encoder_output
+
+        pred_actions = self.action_pred(encoder_output[:, t:, :])
+
+        return pred_actions
+
+        # add main decoder only blocks
+    
+    def _init_weights(self, module):
+        if isinstance(module, (nn.Linear, nn.Embedding)):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if isinstance(module, nn.Linear) and module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.LayerNorm):
+            torch.nn.init.zeros_(module.bias)
+            torch.nn.init.ones_(module.weight)
+    
         
         

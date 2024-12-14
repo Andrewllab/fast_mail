@@ -2,7 +2,8 @@ _target_: agents.bc_agent.BC_Agent
 _recursive_: false
 
 defaults:
-  - model: bc/bc_mamba
+  # - model: bc/bc_transformer
+  - model: bc/bc_xlstm
   - obs_encoders: resnet
 #  language_encoders:
 
