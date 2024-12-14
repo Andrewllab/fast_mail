@@ -39,7 +39,8 @@ task_suite: libero_object
 traj_per_task: 10
 
 ## change the path of dataset
-dataset_path: /home/david/2024/datasets/${task_suite}
+# dataset_path: /home/david/2024/datasets/${task_suite}
+dataset_path: /home/xuan/dataset/${task_suite}
 #dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
 
 # Model Setting
