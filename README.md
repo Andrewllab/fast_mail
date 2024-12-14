@@ -44,7 +44,7 @@ git clone git@github.com:xiaogangjia/fast_mail.git
 
 ### Installing requirements
 ```
-conda create -n mail python=3.10
+conda create -n mail python=3.11
 conda activate mail
 
 # adapt to your own cuda version if you need
@@ -82,6 +82,13 @@ python setup.py install
 pip install causal-conv1d>=1.4.0
 ```
 ---
+
+### install xlstm
+```
+git clone https://github.com/NX-AI/xlstm.git
+cd xlstm
+pip install -e .
+```
 
 ## Acknowledgements
 
