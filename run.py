@@ -48,21 +48,16 @@ def main(cfg: DictConfig) -> None:
     # train the agent
     agent = hydra.utils.instantiate(cfg.agents)
 
+    trainer = hydra.utils.instantiate(cfg.trainers)
+    trainer.main(agent)
+
     # simulate the model
     env_sim = hydra.utils.instantiate(cfg.simulation)
+    env_sim.get_task_embs(trainer.trainset.tasks)
 
     sv_dir = sim_framework_path("pretrain_weights")
 
-    for num_epoch in tqdm(range(agent.epoch)):
-
-        agent.train_agent()
-
-        if num_epoch in [49]:
-
-            env_sim.test_agent(agent, epoch=num_epoch)
-
-            # Save the model checkpoint
-            # torch.save(agent.model.state_dict(), sv_dir + f'/{num_epoch}.pth')
+    env_sim.test_agent(agent, epoch=cfg.epoch)
 
     log.info("Training done")
     log.info("state_dict saved in {}".format(agent.working_dir))

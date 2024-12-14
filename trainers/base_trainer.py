@@ -17,11 +17,12 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 
 from agents.utils.scaler import Scaler, ActionScaler, MinMaxScaler
+from agents.utils.ema import ExponentialMovingAverage
 
 log = logging.getLogger(__name__)
 
 
-class BaseTrainTester:
+class BaseTrainer:
     """Basic train/test class to be inherited."""
 
     def __init__(
@@ -36,7 +37,9 @@ class BaseTrainTester:
             scale_data: bool = True,
             scaler_type: str = None,
             eval_every_n_epochs: int = 50,
-            obs_seq_len: int = 1
+            obs_seq_len: int = 1,
+            decay_ema: float = 0.999,
+            if_use_ema: bool = False
     ):
         """Initialize."""
 
@@ -62,15 +65,14 @@ class BaseTrainTester:
         # )
 
         self.obs_seq_len = obs_seq_len
-
         self.eval_every_n_epochs = eval_every_n_epochs
-
         self.epoch = epoch
-
         self.device = device
         self.working_dir = os.getcwd()
-
         self.scaler_type = scaler_type
+
+        self.decay_ema = decay_ema
+        self.if_use_ema = if_use_ema
 
         if self.scaler_type == 'minmax':
             self.scaler = MinMaxScaler(self.trainset.get_all_actions(), scale_data, device)
@@ -79,6 +81,18 @@ class BaseTrainTester:
 
     def main(self, agent):
         """Run main training/testing pipeline."""
+
+        # assign scaler to agent calss
+        agent.get_scaler(self.scaler)
+
+        if self.if_use_ema:
+            self.ema_helper = ExponentialMovingAverage(agent.parameters(), self.decay_ema, self.device)
+
+        # define optimizer
+        if agent.use_lr_scheduler:
+            self.optimizer, self.scheduler = agent.configure_optimizers()
+        else:
+            self.optimizer = agent.configure_optimizers()
 
         for num_epoch in tqdm(range(self.epoch)):
 
@@ -108,17 +122,28 @@ class BaseTrainTester:
             log.info("Epoch {}: Mean train loss is {}".format(num_epoch, epoch_loss.item()))
 
         log.info("training done")
+
+        if self.if_use_ema:
+            self.ema_helper.store(agent.parameters())
+            self.ema_helper.copy_to(agent.parameters())
+
         agent.store_model_weights(agent.working_dir, sv_name='last_model.pth')
 
     def train_one_step(self, agent, obs_dict, action):
         """Run a single training step."""
         agent.train()
 
-        loss = agent.train_one_step(obs_dict, action)
+        loss = agent(obs_dict, action)
 
-        agent.optimizer.zero_grad(set_to_none=True)
+        self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
-        agent.optimizer.step()
+        self.optimizer.step()
+
+        if agent.use_lr_scheduler:
+            self.scheduler.step()
+
+        if self.if_use_ema:
+            self.ema_helper.update(agent.parameters())
 
         return loss
 

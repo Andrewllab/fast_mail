@@ -3,75 +3,80 @@ import os
 from typing import Any, Dict, NamedTuple, Optional, Tuple
 from collections import deque
 
+import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
 import torch.distributed as dist
 import einops
 import torch.optim as optim
 import wandb
+from functools import partial
 
 from agents.models.beso.models.edm_diffusion.gc_sampling import *
-from agents.models.beso.models.edm_diffusion.utils import append_dims
-from agents.models.beso.utils.ema import ExponentialMovingAverage
+from agents.models.beso.utils.lr_schedulers.tri_stage_scheduler import TriStageLRScheduler
 
 from agents.base_agent import BaseAgent
 
 log = logging.getLogger(__name__)
 
 
-def print_model_parameters(model):
-    total_params = sum(p.numel() for p in model.parameters())
-    print(f"Total Parameters: {total_params}")
-
-    for name, submodule in model.named_modules():
-        # Adjusting the condition to capture the desired layers
-        if '.' not in name or name.count('.') <= 10:  # Can be adjusted based on your model structure
-            # Counting parameters including submodules
-            submodule_params = sum(p.numel() for p in submodule.parameters())
-            if submodule_params > 0:
-                print(f"{name} - Total Params: {submodule_params}")
-
-
 class BesoAgent(BaseAgent):
     def __init__(
             self,
             model: DictConfig,
-            trainset: DictConfig,
-            valset: DictConfig,
-            train_batch_size,
-            val_batch_size,
-            num_workers,
-            device: str,
-            epoch: int,
-            scale_data,
+            # language_goal: DictConfig,
+            obs_encoders: DictConfig,
+            optimizer: DictConfig,
+            lr_scheduler: DictConfig,
+            latent_dim,
+            action_dim,
+            action_seq_len,
             decay: float,
-            obs_seq_len,
+            use_lr_scheduler: bool = True,
+            sampler_type: str = 'ddim',
+            num_sampling_steps: int = 10,
+            sigma_data: float = 0.5,
+            sigma_min: float = 0.001,
+            sigma_max: float = 80,
+            noise_scheduler: str = 'exponential',
+            sigma_sample_density_type: str = 'loglogistic',
+            device: str = "cpu",
+            if_film_condition: bool = False,
+            if_robot_states: bool = False,
             multistep: int = 10,
-            masked_beta: float = 1,
             use_text_not_embedding: bool = False,
             ckpt_path=None,
-            seed: int = 42,
-            scaler_type: str = 'minmax'
     ):
-        super(BesoAgent, self).__init__(model, trainset=trainset, valset=valset, train_batch_size=train_batch_size,
-                                       val_batch_size=val_batch_size, num_workers=num_workers, device=device,
-                                       epoch=epoch, scale_data=scale_data, scaler_type=scaler_type)
+        super(BesoAgent, self).__init__(device=device)
 
-        self.ema_helper = ExponentialMovingAverage(self.model.parameters(), decay, self.device)
+        self.model = hydra.utils.instantiate(model).to(device)
 
-        self.camera_types = self.trainset.cameras_type
+        # self.language_goal = hydra.utils.instantiate(language_goal).to(self.device)
+        self.img_encoder = hydra.utils.instantiate(obs_encoders).to(self.device)
+
+        self.action_dim = action_dim
+        self.action_seq_len = action_seq_len
+
+        self.use_lr_scheduler = use_lr_scheduler
+
+        self.latent_dim = latent_dim
+        self.device = device
+        self.optimizer_config = optimizer
+        self.lr_scheduler = lr_scheduler
+
+        # diffusion stuff
+        self.sampler_type = sampler_type
+        self.num_sampling_steps = num_sampling_steps
+        self.noise_scheduler = noise_scheduler
+        self.sigma_data = sigma_data
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
+        self.sigma_sample_density_type = sigma_sample_density_type
+
+        self.if_film_condition = if_film_condition
+        self.if_robot_states = if_robot_states
 
         self.decay = decay
-
-        self.optimizer, self.lr_scheduler = self.model.configure_optimizers()
-
-        self.seed = seed
-
-        self.modality_scope = "vis"
-
-        self.masked_beta = masked_beta
-
-        self.obs_seq_len = obs_seq_len
 
         # for inference
         self.rollout_step_counter = 0
@@ -81,90 +86,264 @@ class BesoAgent(BaseAgent):
         self.state_recons = False
         self.use_text_not_embedding = use_text_not_embedding
 
-        self.context_dict = {"front_rgb": deque(maxlen=self.obs_seq_len),
-                             "left_shoulder_rgb": deque(maxlen=self.obs_seq_len),
-                             "right_shoulder_rgb": deque(maxlen=self.obs_seq_len),
-                             "overhead_rgb": deque(maxlen=self.obs_seq_len),
-                             "wrist_rgb": deque(maxlen=self.obs_seq_len)}
-
         if ckpt_path is not None:
             self.load_pretrained_model(ckpt_path)
 
-    def load_pretrained_model(self, weights_path: str, **kwargs) -> None:
+    def configure_optimizers(self):
         """
-        Method to load a pretrained model weights inside self.model
+        Initialize optimizers and learning rate schedulers based on model configuration.
+        """
+        # Configuration for models using transformer weight decay
+        '''optim_groups = self.action_decoder.model.inner_model.get_optim_groups(
+            weight_decay=self.optimizer_config.transformer_weight_decay
+        )'''
+        optim_groups = [
+            {"params": self.model.inner_model.parameters(), "weight_decay": self.optimizer_config.transformer_weight_decay},
+        ]
+
+        optim_groups.extend([
+            {"params": self.img_encoder.parameters(), "weight_decay": self.optimizer_config.transformer_weight_decay},
+        ])
+
+        # optim_groups.extend([
+        #     {"params": self.clip_proj.parameters(), "weight_decay": self.optimizer_config.obs_encoder_weight_decay},
+        #     {"params": self.logit_scale, "weight_decay": self.optimizer_config.obs_encoder_weight_decay},
+        # ])
+
+        optimizer = torch.optim.AdamW(optim_groups, lr=self.optimizer_config.learning_rate,
+                                      betas=self.optimizer_config.betas)
+
+        # Optionally initialize the scheduler
+        if self.use_lr_scheduler:
+            lr_configs = OmegaConf.create(self.lr_scheduler)
+            scheduler = TriStageLRScheduler(optimizer, lr_configs)
+
+            return optimizer, scheduler
+            # lr_scheduler = {
+            #     "scheduler": scheduler,
+            #     "interval": 'step',
+            #     "frequency": 1,
+            # }
+            # return {"optimizer": optimizer, "lr_scheduler": lr_scheduler}
+        else:
+            return optimizer
+
+    def compute_input_embeddings(self, obs_dict):
+        """
+        Compute the required embeddings for the visual ones and the latent goal.
         """
 
-        self.model.load_state_dict(torch.load(os.path.join(weights_path, "model_state_dict.pth")))
-        self.ema_helper = ExponentialMovingAverage(self.model.parameters(), self.decay, self.device)
+        latent_goal = obs_dict['lang_emb']
 
-    def store_model_weights(self, store_path: str, sv_name=None) -> None:
+        # print(f"the shape of this dict is {obs_dict[list(obs_dict.keys())[0]].shape}")
+        B, T, C, H, W = obs_dict[list(obs_dict.keys())[0]].shape
+
+        for camera in obs_dict.keys():
+            if 'rgb' not in camera:
+                continue
+            # print(obs_dict[camera].shape)
+            obs_dict[camera] = obs_dict[camera].view(B * T, C, H, W)
+        # print(self.if_film_condition)
+        if self.if_film_condition:
+            perceptual_emb = self.img_encoder(obs_dict, latent_goal)
+        else:
+            # obs_dict is a dict with two images and one lang: images are [64,3,256,256]
+            perceptual_emb = self.img_encoder(obs_dict)
+
+        if self.if_robot_states and "robot_states" in obs_dict.keys():
+            robot_states = obs_dict['robot_states']
+            robot_states = self.state_emb(robot_states)
+
+            perceptual_emb = torch.cat([perceptual_emb, robot_states], dim=1)
+
+        return perceptual_emb, latent_goal
+
+    def diffusion_loss(
+            self,
+            perceptual_emb: torch.Tensor,
+            actions: torch.Tensor,
+            latent_goal: torch.Tensor = None,
+    ) -> torch.Tensor:
         """
-        Store the model weights inside the store path as model_weights.pth
+        Computes the score matching loss given the perceptual embedding, latent goal, and desired actions.
         """
-
-        self.ema_helper.store(self.model.parameters())
-        self.ema_helper.copy_to(self.model.parameters())
-        torch.save(self.model.state_dict(), os.path.join(store_path, "model_state_dict.pth"))
-
-        # self.ema_helper.restore(self.model.parameters())
-        # torch.save(self.model.state_dict(), os.path.join(store_path, "non_ema_model_state_dict.pth"))
-
-    def clip_extra_forward(self, perceptual_emb, latent_goal, actions, sigmas, noise):
-
         self.model.train()
-        noised_input = actions + noise * append_dims(sigmas, actions.ndim)
-        context = self.model.forward_context_only(perceptual_emb, noised_input, latent_goal, sigmas)
-        return context
+        sigmas = self.make_sample_density()(shape=(len(actions),), device=self.device).to(self.device)
+        noise = torch.randn_like(actions).to(self.device)
+        loss, _ = self.model.loss(perceptual_emb, actions, latent_goal, noise, sigmas)
 
-    def train_agent(self):
+        return loss, sigmas, noise
 
-        for num_epoch in tqdm(range(self.epoch)):
+    def denoise_actions(  # type: ignore
+            self,
+            perceptual_emb: torch.Tensor,
+            latent_goal: torch.Tensor = None,
+            inference: Optional[bool] = False,
+            extra_args={}
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Denoise the next sequence of actions
+        """
+        if inference:
+            sampling_steps = self.num_sampling_steps
+        else:
+            sampling_steps = 10
 
-            epoch_loss = torch.tensor(0.0).to(self.device)
+        # if len(latent_goal.shape) < len(
+        #         perceptual_emb['state_images'].shape if isinstance(perceptual_emb, dict) else perceptual_emb.shape):
+        #     latent_goal = latent_goal.unsqueeze(1)  # .expand(-1, seq_len, -1)
 
-            for data in self.train_dataloader:
-                obs_dict, action, mask = data
+        input_state = perceptual_emb
+        sigmas = self.get_noise_schedule(sampling_steps, self.noise_scheduler)
 
-                for camera in obs_dict.keys():
-                    obs_dict[camera] = obs_dict[camera].to(self.device)
-                    obs_dict[camera] = obs_dict[camera][:, :self.obs_seq_len].contiguous()
+        x = torch.randn((len(perceptual_emb), self.action_seq_len, self.action_dim), device=self.device) * self.sigma_max
 
-                action = self.scaler.scale_output(action)
-                action = action[:, self.obs_seq_len - 1:, :].contiguous()
+        actions = self.sample_loop(sigmas, x, input_state, latent_goal, self.sampler_type, extra_args)
 
-                batch_loss = self.train_step(obs_dict, action)
+        return actions
 
-                epoch_loss += batch_loss
+    def make_sample_density(self):
+        """
+        Generate a sample density function based on the desired type for training the model
+        We mostly use log-logistic as it has no additional hyperparameters to tune.
+        """
+        sd_config = []
+        if self.sigma_sample_density_type == 'lognormal':
+            loc = self.sigma_sample_density_mean  # if 'mean' in sd_config else sd_config['loc']
+            scale = self.sigma_sample_density_std  # if 'std' in sd_config else sd_config['scale']
+            return partial(utils.rand_log_normal, loc=loc, scale=scale)
 
-            epoch_loss = epoch_loss / len(self.train_dataloader)
+        if self.sigma_sample_density_type == 'loglogistic':
+            loc = sd_config['loc'] if 'loc' in sd_config else math.log(self.sigma_data)
+            scale = sd_config['scale'] if 'scale' in sd_config else 0.5
+            min_value = sd_config['min_value'] if 'min_value' in sd_config else self.sigma_min
+            max_value = sd_config['max_value'] if 'max_value' in sd_config else self.sigma_max
+            return partial(utils.rand_log_logistic, loc=loc, scale=scale, min_value=min_value, max_value=max_value)
 
-            wandb.log({"train_loss": epoch_loss.item()})
-            log.info("Epoch {}: Mean train loss is {}".format(num_epoch, epoch_loss.item()))
+        if self.sigma_sample_density_type == 'loguniform':
+            min_value = sd_config['min_value'] if 'min_value' in sd_config else self.sigma_min
+            max_value = sd_config['max_value'] if 'max_value' in sd_config else self.sigma_max
+            return partial(utils.rand_log_uniform, min_value=min_value, max_value=max_value)
 
-        log.info("training done")
-        self.store_model_weights(self.working_dir, sv_name='last_mdt.pth')
+        if self.sigma_sample_density_type == 'uniform':
+            return partial(utils.rand_uniform, min_value=self.sigma_min, max_value=self.sigma_max)
 
-    def train_step(self, state: tuple, action: torch.Tensor, goal: Optional[torch.Tensor] = None) -> float:
+        if self.sigma_sample_density_type == 'v-diffusion':
+            min_value = self.min_value if 'min_value' in sd_config else self.sigma_min
+            max_value = sd_config['max_value'] if 'max_value' in sd_config else self.sigma_max
+            return partial(utils.rand_v_diffusion, sigma_data=self.sigma_data, min_value=min_value, max_value=max_value)
+        if self.sigma_sample_density_type == 'discrete':
+            sigmas = self.get_noise_schedule(self.num_sampling_steps * 1e5, 'exponential')
+            return partial(utils.rand_discrete, values=sigmas)
+        if self.sigma_sample_density_type == 'split-lognormal':
+            loc = sd_config['mean'] if 'mean' in sd_config else sd_config['loc']
+            scale_1 = sd_config['std_1'] if 'std_1' in sd_config else sd_config['scale_1']
+            scale_2 = sd_config['std_2'] if 'std_2' in sd_config else sd_config['scale_2']
+            return partial(utils.rand_split_log_normal, loc=loc, scale_1=scale_1, scale_2=scale_2)
+        else:
+            raise ValueError('Unknown sample density type')
 
-        self.model.train()
+    def sample_loop(
+            self,
+            sigmas,
+            x_t: torch.Tensor,
+            state: torch.Tensor,
+            goal: torch.Tensor,
+            sampler_type: str,
+            extra_args={},
+    ):
+        """
+        Main method to generate samples depending on the chosen sampler type. DDIM is the default as it works well in all settings.
+        """
+        s_churn = extra_args['s_churn'] if 's_churn' in extra_args else 0
+        s_min = extra_args['s_min'] if 's_min' in extra_args else 0
+        use_scaler = extra_args['use_scaler'] if 'use_scaler' in extra_args else False
+        keys = ['s_churn', 'keep_last_actions']
+        if bool(extra_args):
+            reduced_args = {x: extra_args[x] for x in keys}
+        else:
+            reduced_args = {}
+        if use_scaler:
+            scaler = self.scaler
+        else:
+            scaler = None
+        # ODE deterministic
+        if sampler_type == 'lms':
+            x_0 = sample_lms(self.model, state, x_t, goal, sigmas, scaler=scaler, disable=True, extra_args=reduced_args)
+        # ODE deterministic can be made stochastic by S_churn != 0
+        elif sampler_type == 'heun':
+            x_0 = sample_heun(self.model, state, x_t, goal, sigmas, scaler=scaler, s_churn=s_churn, s_tmin=s_min,
+                              disable=True)
+        # ODE deterministic
+        elif sampler_type == 'euler':
+            x_0 = sample_euler(self.model, state, x_t, goal, sigmas, scaler=scaler, disable=True)
+        # SDE stochastic
+        elif sampler_type == 'ancestral':
+            x_0 = sample_dpm_2_ancestral(self.model, state, x_t, goal, sigmas, scaler=scaler, disable=True)
+            # SDE stochastic: combines an ODE euler step with an stochastic noise correcting step
+        elif sampler_type == 'euler_ancestral':
+            x_0 = sample_euler_ancestral(self.model, state, x_t, goal, sigmas, scaler=scaler, disable=True)
+        # ODE deterministic
+        elif sampler_type == 'dpm':
+            x_0 = sample_dpm_2(self.model, state, x_t, goal, sigmas, disable=True)
+        # ODE deterministic
+        elif sampler_type == 'dpm_adaptive':
+            x_0 = sample_dpm_adaptive(self.model, state, x_t, goal, sigmas[-2].item(), sigmas[0].item(), disable=True)
+        # ODE deterministic
+        elif sampler_type == 'dpm_fast':
+            x_0 = sample_dpm_fast(self.model, state, x_t, goal, sigmas[-2].item(), sigmas[0].item(), len(sigmas),
+                                  disable=True)
+        # 2nd order solver
+        elif sampler_type == 'dpmpp_2s_ancestral':
+            x_0 = sample_dpmpp_2s_ancestral(self.model, state, x_t, goal, sigmas, scaler=scaler, disable=True)
+        # 2nd order solver
+        elif sampler_type == 'dpmpp_2m':
+            x_0 = sample_dpmpp_2m(self.model, state, x_t, goal, sigmas, scaler=scaler, disable=True)
+        elif sampler_type == 'dpmpp_2m_sde':
+            x_0 = sample_dpmpp_sde(self.model, state, x_t, goal, sigmas, scaler=scaler, disable=True)
+        elif sampler_type == 'ddim':
+            x_0 = sample_ddim(self.model, state, x_t, goal, sigmas, scaler=scaler, disable=True)
+        elif sampler_type == 'dpmpp_2s':
+            x_0 = sample_dpmpp_2s(self.model, state, x_t, goal, sigmas, scaler=scaler, disable=True)
+        elif sampler_type == 'dpmpp_2_with_lms':
+            x_0 = sample_dpmpp_2_with_lms(self.model, state, x_t, goal, sigmas, scaler=scaler, disable=True)
+        else:
+            raise ValueError('desired sampler type not found!')
+        return x_0
 
-        if goal is not None:
-            goal = self.scaler.scale_input(goal)
+    def get_noise_schedule(self, n_sampling_steps, noise_schedule_type):
+        """
+        Get the noise schedule for the sampling steps. Describes the distribution over the noise levels from sigma_min to sigma_max.
+        """
+        if noise_schedule_type == 'karras':
+            return get_sigmas_karras(n_sampling_steps, self.sigma_min, self.sigma_max, 7,
+                                     self.device)  # rho=7 is the default from EDM karras
+        elif noise_schedule_type == 'exponential':
+            return get_sigmas_exponential(n_sampling_steps, self.sigma_min, self.sigma_max, self.device)
+        elif noise_schedule_type == 'vp':
+            return get_sigmas_vp(n_sampling_steps, device=self.device)
+        elif noise_schedule_type == 'linear':
+            return get_sigmas_linear(n_sampling_steps, self.sigma_min, self.sigma_max, device=self.device)
+        elif noise_schedule_type == 'cosine_beta':
+            return cosine_beta_schedule(n_sampling_steps, device=self.device)
+        elif noise_schedule_type == 've':
+            return get_sigmas_ve(n_sampling_steps, self.sigma_min, self.sigma_max, device=self.device)
+        elif noise_schedule_type == 'iddpm':
+            return get_iddpm_sigmas(n_sampling_steps, self.sigma_min, self.sigma_max, device=self.device)
+        raise ValueError('Unknown noise schedule type')
 
-        # Compute the loss.
-        loss = self.model(state, goal, action=action, if_train=True)
+    def forward(self, obs_dict, actions=None, return_encoder_embedding=False):
+        perceptual_emb, latent_goal = self.compute_input_embeddings(obs_dict)
 
-        # Before the backward pass, zero all the network gradients
-        self.optimizer.zero_grad()
-        # Backward pass: compute gradient of the loss with respect to parameters
-        loss.backward()
-        # Calling the step function to update the parameters
-        self.optimizer.step()
-        self.lr_scheduler.step()
+        if self.training and actions is not None:
 
-        self.ema_helper.update(self.model.parameters())
-        return loss
+            loss, sigmas, noise = self.diffusion_loss(perceptual_emb, actions, latent_goal)
+
+            return loss
+
+        act_seq = self.denoise_actions(perceptual_emb, latent_goal=latent_goal, inference=True)
+
+        return act_seq
 
     def reset(self):
         """
@@ -185,23 +364,19 @@ class BesoAgent(BaseAgent):
 
             obs[camera] = torch.from_numpy(data).to(self.device).float().permute(2, 0, 1).unsqueeze(0) / 255.
 
-            self.context_dict[camera].append(obs[camera])
-
-            imgs_seq[camera] = torch.stack(tuple(self.context_dict[camera]), dim=1)
+            imgs_seq[camera] = obs[camera].unsqueeze(0)
 
         imgs_seq['lang_emb'] = obs['lang_emb'].to(self.device).unsqueeze(0)
 
+        if self.if_robot_states and "robot_states" in obs.keys():
+            imgs_seq['robot_states'] = torch.from_numpy(obs['robot_states']).to(self.device).float().unsqueeze(0).unsqueeze(0)
+
         if self.rollout_step_counter % self.multistep == 0:
 
-            self.ema_helper.store(self.model.parameters())
-            self.ema_helper.copy_to(self.model.parameters())
-
-            self.model.eval()
+            self.eval()
 
             # predict action sequence
-            pred_action_seq = self.model(imgs_seq, goal)
-
-            self.ema_helper.restore(self.model.parameters())
+            pred_action_seq = self(imgs_seq)
 
             pred_action_seq = self.scaler.inverse_scale_output(pred_action_seq)
 

@@ -1,0 +1,37 @@
+_target_: agents.models.bc.bc.BC_Policy
+_recursive_: false
+
+backbones:
+  _target_: agents.backbones.mamba.mail.Mamba_EncDec
+  _recursive_: false
+  state_dim: ${latent_dim}
+  action_dim: ${action_dim}
+  obs_tokens: ${obs_tokens}
+  goal_seq_len: 1
+  obs_seq_len: ${obs_seq_len}
+  action_seq_len: ${act_seq_len}
+  embed_pdrob: 0
+  # Architecture details
+  embed_dim: ${n_embd}
+  goal_dim: ${goal_dim}
+  device: ${device}
+  linear_output: true
+
+  encoder:
+    _target_: agents.backbones.mamba.mamba.MixerModel
+    ssm_cfg: ${mamba_encoder_cfg}
+    d_model: ${n_embd}
+    n_layer: ${mamba_n_layer_encoder}
+    d_intermediate: 0
+    device: ${device}
+
+  decoder:
+    _target_: agents.backbones.mamba.mamba.MixerModel
+    ssm_cfg: ${mamba_decoder_cfg}
+    d_model: ${n_embd}
+    n_layer: ${mamba_n_layer_decoder}
+    d_intermediate: 0
+    device: ${device}
+
+device: ${device}
+

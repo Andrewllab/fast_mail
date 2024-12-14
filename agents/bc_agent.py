@@ -1,18 +1,13 @@
 import logging
 import os
-from collections import deque
 
 import einops
-import cv2
-import ast
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 from omegaconf import DictConfig
 import hydra
-from tqdm import tqdm
 from typing import Optional
 from agents.base_agent import BaseAgent
 
@@ -23,93 +18,88 @@ class BC_Agent(BaseAgent):
     def __init__(
             self,
             model: DictConfig,
+            obs_encoders: DictConfig,
             optimization: DictConfig,
-            trainset: DictConfig,
-            valset: DictConfig,
-            train_batch_size,
-            val_batch_size,
-            num_workers,
-            device: str,
-            epoch: int,
-            obs_seq_len: int,
             action_seq_size: int,
-            scale_data,
-            eval_every_n_epochs: int = 50
+            if_robot_states: bool = False,
+            if_film_condition: bool = False,
+            device: str = 'cpu',
+            state_dim: int = 7,
+            latent_dim: int = 64
     ):
-        super().__init__(model=model, trainset=trainset, valset=valset, train_batch_size=train_batch_size,
-                         val_batch_size=val_batch_size, num_workers=num_workers, device=device,
-                         epoch=epoch, scale_data=scale_data, eval_every_n_epochs=eval_every_n_epochs)
+        super().__init__(device=device)
 
-        self.optimizer = hydra.utils.instantiate(
-            optimization, params=self.model.parameters()
-        )
+        self.img_encoder = hydra.utils.instantiate(obs_encoders).to(device)
+        self.model = hydra.utils.instantiate(model).to(device)
+
+        self.if_robot_states = if_robot_states
+        self.if_film_condition = if_film_condition
+        self.state_emb = nn.Linear(state_dim, latent_dim)
 
         self.eval_model_name = "eval_best_bc.pth"
         self.last_model_name = "last_bc.pth"
 
-        self.min_action = torch.from_numpy(self.scaler.y_bounds[0, :]).to(self.device)
-        self.max_action = torch.from_numpy(self.scaler.y_bounds[1, :]).to(self.device)
-
-        self.obs_seq_len = obs_seq_len
         self.action_seq_size = action_seq_size
 
         self.rollout_step_counter = 0
         self.multistep = action_seq_size
 
-        self.train_loss = []
-        self.test_mse = []
+        self.optimizer_config = optimization
+        self.use_lr_scheduler = False
 
-    def train_agent(self):
+    def configure_optimizers(self):
+        optimizer = hydra.utils.instantiate(self.optimizer_config, params=self.parameters())
+        return optimizer
 
-        for data in self.train_dataloader:
-            obs_dict, action, mask = data
-
-            for camera in obs_dict.keys():
-                obs_dict[camera] = obs_dict[camera].to(self.device)
-                # if 'rgb' not in camera:
-                #     continue
-                # obs_dict[camera] = obs_dict[camera][:, :self.obs_seq_len].contiguous()
-
-            action = self.scaler.scale_output(action)
-            action = action[:, self.obs_seq_len - 1:, :].contiguous()
-
-            batch_loss = self.train_step(obs_dict, action)
-
-            wandb.log({"train_loss": batch_loss.item()})
-
-    def train_step(self, state, actions: torch.Tensor, goal: Optional[torch.Tensor] = None):
+    def compute_input_embeddings(self, obs_dict):
         """
-        Executes a single training step on a mini-batch of data
+        Compute the required embeddings for the visual ones and the latent goal.
         """
-        self.model.train()
 
-        out = self.model(state)
-        loss = F.mse_loss(out, actions)
+        latent_goal = obs_dict['lang_emb']
 
-        self.optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        self.optimizer.step()
+        # print(f"the shape of this dict is {obs_dict[list(obs_dict.keys())[0]].shape}")
+        B, T, C, H, W = obs_dict[list(obs_dict.keys())[0]].shape
 
-        return loss
-
-    @torch.no_grad()
-    def evaluate(self, state, action: torch.Tensor, goal: Optional[torch.Tensor] = None):
-        """
-        Method for evaluating the model on one epoch of data
-        """
-        self.model.eval()
-
-        total_mse = 0.0
-
-        if goal is not None:
-            goal = self.scaler.scale_input(goal)
-            out = self.model(torch.cat([state, goal], dim=-1))
+        for camera in obs_dict.keys():
+            if 'rgb' not in camera:
+                continue
+            # print(obs_dict[camera].shape)
+            obs_dict[camera] = obs_dict[camera].view(B * T, C, H, W)
+        # print(self.if_film_condition)
+        if self.if_film_condition:
+            perceptual_emb = self.img_encoder(obs_dict, latent_goal)
         else:
-            out = self.model(state)
+            # obs_dict is a dict with two images and one lang: images are [64,3,256,256]
+            perceptual_emb = self.img_encoder(obs_dict)
 
-        mse = F.mse_loss(out, action)  # , reduction="none")
-        total_mse += mse.mean(dim=-1).sum().item()
-        return total_mse
+        if self.if_robot_states and "robot_states" in obs_dict.keys():
+            robot_states = obs_dict['robot_states']
+            robot_states = self.state_emb(robot_states)
+
+            perceptual_emb = torch.cat([perceptual_emb, robot_states], dim=1)
+
+        return perceptual_emb, latent_goal
+
+    def forward(self, obs_dict, actions=None, return_encoder_embedding=False):
+
+        # with torch.no_grad():
+        perceptual_emb, latent_goal = self.compute_input_embeddings(obs_dict)
+
+        # shape of perceptural_emb is torch.Size([64, 1, 256])
+        # make prediction
+        pred = self.model(
+            perceptual_emb,
+            latent_goal,
+            return_encoder_embedding=return_encoder_embedding
+        )
+
+        if self.training and actions is not None:
+            loss = F.mse_loss(pred, actions)
+
+            return loss
+
+        return pred
 
     def reset(self):
         """ Resets the context of the model."""
@@ -129,16 +119,15 @@ class BC_Agent(BaseAgent):
 
         imgs_seq['lang_emb'] = obs['lang_emb'].to(self.device).unsqueeze(0)
 
-        # imgs_seq['robot_states'] = torch.from_numpy(obs['robot_states']).to(self.device).float().unsqueeze(0).unsqueeze(0)
+        if self.if_robot_states and "robot_states" in obs.keys():
+            imgs_seq['robot_states'] = torch.from_numpy(obs['robot_states']).to(self.device).float().unsqueeze(0).unsqueeze(0)
 
         if self.rollout_step_counter % self.multistep == 0:
-            self.model.eval()
+            self.eval()
 
             # predict action sequence
-            pred_action_seq = self.model(imgs_seq)
-
+            pred_action_seq = self(imgs_seq)
             pred_action_seq = self.scaler.inverse_scale_output(pred_action_seq)
-
             self.pred_action_seq = pred_action_seq
 
         current_action = self.pred_action_seq[0, self.rollout_step_counter]
@@ -151,24 +140,3 @@ class BC_Agent(BaseAgent):
             self.rollout_step_counter = 0
 
         return current_action.detach().cpu().numpy()
-
-    def load_pretrained_model(self, weights_path: str, sv_name=None) -> None:
-        """
-        Method to load a pretrained model weights inside self.model
-        """
-
-        if sv_name is None:
-            self.model.load_state_dict(torch.load(os.path.join(weights_path, "model_state_dict.pth")))
-        else:
-            self.model.load_state_dict(torch.load(os.path.join(weights_path, sv_name)))
-        log.info('Loaded pre-trained model parameters')
-
-    def store_model_weights(self, store_path: str, sv_name=None) -> None:
-        """
-        Store the model weights inside the store path as model_weights.pth
-        """
-
-        if sv_name is None:
-            torch.save(self.model.state_dict(), os.path.join(store_path, "model_state_dict.pth"))
-        else:
-            torch.save(self.model.state_dict(), os.path.join(store_path, sv_name))

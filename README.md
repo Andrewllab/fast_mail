@@ -61,7 +61,9 @@ pip install -e .
 ```
 
 ### Installing packages for beso
-
+```
+pip install torchsde torchdiffeq
+```
 
 ### Installing packages for mamba1/2
 ```

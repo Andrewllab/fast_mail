@@ -130,10 +130,11 @@ class MultiTaskSim(BaseSim):
 
             env.close()
 
+    def get_task_embs(self, task_embs):
+        self.task_embs = task_embs
+
     def test_agent(self, agent, cpu_set=None, epoch=None):
         logging.info("Start testing agent")
-
-        self.task_embs = agent.trainset.tasks
 
         if cpu_set is None:
             num_cpu = self.n_cores

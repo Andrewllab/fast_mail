@@ -1,8 +1,9 @@
 defaults:
-  - agents: bc_agent
+  - agents: beso_agent
+  - trainers: base_trainer
 #  - override hydra/launcher: submitit_slurm
 
-agent_name: bc
+agent_name: beso
 log_dir: logs/${task_suite}/
 
 # insert wandb here

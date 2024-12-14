@@ -3,6 +3,7 @@ import os
 import logging
 
 import torch
+import torch.nn as nn
 from omegaconf import DictConfig
 import hydra
 
@@ -14,90 +15,27 @@ from agents.utils.scaler import Scaler, ActionScaler, MinMaxScaler
 log = logging.getLogger(__name__)
 
 
-class BaseAgent(abc.ABC):
+class BaseAgent(nn.Module, abc.ABC):
 
     def __init__(
             self,
-            model: DictConfig,
-            trainset: DictConfig,
-            valset: DictConfig,
-            train_batch_size: int = 512,
-            val_batch_size: int = 512,
-            num_workers: int = 8,
             device: str = 'cpu',
-            epoch: int = 100,
-            scale_data: bool = True,
-            scaler_type: str = None,
-            eval_every_n_epochs: int = 50
     ):
 
-        self.model = hydra.utils.instantiate(model).to(device)
-
-        self.trainset = hydra.utils.instantiate(trainset)
-        # self.valset = hydra.utils.instantiate(valset)
-
-        self.train_dataloader = torch.utils.data.DataLoader(
-            self.trainset,
-            batch_size=train_batch_size,
-            shuffle=True,
-            num_workers=num_workers,
-            pin_memory=True,
-            prefetch_factor=10
-        )
-
-        # self.test_dataloader = torch.utils.data.DataLoader(
-        #     self.valset,
-        #     batch_size=val_batch_size,
-        #     shuffle=False,
-        #     num_workers=num_workers,
-        #     pin_memory=True,
-        #     prefetch_factor=10
-        # )
-
-        self.eval_every_n_epochs = eval_every_n_epochs
-
-        self.epoch = epoch
+        super(BaseAgent, self).__init__()
 
         self.device = device
         self.working_dir = os.getcwd()
 
-        self.scaler_type = scaler_type
-
-        if self.scaler_type == 'minmax':
-            self.scaler = MinMaxScaler(self.trainset.get_all_actions(), scale_data, device)
-        else:
-            self.scaler = ActionScaler(self.trainset.get_all_actions(), scale_data, device)
-
-        total_params = sum(p.numel() for p in self.model.parameters())
-
-        wandb.log(
-            {
-                "model parameters": total_params
-            }
-        )
-
-        log.info("The model has a total amount of {} parameters".format(total_params))
+    def get_scaler(self, scaler):
+        self.scaler = scaler
 
     @abc.abstractmethod
-    def train_agent(self):
+    def compute_input_embeddings(self, obs_dict):
         """
-        Main method to train the agent on the given train and test data
-        """
-        pass
-
-    @abc.abstractmethod
-    def train_step(self, state: torch.Tensor, action: torch.Tensor):
-        """
-        Executes a single training step on a mini-batch of data
+        Compute the required embeddings for the visual ones and the latent goal.
         """
         pass
-
-    # @abc.abstractmethod
-    # def evaluate(self, state: torch.Tensor, action: torch.Tensor):
-    #     """
-    #     Method for evaluating the model on one batch of data consisting of two tensors
-    #     """
-    #     pass
 
     @abc.abstractmethod
     def predict(self, state: torch.Tensor) -> torch.Tensor:
@@ -112,9 +50,6 @@ class BaseAgent(abc.ABC):
         Method for resetting the agent
         """
         pass
-
-    # def get_scaler(self, scaler: Scaler):
-    #     self.scaler = scaler
 
     def load_pretrained_model(self, weights_path: str, sv_name=None) -> None:
         """
@@ -136,3 +71,15 @@ class BaseAgent(abc.ABC):
             torch.save(self.model.state_dict(), os.path.join(store_path, "model_state_dict.pth"))
         else:
             torch.save(self.model.state_dict(), os.path.join(store_path, sv_name))
+
+    def get_params(self):
+
+        total_params = sum(p.numel() for p in self.parameters())
+
+        wandb.log(
+            {
+                "model parameters": total_params
+            }
+        )
+
+        log.info("The model has a total amount of {} parameters".format(total_params))

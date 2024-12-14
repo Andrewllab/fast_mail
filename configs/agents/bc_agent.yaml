@@ -2,23 +2,19 @@ _target_: agents.bc_agent.BC_Agent
 _recursive_: false
 
 defaults:
-  - model: bc
-
-action_seq_size: ${act_seq_len}
-obs_seq_len: ${obs_seq_len}
-
-trainset: ${trainset}
-valset: ${valset}
+  - model: bc/bc_mamba
+  - obs_encoders: resnet
+#  language_encoders:
 
 optimization:
   _target_: torch.optim.Adam
   lr: 5e-4
   weight_decay: 0
 
-train_batch_size: ${train_batch_size}
-val_batch_size: ${val_batch_size}
-num_workers: ${num_workers}
-epoch: ${epoch}
+action_seq_size: ${act_seq_len}
+
+if_robot_states: False
+if_film_condition: False
 device: ${device}
-scale_data: ${scale_data}
-eval_every_n_epochs: ${eval_every_n_epochs}
+state_dim: ${obs_dim}
+latent_dim: ${latent_dim}
