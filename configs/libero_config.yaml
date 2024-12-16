@@ -41,7 +41,7 @@ traj_per_task: 10
 
 ## change the path of dataset
 # dataset_path: /home/david/2024/datasets/${task_suite}
-dataset_path: /home/xuan/dataset/${task_suite}
+dataset_path: /home/xuan/datasets/${task_suite}
 #dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
 
 # Model Setting
@@ -151,3 +151,4 @@ simulation:
   n_cores: 2
   num_episode: 20
   max_step_per_episode: 600
+  use_multiprocessing: false
