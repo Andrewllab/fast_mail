@@ -39,65 +39,41 @@ class LayerNorm(nn.Module):
 class xlstmEncoder(nn.Module):
     def __init__(
             self,
+            xlstm_config: DictConfig,
+            seq_size: int,
             embed_dim: int,
             bias: bool = False,
-            xlstm_config: Optional[DictConfig] = None
-    ):
+                ):
         super().__init__()
         
-        # Use provided config or default config
-        # if xlstm_config is None:
-        #     xlstm_cfg = """ 
-        #     vocab_size: 50304
-        #     mlstm_block:
-        #         mlstm:
-        #             conv1d_kernel_size: 4
-        #             qkv_proj_blocksize: 4
-        #             num_heads: 4
-        #     slstm_block:
-        #         slstm:
-        #             backend: cuda
-        #             num_heads: 4
-        #             conv1d_kernel_size: 4
-        #             bias_init: powerlaw_blockdependent
-        #     feedforward:
-        #         proj_factor: 1.3
-        #         act_fn: gelu
-        #     context_length: 256
-        #     num_blocks: 7
-        #     embedding_dim: 128
-        #     slstm_at: [1]
-        #     """
-        #     cfg = OmegaConf.create(xlstm_cfg)
-        # else:
-        #     cfg = xlstm_config
+        xlstm_config.context_length = seq_size
+        # Convert DictConfig to the required configuration objects
+        print(f"xlstm_config:  {xlstm_config}")
         cfg = xLSTMBlockStackConfig(
-    mlstm_block=mLSTMBlockConfig(
-        mlstm=mLSTMLayerConfig(
-            conv1d_kernel_size=4, qkv_proj_blocksize=4, num_heads=4
+            mlstm_block=mLSTMBlockConfig(
+                mlstm=mLSTMLayerConfig(
+                    conv1d_kernel_size=xlstm_config.mlstm_block.mlstm.conv1d_kernel_size,
+                    qkv_proj_blocksize=xlstm_config.mlstm_block.mlstm.qkv_proj_blocksize,
+                    num_heads=xlstm_config.mlstm_block.mlstm.num_heads
+                )
+            ),
+            slstm_block=sLSTMBlockConfig(
+                slstm=sLSTMLayerConfig(
+                    backend=xlstm_config.slstm_block.slstm.backend,
+                    num_heads=xlstm_config.slstm_block.slstm.num_heads,
+                    conv1d_kernel_size=xlstm_config.slstm_block.slstm.conv1d_kernel_size,
+                    bias_init=xlstm_config.slstm_block.slstm.bias_init,
+                ),
+                feedforward=FeedForwardConfig(
+                    proj_factor=xlstm_config.slstm_block.feedforward.proj_factor,
+                    act_fn=xlstm_config.slstm_block.feedforward.act_fn
+                ),
+            ),
+            context_length=xlstm_config.context_length,
+            num_blocks=xlstm_config.num_blocks,
+            embedding_dim=xlstm_config.embedding_dim,
+            slstm_at=xlstm_config.slstm_at,
         )
-    ),
-    slstm_block=sLSTMBlockConfig(
-        slstm=sLSTMLayerConfig(
-            backend="cuda",
-            num_heads=4,
-            conv1d_kernel_size=4,
-            bias_init="powerlaw_blockdependent",
-        ),
-        feedforward=FeedForwardConfig(proj_factor=1.3, act_fn="gelu"),
-    ),
-    context_length=12,
-    num_blocks=7,
-    embedding_dim=256,
-    slstm_at=[1],
-
-)
-            
-        # cfg = from_dict(
-        #     data_class=xLSTMBlockStackConfig, 
-        #     data=OmegaConf.to_container(cfg), 
-        #     config=DaciteConfig(strict=True)
-        # )
         self.xlstm_stack = xLSTMBlockStack(cfg)
         self.out_norm = nn.Identity()
         self.ln = LayerNorm(embed_dim, bias)
@@ -108,7 +84,6 @@ class xlstmEncoder(nn.Module):
         x = self.xlstm_stack(x)
         x = self.out_norm(x)
         return x
-
 
     # if self.config.add_out_norm:
     #     self.out_norm = RMSNorm(
@@ -128,11 +103,6 @@ class xlstmEncoder(nn.Module):
     #     if state is None:
     #             state = {i: None for i in range(len(self.blocks))}
 
-    # def forward(self, x):
-    #     x = self.ln(x)
-    #     x = self.xlstm_stack(x)
-    #     x = self.out_norm(x)
-    #     return x
     
 
 
@@ -154,7 +124,7 @@ class Enc_only(nn.Module):
     ):
         super().__init__()
 
-        self.encoder = hydra.utils.instantiate(encoder)
+        
         
         self.device = device
         self.goal_conditioned = goal_conditioned
@@ -166,6 +136,8 @@ class Enc_only(nn.Module):
         block_size = goal_seq_len + action_seq_len + obs_seq_len + 1
         # the seq_size is a little different since we have state action pairs for every timestep
         seq_size = goal_seq_len + obs_seq_len + action_seq_len
+
+        self.encoder = hydra.utils.instantiate(encoder, seq_size=block_size)
 
         self.tok_emb = nn.Linear(state_dim, embed_dim)
         self.tok_emb.to(self.device)

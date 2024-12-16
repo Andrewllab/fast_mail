@@ -18,6 +18,26 @@ backbones:
 
   encoder:
     _target_: agents.backbones.xlstm.xlstm.xlstmEncoder
+    xlstm_config:
+      mlstm_block:
+        mlstm:
+          conv1d_kernel_size: 4
+          qkv_proj_blocksize: 4
+          num_heads: 4
+      slstm_block:
+        slstm:
+          backend: "cuda"
+          num_heads: 4
+          conv1d_kernel_size: 4
+          bias_init: "powerlaw_blockdependent"
+        feedforward:
+          proj_factor: 1.3
+          act_fn: "gelu"
+      context_length: 0 #edit in xlstm.py
+      num_blocks: 7
+      embedding_dim: ${n_embd}  # Using the same embedding dimension
+      slstm_at: [1]
     embed_dim: ${n_embd}
     bias: false
+
 device: ${device}
