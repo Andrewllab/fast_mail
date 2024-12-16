@@ -9,6 +9,7 @@ import hydra
 import multiprocessing as mp
 from .base_sim import BaseSim
 # from libero.libero.envs import *
+from tqdm import tqdm
 from libero.libero import benchmark
 from libero.libero.envs import OffScreenRenderEnv
 
@@ -54,7 +55,17 @@ class MultiTaskSim(BaseSim):
 
         return np.ascontiguousarray(test_img)
 
-    def eval_agent(self, agent_config, model_state_dict, scaler, contexts, context_ind, success, pid, cpu_set):
+    def eval_agent(self,
+                   agent_config,
+                   model_state_dict,
+                   scaler,
+                   contexts,
+                   context_ind,
+                   success,
+                   episode_lengths,
+                   pid,
+                   cpu_set,
+                   counter):
         print(os.getpid(), cpu_set)
         assign_process_to_cpu(os.getpid(), cpu_set)
 
@@ -128,8 +139,25 @@ class MultiTaskSim(BaseSim):
 
                 if r == 1:
                     success[context, context_ind[i]] = r
-                    # env.close()
+                    episode_lengths[context, context_ind[i]] = j + 1
                     break
+                    
+            if success[context, context_ind[i]] == 0:
+                episode_lengths[context, context_ind[i]] = self.max_step_per_episode
+
+            with counter.get_lock():
+                counter.value += 1
+                current_count = counter.value
+                
+            mask = episode_lengths.flatten() != 0
+            completed_success = success.flatten()[mask]
+            completed_lengths = episode_lengths.flatten()[mask]
+            average_success = torch.mean(completed_success).item()
+            average_episode_length = torch.mean(completed_lengths).item()
+            print(f'completed_success { completed_success}')
+            print(f'completed_lengths {completed_lengths}')
+            print(f'average success rate: {average_success}')
+            print(f'average episode length: {average_episode_length}')
 
             env.close()
 
@@ -153,6 +181,7 @@ class MultiTaskSim(BaseSim):
             num_tasks = 10
 
         success = torch.zeros([num_tasks, self.num_episode]).share_memory_()
+        episode_lengths = torch.zeros([num_tasks, self.num_episode]).share_memory_()
         all_runs = num_tasks * self.num_episode
         ###################################################################
         # distribute every runs on cpu
@@ -178,7 +207,11 @@ class MultiTaskSim(BaseSim):
         ctx = mp.get_context('spawn')
         processes_list = []
 
-        print("!!!!!!!!!!!!!!!!!!! agent scaler: ", agent.get_scaler)
+        all_runs = num_tasks * self.num_episode
+        counter = ctx.Value('i', 0) #create a shared counter for progress bar
+        pbar = tqdm(total=all_runs, desc="Testing agent")
+
+        
         model_state_dict, scaler = agent.get_model_state
         shared_state_dict = {}
         for key, tensor in model_state_dict.items():
@@ -194,14 +227,24 @@ class MultiTaskSim(BaseSim):
                                 "contexts": contexts[ind_workload[i]:ind_workload[i + 1]],
                                 "context_ind": context_ind[ind_workload[i]:ind_workload[i + 1]],
                                 "success": success,
+                                "episode_lengths": episode_lengths,
                                 "pid": i,
-                                "cpu_set": set(cpu_set[i:i + 1])
+                                "cpu_set": set(cpu_set[i:i + 1]),
+                                "counter": counter
                             },
                             )
             p.start()
             processes_list.append(p)
+        
+        # Monitor progress and update bar
+        last_counter = 0
+        while any(p.is_alive() for p in processes_list):
+            if counter.value > last_counter:
+                pbar.update(counter.value - last_counter)
+                last_counter = counter.value
 
         [p.join() for p in processes_list]
+        pbar.close()
 
         success_rate = torch.mean(success, dim=-1)
         average_success = torch.mean(success_rate).item()
