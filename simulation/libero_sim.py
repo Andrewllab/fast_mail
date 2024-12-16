@@ -5,7 +5,7 @@ import random
 import numpy as np
 import torch
 import wandb
-import robosuite
+import hydra
 import multiprocessing as mp
 from .base_sim import BaseSim
 # from libero.libero.envs import *
@@ -54,9 +54,12 @@ class MultiTaskSim(BaseSim):
 
         return np.ascontiguousarray(test_img)
 
-    def eval_agent(self, agent, contexts, context_ind, success, pid, cpu_set):
-        # print(os.getpid(), cpu_set)
-        # assign_process_to_cpu(os.getpid(), cpu_set)
+    def eval_agent(self, agent_config, model_state_dict, scaler, contexts, context_ind, success, pid, cpu_set):
+        print(os.getpid(), cpu_set)
+        assign_process_to_cpu(os.getpid(), cpu_set)
+
+        agent = hydra.utils.instantiate(agent_config)
+        agent.recover_state(model_state_dict, scaler)
 
         print(contexts)
 
@@ -133,7 +136,7 @@ class MultiTaskSim(BaseSim):
     def get_task_embs(self, task_embs):
         self.task_embs = task_embs
 
-    def test_agent(self, agent, cpu_set=None, epoch=None):
+    def test_agent(self, agent, agent_config, cpu_set=None, epoch=None):
         logging.info("Start testing agent")
 
         if cpu_set is None:
@@ -175,10 +178,19 @@ class MultiTaskSim(BaseSim):
         ctx = mp.get_context('spawn')
         processes_list = []
 
+        print("!!!!!!!!!!!!!!!!!!! agent scaler: ", agent.get_scaler)
+        model_state_dict, scaler = agent.get_model_state
+        shared_state_dict = {}
+        for key, tensor in model_state_dict.items():
+            shared_tensor = tensor.share_memory_()
+            shared_state_dict[key] = shared_tensor
+
         for i in range(self.n_cores):
             p = ctx.Process(target=self.eval_agent,
                             kwargs={
-                                "agent": agent,
+                                "agent_config": agent_config,
+                                "model_state_dict": shared_state_dict,
+                                "scaler": scaler,
                                 "contexts": contexts[ind_workload[i]:ind_workload[i + 1]],
                                 "context_ind": context_ind[ind_workload[i]:ind_workload[i + 1]],
                                 "success": success,
