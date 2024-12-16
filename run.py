@@ -57,7 +57,7 @@ def main(cfg: DictConfig) -> None:
 
     sv_dir = sim_framework_path("pretrain_weights")
 
-    env_sim.test_agent(agent, epoch=cfg.epoch)
+    env_sim.test_agent(agent, cfg.agents, epoch=cfg.epoch)
 
     log.info("Training done")
     log.info("state_dict saved in {}".format(agent.working_dir))

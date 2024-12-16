@@ -19,7 +19,11 @@ This is an open-source project that aims to provide a set of imitation learning 
   - [ ] refine framework, add trainers
   - [ ] add adaln layers to mamba (later the film condition should be on all methods)
 ### Xuan Zhao
-
+- [x] add selection of multi processing (temporarily solve local object unpicklable error)
+- [x] add testing progress & states visualization
+- [x] add basic bc_xlstm sturcture, yaml file setting
+- [ ] debug xlstm structure
+- [ ] multi processing model save/load debug
 
 ---
 
@@ -44,7 +48,7 @@ git clone git@github.com:xiaogangjia/fast_mail.git
 
 ### Installing requirements
 ```
-conda create -n mail python=3.10
+conda create -n mail python=3.11
 conda activate mail
 
 # adapt to your own cuda version if you need
@@ -82,6 +86,13 @@ python setup.py install
 pip install causal-conv1d>=1.4.0
 ```
 ---
+
+### install xlstm
+```
+git clone https://github.com/NX-AI/xlstm.git
+cd xlstm
+pip install -e .
+```
 
 ## Acknowledgements
 

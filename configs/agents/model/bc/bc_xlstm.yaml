@@ -1,0 +1,43 @@
+_target_: agents.models.bc.bc.BC_Policy
+_recursive_: false
+
+backbones:
+  _target_: agents.backbones.xlstm.xlstm.Enc_only
+  _recursive_: false
+  state_dim: ${latent_dim}
+  action_dim: ${action_dim}
+  device: ${device}
+  goal_conditioned: false
+  embed_dim: ${n_embd}
+  embed_pdrob: 0
+  goal_seq_len: 1
+  obs_seq_len: ${obs_seq_len}
+  action_seq_len: ${act_seq_len}
+  
+  linear_output: true
+
+  encoder:
+    _target_: agents.backbones.xlstm.xlstm.xlstmEncoder
+    xlstm_config:
+      mlstm_block:
+        mlstm:
+          conv1d_kernel_size: 4
+          qkv_proj_blocksize: 4
+          num_heads: 4
+      slstm_block:
+        slstm:
+          backend: "cuda"
+          num_heads: 4
+          conv1d_kernel_size: 4
+          bias_init: "powerlaw_blockdependent"
+        feedforward:
+          proj_factor: 1.3
+          act_fn: "gelu"
+      context_length: 0 #edit in xlstm.py
+      num_blocks: 7
+      embedding_dim: ${n_embd}  # Using the same embedding dimension
+      slstm_at: [1]
+    embed_dim: ${n_embd}
+    bias: false
+
+device: ${device}

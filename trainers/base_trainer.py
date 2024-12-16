@@ -83,7 +83,7 @@ class BaseTrainer:
         """Run main training/testing pipeline."""
 
         # assign scaler to agent calss
-        agent.get_scaler(self.scaler)
+        agent.set_scaler(self.scaler)
 
         if self.if_use_ema:
             self.ema_helper = ExponentialMovingAverage(agent.parameters(), self.decay_ema, self.device)

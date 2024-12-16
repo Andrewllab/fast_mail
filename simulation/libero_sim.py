@@ -5,10 +5,11 @@ import random
 import numpy as np
 import torch
 import wandb
-import robosuite
+import hydra
 import multiprocessing as mp
 from .base_sim import BaseSim
 # from libero.libero.envs import *
+from tqdm import tqdm
 from libero.libero import benchmark
 from libero.libero.envs import OffScreenRenderEnv
 
@@ -32,7 +33,8 @@ class MultiTaskSim(BaseSim):
                  seed,
                  device,
                  render,
-                 n_cores):
+                 n_cores,
+                 use_multiprocessing=True):
         super().__init__(seed, device, render, n_cores)
 
         # according to the task_id, load the corresponding bddl file
@@ -45,7 +47,7 @@ class MultiTaskSim(BaseSim):
         self.max_step_per_episode = max_step_per_episode
 
         self.success_rate = 0
-
+        self.use_multiprocessing = use_multiprocessing
     def reverse_rgb_channels(self, test_img):
 
         test_img = test_img[::-1, ::-1, :]
@@ -54,9 +56,24 @@ class MultiTaskSim(BaseSim):
 
         return np.ascontiguousarray(test_img)
 
-    def eval_agent(self, agent, contexts, context_ind, success, pid, cpu_set):
-        # print(os.getpid(), cpu_set)
-        # assign_process_to_cpu(os.getpid(), cpu_set)
+    def eval_agent(self,
+                   agent,
+                #    model_state_dict,
+                #    scaler,
+                   contexts,
+                   context_ind,
+                   success,
+                   episode_lengths,
+                   pid,
+                   cpu_set,
+                   counter):
+        # Only set CPU affinity if using multiprocessing
+        if self.use_multiprocessing:
+            print(os.getpid(), cpu_set)
+            assign_process_to_cpu(os.getpid(), cpu_set)
+
+        # agent = hydra.utils.instantiate(agent_config)
+        # agent.recover_state(model_state_dict, scaler)
 
         print(contexts)
 
@@ -125,15 +142,36 @@ class MultiTaskSim(BaseSim):
 
                 if r == 1:
                     success[context, context_ind[i]] = r
-                    # env.close()
+                    episode_lengths[context, context_ind[i]] = j + 1
                     break
+                    
+            if success[context, context_ind[i]] == 0:
+                episode_lengths[context, context_ind[i]] = self.max_step_per_episode
+
+            if hasattr(counter, 'get_lock'):  # If it's a multiprocessing Value
+                with counter.get_lock():
+                    counter.value += 1
+                    current_count = counter.value
+            else:  # If it's a simple object with value attribute (single process)
+                counter.value += 1
+                current_count = counter.value
+
+            mask = episode_lengths.flatten() != 0
+            completed_success = success.flatten()[mask]
+            completed_lengths = episode_lengths.flatten()[mask]
+            average_success = torch.mean(completed_success).item()
+            average_episode_length = torch.mean(completed_lengths).item()
+            print(f'completed_success { completed_success}')
+            print(f'completed_lengths {completed_lengths}')
+            print(f'average success rate: {average_success}')
+            print(f'average episode length: {average_episode_length}')
 
             env.close()
 
     def get_task_embs(self, task_embs):
         self.task_embs = task_embs
 
-    def test_agent(self, agent, cpu_set=None, epoch=None):
+    def test_agent(self, agent, agent_config, cpu_set=None, epoch=None):
         logging.info("Start testing agent")
 
         if cpu_set is None:
@@ -141,8 +179,11 @@ class MultiTaskSim(BaseSim):
             cpu_set = [i for i in range(num_cpu)]
         else:
             num_cpu = len(cpu_set)
-
-        print("there is {} cpus".format(num_cpu))
+        
+        if self.use_multiprocessing:
+            print("there is {} cpus".format(num_cpu))
+        else:
+            print("not using multiprocessing, run on 1 cpu")
 
         if self.task_suite == "libero_90":
             num_tasks = 90
@@ -150,46 +191,96 @@ class MultiTaskSim(BaseSim):
             num_tasks = 10
 
         success = torch.zeros([num_tasks, self.num_episode]).share_memory_()
+        episode_lengths = torch.zeros([num_tasks, self.num_episode]).share_memory_()
         all_runs = num_tasks * self.num_episode
-        ###################################################################
-        # distribute every runs on cpu
-        ###################################################################
+
         contexts = np.arange(num_tasks)
         contexts = np.repeat(contexts, self.num_episode)
 
         context_ind = np.arange(self.num_episode)
         context_ind = np.tile(context_ind, num_tasks)
 
-        repeat_num = all_runs // num_cpu
-        repeat_res = all_runs % num_cpu
+        if not self.use_multiprocessing:
+            # Single process execution
+            pbar = tqdm(total=all_runs, desc="Testing agent")
+            counter = type('Counter', (), {'value': 0})()  # Simple counter object
+            self.eval_agent(
+                agent=agent,
+                contexts=contexts,
+                context_ind=context_ind,
+                success=success,
+                episode_lengths=episode_lengths,
+                pid=0,
+                cpu_set=set(cpu_set),
+                counter=counter
+            )
+            pbar.close()
+        else:
+            repeat_num = all_runs // num_cpu
+            repeat_res = all_runs % num_cpu
 
-        workload_array = np.ones([num_cpu], dtype=int)
-        workload_array[:repeat_res] += repeat_num
-        workload_array[repeat_res:] = repeat_num
+            workload_array = np.ones([num_cpu], dtype=int)
+            workload_array[:repeat_res] += repeat_num
+            workload_array[repeat_res:] = repeat_num
 
-        assert np.sum(workload_array) == all_runs
+            assert np.sum(workload_array) == all_runs
 
-        ind_workload = np.cumsum(workload_array)
-        ind_workload = np.concatenate([[0], ind_workload])
-        ###################################################################
-        ctx = mp.get_context('spawn')
-        processes_list = []
+            ind_workload = np.cumsum(workload_array)
+            ind_workload = np.concatenate([[0], ind_workload])
+            ###################################################################
+            ctx = mp.get_context('spawn')
+            processes_list = []
 
-        for i in range(self.n_cores):
-            p = ctx.Process(target=self.eval_agent,
-                            kwargs={
-                                "agent": agent,
-                                "contexts": contexts[ind_workload[i]:ind_workload[i + 1]],
-                                "context_ind": context_ind[ind_workload[i]:ind_workload[i + 1]],
-                                "success": success,
-                                "pid": i,
-                                "cpu_set": set(cpu_set[i:i + 1])
-                            },
-                            )
-            p.start()
-            processes_list.append(p)
+            all_runs = num_tasks * self.num_episode
+            counter = ctx.Value('i', 0) #create a shared counter for progress bar
+            pbar = tqdm(total=all_runs, desc="Testing agent")
+            
+            # model_state_dict, scaler = agent.get_model_state
+            # shared_state_dict = {}
+            # for key, tensor in model_state_dict.items():
+            #     shared_tensor = tensor.share_memory_()
+            #     shared_state_dict[key] = shared_tensor
+            
+            # # Check keys & values are the same
+            # assert set(model_state_dict.keys()) == set(shared_state_dict.keys()), "Keys don't match!"
 
-        [p.join() for p in processes_list]
+            # for key in model_state_dict:
+            #     assert torch.equal(model_state_dict[key], shared_state_dict[key]), f"Tensors don't match for key: {key}"
+
+
+            # print("Verification passed: shared_state_dict is identical to model_state_dict")
+
+    
+            for i in range(self.n_cores):
+                p = ctx.Process(target=self.eval_agent,
+                                kwargs={
+                                    # "agent_config": agent_config,
+                                    "agent": agent,
+                                    # "model_state_dict": shared_state_dict,
+                                    # "scaler": scaler,
+                                    "contexts": contexts[ind_workload[i]:ind_workload[i + 1]],
+                                    "context_ind": context_ind[ind_workload[i]:ind_workload[i + 1]],
+                                    "success": success,
+                                    "episode_lengths": episode_lengths,
+                                    "pid": i,
+                                    "cpu_set": set(cpu_set[i:i + 1]),
+                                    "counter": counter
+                                },
+                                )
+                p.start()
+                processes_list.append(p)
+            
+            # Monitor progress and update bar
+            last_counter = 0
+            while any(p.is_alive() for p in processes_list):
+                if counter.value > last_counter:
+                    pbar.update(counter.value - last_counter)
+                    last_counter = counter.value
+
+            [p.join() for p in processes_list]
+            pbar.close()
+
+
 
         success_rate = torch.mean(success, dim=-1)
         average_success = torch.mean(success_rate).item()
