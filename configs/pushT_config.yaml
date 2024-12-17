@@ -36,7 +36,7 @@ hydra:
 seed: 42
 
 # dataset config
-task_suite: libero_object
+task_suite: pushT
 traj_per_task: 10
 
 ## change the path of dataset
@@ -122,7 +122,7 @@ mamba_decoder_cfg:
 
 # Dataset
 trainset:
-  _target_: environments.dataset.libero_dataset.LiberoDataset
+  _target_: environments.dataset.pusht_dataset.PushTDataset
   data_directory: ${dataset_path}
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
@@ -132,7 +132,7 @@ trainset:
   traj_per_task: ${traj_per_task}
 
 valset:
-  _target_: environments.dataset.libero_dataset.LiberoDataset
+  _target_: environments.dataset.pusht_dataset.PushTDataset
   data_directory: ${dataset_path}
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
@@ -141,6 +141,7 @@ valset:
   window_size: ${window_size}
   start_idx: 30
 
+# TODO
 simulation:
   _target_: simulation.libero_sim.MultiTaskSim
   _convert_: all
