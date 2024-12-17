@@ -49,14 +49,16 @@ class xlstmEncoder(nn.Module):
         xlstm_config.context_length = seq_size
         # Convert DictConfig to the required configuration objects
         print(f"xlstm_config:  {xlstm_config}")
-        cfg = xLSTMBlockStackConfig(
-            mlstm_block=mLSTMBlockConfig(
-                mlstm=mLSTMLayerConfig(
-                    conv1d_kernel_size=xlstm_config.mlstm_block.mlstm.conv1d_kernel_size,
-                    qkv_proj_blocksize=xlstm_config.mlstm_block.mlstm.qkv_proj_blocksize,
-                    num_heads=xlstm_config.mlstm_block.mlstm.num_heads
-                )
-            ),
+
+
+        mlstm_block=mLSTMBlockConfig(
+            mlstm=mLSTMLayerConfig(
+                conv1d_kernel_size=xlstm_config.mlstm_block.mlstm.conv1d_kernel_size,
+                qkv_proj_blocksize=xlstm_config.mlstm_block.mlstm.qkv_proj_blocksize,
+                num_heads=xlstm_config.mlstm_block.mlstm.num_heads
+            )
+        )
+        if xlstm_config.slstm_block.enabled:
             slstm_block=sLSTMBlockConfig(
                 slstm=sLSTMLayerConfig(
                     backend=xlstm_config.slstm_block.slstm.backend,
@@ -68,12 +70,21 @@ class xlstmEncoder(nn.Module):
                     proj_factor=xlstm_config.slstm_block.feedforward.proj_factor,
                     act_fn=xlstm_config.slstm_block.feedforward.act_fn
                 ),
-            ),
+            )
+            slstm_at = xlstm_config.slstm_at
+        else:
+            slstm_block = None
+            slstm_at = []
+
+        cfg = xLSTMBlockStackConfig(
+            mlstm_block=mlstm_block,
+            slstm_block=slstm_block,
             context_length=xlstm_config.context_length,
             num_blocks=xlstm_config.num_blocks,
             embedding_dim=xlstm_config.embedding_dim,
-            slstm_at=xlstm_config.slstm_at,
+            slstm_at=slstm_at,
         )
+
         self.xlstm_stack = xLSTMBlockStack(cfg)
         self.out_norm = nn.Identity()
         self.ln = LayerNorm(embed_dim, bias)
