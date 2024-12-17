@@ -95,6 +95,9 @@ class xlstmEncoder(nn.Module):
         x = self.xlstm_stack(x)
         x = self.out_norm(x)
         return x
+    
+    def reset_parameters(self):
+        self.xlstm_stack.reset_parameters()
 
     # if self.config.add_out_norm:
     #     self.out_norm = RMSNorm(
@@ -134,8 +137,6 @@ class Enc_only(nn.Module):
             linear_output: bool = False,
     ):
         super().__init__()
-
-        
         
         self.device = device
         self.goal_conditioned = goal_conditioned

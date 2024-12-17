@@ -22,8 +22,8 @@ backbones:
       mlstm_block:
         mlstm:
           conv1d_kernel_size: 4
-          qkv_proj_blocksize: 4
-          num_heads: 4
+          qkv_proj_blocksize: 8
+          num_heads: 8
       slstm_block:
         enabled: false
         slstm:
