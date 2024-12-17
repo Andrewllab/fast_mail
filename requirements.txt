@@ -6,7 +6,7 @@ transformers
 opencv-python
 einops
 thop
-robosuite==1.4.1
+robosuite
 bddl
 future
 matplotlib

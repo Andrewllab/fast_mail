@@ -48,7 +48,7 @@ git clone git@github.com:xiaogangjia/fast_mail.git
 
 ### Installing requirements
 ```
-conda create -n mail python=3.11
+conda create -n mail python=3.10
 conda activate mail
 
 # adapt to your own cuda version if you need
@@ -62,6 +62,14 @@ pip install -r requirements.txt
 git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git
 cd LIBERO
 pip install -e .
+```
+
+### Installing RoboCasa Setup
+```
+git clone https://github.com/robocasa/robocasa
+cd robocasa
+pip install -e .
+python robocasa/scripts/download_kitchen_assets.py
 ```
 
 ### Installing packages for beso
