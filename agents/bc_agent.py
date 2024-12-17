@@ -81,7 +81,7 @@ class BC_Agent(BaseAgent):
 
         return perceptual_emb, latent_goal
 
-    def forward(self, obs_dict, actions=None, return_encoder_embedding=False):
+    def forward(self, obs_dict, actions=None):
 
         # with torch.no_grad():
         perceptual_emb, latent_goal = self.compute_input_embeddings(obs_dict)
@@ -90,8 +90,7 @@ class BC_Agent(BaseAgent):
         # make prediction
         pred = self.model(
             perceptual_emb,
-            latent_goal,
-            return_encoder_embedding=return_encoder_embedding
+            latent_goal
         )
 
         if self.training and actions is not None:

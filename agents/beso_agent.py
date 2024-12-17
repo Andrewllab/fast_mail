@@ -332,7 +332,7 @@ class BesoAgent(BaseAgent):
             return get_iddpm_sigmas(n_sampling_steps, self.sigma_min, self.sigma_max, device=self.device)
         raise ValueError('Unknown noise schedule type')
 
-    def forward(self, obs_dict, actions=None, return_encoder_embedding=False):
+    def forward(self, obs_dict, actions=None):
         perceptual_emb, latent_goal = self.compute_input_embeddings(obs_dict)
 
         if self.training and actions is not None:

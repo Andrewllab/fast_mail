@@ -40,8 +40,8 @@ task_suite: libero_object
 traj_per_task: 10
 
 ## change the path of dataset
-# dataset_path: /home/david/2024/datasets/${task_suite}
-dataset_path: /home/xuan/datasets/${task_suite}
+dataset_path: /home/david/2024/datasets/${task_suite}
+#dataset_path: /home/xuan/datasets/${task_suite}
 #dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
 
 # Model Setting
@@ -50,8 +50,9 @@ obs_seq_len: 1
 act_seq_len: ${window_size}
 goal_window_size: 1
 
-# obs_tokens: goal_window_size + obs_seq_len * len(obs_modalities)
-obs_tokens: 3
+goal_conditioned: True
+# obs_tokens: obs_seq_len * len(obs_modalities)
+obs_tokens: 2
 
 # Training
 train_batch_size: 256
