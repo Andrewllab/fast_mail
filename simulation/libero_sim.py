@@ -155,6 +155,7 @@ class MultiTaskSim(BaseSim):
             else:  # If it's a simple object with value attribute (single process)
                 counter.value += 1
                 current_count = counter.value
+                counter.update()
 
             mask = episode_lengths.flatten() != 0
             completed_success = success.flatten()[mask]
@@ -204,6 +205,12 @@ class MultiTaskSim(BaseSim):
             # Single process execution
             pbar = tqdm(total=all_runs, desc="Testing agent")
             counter = type('Counter', (), {'value': 0})()  # Simple counter object
+
+            def update_pbar():
+                pbar.update(1)
+                
+            counter.update = update_pbar  # Add update method to counter
+
             self.eval_agent(
                 agent=agent,
                 contexts=contexts,
