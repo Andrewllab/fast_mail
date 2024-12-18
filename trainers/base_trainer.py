@@ -50,9 +50,9 @@ class BaseTrainer:
             self.trainset,
             batch_size=train_batch_size,
             shuffle=True,
-            # num_workers=num_workers,
-            # pin_memory=True,
-            # drop_last=True,
+            num_workers=num_workers,
+            pin_memory=True,
+            drop_last=True,
         )
 
         # self.test_dataloader = DataLoader(
@@ -108,7 +108,7 @@ class BaseTrainer:
                     
                     obs_dict[camera] = obs_dict[camera].to(self.device)
 
-                    if 'rgb' not in camera:
+                    if 'rgb' not in camera and 'image' not in camera:
                         continue
                     obs_dict[camera] = obs_dict[camera][:, :self.obs_seq_len].contiguous()
 

@@ -91,18 +91,18 @@ class RobocasaDataset(TrajectoryDataset):
         robot_state = torch.cat([gripper_state, joint_pos_sin, joint_pos_cos], dim=1)
         obs['robot_states'] = robot_state
         
-        sampled_point_cloud = torch.from_numpy(demo["obs"]["sampled_point_cloud"][start:end])
-        obs['sampled_point_cloud'] = sampled_point_cloud
+        # sampled_point_cloud = torch.from_numpy(demo["obs"]["sampled_point_cloud"][start:end])
+        # obs['sampled_point_cloud'] = sampled_point_cloud
         
-        custom_sampled_point_cloud = torch.from_numpy(demo["obs"]["custom_sampled_point_cloud"][start:end])
-        obs['custom_sampled_point_cloud'] = custom_sampled_point_cloud
+        # custom_sampled_point_cloud = torch.from_numpy(demo["obs"]["custom_sampled_point_cloud"][start:end])
+        # obs['custom_sampled_point_cloud'] = custom_sampled_point_cloud
         
         for cam_name in self.cam_names:
             rgb = torch.from_numpy(demo["obs"][f"{cam_name}_image"][start:end]).float().permute(0, 3, 1, 2) / 255.
-            depth = torch.from_numpy(demo["obs"][f"{cam_name}_depth"][start:end]).float().permute(0, 3, 1, 2)
+            # depth = torch.from_numpy(demo["obs"][f"{cam_name}_depth"][start:end]).float().permute(0, 3, 1, 2)
             
             obs[f"{cam_name}_image"] = rgb
-            obs[f"{cam_name}_depth"] = depth
+            # obs[f"{cam_name}_depth"] = depth
             
         obs["lang"] = json.loads(demo.attrs["ep_meta"])["lang"]
         
