@@ -8,6 +8,7 @@ from omegaconf import DictConfig
 import hydra
 import pickle
 import wandb
+import einops
 
 from agents.utils.scaler import Scaler, ActionScaler, MinMaxScaler
 
@@ -75,13 +76,34 @@ class BaseAgent(nn.Module, abc.ABC):
             perceptual_emb = torch.cat([perceptual_emb, robot_states], dim=1)
 
         return perceptual_emb, latent_goal
-
+    
     @abc.abstractmethod
-    def predict(self, state: torch.Tensor) -> torch.Tensor:
+    def forward(self, obs_dict: dict[str, torch.Tensor], actions=None) -> torch.Tensor:
         """
-        Method for predicting one step with input data
+        Forward pass of the model
         """
         pass
+
+    @torch.no_grad()
+    def predict(self, obs_dict: dict[str, torch.Tensor]) -> torch.Tensor:
+        if self.rollout_step_counter % self.multistep == 0:
+            self.eval()
+
+            # predict action sequence
+            pred_action_seq = self(obs_dict)
+            # pred_action_seq = self.scaler.inverse_scale_output(pred_action_seq)
+            self.pred_action_seq = pred_action_seq
+
+        current_action = self.pred_action_seq[0, self.rollout_step_counter]
+
+        if len(current_action.shape) == 2:
+            current_action = einops.rearrange(current_action, "b d -> b 1 d")
+
+        self.rollout_step_counter += 1
+        if self.rollout_step_counter == self.multistep:
+            self.rollout_step_counter = 0
+
+        return current_action
 
     @abc.abstractmethod
     def reset(self) -> torch.Tensor:

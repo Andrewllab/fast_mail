@@ -95,7 +95,7 @@ class MultiTaskSim(BaseSim):
 
             file_name = os.path.basename(task_bddl_file).split('.')[0]
 
-            task_emb = self.task_embs[file_name]
+            task_emb = self.task_embs[file_name].to(self.device).unsqueeze(0)
 
             # goal_images = self.goal_dicts[file_name]
             # goal_image = random.choice(goal_images)
@@ -123,13 +123,13 @@ class MultiTaskSim(BaseSim):
 
             # multiprocessing simulation
             for j in range(self.max_step_per_episode):
-                agentview_rgb = obs["agentview_image"]
-                eye_in_hand_rgb = obs["robot0_eye_in_hand_image"]
+                agentview_rgb = torch.from_numpy(obs["agentview_image"]).to(self.device).float().permute(2, 0, 1).unsqueeze(0).unsqueeze(0) / 255.
+                eye_in_hand_rgb = torch.from_numpy(obs["robot0_eye_in_hand_image"]).to(self.device).float().permute(2, 0, 1).unsqueeze(0).unsqueeze(0) / 255.
 
                 joint_state = obs["robot0_joint_pos"]
                 gripper_state = obs["robot0_gripper_qpos"]
 
-                robot_states = np.concatenate([joint_state, gripper_state], axis=-1)
+                robot_states = torch.from_numpy(np.concatenate([joint_state, gripper_state], axis=-1)).to(self.device).float().unsqueeze(0).unsqueeze(0)
 
                 # save_path = os.path.join("/home/i53/student/wang/OCIL/OCIL", f"{self.task_suite}", "images")
                 # img = env.sim.render(camera_name="frontview", width=1280, height=800)[..., ::-1]
@@ -144,7 +144,7 @@ class MultiTaskSim(BaseSim):
                             "lang_emb": task_emb,
                             "robot_states": robot_states}
 
-                action = agent.predict(obs_dict)
+                action = agent.predict(obs_dict).cpu().numpy()
                 obs, r, done, _ = env.step(action)
 
                 # if self.render:
