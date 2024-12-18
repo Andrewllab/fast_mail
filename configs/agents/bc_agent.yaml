@@ -2,10 +2,10 @@ _target_: agents.bc_agent.BC_Agent
 _recursive_: false
 
 defaults:
-  - model: bc/bc_dec_transformer
-#  - model: bc/bc_xlstm
+#  - model: bc/bc_transformer
+  - model: bc/bc_transformer
   - obs_encoders: resnet
-#  language_encoders:
+  - language_encoders: clip
 
 optimization:
   _target_: torch.optim.Adam
