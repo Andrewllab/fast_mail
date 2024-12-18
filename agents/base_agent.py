@@ -36,6 +36,7 @@ class BaseAgent(nn.Module, abc.ABC):
         self.model = hydra.utils.instantiate(model).to(device)
         self.state_emb = nn.Linear(state_dim, latent_dim)
 
+
     def set_scaler(self, scaler):
         self.scaler = scaler
 

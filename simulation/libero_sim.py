@@ -291,8 +291,6 @@ class MultiTaskSim(BaseSim):
             [p.join() for p in processes_list]
             pbar.close()
 
-
-
         success_rate = torch.mean(success, dim=-1)
         average_success = torch.mean(success_rate).item()
 
