@@ -24,7 +24,7 @@ class BesoAgent(BaseAgent):
     def __init__(
             self,
             model: DictConfig,
-            # language_goal: DictConfig,
+            language_encoders: DictConfig,
             obs_encoders: DictConfig,
             optimizer: DictConfig,
             lr_scheduler: DictConfig,
@@ -51,9 +51,12 @@ class BesoAgent(BaseAgent):
         super().__init__(
             model=model,
             obs_encoders=obs_encoders,
+            language_encoders=language_encoders,
             device=device,
             state_dim=state_dim,
-            latent_dim=latent_dim)
+            latent_dim=latent_dim,
+            multistep=multistep
+        )
 
         # self.img_encoder = hydra.utils.instantiate(obs_encoders).to(self.device)
         # self.model = hydra.utils.instantiate(model).to(device)
@@ -84,11 +87,6 @@ class BesoAgent(BaseAgent):
 
         self.decay = decay
 
-        # for inference
-        self.rollout_step_counter = 0
-        self.multistep = multistep
-        self.latent_goal = None
-        self.plan = None
         self.state_recons = False
         self.use_text_not_embedding = use_text_not_embedding
 
@@ -321,11 +319,3 @@ class BesoAgent(BaseAgent):
         act_seq = self.denoise_actions(perceptual_emb, latent_goal=latent_goal, inference=True)
 
         return act_seq
-
-    def reset(self):
-        """
-        Call this at the beginning of a new rollout when doing inference.
-        """
-        self.plan = None
-        self.latent_goal = None
-        self.rollout_step_counter = 0

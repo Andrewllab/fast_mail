@@ -25,7 +25,8 @@ class BaseAgent(nn.Module, abc.ABC):
             language_encoders: DictConfig,
             device: str,
             state_dim: int,
-            latent_dim: int
+            latent_dim: int,
+            multistep: int
     ):
         super().__init__()
 
@@ -39,6 +40,9 @@ class BaseAgent(nn.Module, abc.ABC):
         self.model = hydra.utils.instantiate(model).to(device)
         self.state_emb = nn.Linear(state_dim, latent_dim)
 
+        # for inference
+        self.rollout_step_counter = 0
+        self.multistep = multistep
 
     def set_scaler(self, scaler):
         self.scaler = scaler
@@ -55,7 +59,7 @@ class BaseAgent(nn.Module, abc.ABC):
 
         # print(f"the shape of this dict is {obs_dict[list(obs_dict.keys())[0]].shape}")
         # B, T, C, H, W = obs_dict[list(obs_dict.keys())[0]].shape
-        B, T, C, H, W = obs_dict["robot0_agentview_center_image"].shape
+        B, T, C, H, W = obs_dict["agentview_rgb"].shape
 
         for camera in obs_dict.keys():
             if "rgb" not in camera and "image" not in camera:
@@ -84,6 +88,10 @@ class BaseAgent(nn.Module, abc.ABC):
         """
         pass
 
+    def reset(self):
+        """Resets the context of the model."""
+        self.rollout_step_counter = 0
+
     @torch.no_grad()
     def predict(self, obs_dict: dict[str, torch.Tensor]) -> torch.Tensor:
         if self.rollout_step_counter % self.multistep == 0:
@@ -91,7 +99,7 @@ class BaseAgent(nn.Module, abc.ABC):
 
             # predict action sequence
             pred_action_seq = self(obs_dict)
-            # pred_action_seq = self.scaler.inverse_scale_output(pred_action_seq)
+            pred_action_seq = self.scaler.inverse_scale_output(pred_action_seq)
             self.pred_action_seq = pred_action_seq
 
         current_action = self.pred_action_seq[0, self.rollout_step_counter]
@@ -104,13 +112,6 @@ class BaseAgent(nn.Module, abc.ABC):
             self.rollout_step_counter = 0
 
         return current_action
-
-    @abc.abstractmethod
-    def reset(self) -> torch.Tensor:
-        """
-        Method for resetting the agent
-        """
-        pass
 
     def load_pretrained_model(self, weights_path: str, sv_name=None) -> None:
         """

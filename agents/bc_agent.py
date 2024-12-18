@@ -27,6 +27,7 @@ class BC_Agent(BaseAgent):
         device: str = "cpu",
         state_dim: int = 7,
         latent_dim: int = 64,
+        multistep: int = 10,
     ):
         super().__init__(
             model=model,
@@ -34,7 +35,9 @@ class BC_Agent(BaseAgent):
             language_encoders=language_encoders,
             device=device,
             state_dim=state_dim,
-            latent_dim=latent_dim)
+            latent_dim=latent_dim,
+            multistep=multistep
+        )
 
         # self.img_encoder = hydra.utils.instantiate(obs_encoders).to(device)
         # self.model = hydra.utils.instantiate(model).to(device)
@@ -42,15 +45,11 @@ class BC_Agent(BaseAgent):
 
         self.if_robot_states = if_robot_states
         self.if_film_condition = if_film_condition
-        
 
         self.eval_model_name = "eval_best_bc.pth"
         self.last_model_name = "last_bc.pth"
 
         self.action_seq_size = action_seq_size
-
-        self.rollout_step_counter = 0
-        self.multistep = action_seq_size
 
         self.optimizer_config = optimization
         self.use_lr_scheduler = False
@@ -60,7 +59,6 @@ class BC_Agent(BaseAgent):
             self.optimizer_config, params=self.parameters()
         )
         return optimizer
-
 
     def forward(self, obs_dict, actions=None):
 
@@ -81,6 +79,3 @@ class BC_Agent(BaseAgent):
 
         return pred
 
-    def reset(self):
-        """Resets the context of the model."""
-        self.rollout_step_counter = 0

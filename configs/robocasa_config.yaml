@@ -44,6 +44,7 @@ dataset_path: /home/i53/student/donat/master_thesis/robocasa/datasets/v0.1/singl
 window_size: 1
 obs_seq_len: 1
 act_seq_len: ${window_size}
+multistep: ${window_size} # only for inference, could be different from act_seq_len
 goal_window_size: 1
 
 # Training

@@ -1,11 +1,14 @@
-_target_: agents.models.bc.bc.BC_Policy
+_target_: agents.models.beso.models.edm_diffusion.score_wrappers.GCDenoiser
 _recursive_: false
 
-backbones:
-  _target_: agents.backbones.encoder_decoder.EncDec
+sigma_data: 0.5
+
+inner_model:
+  _target_: agents.backbones.decoder_only.Noise_Dec_only
   _recursive_: false
   state_dim: ${latent_dim}
   action_dim: ${action_dim}
+  goal_dim: ${goal_dim}
   goal_conditioned: ${goal_conditioned}
   goal_seq_len: 1
   obs_seq_len: ${obs_tokens}
@@ -13,10 +16,10 @@ backbones:
   embed_pdrob: 0
   # Architecture details
   embed_dim: ${n_embd}
-  goal_dim: ${goal_dim}
   device: ${device}
   linear_output: true
-  forward_type: 'cross_attn'
+
+  use_ada_conditioning: False
 
   encoder:
     _target_: agents.backbones.transformer.blocks.TransformerEncoder
@@ -27,17 +30,3 @@ backbones:
     resid_pdrop: 0.1
     mlp_pdrop: 0.1
     bias: False
-
-  decoder:
-    _target_: agents.backbones.transformer.blocks.TransformerDecoder
-    embed_dim: ${n_embd}
-    n_heads: ${n_heads}
-    n_layers: ${decoder_n_layer}
-    attn_pdrop: 0.3
-    resid_pdrop: 0.1
-    mlp_pdrop: 0.1
-    bias: False
-    use_cross_attention: True
-
-device: ${device}
-

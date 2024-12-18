@@ -16,7 +16,7 @@ backbones:
   goal_dim: ${goal_dim}
   device: ${device}
   linear_output: true
-  forward_type: 'cross_attn'
+  forward_type: 'context_token'
 
   encoder:
     _target_: agents.backbones.transformer.blocks.TransformerEncoder
@@ -29,7 +29,7 @@ backbones:
     bias: False
 
   decoder:
-    _target_: agents.backbones.transformer.blocks.TransformerDecoder
+    _target_: agents.backbones.transformer.blocks.TransformerFiLMDecoder
     embed_dim: ${n_embd}
     n_heads: ${n_heads}
     n_layers: ${decoder_n_layer}
@@ -37,7 +37,7 @@ backbones:
     resid_pdrop: 0.1
     mlp_pdrop: 0.1
     bias: False
-    use_cross_attention: True
+    use_cross_attention: False
 
 device: ${device}
 

@@ -28,6 +28,7 @@ class EncDec(nn.Module):
             obs_seq_len: int,
             action_seq_len: int,
             linear_output: bool = False,
+            forward_type: str = 'cross_attn' # cross_attn, context_token
     ):
         super().__init__()
 
@@ -65,6 +66,11 @@ class EncDec(nn.Module):
         self.goal_seq_len = goal_seq_len
         self.obs_seq_len = obs_seq_len
         self.action_seq_len = action_seq_len
+
+        self.forward_type = forward_type
+
+        if self.forward_type != 'cross_attn':
+            self.context_embed = nn.Embedding(1, embed_dim)
 
         # action pred module
         if linear_output:
@@ -108,11 +114,10 @@ class EncDec(nn.Module):
 
         encoder_output = self.encoder(input_seq)
 
-    def forward(
-            self,
-            states,
-            goals=None,
-    ):
+        return encoder_output
+
+    # decode the action sequence with cross attention over the encoder output
+    def cross_attn_forward(self, states, goals):
 
         if len(states.size()) != 3:
             states = states.unsqueeze(0)
@@ -141,6 +146,53 @@ class EncDec(nn.Module):
         pred_actions = self.action_pred(decoder_output)
 
         return pred_actions
+
+    # add context token to the encoder, put the context token in the decoder's inputs
+    def context_token_forward(self, states, goals):
+
+        if len(states.size()) != 3:
+            states = states.unsqueeze(0)
+
+        b, t, dim = states.size()
+
+        if self.goal_conditioned:
+            goal_embed = self.goal_emb(goals)
+            goal_x = self.drop(goal_embed + self.pos_emb[:, :self.goal_seq_len, :])
+
+        state_embed = self.tok_emb(states)
+        state_x = self.drop(state_embed + self.pos_emb[:, self.goal_seq_len:(self.goal_seq_len + t), :])
+
+        context_token = self.context_embed.weight.unsqueeze(0).repeat(b, 1, 1)
+
+        if self.goal_conditioned:
+            input_seq = torch.cat([goal_x, state_x, context_token], dim=1)
+        else:
+            input_seq = torch.cat([state_x, context_token], dim=1)
+
+        # only output the context token
+        encoder_output = self.encoder(input_seq)[:, -1:, :]
+
+        # decode the action sequence with cross attention over the encoder output
+        action_seq = self.query_embed.weight.unsqueeze(0).repeat(b, 1, 1)
+
+        decoder_output = self.decoder(action_seq, encoder_output)
+
+        pred_actions = self.action_pred(decoder_output)
+
+        return pred_actions
+
+    def forward(
+            self,
+            states,
+            goals=None,
+    ):
+
+        if self.forward_type == 'cross_attn':
+            return self.cross_attn_forward(states, goals)
+        elif self.forward_type == 'context_token':
+            return self.context_token_forward(states, goals)
+        else:
+            raise ValueError(f"Invalid forward type: {self.forward_type}")
 
 
 class SinusoidalPosEmb(nn.Module):
@@ -175,7 +227,8 @@ class Noise_EncDec(nn.Module):
             obs_seq_len: int,
             action_seq_len: int,
             linear_output: bool = False,
-            use_ada_conditioning: bool = False
+            use_ada_conditioning: bool = False,
+            forward_type: str = 'cross_attn'  # cross_attn, context_token
     ):
         super().__init__()
 
@@ -223,6 +276,11 @@ class Noise_EncDec(nn.Module):
 
         self.use_ada_conditioning = use_ada_conditioning
 
+        self.forward_type = forward_type
+
+        if self.forward_type != 'cross_attn':
+            self.context_embed = nn.Embedding(1, embed_dim)
+
         # action pred module
         if linear_output:
             self.action_pred = nn.Linear(embed_dim, action_dim)
@@ -244,6 +302,14 @@ class Noise_EncDec(nn.Module):
         elif isinstance(module, nn.LayerNorm):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
+
+    def process_sigma_embeddings(self, sigma):
+        sigmas = sigma.log() / 4
+        sigmas = einops.rearrange(sigmas, 'b -> b 1')
+        emb_t = self.sigma_emb(sigmas)
+        if len(emb_t.shape) == 2:
+            emb_t = einops.rearrange(emb_t, 'b d -> b 1 d')
+        return emb_t
 
     def enc_only_forward(self, states, goals, sigma):
 
@@ -276,7 +342,8 @@ class Noise_EncDec(nn.Module):
 
         return encoder_output
 
-    def forward(
+    # decode the action sequence with cross attention over the encoder output
+    def cross_attn_forward(
             self,
             states,
             actions,
@@ -299,7 +366,7 @@ class Noise_EncDec(nn.Module):
         state_x = self.drop(state_embed + self.pos_emb[:, self.goal_seq_len:(self.goal_seq_len + t), :])
 
         action_embed = self.action_emb(actions)
-        action_x = self.drop(action_embed + self.pos_emb[:, (self.goal_seq_len + t - 1):(self.goal_seq_len + t - 1 + t_a), :])
+        action_x = self.drop(action_embed + self.pos_emb[:, (self.goal_seq_len + t):(self.goal_seq_len + t + t_a), :])
 
         emb_t = self.process_sigma_embeddings(sigma)
 
@@ -320,3 +387,68 @@ class Noise_EncDec(nn.Module):
         pred_actions = self.action_pred(decoder_output)
 
         return pred_actions
+
+    # add context token to the encoder, put the context token in the decoder's inputs
+    def context_token_forward(
+            self,
+            states,
+            actions,
+            goals,
+            sigma
+    ):
+
+        if len(states.size()) != 3:
+            states = states.unsqueeze(0)
+
+        # t for the states does not mean the time, but the number of inputs tokens
+        b, t, dim = states.size()
+        _, t_a, _ = actions.size()
+
+        if self.goal_conditioned:
+            goal_embed = self.goal_emb(goals)
+            goal_x = self.drop(goal_embed + self.pos_emb[:, :self.goal_seq_len, :])
+
+        state_embed = self.tok_emb(states)
+        state_x = self.drop(state_embed + self.pos_emb[:, self.goal_seq_len:(self.goal_seq_len + t), :])
+
+        context_token = self.context_embed.weight.unsqueeze(0).repeat(b, 1, 1)
+
+        action_embed = self.action_emb(actions)
+        action_x = self.drop(action_embed + self.pos_emb[:, (self.goal_seq_len + t):(self.goal_seq_len + t + t_a), :])
+
+        emb_t = self.process_sigma_embeddings(sigma)
+
+        if self.goal_conditioned:
+            input_seq = torch.cat([goal_x, state_x, context_token], dim=1)
+        else:
+            input_seq = torch.cat([state_x, context_token], dim=1)
+
+        # adaLN conditioning
+        if self.use_ada_conditioning:
+            encoder_output = self.encoder(input_seq)[:, -1:, :]
+            emb_t = emb_t + encoder_output
+            decoder_output = self.decoder(action_x, emb_t)
+        else:
+            input_seq = torch.cat([emb_t, input_seq], dim=1)
+            encoder_output = self.encoder(input_seq)[:, -1:, :]
+            decoder_output = self.decoder(action_x, encoder_output)
+
+        pred_actions = self.action_pred(decoder_output)
+
+        return pred_actions
+
+    def forward(
+            self,
+            states,
+            actions,
+            goals,
+            sigma
+    ):
+
+        if self.forward_type == 'cross_attn':
+            return self.cross_attn_forward(states, actions, goals, sigma)
+        elif self.forward_type == 'context_token':
+            return self.context_token_forward(states, actions, goals, sigma)
+        else:
+            raise ValueError(f"Invalid forward type: {self.forward_type}")
+

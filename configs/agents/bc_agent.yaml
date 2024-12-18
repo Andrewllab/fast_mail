@@ -3,7 +3,7 @@ _recursive_: false
 
 defaults:
 #  - model: bc/bc_transformer
-  - model: bc/bc_transformer
+  - model: bc/bc_dec_transformer
   - obs_encoders: resnet
   - language_encoders: clip
 
@@ -12,6 +12,7 @@ optimization:
   lr: 5e-4
   weight_decay: 0
 
+multistep: ${multistep}
 action_seq_size: ${act_seq_len}
 
 if_robot_states: False

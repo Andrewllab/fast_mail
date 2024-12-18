@@ -2,8 +2,9 @@ _target_: agents.beso_agent.BesoAgent
 _recursive_: false
 
 defaults:
-  - model: beso/beso_transformer
+  - model: beso/beso_dec_transformer
   - obs_encoders: resnet
+  - language_encoders: clip
 
 #language_goal:
 #  _target_: agents.mdt.models.networks.clip_lang_encoder.LangClip
@@ -51,7 +52,7 @@ device: ${device}
 if_film_condition: False
 if_robot_states: False
 
-multistep: ${act_seq_len}
+multistep: ${multistep}
 
 use_text_not_embedding: False
 ckpt_path: null

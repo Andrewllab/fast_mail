@@ -224,6 +224,14 @@ class Noise_Dec_only(nn.Module):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
 
+    def process_sigma_embeddings(self, sigma):
+        sigmas = sigma.log() / 4
+        sigmas = einops.rearrange(sigmas, 'b -> b 1')
+        emb_t = self.sigma_emb(sigmas)
+        if len(emb_t.shape) == 2:
+            emb_t = einops.rearrange(emb_t, 'b d -> b 1 d')
+        return emb_t
+
     def forward(
             self,
             states,
@@ -247,7 +255,7 @@ class Noise_Dec_only(nn.Module):
         state_x = self.drop(state_embed + self.pos_emb[:, self.goal_seq_len:(self.goal_seq_len + t), :])
 
         action_embed = self.action_emb(actions)
-        action_x = self.drop(action_embed + self.pos_emb[:, (self.goal_seq_len + t - 1):(self.goal_seq_len + t - 1 + t_a), :])
+        action_x = self.drop(action_embed + self.pos_emb[:, (self.goal_seq_len + t):(self.goal_seq_len + t + t_a), :])
 
         emb_t = self.process_sigma_embeddings(sigma)
 

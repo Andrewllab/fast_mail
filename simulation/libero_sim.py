@@ -24,6 +24,7 @@ def process_image_input(img_tensor):
     # return (img_tensor / 255. - 0.5) * 2.
     return img_tensor / 255.
 
+
 class MultiTaskSim(BaseSim):
     def __init__(self,
                  num_episode,
@@ -48,6 +49,7 @@ class MultiTaskSim(BaseSim):
 
         self.success_rate = 0
         self.use_multiprocessing = use_multiprocessing
+
     def reverse_rgb_channels(self, test_img):
 
         test_img = test_img[::-1, ::-1, :]
