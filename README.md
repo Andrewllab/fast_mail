@@ -28,8 +28,8 @@ This is an open-source project that aims to provide a set of imitation learning 
 - [x] add selection of multi processing (temporarily solve local object unpicklable error)
 - [x] add testing progress & states visualization
 - [x] add basic bc_xlstm sturcture, yaml file setting
-- [ ] debug xlstm structure
-- [ ] multi processing model save/load debug
+- [x] debug xlstm structure
+- [x] multi processing model save/load debug
 
 ---
 
