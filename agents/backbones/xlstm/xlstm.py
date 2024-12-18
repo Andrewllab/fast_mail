@@ -40,13 +40,13 @@ class xlstmEncoder(nn.Module):
     def __init__(
             self,
             xlstm_config: DictConfig,
-            seq_size: int,
+            block_size: int,
             embed_dim: int,
             bias: bool = False,
                 ):
         super().__init__()
         
-        xlstm_config.context_length = seq_size
+        xlstm_config.context_length = block_size
         # Convert DictConfig to the required configuration objects
         print(f"xlstm_config:  {xlstm_config}")
 
@@ -55,7 +55,9 @@ class xlstmEncoder(nn.Module):
             mlstm=mLSTMLayerConfig(
                 conv1d_kernel_size=xlstm_config.mlstm_block.mlstm.conv1d_kernel_size,
                 qkv_proj_blocksize=xlstm_config.mlstm_block.mlstm.qkv_proj_blocksize,
-                num_heads=xlstm_config.mlstm_block.mlstm.num_heads
+                num_heads=xlstm_config.mlstm_block.mlstm.num_heads,
+                proj_factor=xlstm_config.mlstm_block.mlstm.proj_factor,
+                dropout=xlstm_config.mlstm_block.mlstm.dropout
             )
         )
         if xlstm_config.slstm_block.enabled:
@@ -110,16 +112,8 @@ class xlstmEncoder(nn.Module):
     # else:
     #     self.out_norm = nn.Identity()
     #     self.ln = LayerNorm(embed_dim, bias)
-    
-    # def forward(
-    #     self, x: torch.Tensor, state: mLSTMStateType | None = None
-    # ) -> tuple[torch.Tensor, mLSTMStateType]:
-    #     if state is None:
-    #             state = {i: None for i in range(len(self.blocks))}
 
     
-
-
 class Enc_only(nn.Module):
     def __init__(
             self,
@@ -149,7 +143,7 @@ class Enc_only(nn.Module):
         # the seq_size is a little different since we have state action pairs for every timestep
         seq_size = goal_seq_len + obs_seq_len + action_seq_len
 
-        self.encoder = hydra.utils.instantiate(encoder, seq_size=block_size)
+        self.encoder = hydra.utils.instantiate(encoder, block_size=block_size)
 
         self.tok_emb = nn.Linear(state_dim, embed_dim)
         self.tok_emb.to(self.device)
