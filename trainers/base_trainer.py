@@ -50,9 +50,9 @@ class BaseTrainer:
             self.trainset,
             batch_size=train_batch_size,
             shuffle=True,
-            num_workers=num_workers,
-            pin_memory=True,
-            drop_last=True,
+            # num_workers=num_workers,
+            # pin_memory=True,
+            # drop_last=True,
         )
 
         # self.test_dataloader = DataLoader(
@@ -98,11 +98,14 @@ class BaseTrainer:
 
             epoch_loss = torch.tensor(0.0).to(self.device)
 
-            for data in self.train_dataloader:
+            for data in tqdm(self.train_dataloader):
                 obs_dict, action, mask = data
 
                 # put data on cuda
                 for camera in obs_dict.keys():
+                    if camera == 'lang':
+                        continue
+                    
                     obs_dict[camera] = obs_dict[camera].to(self.device)
 
                     if 'rgb' not in camera:

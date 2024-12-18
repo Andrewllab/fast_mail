@@ -4,7 +4,7 @@ import os
 import h5py
 import torch
 
-from base_dataset import TrajectoryDataset
+from environments.dataset.base_dataset import TrajectoryDataset
 
 
 class RobocasaDataset(TrajectoryDataset):
@@ -56,22 +56,22 @@ class RobocasaDataset(TrajectoryDataset):
         result = []
         
         for demo in self.demos:
-            result.append(self.demos[demo]["actions"][:, :self.action_dim])
+            result.append(torch.from_numpy(self.demos[demo]["actions"][:, :self.action_dim]))
             
-        return torch.cat(result, dim=0)
+        return torch.cat(result, dim=0).to(self.device)
     
     def get_all_observations(self):
         result = []
         
         for demo in self.demos:
-            gripper_state = self.demos[demo]["obs"]['robot0_joint_pos_cos'][:]
-            joint_pos_sin = self.demos[demo]["obs"]['robot0_joint_pos_sin'][:]
-            joint_pos_cos = self.demos[demo]["obs"]['robot0_joint_pos_cos'][:]
+            gripper_state = torch.from_numpy(self.demos[demo]["obs"]['robot0_joint_pos_cos'][:])
+            joint_pos_sin = torch.from_numpy(self.demos[demo]["obs"]['robot0_joint_pos_sin'][:])
+            joint_pos_cos = torch.from_numpy(self.demos[demo]["obs"]['robot0_joint_pos_cos'][:])
             
             robot_state = torch.cat([gripper_state, joint_pos_sin, joint_pos_cos], dim=1)
             result.append(robot_state)
         
-        return torch.cat(result, dim=0)
+        return torch.cat(result, dim=0).to(self.device)
     
     def __len__(self):
         return len(self.slices)
@@ -81,29 +81,29 @@ class RobocasaDataset(TrajectoryDataset):
         
         demo = self.demos[f"demo_{i}"]
         
-        action = torch.from_numpy(demo["actions"][start:end]).to(self.device)
+        action = torch.from_numpy(demo["actions"][start:end, :self.action_dim])
         
         obs = {}
         
-        gripper_state = torch.from_numpy(demo["obs"]['robot0_joint_pos_cos'][start:end])
+        gripper_state = torch.from_numpy(demo["obs"]['robot0_gripper_qpos'][start:end])
         joint_pos_sin = torch.from_numpy(demo["obs"]['robot0_joint_pos_sin'][start:end])
         joint_pos_cos = torch.from_numpy(demo["obs"]['robot0_joint_pos_cos'][start:end])
-        robot_state = torch.cat([gripper_state, joint_pos_sin, joint_pos_cos], dim=1).to(self.device)
-        obs['robot_state'] = robot_state
+        robot_state = torch.cat([gripper_state, joint_pos_sin, joint_pos_cos], dim=1)
+        obs['robot_states'] = robot_state
         
-        sampled_point_cloud = torch.from_numpy(demo["obs"]["sampled_point_cloud"][start:end]).to(self.device)
+        sampled_point_cloud = torch.from_numpy(demo["obs"]["sampled_point_cloud"][start:end])
         obs['sampled_point_cloud'] = sampled_point_cloud
         
-        custom_sampled_point_cloud = torch.from_numpy(demo["obs"]["custom_sampled_point_cloud"][start:end]).to(self.device)
+        custom_sampled_point_cloud = torch.from_numpy(demo["obs"]["custom_sampled_point_cloud"][start:end])
         obs['custom_sampled_point_cloud'] = custom_sampled_point_cloud
         
         for cam_name in self.cam_names:
-            rgb = torch.from_numpy(demo["obs"][f"{cam_name}_image"][start:end]).to(self.device)
-            depth = torch.from_numpy(demo["obs"][f"{cam_name}_depth"][start:end]).to(self.device)
+            rgb = torch.from_numpy(demo["obs"][f"{cam_name}_image"][start:end]).float().permute(0, 3, 1, 2) / 255.
+            depth = torch.from_numpy(demo["obs"][f"{cam_name}_depth"][start:end]).float().permute(0, 3, 1, 2)
             
             obs[f"{cam_name}_image"] = rgb
             obs[f"{cam_name}_depth"] = depth
             
-        obs["lang_emb"] = json.loads(demo.attrs["ep_meta"])["lang"]
+        obs["lang"] = json.loads(demo.attrs["ep_meta"])["lang"]
         
         return obs, action, torch.ones(action.shape[0]) # TODO is this mask correct?

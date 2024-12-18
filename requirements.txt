@@ -18,3 +18,4 @@ torchsde
 torchdiffeq
 imageio[ffmpeg]
 open3d
+ftfy
