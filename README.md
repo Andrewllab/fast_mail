@@ -16,14 +16,20 @@ This is an open-source project that aims to provide a set of imitation learning 
   - [x] add beso (with mdt architecture)
   - [x] add mamba1/2
 - 12.12
-  - [ ] refine framework, add trainers
+  - [x] refine framework, add trainers
+- 12.17
+  - [x] unify decoder-only and encoder-decoder
   - [ ] add adaln layers to mamba (later the film condition should be on all methods)
+  - [ ] add beso mamba
+  - [ ] unify transformer
+  - [ ] provide language encoder and if use language text
+  - [ ] write different encoder-decoder structures
 ### Xuan Zhao
 - [x] add selection of multi processing (temporarily solve local object unpicklable error)
 - [x] add testing progress & states visualization
 - [x] add basic bc_xlstm sturcture, yaml file setting
-- [ ] debug xlstm structure
-- [ ] multi processing model save/load debug
+- [x] debug xlstm structure
+- [x] multi processing model save/load debug
 
 ---
 
@@ -93,14 +99,13 @@ pip install setuptools==61.0.0
 python setup.py install
 pip install causal-conv1d>=1.4.0
 ```
----
-
 ### install xlstm
 ```
 git clone https://github.com/NX-AI/xlstm.git
 cd xlstm
 pip install -e .
 ```
+---
 
 ## Acknowledgements
 

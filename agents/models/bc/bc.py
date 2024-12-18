@@ -17,14 +17,13 @@ class BC_Policy(nn.Module):
 
         self.model = hydra.utils.instantiate(backbones).to(device)
 
-    def forward(self, perceptual_emb, latent_goal, return_encoder_embedding=False):
+    def forward(self, perceptual_emb, latent_goal):
 
         # shape of perceptural_emb is torch.Size([64, 1, 256])
         # make prediction
         pred = self.model(
             perceptual_emb,
-            latent_goal,
-            return_encoder_embedding=return_encoder_embedding
+            latent_goal
         )
 
         return pred
