@@ -32,6 +32,7 @@ class BesoAgent(BaseAgent):
             action_dim,
             action_seq_len,
             decay: float,
+            state_dim = 7,
             use_lr_scheduler: bool = True,
             sampler_type: str = 'ddim',
             num_sampling_steps: int = 10,
@@ -47,13 +48,18 @@ class BesoAgent(BaseAgent):
             use_text_not_embedding: bool = False,
             ckpt_path=None,
     ):
-        super(BesoAgent, self).__init__(device=device)
+        super().__init__(
+            model=model,
+            obs_encoders=obs_encoders,
+            device=device,
+            state_dim=state_dim,
+            latent_dim=latent_dim)
 
-        self.model = hydra.utils.instantiate(model).to(device)
+        # self.img_encoder = hydra.utils.instantiate(obs_encoders).to(self.device)
+        # self.model = hydra.utils.instantiate(model).to(device)
 
         # self.language_goal = hydra.utils.instantiate(language_goal).to(self.device)
-        self.img_encoder = hydra.utils.instantiate(obs_encoders).to(self.device)
-
+        
         self.action_dim = action_dim
         self.action_seq_len = action_seq_len
 

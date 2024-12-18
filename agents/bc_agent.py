@@ -27,14 +27,20 @@ class BC_Agent(BaseAgent):
             state_dim: int = 7,
             latent_dim: int = 64
     ):
-        super().__init__(device=device)
+        super().__init__(
+            model=model,
+            obs_encoders=obs_encoders,
+            device=device,
+            state_dim=state_dim,
+            latent_dim=latent_dim)
 
-        self.img_encoder = hydra.utils.instantiate(obs_encoders).to(device)
-        self.model = hydra.utils.instantiate(model).to(device)
+        # self.img_encoder = hydra.utils.instantiate(obs_encoders).to(device)
+        # self.model = hydra.utils.instantiate(model).to(device)
+        # self.state_emb = nn.Linear(state_dim, latent_dim)
 
         self.if_robot_states = if_robot_states
         self.if_film_condition = if_film_condition
-        self.state_emb = nn.Linear(state_dim, latent_dim)
+        
 
         self.eval_model_name = "eval_best_bc.pth"
         self.last_model_name = "last_bc.pth"
