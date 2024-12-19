@@ -36,21 +36,21 @@ class BaseAgent(nn.Module, abc.ABC):
         """
         Compute the required embeddings for the visual ones and the latent goal.
         """
-        pass
+        raise NotImplementedError(f"Method not implemented")
 
     @abc.abstractmethod
     def predict(self, state: torch.Tensor) -> torch.Tensor:
         """
         Method for predicting one step with input data
         """
-        pass
+        raise NotImplementedError(f"Method not implemented")
 
     @abc.abstractmethod
     def reset(self) -> torch.Tensor:
         """
         Method for resetting the agent
         """
-        pass
+        raise NotImplementedError(f"Method not implemented")
 
     def load_pretrained_model(self, weights_path: str, sv_name=None) -> None:
         """
