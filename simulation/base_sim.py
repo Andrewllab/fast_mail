@@ -2,6 +2,8 @@ import logging
 import abc
 import os
 
+from agents.base_agent import BaseAgent
+
 log = logging.getLogger(__name__)
 
 
@@ -26,5 +28,5 @@ class BaseSim(abc.ABC):
         self.env_name = 'BaseEnvironment'
 
     @abc.abstractmethod
-    def test_agent(self, agent, cpu_set):
+    def test_agent(self, agent: BaseAgent, cpu_set):
         pass

@@ -16,14 +16,20 @@ This is an open-source project that aims to provide a set of imitation learning 
   - [x] add beso (with mdt architecture)
   - [x] add mamba1/2
 - 12.12
-  - [ ] refine framework, add trainers
+  - [x] refine framework, add trainers
+- 12.17
+  - [x] unify decoder-only and encoder-decoder
   - [ ] add adaln layers to mamba (later the film condition should be on all methods)
+  - [ ] add beso mamba
+  - [ ] unify transformer
+  - [ ] provide language encoder and if use language text
+  - [ ] write different encoder-decoder structures
 ### Xuan Zhao
 - [x] add selection of multi processing (temporarily solve local object unpicklable error)
 - [x] add testing progress & states visualization
 - [x] add basic bc_xlstm sturcture, yaml file setting
-- [ ] debug xlstm structure
-- [ ] multi processing model save/load debug
+- [x] debug xlstm structure
+- [x] multi processing model save/load debug
 
 ---
 
@@ -48,7 +54,7 @@ git clone git@github.com:xiaogangjia/fast_mail.git
 
 ### Installing requirements
 ```
-conda create -n mail python=3.11
+conda create -n mail python=3.10
 conda activate mail
 
 # adapt to your own cuda version if you need
@@ -62,6 +68,14 @@ pip install -r requirements.txt
 git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git
 cd LIBERO
 pip install -e .
+```
+
+### Installing RoboCasa Setup
+```
+git clone https://github.com/robocasa/robocasa
+cd robocasa
+pip install -e .
+python robocasa/scripts/download_kitchen_assets.py
 ```
 
 ### Installing packages for beso

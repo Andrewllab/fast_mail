@@ -8,6 +8,7 @@ from omegaconf import DictConfig
 import hydra
 import pickle
 import wandb
+import einops
 
 from agents.utils.scaler import Scaler, ActionScaler, MinMaxScaler
 
@@ -19,14 +20,29 @@ class BaseAgent(nn.Module, abc.ABC):
 
     def __init__(
             self,
-            device: str = 'cpu',
+            model: DictConfig,
+            obs_encoders: DictConfig,
+            language_encoders: DictConfig,
+            device: str,
+            state_dim: int,
+            latent_dim: int,
+            multistep: int
     ):
-
-        super(BaseAgent, self).__init__()
+        super().__init__()
 
         self.device = device
         self.working_dir = os.getcwd()
         self.scaler = None
+
+        # Initialize model and encoder
+        self.img_encoder = hydra.utils.instantiate(obs_encoders).to(device)
+        self.language_encoder = hydra.utils.instantiate(language_encoders).to(device)
+        self.model = hydra.utils.instantiate(model).to(device)
+        self.state_emb = nn.Linear(state_dim, latent_dim)
+
+        # for inference
+        self.rollout_step_counter = 0
+        self.multistep = multistep
 
     def set_scaler(self, scaler):
         self.scaler = scaler
@@ -39,9 +55,9 @@ class BaseAgent(nn.Module, abc.ABC):
         raise NotImplementedError(f"Method not implemented")
 
     @abc.abstractmethod
-    def predict(self, state: torch.Tensor) -> torch.Tensor:
+    def forward(self, obs_dict: dict[str, torch.Tensor], actions=None) -> torch.Tensor:
         """
-        Method for predicting one step with input data
+        Forward pass of the model
         """
         raise NotImplementedError(f"Method not implemented")
 
@@ -51,33 +67,46 @@ class BaseAgent(nn.Module, abc.ABC):
         Method for resetting the agent
         """
         raise NotImplementedError(f"Method not implemented")
+    def reset(self):
+        """Resets the context of the model."""
+        self.rollout_step_counter = 0
+
+    @torch.no_grad()
+    def predict(self, obs_dict: dict[str, torch.Tensor]) -> torch.Tensor:
+        if self.rollout_step_counter % self.multistep == 0:
+            self.eval()
+
+            # predict action sequence
+            pred_action_seq = self(obs_dict)
+            pred_action_seq = self.scaler.inverse_scale_output(pred_action_seq)
+            self.pred_action_seq = pred_action_seq
+
+        current_action = self.pred_action_seq[0, self.rollout_step_counter]
+
+        if len(current_action.shape) == 2:
+            current_action = einops.rearrange(current_action, "b d -> b 1 d")
+
+        self.rollout_step_counter += 1
+        if self.rollout_step_counter == self.multistep:
+            self.rollout_step_counter = 0
+
+        return current_action
 
     def load_pretrained_model(self, weights_path: str, sv_name=None) -> None:
         """
-        Method to load a pretrained model weights inside self.model
+        Method to load pretrained weights for the entire agent
         """
-
-        if sv_name is None:
-            self.model.load_state_dict(
-                torch.load(
-                    os.path.join(weights_path, "model_state_dict.pth"),
-                    weights_only=True
-                ))
-        else:
-            self.model.load_state_dict(
-                torch.load(
-                    os.path.join(weights_path, sv_name),
-                    weights_only=True
-                ))
-        log.info('Loaded pre-trained model parameters')
+        path = os.path.join(weights_path, "model_state_dict.pth" if sv_name is None else f"{sv_name}.pth")
+        self.load_state_dict(torch.load(path, weights_only=True))
+        log.info('Loaded pre-trained model')
 
     def store_model_weights(self, store_path: str, sv_name=None) -> None:
         """
-        Store the model weights inside the store path as model_weights.pth
+        Store the weights of the entire agent
         """
-        save_path = os.path.join(store_path, "model_state_dict.pth" if sv_name is None else sv_name)
-        torch.save(self.model.state_dict(), save_path)
-        log.info(f'Model weights saved to: {save_path}')
+        path = os.path.join(store_path, "model_state_dict.pth" if sv_name is None else f"{sv_name}.pth")
+        torch.save(self.state_dict(), path)
+        log.info(f'Model saved to: {store_path}')
 
     def store_model_scaler(self, store_path: str, sv_name=None) -> None:
         """
@@ -113,7 +142,7 @@ class BaseAgent(nn.Module, abc.ABC):
 
     @property
     def get_model_state_dict(self) -> dict:
-        return self.model.state_dict()
+        return self.state_dict()
 
     @property
     def get_scaler(self) -> Scaler:
@@ -125,10 +154,13 @@ class BaseAgent(nn.Module, abc.ABC):
     def get_model_state(self) -> tuple[dict, Scaler]:
         if self.scaler is None:
             raise AttributeError("Scaler has not been set. Use set_scaler() first.")
-        return self.get_model_state_dict, self.get_scaler
+        return (
+            self.state_dict(),
+            self.get_scaler
+        )
     
-    # def recover_state(self, state_dict, scaler):
-    #     self.model.load_state_dict(state_dict)
-    #     self.set_scaler(scaler)
+    def recover_model_state(self, model_state, scaler):
+        self.load_state_dict(model_state)
+        self.set_scaler(scaler)
 
     
