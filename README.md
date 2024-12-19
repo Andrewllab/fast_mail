@@ -121,3 +121,5 @@ The code of this repository relies on the following existing codebases:
 - [ ] Unify camera image observation of both libero and robocasa
 - [ ] Fix context length parameter of xlstm
 - [ ] Add custimized method to stack xlstm blocks
+- [ ] Set datapath to a relative path
+- [ ] Code structure, scaler?

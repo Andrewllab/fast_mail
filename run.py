@@ -47,8 +47,17 @@ def main(cfg: DictConfig) -> None:
     # load vqvae before training the agent: add path to the config file
     # train the agent
     agent = hydra.utils.instantiate(cfg.agents)
-
     trainer = hydra.utils.instantiate(cfg.trainers)
+
+    ## if agent is vqbet, pretrain the vqvae first
+    if cfg.agent_name == "vqbet":
+        # vqvae = hydra.utils.instantiate(cfg.agents.model.vq_vae)
+        vqe_pretrainer = hydra.utils.instantiate(cfg.vqvae_pre_trainer)
+        vqe_pretrainer.train(agent)
+        # save weights
+        # agent.vqvae.save_model()
+
+    
     trainer.main(agent)
 
     # simulate the model
