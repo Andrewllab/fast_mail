@@ -97,14 +97,12 @@ class PushTDataset(TrajectoryDataset):
         file_path = os.path.join(self.data_directory, "obses", f"episode_{idx:03d}.pth")
         obs = torch.load(file_path)
         obs = obs[frames]  # THWC
+        obs = einops.rearrange(obs, "T H W C -> T C H W") / 255.0
         return obs
 
     def get_frames(self, idx, frames):
         obs = self.agentview_rgbs[idx][frames]  # THWC
-        # file_path = os.path.join(self.data_directory, "obses", f"episode_{idx:03d}.pth")
-        # obs2 = torch.load(file_path)
-        # obs2 = obs2[frames]  # THWC
-        # obs = einops.rearrange(obs, "T H W C -> 1 T C H W") / 255.0  # T V C H W, 1 view
+        # obs = einops.rearrange(obs, "T H W C -> T C H W") / 255.0
         act = self.actions[idx, frames]
         mask = self.masks[idx, frames]
 

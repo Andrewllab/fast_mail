@@ -53,7 +53,7 @@ class BaseTrainer:
             shuffle=True,
             num_workers=num_workers,
             pin_memory=True,
-            drop_last=False,
+            drop_last=True,
         )
 
         # self.test_dataloader = DataLoader(
