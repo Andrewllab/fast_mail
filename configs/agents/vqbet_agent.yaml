@@ -1,0 +1,23 @@
+_target_: agents.vqbet_agent.VqBetAgent
+_recursive_: false
+
+defaults:
+  - model: vqbet/vqbet_transformer
+  - model@vqvae: vqbet/vqvae #load from model/ directory
+  - obs_encoders: resnet
+  - language_encoders: clip
+
+optimization:
+  _target_: torch.optim.Adam
+  lr: 5e-4
+  weight_decay: 0
+
+multistep: ${multistep}
+action_seq_size: ${act_seq_len}
+
+if_robot_states: False
+if_film_condition: False
+device: ${device}
+state_dim: ${obs_dim}
+latent_dim: ${latent_dim}
+

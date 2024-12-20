@@ -1,11 +1,15 @@
 defaults:
-  - agents: beso_agent
+  - agents: vqbet_agent
   - trainers: base_trainer
+  - trainers@vqvae_pre_trainer: vqvae_pre_trainer
 #  - override hydra/launcher: submitit_slurm
 
 # agent_name: beso
-agent_name: beso
+agent_name: vqbet
 log_dir: logs/${task_suite}/
+# pretrain: True
+pretrain_epoch: 30
+pretrain_save_path: ${log_dir}/vqvae_weights
 
 # insert wandb here
 wandb:
