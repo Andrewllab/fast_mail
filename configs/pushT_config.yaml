@@ -37,7 +37,7 @@ seed: 42
 
 # dataset config
 task_suite: pushT
-traj_per_task: 150
+traj_per_task: 20
 
 ## change the path of dataset
 # dataset_path: /home/david/2024/datasets/${task_suite}
@@ -137,18 +137,18 @@ valset:
   state_dim: ${state_dim}
   max_len_data: ${max_len_data}
   window_size: ${window_size}
-  start_idx: 160
+  traj_per_task: ${traj_per_task}
 
 ## TODO
-#simulation:
-#  _target_: simulation.libero_sim.MultiTaskSim
-#  _convert_: all
-#  task_suite: ${task_suite}
-#  use_eye_in_hand: False
-#  seed: ${seed}
-#  device: ${device}
-#  render: False
-#  n_cores: 2
-#  num_episode: 20
-#  max_step_per_episode: 600
-#  use_multiprocessing: false
+simulation:
+  _target_: simulation.pusht_sim.PushTSim
+  _convert_: all
+  task_suite: ${task_suite}
+  use_eye_in_hand: False
+  seed: ${seed}
+  device: ${device}
+  render: False
+  n_cores: 2
+  num_episode: 20
+  max_step_per_episode: 600
+  use_multiprocessing: false

@@ -27,7 +27,7 @@ class PushTSim(BaseSim):
             device,
             render,
             n_cores,
-            use_multiprocessing=True
+            use_multiprocessing=False
     ):
         super().__init__(seed, device, render, n_cores)
         self.env_name = 'PushTSim'
@@ -43,9 +43,6 @@ class PushTSim(BaseSim):
 
         self.success_rate = 0
         self.use_multiprocessing = use_multiprocessing
-
-    def test_agent(self, agent, cpu_set):
-        pass
 
     def eval_agent(self,
                    agent,
@@ -80,7 +77,7 @@ class PushTSim(BaseSim):
 
             # TODO Xi: Get initial states from the task suite
 
-            init_states = task_suite.get_task_init_states(context)
+            # init_states = task_suite.get_task_init_states(context)
 
             env_args = {
                 # "bddl_file_name": task_bddl_file,
@@ -100,7 +97,7 @@ class PushTSim(BaseSim):
             agent.reset()
             env.seed(self.seed)
             env.reset()
-            obs = env._set_state(init_states[context_ind[i]])
+            # obs = env._set_state(init_states[context_ind[i]])
 
             # dummy actions all zeros for initial physics simulation
             dummy = np.zeros(7)
@@ -170,3 +167,53 @@ class PushTSim(BaseSim):
 
     def get_task_embs(self, task_embs):
         self.task_embs = task_embs
+
+
+    def test_agent(self, agent, cpu_set):
+        if cpu_set is None:
+            num_cpu = self.n_cores
+            cpu_set = [i for i in range(num_cpu)]
+        else:
+            num_cpu = len(cpu_set)
+
+        if self.use_multiprocessing:
+            print("there is {} cpus".format(num_cpu))
+        else:
+            print("not using multiprocessing, run on 1 cpu")
+
+        if self.task_suite == "libero_90":
+            num_tasks = 90
+        else:
+            num_tasks = 10
+
+        success = torch.zeros([num_tasks, self.num_episode]).share_memory_()
+        episode_lengths = torch.zeros([num_tasks, self.num_episode]).share_memory_()
+        all_runs = num_tasks * self.num_episode
+
+        contexts = np.arange(num_tasks)
+        contexts = np.repeat(contexts, self.num_episode)
+
+        context_ind = np.arange(self.num_episode)
+        context_ind = np.tile(context_ind, num_tasks)
+
+        if not self.use_multiprocessing:
+            # Single process execution
+            pbar = tqdm(total=all_runs, desc="Testing agent")
+            counter = type('Counter', (), {'value': 0})()  # Simple counter object
+
+            def update_pbar():
+                pbar.update(1)
+
+            counter.update = update_pbar  # Add update method to counter
+
+            self.eval_agent(
+                contexts=contexts,
+                context_ind=context_ind,
+                success=success,
+                episode_lengths=episode_lengths,
+                pid=0,
+                cpu_set=set(cpu_set),
+                counter=counter,
+                agent=agent
+            )
+            pbar.close()

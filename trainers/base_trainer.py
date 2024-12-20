@@ -99,7 +99,7 @@ class BaseTrainer:
 
             epoch_loss = torch.tensor(0.0).to(self.device)
 
-            for data in tqdm(self.train_dataloader):
+            for data in self.train_dataloader:
                 obs_dict, action, mask = data
 
                 # put data on cuda

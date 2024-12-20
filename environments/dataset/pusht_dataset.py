@@ -100,17 +100,14 @@ class PushTDataset(TrajectoryDataset):
         obs = einops.rearrange(obs, "T H W C -> T C H W") / 255.0
         return obs
 
-    def get_frames(self, idx, frames):
-        obs = self.agentview_rgbs[idx][frames]  # THWC
-        # obs = einops.rearrange(obs, "T H W C -> T C H W") / 255.0
-        act = self.actions[idx, frames]
-        mask = self.masks[idx, frames]
-
-        # Wrap in a dictionary
-        obs_dict = {}
-        obs_dict["agentview_rgb"] = obs
-        obs_dict["lang_emb"] = False
-        return obs_dict, act, mask
+    # def get_frames(self, idx, frames):
+    #     obs = self.agentview_rgbs[idx][[frames][0:1]]  # Only get the image current frame
+    #     act = self.actions[idx, frames]              # Get the action of the current frame and the future
+    #     mask = torch.ones(len(act)).bool()
+    #
+    #     # Wrap in a dictionary
+    #     obs_dict = {"agentview_rgb": obs, "lang_emb": False}
+    #     return obs_dict, act, mask
 
     def get_slices(self):  #Extract sample slices that meet certain conditions
         slices = []
@@ -146,7 +143,14 @@ class PushTDataset(TrajectoryDataset):
         The idx is the index of the slice, not the trajectory.
         """
         i, start, end = self.slices[idx]
-        return self.get_frames(i, range(start, end))
+
+        obs = self.agentview_rgbs[i][start:start + 1]  # Only get the image current frame
+        act = self.actions[i, start:end]  # Get the action of the current frame and the future
+        mask = self.masks[i, start:end]
+
+        # Wrap in a dictionary
+        obs_dict = {"agentview_rgb": obs, "lang_emb": False}
+        return obs_dict, act, mask
 
     def __len__(self):
         return len(self.slices)

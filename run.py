@@ -54,9 +54,9 @@ def main(cfg: DictConfig) -> None:
     # # simulate the model
     # env_sim = hydra.utils.instantiate(cfg.simulation)
     # env_sim.get_task_embs(trainer.trainset.tasks)
-    #
-    # sv_dir = sim_framework_path("pretrain_weights")
-    #
+    # #
+    # # sv_dir = sim_framework_path("pretrain_weights")
+    # #
     # env_sim.test_agent(agent, cfg.agents, epoch=cfg.epoch)
     #
     # log.info("Training done")
