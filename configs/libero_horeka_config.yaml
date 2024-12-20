@@ -14,7 +14,7 @@ pretrain_save_path: ${log_dir}/vqvae_weights
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: fast_mail_local
+  project: fast_mail_horeka
 
 group: bc_${task_suite}
 
@@ -44,7 +44,7 @@ task_suite: libero_object
 traj_per_task: 10
 
 ## change the path of dataset
-dataset_path: /home/david/2024/datasets/${task_suite}
+dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/libero/${task_suite}
 #dataset_path: /home/xuan/datasets/${task_suite}
 #dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
 
@@ -64,7 +64,7 @@ train_batch_size: 256
 val_batch_size: 32
 num_workers: 4
 device: 'cuda'
-epoch: 50
+epoch: 2
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'standard'
@@ -99,7 +99,7 @@ latent_dim: 256
 ##########################################################################################
 encoder_n_layer: 4
 decoder_n_layer: 6
-n_heads: 4
+n_heads: 8
 
 ##########################################################################################
 # Mamba Parameters
@@ -154,7 +154,7 @@ simulation:
   seed: ${seed}
   device: ${device}
   render: False
-  n_cores: 2
+  n_cores: 5
   num_episode: 20
   max_step_per_episode: 600
   use_multiprocessing: false

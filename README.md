@@ -69,6 +69,9 @@ cd mamba
 pip install setuptools==61.0.0
 python setup.py install
 pip install causal-conv1d>=1.4.0
+
+# in horeka, the following command works
+pip install mamba-ssm[causal-conv1d] --no-build-isolation
 ```
 ### install xlstm
 ```
