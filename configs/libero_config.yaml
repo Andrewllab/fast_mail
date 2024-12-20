@@ -50,6 +50,7 @@ window_size: 10
 obs_seq_len: 1
 act_seq_len: ${window_size}
 goal_window_size: 1
+goal_conditioned: False
 
 # obs_tokens: goal_window_size + obs_seq_len * len(obs_modalities)
 obs_tokens: 3

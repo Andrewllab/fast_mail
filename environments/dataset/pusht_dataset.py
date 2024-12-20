@@ -31,7 +31,8 @@ class PushTDataset(TrajectoryDataset):
         max_len_data: int = 136,
         window_size: int = 1,
         relative: bool = False,
-        **kwargs,
+        start_idx: int = 0,
+        traj_per_task: int = 1,
     ):
         super().__init__(
             data_directory=data_directory,
@@ -46,17 +47,24 @@ class PushTDataset(TrajectoryDataset):
         self.state_dim = state_dim
 
         self.relative = relative
-        self.states = torch.load(self.data_directory / "states.pth")
+        self.states = torch.load(os.path.join(self.data_directory, "states.pth"))
         if relative:
-            self.actions = torch.load(self.data_directory / "rel_actions.pth")
+            self.actions = torch.load(os.path.join(self.data_directory, "rel_actions.pth"))
         else:
-            self.actions = torch.load(self.data_directory / "abs_actions.pth")
-        with open(self.data_directory / "seq_lengths.pkl", "rb") as f:
+            self.actions = torch.load(os.path.join(self.data_directory, "abs_actions.pth"))
+
+        # Length of each trajectory - total 206 trajectories
+        with open(os.path.join(self.data_directory, "seq_lengths.pkl"), "rb") as f:
             self.seq_lengths = pickle.load(f)
 
         # TODO Cut data from start_idx to start_idx + traj_per_task
-        self.states = self.states.to(device).float()
-        self.actions = self.actions.to(device).float()
+        self.seq_lengths = self.seq_lengths[start_idx : start_idx + traj_per_task]
+        self.states = self.states[start_idx : start_idx + traj_per_task]
+        self.actions = self.actions[start_idx : start_idx + traj_per_task]
+        self.agentview_rgbs = self.get_rbg_collection(start_idx, start_idx + traj_per_task)
+
+        self.states = self.states.to(device).float()    # (N, T, state_dim) - State of T-shape
+        self.actions = self.actions.to(device).float()  # (N, T, action_dim)
         self.masks = torch.ones_like(self.actions)
         n = len(self.states)
 
@@ -65,6 +73,9 @@ class PushTDataset(TrajectoryDataset):
             T = self.seq_lengths[i]
             self.actions[i, T:] = 0  # redo zero padding
             self.masks[i, T:] = 0
+
+        # Turn full trajectories into slices
+        self.slices = self.get_slices()
 
     def get_seq_length(self, idx):
         return self.seq_lengths[idx]
@@ -76,11 +87,24 @@ class PushTDataset(TrajectoryDataset):
             result.append(self.actions[i, :T, :])
         return torch.cat(result, dim=0)
 
-    def get_frames(self, idx, frames):
-        vid_dir = self.data_directory / "obses"
-        obs = torch.load(str(vid_dir / f"episode_{idx:03d}.pth"))
+    def get_rbg_collection(self, start_index, end_index):
+        rgb_collection = [self.get_rgb(i, range(self.get_seq_length(i))) for i in range(start_index, end_index)]
+
+        # Combine all the RGBs with new dimension
+        return rgb_collection
+
+    def get_rgb(self, idx, frames):
+        file_path = os.path.join(self.data_directory, "obses", f"episode_{idx:03d}.pth")
+        obs = torch.load(file_path)
         obs = obs[frames]  # THWC
-        obs = einops.rearrange(obs, "T H W C -> T 1 C H W") / 255.0  # T V C H W, 1 view
+        return obs
+
+    def get_frames(self, idx, frames):
+        obs = self.agentview_rgbs[idx][frames]  # THWC
+        # file_path = os.path.join(self.data_directory, "obses", f"episode_{idx:03d}.pth")
+        # obs2 = torch.load(file_path)
+        # obs2 = obs2[frames]  # THWC
+        # obs = einops.rearrange(obs, "T H W C -> 1 T C H W") / 255.0  # T V C H W, 1 view
         act = self.actions[idx, frames]
         mask = self.masks[idx, frames]
 
@@ -88,10 +112,43 @@ class PushTDataset(TrajectoryDataset):
         obs_dict = {}
         obs_dict["agentview_rgb"] = obs
         obs_dict["lang_emb"] = False
-        return obs, act, mask
+        return obs_dict, act, mask
+
+    def get_slices(self):  #Extract sample slices that meet certain conditions
+        slices = []
+
+        min_seq_length = np.inf
+        for i in range(len(self.seq_lengths)):
+            T = self.seq_lengths[i]
+            min_seq_length = min(T, min_seq_length)
+
+            if T - self.window_size < 0:
+                print(f"Ignored short sequence #{i}: len={T}, window={self.window_size}")
+            else:
+                slices += [
+                    (i, start, start + self.window_size) for start in range(T - self.window_size + 1)
+                ]  # slice indices follow convention [start, end)
+
+        return slices
+
+    # TODO: CHECK THIS
+    def get_all_observations(self):
+        """
+        Returns all actions from all trajectories, concatenated on dim 0 (time).
+        """
+        result = []
+        # mask out invalid observations
+        for i in range(len(self.masks)):
+            T = int(self.masks[i].sum().item())
+            result.append(self.states[i, :T, :])
+        return torch.cat(result, dim=0)
 
     def __getitem__(self, idx):
-        return self.get_frames(idx, range(self.get_seq_length(idx)))
+        """
+        The idx is the index of the slice, not the trajectory.
+        """
+        i, start, end = self.slices[idx]
+        return self.get_frames(i, range(start, end))
 
     def __len__(self):
-        return len(self.seq_lengths)
+        return len(self.slices)

@@ -50,6 +50,7 @@ window_size: 10
 obs_seq_len: 1
 act_seq_len: ${window_size}
 goal_window_size: 1
+goal_conditioned: False
 
 # obs_tokens: goal_window_size + obs_seq_len * len(obs_modalities)
 obs_tokens: 3
@@ -66,7 +67,7 @@ scaler_type: 'standard'
 
 ## Environment
 obs_dim: 9
-action_dim: 7
+action_dim: 2
 state_dim: 110
 max_len_data: 260
 
@@ -76,9 +77,6 @@ shape_meta:
   # acceptable types: rgb, low_dim
   obs:
     agentview_rgb:
-      shape: [ 3, 128, 128 ]
-      type: rgb
-    eye_in_hand_rgb:
       shape: [ 3, 128, 128 ]
       type: rgb
 
@@ -141,16 +139,16 @@ valset:
   window_size: ${window_size}
   start_idx: 30
 
-# TODO
-simulation:
-  _target_: simulation.libero_sim.MultiTaskSim
-  _convert_: all
-  task_suite: ${task_suite}
-  use_eye_in_hand: False
-  seed: ${seed}
-  device: ${device}
-  render: False
-  n_cores: 2
-  num_episode: 20
-  max_step_per_episode: 600
-  use_multiprocessing: false
+## TODO
+#simulation:
+#  _target_: simulation.libero_sim.MultiTaskSim
+#  _convert_: all
+#  task_suite: ${task_suite}
+#  use_eye_in_hand: False
+#  seed: ${seed}
+#  device: ${device}
+#  render: False
+#  n_cores: 2
+#  num_episode: 20
+#  max_step_per_episode: 600
+#  use_multiprocessing: false
