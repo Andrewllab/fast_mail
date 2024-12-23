@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import open3d as o3d
+import torch
 
 
 def rotMatList2NPRotMat(rot_mat_arr):
@@ -71,6 +72,60 @@ def quat2Mat(quat):
     np_rot_mat = rotMatList2NPRotMat(rot_mat_arr)
     return np_rot_mat
 
+def quat2MatBatch(quats):
+    """
+    Vectorized version of quat2Mat for a batch of quaternions.
+
+    Input:
+        quats: A NumPy array of shape (B, T, 4) where
+               B = batch size,
+               T = number of time steps (or any other dimension),
+               and the last dimension is (w, x, y, z).
+    Output:
+        A NumPy array of shape (B, T, 3, 3) representing the rotation matrices.
+    """
+
+    # Extract w, x, y, z. Each will have shape (B, T).
+    w = quats[..., 0]
+    x = quats[..., 1]
+    y = quats[..., 2]
+    z = quats[..., 3]
+
+    # Pre-compute squares
+    x2 = x * x
+    y2 = y * y
+    z2 = z * z
+    w2 = w * w
+
+    # Cross terms
+    xy = x * y
+    xz = x * z
+    yz = y * z
+    xw = x * w
+    yw = y * w
+    zw = z * w
+
+    # Each element of the rotation matrix, shaped (B, T)
+    m00 = x2 - y2 - z2 + w2
+    m01 = 2.0 * (xy - zw)
+    m02 = 2.0 * (xz + yw)
+
+    m10 = 2.0 * (xy + zw)
+    m11 = -x2 + y2 - z2 + w2
+    m12 = 2.0 * (yz - xw)
+
+    m20 = 2.0 * (xz - yw)
+    m21 = 2.0 * (yz + xw)
+    m22 = -x2 - y2 + z2 + w2
+
+    # Stack them along the last dimension and reshape to (B, T, 3, 3)
+    # shape before reshape: (B, T, 9)
+    rot_mat = torch.stack([m00, m01, m02,
+                        m10, m11, m12,
+                        m20, m21, m22], axis=-1)
+    rot_mat = rot_mat.reshape(quats.shape[:-1] + (3, 3))
+    return rot_mat
+
 
 def cammat2o3d(cam_mat, width, height):
     """
@@ -116,4 +171,4 @@ def get_intrinsic(fovy, img_width, img_height):
 def get_pose(pos, quat):
     rot = quat2Mat(quat)
     rot = np.matmul(rot, quat2Mat([0, 1, 0, 0]))
-    return posRotMat2Mat(pos, quat)
+    return posRotMat2Mat(pos, rot)
