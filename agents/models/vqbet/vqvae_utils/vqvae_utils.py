@@ -1,3 +1,4 @@
+# https://github.com/jayLEE0301/vq_bet_official
 import torch
 import numpy as np
 import torch.nn as nn

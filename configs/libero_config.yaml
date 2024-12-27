@@ -1,15 +1,18 @@
 defaults:
-  - agents: bc_agent
+  - agents: vqbet_agent
   - trainers: base_trainer
   - trainers@vqvae_pre_trainer: vqvae_pre_trainer
 #  - override hydra/launcher: submitit_slurm
 
 # agent_name: beso
-agent_name: bc
+agent_name: vqbet
 log_dir: logs/${task_suite}/
-# pretrain: True
-pretrain_epoch: 30
-pretrain_save_path: ${log_dir}/vqvae_weights
+save_path: "$HOME/datasets/fast_mail"
+pretrain_vqvae: True 
+pretrain_vqvae_path: "/home/xuan/datasets/fast_mail/checkpoints/vqvae/2024-12-27/19-45-22/"
+
+model_paths:
+  vqvae: "${save_path}/checkpoints/vqvae/${now:%Y-%m-%d}/${now:%H-%M-%S}/"
 
 # insert wandb here
 wandb:
@@ -44,8 +47,8 @@ task_suite: libero_object
 traj_per_task: 10
 
 ## change the path of dataset
-dataset_path: /home/david/2024/datasets/${task_suite}
-#dataset_path: /home/xuan/datasets/${task_suite}
+#dataset_path: /home/david/2024/datasets/${task_suite}
+dataset_path: /home/xuan/datasets/${task_suite}
 #dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
 
 # Model Setting

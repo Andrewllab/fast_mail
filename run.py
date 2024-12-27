@@ -51,12 +51,14 @@ def main(cfg: DictConfig) -> None:
 
     ## if agent is vqbet, pretrain the vqvae first
     if cfg.agent_name == "vqbet":
-        # vqvae = hydra.utils.instantiate(cfg.agents.model.vq_vae)
-        vqe_pretrainer = hydra.utils.instantiate(cfg.vqvae_pre_trainer)
-        vqe_pretrainer.train(agent)
-        # save weights
-        # agent.vqvae.save_model()
-
+        if cfg.pretrain_vqvae:
+            vqe_pretrainer = hydra.utils.instantiate(cfg.vqvae_pre_trainer)
+            vqe_pretrainer.train(agent, save_path=cfg.model_paths.vqvae)
+            # save weights
+            agent.vqvae.save_model(cfg.model_paths.vqvae)
+        else:
+            if(agent.vqvae.load_model(cfg.pretrain_vqvae_path)):
+                log.info(f"Loaded pretrained vqvae from {cfg.pretrain_vqvae_path}")
     
     trainer.main(agent)
 

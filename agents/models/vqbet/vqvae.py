@@ -4,6 +4,8 @@ https://github.com/jayLEE0301/vq_bet_official
 
 Original implementation of Vector Quantization for VQ-VAE models.
 """
+import os
+import pickle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -52,7 +54,7 @@ class VqVae:
     def __init__(
         self,
         action_dim,
-        action_seq_len,
+        act_seq_len = 10, # length of action chunk, we set it = act_seq_len
         n_latent_dims: int = 512,
         vqvae_n_embed: int = 32,
         vqvae_groups: int = 4,
@@ -62,7 +64,7 @@ class VqVae:
     ):
         super().__init__()
         self.n_latent_dims = n_latent_dims
-        self.action_seq_len = action_seq_len #length of action chunk
+        self.act_seq_len = act_seq_len
         self.action_dim = action_dim #action dim
         self.vqvae_n_embed = vqvae_n_embed
         self.vqvae_groups = vqvae_groups
@@ -70,6 +72,7 @@ class VqVae:
         self.encoder_loss_multiplier = encoder_loss_multiplier
         self.scaler = None
         self.vqvae_lr = 1e-3
+        self.model_name = "vqvae_model.pt"
 
         discrete_cfg = {"groups": self.vqvae_groups, "n_embed": self.vqvae_n_embed}
 
@@ -82,7 +85,7 @@ class VqVae:
 
         self.vq_layer.device = device
 
-        if self.action_seq_len == 1:
+        if self.act_seq_len == 1:
             self.encoder = EncoderMLP(
                 input_dim=action_dim, output_dim=n_latent_dims
             ).to(self.device)
@@ -91,10 +94,10 @@ class VqVae:
             ).to(self.device)
         else:
             self.encoder = EncoderMLP(
-                input_dim=action_dim * self.action_seq_len, output_dim=n_latent_dims
+                input_dim=action_dim * self.act_seq_len, output_dim=n_latent_dims
             ).to(self.device)
             self.decoder = EncoderMLP(
-                input_dim=n_latent_dims, output_dim=action_dim * self.action_seq_len
+                input_dim=n_latent_dims, output_dim=action_dim * self.act_seq_len
             ).to(self.device)
         
         params = (
@@ -133,23 +136,22 @@ class VqVae:
         return z_embed
 
     def get_action_from_latent(self, latent):
-        output = self.decoder(latent) * self.act_scale
-        if self.action_seq_len == 1:
-            return einops.rearrange(output, "N (T A) -> N T A", A=self.action_dim)
-        else:
-            return einops.rearrange(output, "N (T A) -> N T A", A=self.action_dim)
+        decoder_output = self.decoder(latent)
+        output = decoder_output.reshape(-1, self.act_seq_len, self.action_dim)
+        # output = self.scaler.inverse_scale_output(output)
+        return output
 
     def preprocess(self, state):
         if not torch.is_tensor(state):
             state = get_tensor(state, self.device)
-        if self.action_seq_len == 1:
+        if self.act_seq_len == 1:
             state = state.squeeze(-2)  # state.squeeze(-1)
         else:
             state = einops.rearrange(state, "N T A -> N (T A)")
         return state.to(self.device)
 
     def get_code(self, state, required_recon=False):
-        state = state / self.act_scale
+        # state = self.scaler.scale_output(state)
         state = self.preprocess(state)
         with torch.no_grad():
             state_rep = self.encoder(state)
@@ -160,9 +162,13 @@ class VqVae:
             vq_code = vq_code.view(*state_rep_shape, -1)
             vq_loss_state = torch.sum(vq_loss_state)
             if required_recon:
-                recon_state = self.decoder(state_vq) * self.act_scale
-                recon_state_ae = self.decoder(state_rep) * self.act_scale
-                if self.action_seq_len == 1:
+                # recon_state = self.decoder(state_vq) * self.act_scale
+                # recon_state_ae = self.decoder(state_rep) * self.act_scale
+                # recon_state = self.scaler.inverse_scale_output(self.decoder(state_vq))
+                # recon_state_ae = self.scaler.inverse_scale_output(self.decoder(state_rep))
+                recon_state = self.decoder(state_vq)
+                recon_state_ae = self.decoder(state_rep)
+                if self.act_seq_len == 1:
                     return state_vq, vq_code, recon_state, recon_state_ae
                 else:
                     return (
@@ -176,8 +182,6 @@ class VqVae:
                 return state_vq, vq_code
 
     def vqvae_update(self, state):
-        # state = state / self.act_scale
-        # state = self.scaler.scale_output(state)
         state = self.preprocess(state)
         state_rep = self.encoder(state)
         state_rep_shape = state_rep.shape[:-1]
@@ -186,7 +190,6 @@ class VqVae:
         state_vq = state_rep_flat.view(*state_rep_shape, -1)
         vq_code = vq_code.view(*state_rep_shape, -1)
         vq_loss_state = torch.sum(vq_loss_state)
-
         dec_out = self.decoder(state_vq)
         encoder_loss = (state - dec_out).abs().mean()
 
@@ -218,3 +221,32 @@ class VqVae:
         self.vqvae_optimizer.load_state_dict(state_dict["optimizer"])
         self.vq_layer.load_state_dict(state_dict["vq_embedding"])
         self.vq_layer.eval()
+
+    def save_model(self, save_path: str):
+        """Save the model state to .pt and scaler to a .pkl file"""
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+        model_path = os.path.join(save_path, self.model_name)
+        torch.save(self.state_dict(), model_path)
+        # Save scaler using pickle
+        if self.scaler is not None:
+            scaler_path = model_path.replace('.pt', '_scaler.pkl')
+            with open(scaler_path, 'wb') as f:
+                pickle.dump(self.scaler, f)
+
+    def load_model(self, load_path: str):
+        """Load the model state and scaler"""
+        model_path = os.path.join(load_path, self.model_name)
+        scaler_path = model_path.replace('.pt', '_scaler.pkl')
+        try:
+            state_dict = torch.load(model_path, weights_only=False)
+        except RuntimeError:
+            raise RuntimeError(f"No model file found at {model_path}")
+        self.load_state_dict(state_dict)
+
+        try:
+            with open(scaler_path, 'rb') as f:
+                self.scaler = pickle.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"No scaler file found at {scaler_path}")
+        return True

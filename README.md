@@ -118,7 +118,8 @@ The code of this repository relies on the following existing codebases:
 - [x] add basic bc_xlstm sturcture, yaml file setting
 - [x] debug xlstm structure
 - [x] multi processing model save/load debug
-- [ ] add vqbet
+- [x] add vqbet
+- [ ] debug action chunking in vqbet
 
 ### Misc
 - [ ] Unify camera image observation of both libero and robocasa
