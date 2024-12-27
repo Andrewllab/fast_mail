@@ -25,4 +25,7 @@ class PointCloudWrapper(gym.Wrapper):
         depths = {cam: obs_dict[f"{cam}_depth"] for cam in self.cam_names}
         
         return self.pc_generator.get_point_cloud(imgs, depths)
+    
+    def _check_success(self):
+        return self.env._check_success()
 
