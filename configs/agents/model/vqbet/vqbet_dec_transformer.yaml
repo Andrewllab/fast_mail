@@ -1,4 +1,4 @@
-_target_: agents.models.bc.bc.BC_Policy
+_target_: agents.models.vqbet.vqbet.VqBet_Policy
 _recursive_: false
 
 backbones:

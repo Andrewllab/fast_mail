@@ -22,7 +22,6 @@ from trainers.base_trainer import BaseTrainer
 log = logging.getLogger(__name__)
 
 
-
 class VQVaeTrainer(BaseTrainer):
     def __init__(
         self,
@@ -56,7 +55,7 @@ class VQVaeTrainer(BaseTrainer):
             if_use_ema
         )
 
-    def train(self, agent):
+    def train(self, agent, save_path):
         agent.set_scaler(self.scaler)
          # define optimizer
         if agent.use_lr_scheduler:
@@ -72,8 +71,7 @@ class VQVaeTrainer(BaseTrainer):
 
             for data in tqdm(self.train_dataloader):
                 obs_dict, action, mask = data
-                action = self.scaler.scale_output(action)
-
+                action = self.scaler.scale_output(action) #N T D
                 (
                     encoder_loss,
                     vq_loss_state,
@@ -110,15 +108,17 @@ class VQVaeTrainer(BaseTrainer):
                 "pretrain/epoch_vq_loss": mean_vq_loss,
                 "pretrain/epoch_recon_loss": mean_recon_loss,
             })
-
-            log.info("training done")
         
-        # if num_epoch % 10 == 0:
-        #     #todo: save scaler?
-        #     state_dict = agent.vqvae.state_dict()
-        #     torch.save(state_dict, os.path.join(save_path, "trained_vqvae.pt"))
-        return agent.vqvae.state_dict()
+            if num_epoch % 10 == 0:
+                self.save_model(agent, save_path)
+        
+        self.save_model(agent, save_path)
+        log.info("training done")
+        return
 
+    def save_model(self, agent, save_path):
+        agent.vqvae.save_model(save_path)
+        log.info(f"Model saved to {save_path}")
 
     def evaluate_nsteps(self, VQVAEmodel, criterion, loader, step_id, val_iters, split='val'):
         pass

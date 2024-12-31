@@ -3,9 +3,9 @@ _recursive_: false
 
 #obs_dim: ${obs_dim}
 action_dim: ${action_dim}
-action_seq_len: ${act_seq_len}
+act_seq_len: ${act_seq_len} # length of action chunk, we make it = seq_len
 n_latent_dims: 512
-vqvae_n_embed: 32
-vqvae_groups: 4
+vqvae_n_embed: 10
+vqvae_groups: 2
 device: ${device}
 encoder_loss_multiplier: 1.0
