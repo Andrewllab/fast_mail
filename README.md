@@ -113,17 +113,14 @@ The code of this repository relies on the following existing codebases:
   - [ ] provide language encoder and if use language text
   - [ ] write different encoder-decoder structures
 ### Xuan Zhao
-- [x] add selection of multi processing (temporarily solve local object unpicklable error)
-- [x] add testing progress & states visualization
-- [x] add basic bc_xlstm sturcture, yaml file setting
-- [x] debug xlstm structure
-- [x] multi processing model save/load debug
-- [x] add vqbet
-- [ ] debug action chunking in vqbet
+- [x] Add progress tracking and state visualization
+- [x] Implement BC-XLSTM structure with YAML config
+- [x] Debug XLSTM implementation
+- [x] Fix multiprocessing model save/load; add multiprocessing selection (unpicklable error)
+- [x] VQBET
+- [ ] Clean up code
 
 ### Misc
-- [ ] Unify camera image observation of both libero and robocasa
-- [ ] Fix context length parameter of xlstm
-- [ ] Add custimized method to stack xlstm blocks
-- [ ] Set datapath to a relative path
-- [ ] Code structure, scaler?
+- [ ] Standardize camera image observations across LIBERO and RoboCasa
+- [ ] Resolve XLSTM context length issues
+- [ ] Add custom XLSTM block stacking functionality
