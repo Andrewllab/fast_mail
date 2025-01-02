@@ -33,7 +33,7 @@ class BaseAgent(nn.Module, abc.ABC):
         self.device = device
         self.working_dir = os.getcwd()
         self.scaler = None
-        
+
         # Initialize model and encoder
         self.img_encoder = hydra.utils.instantiate(obs_encoders).to(device)
         self.language_encoder = hydra.utils.instantiate(language_encoders).to(device)
@@ -47,11 +47,12 @@ class BaseAgent(nn.Module, abc.ABC):
     def set_scaler(self, scaler):
         self.scaler = scaler
 
+    # @abc.abstractmethod
     def compute_input_embeddings(self, obs_dict):
         """
         Compute the required embeddings for the visual ones and the latent goal.
         """
-        
+
         if "lang" in obs_dict:
             obs_dict["lang_emb"] = self.language_encoder(obs_dict["lang"]).float()
 
@@ -80,7 +81,7 @@ class BaseAgent(nn.Module, abc.ABC):
             perceptual_emb = torch.cat([perceptual_emb, robot_states], dim=1)
 
         return perceptual_emb, latent_goal
-    
+
     @abc.abstractmethod
     def forward(self, obs_dict: dict[str, torch.Tensor], actions=None) -> torch.Tensor:
         """

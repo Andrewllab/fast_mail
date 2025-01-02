@@ -19,3 +19,8 @@ torchdiffeq
 imageio[ffmpeg]
 open3d
 ftfy
+pygame #==2.5.2
+pygments #==2.16.1
+pymunk #==6.6.0
+scikit-image #==0.19.3
+shapely #==2.0.3

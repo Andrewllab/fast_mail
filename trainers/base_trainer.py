@@ -16,8 +16,9 @@ from torch.utils.data.distributed import DistributedSampler
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 
-from agents.utils.scaler import Scaler, ActionScaler, MinMaxScaler
-from agents.utils.ema import ExponentialMovingAverage
+from fast_mail.agents.utils.scaler import Scaler, ActionScaler, MinMaxScaler
+from fast_mail.agents.utils.ema import ExponentialMovingAverage
+from fast_mail.agents.base_agent import BaseAgent
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ class BaseTrainer:
 
             epoch_loss = torch.tensor(0.0).to(self.device)
 
-            for data in tqdm(self.train_dataloader):
+            for data in self.train_dataloader:
                 obs_dict, action, mask = data
 
                 # put data on cuda
@@ -133,7 +134,7 @@ class BaseTrainer:
         agent.store_model_weights(agent.working_dir, sv_name='last_model.pth')
         # or send weight out of the class
 
-    def train_one_step(self, agent, obs_dict, action):
+    def train_one_step(self, agent: BaseAgent , obs_dict, action):
         """Run a single training step."""
         agent.train()
 

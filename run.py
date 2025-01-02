@@ -28,7 +28,7 @@ def set_seed_everywhere(seed):
     random.seed(seed)
 
 
-@hydra.main(config_path="configs", config_name="libero_config.yaml", version_base="1.3")
+@hydra.main(config_path="configs", config_name="pushT_config.yaml", version_base="1.3")
 def main(cfg: DictConfig) -> None:
 
     set_seed_everywhere(cfg.seed)
@@ -62,17 +62,17 @@ def main(cfg: DictConfig) -> None:
     
     trainer.main(agent)
 
-    # simulate the model
-    env_sim = hydra.utils.instantiate(cfg.simulation)
-    env_sim.get_task_embs(trainer.trainset.tasks)
-
-    sv_dir = sim_framework_path("pretrain_weights")
-
-    env_sim.test_agent(agent, cfg.agents, epoch=cfg.epoch)
-
-    log.info("Training done")
-    log.info("state_dict saved in {}".format(agent.working_dir))
-    wandb.finish()
+    # # simulate the model
+    # env_sim = hydra.utils.instantiate(cfg.simulation)
+    # env_sim.get_task_embs(trainer.trainset.tasks)
+    # #
+    # # sv_dir = sim_framework_path("pretrain_weights")
+    # #
+    # env_sim.test_agent(agent, cfg.agents, epoch=cfg.epoch)
+    #
+    # log.info("Training done")
+    # log.info("state_dict saved in {}".format(agent.working_dir))
+    # wandb.finish()
 
 
 if __name__ == "__main__":

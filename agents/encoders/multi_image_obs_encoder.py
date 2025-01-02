@@ -172,7 +172,11 @@ class MultiImageObsEncoder(ModuleAttrMixin):
                     batch_size = img.shape[0]
                 else:
                     assert batch_size == img.shape[0]
-                assert img.shape[1:] == self.key_shape_map[key]
+                try:
+                    assert img.shape[1:] == self.key_shape_map[key]
+                except AssertionError as e:
+                    print(f"key: {key}, shape: {img.shape[1:]}, expected: {self.key_shape_map[key]}")
+                    raise e
                 #change image from B H W C -> B C H W
                 # img = img.permute(0, 3, 1, 2) has been changed in dataset
                 img = self.key_transform_map[key](img)
