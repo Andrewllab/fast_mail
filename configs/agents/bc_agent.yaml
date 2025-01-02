@@ -9,7 +9,7 @@ defaults:
 
 optimization:
   _target_: torch.optim.Adam
-  lr: 5e-4
+  lr: 1e-5
   weight_decay: 0
 
 action_seq_size: ${act_seq_len}
