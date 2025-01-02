@@ -3,35 +3,6 @@
 This is an open-source project that aims to provide a set of imitation learning algorithms and environments.
 
 ---
-## TODO
-
-### Xiaogang Jia
-- 12.10 -> basic structure implementation
-  - [x] Implement the basic structure of the project.
-  - [x] Libero dataset and environment.
-  - [x] BC policy.
-  - [x] Transformer (encoder_decoder)
-  - [x] Basic training scripts and evaluation
-- 12.11 -> beso and mamba1/2
-  - [x] add beso (with mdt architecture)
-  - [x] add mamba1/2
-- 12.12
-  - [x] refine framework, add trainers
-- 12.17
-  - [x] unify decoder-only and encoder-decoder
-  - [ ] add adaln layers to mamba (later the film condition should be on all methods)
-  - [ ] add beso mamba
-  - [ ] unify transformer
-  - [ ] provide language encoder and if use language text
-  - [ ] write different encoder-decoder structures
-### Xuan Zhao
-- [x] add selection of multi processing (temporarily solve local object unpicklable error)
-- [x] add testing progress & states visualization
-- [x] add basic bc_xlstm sturcture, yaml file setting
-- [x] debug xlstm structure
-- [x] multi processing model save/load debug
-
----
 
 ## Desired Features
 
@@ -98,6 +69,9 @@ cd mamba
 pip install setuptools==61.0.0
 python setup.py install
 pip install causal-conv1d>=1.4.0
+
+# in horeka, the following command works
+pip install mamba-ssm[causal-conv1d] --no-build-isolation
 ```
 ### install xlstm
 ```
@@ -114,3 +88,39 @@ The code of this repository relies on the following existing codebases:
 - [xLSTM] https://github.com/NX-AI/xlstm
 - [D3Il] https://github.com/ALRhub/d3il
 - [LIBERO] https://github.com/Lifelong-Robot-Learning/LIBERO
+
+
+---
+## TODO
+
+### Xiaogang Jia
+- 12.10 -> basic structure implementation
+  - [x] Implement the basic structure of the project.
+  - [x] Libero dataset and environment.
+  - [x] BC policy.
+  - [x] Transformer (encoder_decoder)
+  - [x] Basic training scripts and evaluation
+- 12.11 -> beso and mamba1/2
+  - [x] add beso (with mdt architecture)
+  - [x] add mamba1/2
+- 12.12
+  - [x] refine framework, add trainers
+- 12.17
+  - [x] unify decoder-only and encoder-decoder
+  - [ ] add adaln layers to mamba (later the film condition should be on all methods)
+  - [ ] add beso mamba
+  - [ ] unify transformer
+  - [ ] provide language encoder and if use language text
+  - [ ] write different encoder-decoder structures
+### Xuan Zhao
+- [x] Add progress tracking and state visualization
+- [x] Implement BC-XLSTM structure with YAML config
+- [x] Debug XLSTM implementation
+- [x] Fix multiprocessing model save/load; add multiprocessing selection (unpicklable error)
+- [x] VQBET
+- [ ] Clean up code
+
+### Misc
+- [ ] Standardize camera image observations across LIBERO and RoboCasa
+- [ ] Resolve XLSTM context length issues
+- [ ] Add custom XLSTM block stacking functionality

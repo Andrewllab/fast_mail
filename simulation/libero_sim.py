@@ -87,7 +87,7 @@ class MultiTaskSim(BaseSim):
             # Case 2: Use provided agent directly
             assert agent is not None, "Either agent or (agent_config + states) must be provided"
 
-        print(contexts)
+        # print(contexts)
 
         for i, context in enumerate(contexts):
 
@@ -174,10 +174,10 @@ class MultiTaskSim(BaseSim):
             completed_lengths = episode_lengths.flatten()[mask]
             average_success = torch.mean(completed_success).item()
             average_episode_length = torch.mean(completed_lengths).item()
-            print(f'completed_success { completed_success}')
-            print(f'completed_lengths {completed_lengths}')
-            print(f'average success rate: {average_success}')
-            print(f'average episode length: {average_episode_length}')
+            log.info(f'completed_success {completed_success}')
+            log.info(f'completed_lengths {completed_lengths}')
+            log.info(f'average success rate: {average_success}')
+            log.info(f'average episode length: {average_episode_length}')
 
             env.close()
 
@@ -194,9 +194,9 @@ class MultiTaskSim(BaseSim):
             num_cpu = len(cpu_set)
         
         if self.use_multiprocessing:
-            print("there is {} cpus".format(num_cpu))
+            log.info("there is {} cpus".format(num_cpu))
         else:
-            print("not using multiprocessing, run on 1 cpu")
+            log.info("not using multiprocessing, run on 1 cpu")
 
         if self.task_suite == "libero_90":
             num_tasks = 90

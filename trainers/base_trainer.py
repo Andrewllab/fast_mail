@@ -132,6 +132,7 @@ class BaseTrainer:
             self.ema_helper.copy_to(agent.parameters())
 
         agent.store_model_weights(agent.working_dir, sv_name='last_model.pth')
+        # or send weight out of the class
 
     def train_one_step(self, agent: BaseAgent , obs_dict, action):
         """Run a single training step."""
