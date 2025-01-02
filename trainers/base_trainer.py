@@ -98,14 +98,17 @@ class BaseTrainer:
 
             epoch_loss = torch.tensor(0.0).to(self.device)
 
-            for data in self.train_dataloader:
+            for data in tqdm(self.train_dataloader):
                 obs_dict, action, mask = data
 
                 # put data on cuda
                 for camera in obs_dict.keys():
+                    if camera == 'lang':
+                        continue
+                    
                     obs_dict[camera] = obs_dict[camera].to(self.device)
 
-                    if 'rgb' not in camera:
+                    if 'rgb' not in camera and 'image' not in camera:
                         continue
                     obs_dict[camera] = obs_dict[camera][:, :self.obs_seq_len].contiguous()
 
@@ -128,6 +131,7 @@ class BaseTrainer:
             self.ema_helper.copy_to(agent.parameters())
 
         agent.store_model_weights(agent.working_dir, sv_name='last_model.pth')
+        # or send weight out of the class
 
     def train_one_step(self, agent, obs_dict, action):
         """Run a single training step."""

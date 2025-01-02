@@ -2,13 +2,13 @@ _target_: agents.models.bc.bc.BC_Policy
 _recursive_: false
 
 backbones:
-  _target_: agents.backbones.transformer.transformer.EncDec
+  _target_: agents.backbones.encoder_decoder.EncDec
   _recursive_: false
   state_dim: ${latent_dim}
   action_dim: ${action_dim}
-  obs_tokens: ${obs_tokens}
+  goal_conditioned: ${goal_conditioned}
   goal_seq_len: 1
-  obs_seq_len: ${obs_seq_len}
+  obs_seq_len: ${obs_tokens}
   action_seq_len: ${act_seq_len}
   embed_pdrob: 0
   # Architecture details
@@ -16,27 +16,28 @@ backbones:
   goal_dim: ${goal_dim}
   device: ${device}
   linear_output: true
+  forward_type: 'cross_attn'
 
   encoder:
-    _target_: agents.backbones.transformer.transformer.TransformerEncoder
+    _target_: agents.backbones.transformer.blocks.TransformerEncoder
     embed_dim: ${n_embd}
     n_heads: ${n_heads}
     n_layers: ${encoder_n_layer}
-    attn_pdrop: 0.1
+    attn_pdrop: 0.3
     resid_pdrop: 0.1
+    mlp_pdrop: 0.1
     bias: False
-    block_size: ${add:${window_size}, 5}
 
   decoder:
-    _target_: agents.backbones.transformer.transformer.TransformerDecoder
+    _target_: agents.backbones.transformer.blocks.TransformerDecoder
     embed_dim: ${n_embd}
-    cross_embed: ${n_embd} # allow cross embedding to have different dimension
     n_heads: ${n_heads}
     n_layers: ${decoder_n_layer}
-    attn_pdrop: 0.1
+    attn_pdrop: 0.3
     resid_pdrop: 0.1
+    mlp_pdrop: 0.1
     bias: False
-    block_size: ${add:${window_size}, 5}
+    use_cross_attention: True
 
 device: ${device}
 

@@ -3,7 +3,7 @@ from typing import List
 import torch
 import torch.nn as nn
 
-from agents.mdt.models.networks.clip import build_model, load_clip, tokenize
+from agents.models.beso.models.networks.clip import build_model, load_clip, tokenize
 
 
 class LangClip(nn.Module):

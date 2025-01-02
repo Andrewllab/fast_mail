@@ -24,6 +24,7 @@ def process_image_input(img_tensor):
     # return (img_tensor / 255. - 0.5) * 2.
     return img_tensor / 255.
 
+
 class MultiTaskSim(BaseSim):
     def __init__(self,
                  num_episode,
@@ -48,6 +49,7 @@ class MultiTaskSim(BaseSim):
 
         self.success_rate = 0
         self.use_multiprocessing = use_multiprocessing
+
     def reverse_rgb_channels(self, test_img):
 
         test_img = test_img[::-1, ::-1, :]
@@ -57,25 +59,35 @@ class MultiTaskSim(BaseSim):
         return np.ascontiguousarray(test_img)
 
     def eval_agent(self,
-                   agent,
-                #    model_state_dict,
-                #    scaler,
                    contexts,
                    context_ind,
                    success,
                    episode_lengths,
                    pid,
                    cpu_set,
-                   counter):
+                   counter,
+                   agent=None,
+                   agent_config=None,
+                   model_states=None):
         # Only set CPU affinity if using multiprocessing
         if self.use_multiprocessing:
             print(os.getpid(), cpu_set)
             assign_process_to_cpu(os.getpid(), cpu_set)
 
-        # agent = hydra.utils.instantiate(agent_config)
-        # agent.recover_state(model_state_dict, scaler)
+        # Handle agent initialization based on input type
+        if agent_config is not None:
+            # Case 1: Initialize agent from config and states
+            assert model_states is not None, "model_states must be provided when using agent_config"
+            agent = hydra.utils.instantiate(agent_config)
+            agent.recover_model_state(
+                model_states['model'],
+                model_states['scaler']
+            )
+        else:
+            # Case 2: Use provided agent directly
+            assert agent is not None, "Either agent or (agent_config + states) must be provided"
 
-        print(contexts)
+        # print(contexts)
 
         for i, context in enumerate(contexts):
 
@@ -85,7 +97,7 @@ class MultiTaskSim(BaseSim):
 
             file_name = os.path.basename(task_bddl_file).split('.')[0]
 
-            task_emb = self.task_embs[file_name]
+            task_emb = self.task_embs[file_name].to(self.device).unsqueeze(0)
 
             # goal_images = self.goal_dicts[file_name]
             # goal_image = random.choice(goal_images)
@@ -113,13 +125,13 @@ class MultiTaskSim(BaseSim):
 
             # multiprocessing simulation
             for j in range(self.max_step_per_episode):
-                agentview_rgb = obs["agentview_image"]
-                eye_in_hand_rgb = obs["robot0_eye_in_hand_image"]
+                agentview_rgb = torch.from_numpy(obs["agentview_image"]).to(self.device).float().permute(2, 0, 1).unsqueeze(0).unsqueeze(0) / 255.
+                eye_in_hand_rgb = torch.from_numpy(obs["robot0_eye_in_hand_image"]).to(self.device).float().permute(2, 0, 1).unsqueeze(0).unsqueeze(0) / 255.
 
                 joint_state = obs["robot0_joint_pos"]
                 gripper_state = obs["robot0_gripper_qpos"]
 
-                robot_states = np.concatenate([joint_state, gripper_state], axis=-1)
+                robot_states = torch.from_numpy(np.concatenate([joint_state, gripper_state], axis=-1)).to(self.device).float().unsqueeze(0).unsqueeze(0)
 
                 # save_path = os.path.join("/home/i53/student/wang/OCIL/OCIL", f"{self.task_suite}", "images")
                 # img = env.sim.render(camera_name="frontview", width=1280, height=800)[..., ::-1]
@@ -134,7 +146,7 @@ class MultiTaskSim(BaseSim):
                             "lang_emb": task_emb,
                             "robot_states": robot_states}
 
-                action = agent.predict(obs_dict)
+                action = agent.predict(obs_dict).cpu().numpy()
                 obs, r, done, _ = env.step(action)
 
                 # if self.render:
@@ -162,10 +174,10 @@ class MultiTaskSim(BaseSim):
             completed_lengths = episode_lengths.flatten()[mask]
             average_success = torch.mean(completed_success).item()
             average_episode_length = torch.mean(completed_lengths).item()
-            print(f'completed_success { completed_success}')
-            print(f'completed_lengths {completed_lengths}')
-            print(f'average success rate: {average_success}')
-            print(f'average episode length: {average_episode_length}')
+            log.info(f'completed_success {completed_success}')
+            log.info(f'completed_lengths {completed_lengths}')
+            log.info(f'average success rate: {average_success}')
+            log.info(f'average episode length: {average_episode_length}')
 
             env.close()
 
@@ -182,9 +194,9 @@ class MultiTaskSim(BaseSim):
             num_cpu = len(cpu_set)
         
         if self.use_multiprocessing:
-            print("there is {} cpus".format(num_cpu))
+            log.info("there is {} cpus".format(num_cpu))
         else:
-            print("not using multiprocessing, run on 1 cpu")
+            log.info("not using multiprocessing, run on 1 cpu")
 
         if self.task_suite == "libero_90":
             num_tasks = 90
@@ -212,14 +224,14 @@ class MultiTaskSim(BaseSim):
             counter.update = update_pbar  # Add update method to counter
 
             self.eval_agent(
-                agent=agent,
                 contexts=contexts,
                 context_ind=context_ind,
                 success=success,
                 episode_lengths=episode_lengths,
                 pid=0,
                 cpu_set=set(cpu_set),
-                counter=counter
+                counter=counter,
+                agent=agent
             )
             pbar.close()
         else:
@@ -242,36 +254,30 @@ class MultiTaskSim(BaseSim):
             counter = ctx.Value('i', 0) #create a shared counter for progress bar
             pbar = tqdm(total=all_runs, desc="Testing agent")
             
-            # model_state_dict, scaler = agent.get_model_state
-            # shared_state_dict = {}
-            # for key, tensor in model_state_dict.items():
-            #     shared_tensor = tensor.share_memory_()
-            #     shared_state_dict[key] = shared_tensor
-            
-            # # Check keys & values are the same
-            # assert set(model_state_dict.keys()) == set(shared_state_dict.keys()), "Keys don't match!"
-
-            # for key in model_state_dict:
-            #     assert torch.equal(model_state_dict[key], shared_state_dict[key]), f"Tensors don't match for key: {key}"
-
-
-            # print("Verification passed: shared_state_dict is identical to model_state_dict")
-
+            # Create shared memory state dictionaries for all models
+            model_states = agent.get_model_state
+            shared_states = {
+                'model': {},
+                'scaler': model_states[1]  # Assuming scaler is the 4th element
+            }
     
+            # Share memory for each state dictionary
+            for key, tensor in model_states[0].items():
+                shared_states['model'][key] = tensor.share_memory_()
+
             for i in range(self.n_cores):
                 p = ctx.Process(target=self.eval_agent,
-                                kwargs={
-                                    # "agent_config": agent_config,
-                                    "agent": agent,
-                                    # "model_state_dict": shared_state_dict,
-                                    # "scaler": scaler,
+                                kwargs={  # Now passing single parameter
                                     "contexts": contexts[ind_workload[i]:ind_workload[i + 1]],
                                     "context_ind": context_ind[ind_workload[i]:ind_workload[i + 1]],
                                     "success": success,
                                     "episode_lengths": episode_lengths,
                                     "pid": i,
                                     "cpu_set": set(cpu_set[i:i + 1]),
-                                    "counter": counter
+                                    "counter": counter,
+                                    "agent": None,
+                                    "agent_config": agent_config,
+                                    "model_states": shared_states,
                                 },
                                 )
                 p.start()
@@ -286,8 +292,6 @@ class MultiTaskSim(BaseSim):
 
             [p.join() for p in processes_list]
             pbar.close()
-
-
 
         success_rate = torch.mean(success, dim=-1)
         average_success = torch.mean(success_rate).item()

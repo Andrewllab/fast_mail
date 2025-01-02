@@ -6,7 +6,7 @@ transformers
 opencv-python
 einops
 thop
-robosuite==1.4.1
+robosuite==1.4.0
 bddl
 future
 matplotlib
@@ -17,3 +17,5 @@ h5py
 torchsde
 torchdiffeq
 imageio[ffmpeg]
+open3d
+ftfy

@@ -1,7 +1,9 @@
 LIBERO/*
+robocasa/*
 
 logs/*
 
 **/__pycache__/
 
 .idea/*
+.vscode/*

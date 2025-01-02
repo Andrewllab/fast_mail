@@ -1,16 +1,23 @@
 defaults:
-  - agents: bc_agent
+  - agents: vqbet_agent
   - trainers: base_trainer
+  - trainers@vqvae_pre_trainer: vqvae_pre_trainer
 #  - override hydra/launcher: submitit_slurm
 
 # agent_name: beso
-agent_name: bc
+agent_name: vqbet
 log_dir: logs/${task_suite}/
+save_path: "/home/xuan/datasets/fast_mail" #your save path
+pretrain_vqvae: True
+pretrain_vqvae_path: "/home/xuan/datasets/fast_mail/checkpoints/vqvae/2024-12-30/18-31-55/" #pre train vae folder
+
+model_paths:
+  vqvae: "${save_path}/checkpoints/vqvae/${now:%Y-%m-%d}/${now:%H-%M-%S}/"
 
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: fast_mail
+  project: fast_mail_local
 
 group: bc_${task_suite}
 
@@ -40,25 +47,27 @@ task_suite: libero_object
 traj_per_task: 10
 
 ## change the path of dataset
-# dataset_path: /home/david/2024/datasets/${task_suite}
-dataset_path: /home/xuan/datasets/${task_suite}
+dataset_path: /home/david/2024/datasets/${task_suite}
+#dataset_path: /home/xuan/datasets/${task_suite}
 #dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
 
 # Model Setting
 window_size: 10
 obs_seq_len: 1
 act_seq_len: ${window_size}
+multistep: ${window_size} # only for inference, could be different from act_seq_len
 goal_window_size: 1
 
-# obs_tokens: goal_window_size + obs_seq_len * len(obs_modalities)
-obs_tokens: 3
+goal_conditioned: True
+# obs_tokens: obs_seq_len * len(obs_modalities)
+obs_tokens: 2
 
 # Training
 train_batch_size: 256
 val_batch_size: 32
 num_workers: 4
 device: 'cuda'
-epoch: 50
+epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'standard'
