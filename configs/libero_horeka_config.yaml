@@ -64,7 +64,7 @@ train_batch_size: 256
 val_batch_size: 32
 num_workers: 4
 device: 'cuda'
-epoch: 2
+epoch: 50
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'standard'
@@ -104,7 +104,7 @@ n_heads: 8
 ##########################################################################################
 # Mamba Parameters
 ##########################################################################################
-Mamba_type: Mamba2
+Mamba_type: Mamba
 
 mamba_n_layer_encoder: 10
 mamba_encoder_cfg:

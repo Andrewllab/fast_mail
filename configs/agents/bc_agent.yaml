@@ -2,7 +2,7 @@ _target_: agents.bc_agent.BC_Agent
 _recursive_: false
 
 defaults:
-  - model: bc/bc_dec_transformer
+  - model: bc/bc_dec_xlstm
 #  - model: bc/bc_xlstm
   - obs_encoders: resnet
   - language_encoders: clip
