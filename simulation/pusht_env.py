@@ -291,14 +291,6 @@ class PushTEnv(gym.Env):
                     rs.randn() * 2 * np.pi - np.pi,
                 ]
             )
-            goal = np.array(
-                [
-                    rs.randint(100, 400),
-                    rs.randint(100, 400),
-                    rs.randn() * 2 * np.pi - np.pi,
-                ]
-            )
-            self.goal_pose = goal
         self.set_task_goal(self.goal_pose)
         self._set_state(state)
 

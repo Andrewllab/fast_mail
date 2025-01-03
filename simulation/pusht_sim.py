@@ -30,6 +30,7 @@ class PushTSim(BaseSim):
             render,
             n_cores,
             n_test_tasks,
+            debug_dataset,
             use_multiprocessing=False
     ):
         """
@@ -48,6 +49,8 @@ class PushTSim(BaseSim):
         self.success_rate = 0
         self.use_multiprocessing = use_multiprocessing
         self.n_tasks = n_test_tasks
+        if debug_dataset is not None:
+            self.debug_dataloader = DataLoader(debug_dataset, batch_size=1, shuffle=False, num_workers=0)
 
     def eval_agent(self,
                    agent,
@@ -91,8 +94,8 @@ class PushTSim(BaseSim):
             agent.reset()
             if curr_context == context:
                 obs = env.reset()
-            # else:
-            #     obs = env.reset_new_test_case()
+            else:
+                obs = env.reset_new_test_case()
 
             # multiprocessing simulation
             for j in range(self.max_step_per_episode):
@@ -107,8 +110,7 @@ class PushTSim(BaseSim):
 
                 action = agent.predict(obs_dict)
                 action = action.detach().cpu().numpy()
-                for i in range(5):
-                    obs, r, done, info = env.step(action)
+                obs, r, done, info = env.step(action)
                 print(f"action: {action}")
                 if self.render:
                     env.render(mode='human')
@@ -132,6 +134,90 @@ class PushTSim(BaseSim):
             print(f'completed_lengths {completed_lengths}')
             print(f'average success rate: {average_success}')
             print(f'average episode length: {average_episode_length}')
+
+    def debug_agent(self,
+                   agent,
+                   contexts,
+                   success,
+                   episode_lengths,
+                   pid,
+                   cpu_set,
+                   counter,
+                   agent_config=None,
+                   ):
+        # Only set CPU affinity if using multiprocessing
+        if self.use_multiprocessing:
+            print(os.getpid(), cpu_set)
+            assign_process_to_cpu(os.getpid(), cpu_set)
+
+        env = None
+        # Get the first data from the dataloader
+        for data in self.debug_dataloader:
+            obs, action, mask = data
+            init_state = obs["state"][0, 0, :].detach().cpu().numpy()
+
+            if env is None:
+                env_args = {
+                    # "bddl_file_name": task_bddl_file,
+                    # "camera_heights": 128,
+                    # "camera_widths": 128
+
+                    "legacy": False,
+                    "block_cog": None,
+                    "damping": None,
+                    "render_action": True,
+                    "render_size": 224,
+                    "reset_to_state": None,  # position x 2, position x2, angle
+                }
+
+                env = PushTEnv(**env_args)
+                env.seed(self.seed)
+                env.reset()
+            else:
+                env.reset_to_state = init_state
+                env.reset()
+
+            T = action.shape[1]
+            for camera in obs.keys():
+                if camera == 'lang':
+                    continue
+
+                obs[camera] = obs[camera].to(self.device)
+
+                if 'rgb' not in camera and 'image' not in camera:
+                    continue
+                obs[camera] = obs[camera][:, :1].contiguous()
+            pa = agent.predict(obs)
+
+            for j in range(T):
+                a = action[0, j, :].detach().cpu().numpy()
+                pa = pa.detach().cpu().numpy()
+                print(f"action: {a}", f"predicted action: {pa}")
+                new_obs, r, done, info = env.step(pa)
+
+                new_obs = einops.rearrange(new_obs, "H W C -> 1 1 C H W") / 255.0  # 1 view
+
+                # Convert to torch tensor
+                new_obs = torch.from_numpy(new_obs).float().to(self.device)
+
+                obs_dict = {"agentview_rgb": new_obs,
+                            "lang_emb": False}
+                pa = agent.predict(obs_dict)
+
+                if self.render:
+                    env.render(mode='human')
+
+            print("done", action.shape)
+
+
+            if hasattr(counter, 'get_lock'):  # If it's a multiprocessing Value
+                with counter.get_lock():
+                    counter.value += 1
+                    current_count = counter.value
+            else:  # If it's a simple object with value attribute (single process)
+                counter.value += 1
+                current_count = counter.value
+                counter.update()
 
     def get_task_embs(self, task_embs):
         self.task_embs = task_embs
@@ -171,7 +257,7 @@ class PushTSim(BaseSim):
 
             counter.update = update_pbar  # Add update method to counter
 
-            self.eval_agent(
+            self.debug_agent(
                 contexts=contexts,
                 success=success,
                 episode_lengths=episode_lengths,
