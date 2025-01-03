@@ -1,5 +1,5 @@
 defaults:
-  - agents: bc_agent
+  - agents: beso_agent
   - trainers: base_trainer
 #  - override hydra/launcher: submitit_slurm
 
@@ -49,6 +49,7 @@ dataset_path: /home/david/2024/datasets/${task_suite}
 window_size: 10
 obs_seq_len: 1
 act_seq_len: ${window_size}
+multistep: ${window_size} # only for inference, could be different from act_seq_len
 goal_window_size: 1
 goal_conditioned: False
 

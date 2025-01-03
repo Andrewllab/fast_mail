@@ -1,0 +1,7 @@
+python run.py  --config-name=libero_horeka_config \
+            --multirun agents=beso_agent \
+            agent_name=beso_mamba \
+            group=beso_decoder_only \
+            agents/model=beso/beso_dec_mamba \
+            task_suite=libero_object \
+            seed=0,1,2
