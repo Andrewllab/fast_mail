@@ -26,13 +26,14 @@ class PushTDataset(TrajectoryDataset):
         data_directory: os.PathLike,
         device="cpu",
         obs_dim: int = 32,
-        action_dim: int = 7,
-        state_dim: int = 45,
+        action_dim: int = 2,
+        state_dim: int = 5,
         max_len_data: int = 136,
         window_size: int = 1,
         relative: bool = False,
         start_idx: int = 0,
         traj_per_task: int = 1,
+        # one_slice_per_traj: bool = False,
     ):
         super().__init__(
             data_directory=data_directory,
@@ -75,6 +76,7 @@ class PushTDataset(TrajectoryDataset):
             self.masks[i, T:] = 0
 
         # Turn full trajectories into slices
+        # self.one_slice_per_traj = one_slice_per_traj
         self.slices = self.get_slices()
 
     def get_seq_length(self, idx):
@@ -115,7 +117,7 @@ class PushTDataset(TrajectoryDataset):
         min_seq_length = np.inf
         for i in range(len(self.seq_lengths)):
             T = self.seq_lengths[i]
-            min_seq_length = min(T, min_seq_length)
+            # min_seq_length = min(T, min_seq_length) if not self.one_slice_per_traj else self.window_size
 
             if T - self.window_size < 0:
                 print(f"Ignored short sequence #{i}: len={T}, window={self.window_size}")
@@ -147,9 +149,10 @@ class PushTDataset(TrajectoryDataset):
         obs = self.agentview_rgbs[i][start:start + 1]  # Only get the image current frame
         act = self.actions[i, start:end]  # Get the action of the current frame and the future
         mask = self.masks[i, start:end]
+        state = self.states[i, start:end]
 
         # Wrap in a dictionary
-        obs_dict = {"agentview_rgb": obs, "lang_emb": False}
+        obs_dict = {"agentview_rgb": obs, "lang_emb": False, "state": state}
         return obs_dict, act, mask
 
     def __len__(self):
