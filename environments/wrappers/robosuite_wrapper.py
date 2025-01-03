@@ -14,23 +14,13 @@ class RobosuiteWrapper(gym.Wrapper):
     This wrapper does the following changes to the action and observation:
     - Flips the image and segmentation observations
     - Converts the depth observation from depth image to meters
-    - Rotates the end effector rotation by -90 degrees around the z-axis. 
-      This ensures that end effector rotation in the observation is the same as the rotation in the action given to this method.
-      See: https://github.com/ARISE-Initiative/robosuite/issues/337#issuecomment-1153684026
     """
 
     def __init__(self, env):
         super().__init__(env)
 
     def step(self, action):
-        new_action = action.copy()
-
-        rotation = new_action[3:6]
-        rotation_mat = quat2mat(axisangle2quat(rotation))
-        rotation_mat = rotation_mat @ euler2mat(np.array([0, 0, -np.pi / 2]))
-        new_action[3:6] = quat2axisangle(mat2quat(rotation_mat))
-
-        obs_dict, reward, done, info = self.env.step(new_action)
+        obs_dict, reward, done, info = self.env.step(action)
 
         obs_dict = self.process_observation(obs_dict)
 
