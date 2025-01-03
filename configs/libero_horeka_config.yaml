@@ -73,7 +73,7 @@ scaler_type: 'standard'
 obs_dim: 9
 action_dim: 7
 state_dim: 110
-max_len_data: 260
+max_len_data: 520
 
 ## Observations
 if_robot_states: False
