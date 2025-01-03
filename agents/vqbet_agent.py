@@ -47,7 +47,6 @@ class VqBetAgent(BaseAgent):
         device: str = "cpu",
         state_dim: int = 7,
         latent_dim: int = 64,
-        multistep: int = 10,
         action_dim: int = 7,
         gamma: float = 2.0,
         offset_loss_multiplier: float = 10,
@@ -60,7 +59,7 @@ class VqBetAgent(BaseAgent):
             device=device,
             state_dim=state_dim,
             latent_dim=latent_dim,
-            multistep=multistep
+            multistep=action_seq_size
         )
 
         self.if_robot_states = if_robot_states
