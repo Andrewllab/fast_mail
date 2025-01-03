@@ -1,12 +1,24 @@
 import logging
 
+import einops
 import numpy as np
-from omegaconf import ListConfig
 import torch
+from omegaconf import ListConfig
+from robocasa.environments.kitchen.kitchen import REGISTERED_KITCHEN_ENVS
+from robosuite.utils.transform_utils import (
+    axisangle2quat,
+    mat2quat,
+    quat2axisangle,
+    quat2mat,
+)
 
 from agents.base_agent import BaseAgent
-from robocasa.environments.kitchen.kitchen import REGISTERED_KITCHEN_ENVS
+from environments.wrappers.point_cloud_sampling_wrapper import PointCloudSamplingWrapper
+from environments.wrappers.point_cloud_wrapper import PointCloudWrapper
+from environments.wrappers.robosuite_wrapper import RobosuiteWrapper
 from simulation.base_sim import BaseSim
+from utils.camera_utils import posRotMat2Mat, quat2Mat
+from utils.point_cloud.sampling.fps_pc_sampler import FPSPointCloudSampler
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +37,7 @@ class RoboCasaSim(BaseSim):
         render: bool = True,
         n_cores: int = 1,
         if_vision: bool = False,
+        pc_num_points: int = 1024,
     ):
         super().__init__(seed, device, render, n_cores, if_vision)
 
@@ -32,7 +45,7 @@ class RoboCasaSim(BaseSim):
         self.max_step_per_episode = max_step_per_episode
         self.camera_names = list(camera_names)
 
-        self.env = REGISTERED_KITCHEN_ENVS[env_name](
+        base_env = REGISTERED_KITCHEN_ENVS[env_name](
             robots="PandaMobile",
             controller_configs={
                 "type": "OSC_POSE",
@@ -61,10 +74,14 @@ class RoboCasaSim(BaseSim):
             camera_widths=img_width,
             # obj_registries=("objaverse", "aigen"),
             # camera_segmentations="geom",
-            seed=seed
+            seed=seed,
         )
 
-        # self.env.seed(seed)
+        self.env = PointCloudSamplingWrapper(
+            PointCloudWrapper(RobosuiteWrapper(base_env)),
+            FPSPointCloudSampler(),
+            pc_num_points,
+        )
 
     def test_agent(self, agent: BaseAgent, cpu_set, epoch):
         success_count = 0
@@ -84,29 +101,50 @@ class RoboCasaSim(BaseSim):
                 obs_dict = {}
                 obs_dict["lang"] = lang
 
-                gripper_state = torch.from_numpy(obs['robot0_gripper_qpos'])
-                joint_pos_sin = torch.from_numpy(obs['robot0_joint_pos_sin'])
-                joint_pos_cos = torch.from_numpy(obs['robot0_joint_pos_cos'])
-                robot_state = torch.cat([gripper_state, joint_pos_sin, joint_pos_cos]).to(self.device).unsqueeze(0).unsqueeze(0)
-                obs_dict["robot_states"] = robot_state
+                gripper_state = torch.from_numpy(obs["robot0_gripper_qpos"]).float()
+                gripper_state = einops.rearrange(gripper_state, "d -> 1 1 d").to(
+                    self.device
+                )
 
-                # sampled_point_cloud = torch.from_numpy(obs["sampled_point_cloud"]).to(self.device)
-                # obs_dict["sampled_point_cloud"] = sampled_point_cloud
+                eef_pos = torch.from_numpy(obs["robot0_eef_pos"]).float()
+                eef_pos = einops.rearrange(eef_pos, "d -> 1 1 d").to(self.device)
 
-                # custom_sampled_point_cloud = torch.from_numpy(obs["custom_sampled_point_cloud"]).to(self.device)
-                # obs_dict["custom_sampled_point_cloud"] = custom_sampled_point_cloud
+                eef_rot = torch.from_numpy(quat2Mat(obs["robot0_eef_quat"])).float()
+                dir1 = einops.rearrange(eef_rot[:, 0], "d -> 1 1 d").to(self.device)
+                dir2 = einops.rearrange(eef_rot[:, 2], "d -> 1 1 d").to(self.device)
 
-                for cam_name in self.camera_names:
-                    rgb = torch.from_numpy(obs[f"{cam_name}_image"]).to(self.device).float().permute(2, 0, 1).unsqueeze(0).unsqueeze(0) / 255.
-                    depth = torch.from_numpy(obs[f"{cam_name}_depth"]).to(self.device).float().permute(2, 0, 1).unsqueeze(0).unsqueeze(0)
+                gravity_dir = einops.rearrange(
+                    torch.Tensor([0, 0, -1]).float(), "d -> 1 1 d"
+                ).to(self.device)
 
-                    obs_dict[f"{cam_name}_image"] = rgb
-                    obs_dict[f"{cam_name}_depth"] = depth
+                sampled_point_cloud = torch.from_numpy(
+                    obs["sampled_point_cloud"][:, :3]
+                ).float()
+                sampled_point_cloud = einops.rearrange(
+                    sampled_point_cloud, "num_points d -> 1 1 num_points d"
+                ).to(self.device)
 
-                action = agent.predict(obs_dict).cpu().numpy()
-                
-                action = np.concatenate([action, np.array([0, 0, 0, 0, -1])])
-                
+                obs_dict = {
+                    "pc": sampled_point_cloud,
+                    "robot_states": torch.cat(
+                        [
+                            eef_pos,
+                            dir1,
+                            dir2,
+                            gravity_dir,
+                            gripper_state[:, :, :1],
+                        ],
+                        dim=-1,
+                    ),
+                }
+
+                global_action = agent.predict(obs_dict).cpu().numpy()
+                global_action = np.concatenate(
+                    [global_action[1:], global_action[:1], np.array([0, 0, 0, 0, -1])]
+                )
+
+                action = self.get_local_action(global_action)
+
                 obs, _, done, _ = self.env.step(action)
 
                 if self.render:
@@ -137,3 +175,21 @@ class RoboCasaSim(BaseSim):
         print(f"Success rate: {success_rate}")
 
         return success_rate
+
+    def get_local_action(self, global_action: np.ndarray) -> np.ndarray:
+        base_mat = self.env.sim.data.get_site_xmat(
+            f"mobilebase{self.env.robots[0].idn}_center"
+        )
+
+        global_action_pos = global_action[:3]
+        global_action_axis_angle = global_action[3:6]
+        global_action_mat = quat2mat(axisangle2quat(global_action_axis_angle))
+
+        local_action_pos = np.linalg.inv(base_mat) @ global_action_pos
+        local_action_mat = np.linalg.inv(base_mat) @ global_action_mat @ np.linalg.inv(base_mat).T
+        local_action_axis_angle = quat2axisangle(mat2quat(local_action_mat))
+
+        local_action = np.concatenate(
+            [local_action_pos, local_action_axis_angle, global_action[6:]]
+        )
+        return local_action
