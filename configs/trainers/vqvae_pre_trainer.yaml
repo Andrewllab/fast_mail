@@ -9,7 +9,7 @@ valset: ${valset}
 train_batch_size: ${train_batch_size}
 val_batch_size: ${val_batch_size}
 num_workers: ${num_workers}
-epoch: 50
+epoch: ${pretrain_vqvae_epoch}
 device: ${device}
 scale_data: ${scale_data}
 scaler_type: ${scaler_type}
