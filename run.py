@@ -28,7 +28,7 @@ def set_seed_everywhere(seed):
     random.seed(seed)
 
 
-@hydra.main(config_path="configs", config_name="pushT_config.yaml", version_base="1.3")
+@hydra.main(config_path="configs", config_name="libero_config.yaml", version_base="1.3")
 def main(cfg: DictConfig) -> None:
 
     set_seed_everywhere(cfg.seed)

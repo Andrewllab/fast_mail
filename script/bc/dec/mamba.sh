@@ -2,6 +2,6 @@ python run.py  --config-name=libero_horeka_config \
             --multirun agents=bc_agent \
             agent_name=bc_mamba \
             group=bc_decoder_only \
-            agents.model=bc/bc_dec_mamba \
+            agents.model=bc_dec_mamba \
             task_suite=libero_object \
             seed=0,1,2

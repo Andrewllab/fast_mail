@@ -9,7 +9,7 @@ log_dir: logs/${task_suite}/
 
 # insert wandb here
 wandb:
-  entity: x-huang
+  entity: tiger_or_cat
   project: fast_mail
 
 group: bc_${task_suite}
@@ -40,10 +40,10 @@ task_suite: libero_object
 traj_per_task: 10
 
 ## change the path of dataset
-# dataset_path: /home/david/2024/datasets/${task_suite}
+dataset_path: /home/david/2024/datasets/${task_suite}
 #dataset_path: /home/xuan/datasets/${task_suite}
 #dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
-dataset_path: /home/huang/ml_workspace/fast_mail_workspace/datasets/${task_suite}
+#dataset_path: /home/huang/ml_workspace/fast_mail_workspace/datasets/${task_suite}
 
 # Model Setting
 window_size: 10
