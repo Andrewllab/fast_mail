@@ -43,5 +43,6 @@ backbones:
       slstm_at: [1]
     embed_dim: ${n_embd}
     bias: false
+    block_size: 13
 
 device: ${device}
