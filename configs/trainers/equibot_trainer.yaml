@@ -1,0 +1,14 @@
+_target_: trainers.equibot_trainer.EquiBotTrainer
+_recursive_: false
+
+obs_seq_len: ${obs_seq_len}
+
+trainset: ${trainset}
+valset: ${valset}
+
+train_batch_size: ${train_batch_size}
+val_batch_size: ${val_batch_size}
+num_workers: ${num_workers}
+epoch: ${epoch}
+device: ${device}
+use_lr_scheduler: False

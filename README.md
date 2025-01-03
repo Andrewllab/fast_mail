@@ -79,6 +79,20 @@ git clone https://github.com/NX-AI/xlstm.git
 cd xlstm
 pip install -e .
 ```
+### installing packages for equibot
+```
+conda install -y fvcore iopath ffmpeg -c iopath -c fvcore
+pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
+pip install --upgrade setuptools wheel
+pip install "git+https://github.com/facebookresearch/pytorch3d.git"
+pip install diffusers
+```
+
+### Installing point cloud visualizer
+```
+cd visualizer
+pip install -e .
+```
 ---
 
 ## Acknowledgements
