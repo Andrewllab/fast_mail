@@ -70,9 +70,9 @@ class MultiTaskSim(BaseSim):
                    agent_config=None,
                    model_states=None):
         # Only set CPU affinity if using multiprocessing
-        if self.use_multiprocessing:
-            print(os.getpid(), cpu_set)
-            assign_process_to_cpu(os.getpid(), cpu_set)
+        # if self.use_multiprocessing:
+        #     print(os.getpid(), cpu_set)
+        #     assign_process_to_cpu(os.getpid(), cpu_set)
 
         # Handle agent initialization based on input type
         if agent_config is not None:
