@@ -157,4 +157,4 @@ simulation:
   n_cores: 5
   num_episode: 20
   max_step_per_episode: 600
-  use_multiprocessing: false
+  use_multiprocessing: True
