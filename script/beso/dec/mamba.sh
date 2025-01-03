@@ -3,5 +3,5 @@ python run.py  --config-name=libero_horeka_config \
             agent_name=beso_mamba \
             group=beso_decoder_only \
             agents/model=beso/beso_dec_mamba \
-            task_suite=libero_object \
+            task_suite=libero_spatial,libero_goal,libero_10 \
             seed=0,1,2
