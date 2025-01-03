@@ -20,6 +20,13 @@ class PointCloudWrapper(gym.Wrapper):
         obs_dict["point_cloud"] = self.get_point_cloud(obs_dict)
         return obs_dict
     
+    def reset_to(self, state):
+        obs_dict = self.env.reset_to(state)
+        self.pc_generator.sim = self.env.sim
+        
+        obs_dict["point_cloud"] = self.get_point_cloud(obs_dict)
+        return obs_dict
+    
     def get_point_cloud(self, obs_dict):
         imgs = {cam: obs_dict[f"{cam}_image"] for cam in self.cam_names}
         depths = {cam: obs_dict[f"{cam}_depth"] for cam in self.cam_names}
