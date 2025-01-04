@@ -2,10 +2,10 @@ import json
 import os
 
 import h5py
+from termcolor import cprint
 import torch
 
 from environments.dataset.base_dataset import TrajectoryDataset
-from robosuite.utils.transform_utils import quat2mat
 
 
 class RobocasaDataset(TrajectoryDataset):
@@ -18,6 +18,7 @@ class RobocasaDataset(TrajectoryDataset):
         action_dim: int = 7,
         max_len_data: int = 256,
         window_size: int = 1,
+        use_segmented_point_cloud: bool = False,
     ):
         super().__init__(
             data_directory=data_directory,
@@ -33,6 +34,14 @@ class RobocasaDataset(TrajectoryDataset):
         self.demos = self.data_file["data"]
 
         self.slices = self.get_slices()
+
+        self.pc_key = (
+            "seg_sampled_point_cloud"
+            if use_segmented_point_cloud
+            else "sampled_point_cloud"
+        )
+
+        cprint(f"Using point cloud key: {self.pc_key}", "blue")
 
     def get_slices(self):
         slices = []
@@ -62,7 +71,9 @@ class RobocasaDataset(TrajectoryDataset):
 
         for demo in self.demos:
             result.append(
-                torch.from_numpy(self.demos[demo]["global_actions"][:, : self.action_dim])
+                torch.from_numpy(
+                    self.demos[demo]["global_actions"][:, : self.action_dim]
+                )
             )
 
         return torch.cat(result, dim=0).to(self.device)
@@ -100,9 +111,9 @@ class RobocasaDataset(TrajectoryDataset):
         action = torch.from_numpy(
             demo["global_actions"][start:end, : self.action_dim]
         ).float()
-        
+
         action = torch.cat([action[:, 6:], action[:, :6]], dim=-1)
-        
+
         obs = {}
 
         gripper_state = torch.from_numpy(
@@ -113,17 +124,13 @@ class RobocasaDataset(TrajectoryDataset):
         eef_pos = torch.from_numpy(demo["obs"]["robot0_eef_pos"][start:end]).float()
         obs["eef_pos"] = eef_pos
 
-        eef_quat = demo["obs"]["robot0_eef_quat"][start:end]
-        eef_rot_list = []
-        for quat in eef_quat:
-            eef_rot_list.append(torch.from_numpy(quat2mat(quat)).float())
-        eef_rot = torch.stack(eef_rot_list)
-        obs["eef_rot"] = torch.cat([eef_rot[:, :, 0], eef_rot[:, :, 2]], dim=-1)
-        
-        sampled_point_cloud = torch.from_numpy(
-            demo["obs"]["custom_sampled_point_cloud"][start:end]
+        eef_quat = torch.from_numpy(demo["obs"]["robot0_eef_quat"][start:end]).float()
+        obs["eef_quat"] = eef_quat
+
+        point_cloud = torch.from_numpy(
+            demo["obs"][self.pc_key][start:end]
         ).float()
-        obs["sampled_point_cloud"] = sampled_point_cloud
+        obs["point_cloud"] = point_cloud
 
         obs["lang"] = json.loads(demo.attrs["ep_meta"])["lang"]
 
