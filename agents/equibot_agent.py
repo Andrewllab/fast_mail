@@ -1,8 +1,5 @@
 import logging
-import stat
 
-from attr import has
-import einops
 import hydra
 import numpy as np
 import torch
@@ -10,10 +7,7 @@ from omegaconf import DictConfig
 from torch import nn
 
 from agents.base_agent import BaseAgent
-from agents.models.equibot.utils.diffusion import lr_scheduler
-from agents.models.equibot.utils.misc import to_torch
 from agents.models.equibot.utils.norm import Normalizer
-from agents.models.equibot.utils.diffusion.lr_scheduler import get_scheduler
 
 log = logging.getLogger(__name__)
 

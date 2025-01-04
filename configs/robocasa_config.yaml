@@ -1,6 +1,7 @@
 defaults:
   - agents: equibot_agent
   - trainers: equibot_trainer
+  # - override hydra/launcher: "submitit_slurm"
 
 agent_name: equibot
 log_dir: logs/${env_name}/
@@ -8,7 +9,7 @@ log_dir: logs/${env_name}/
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: fast_mail
+  project: fast_mail_robocasa
   
 group: bc_${env_name}
 
@@ -21,15 +22,12 @@ hydra:
   sweep:
     dir: ${log_dir}/sweeps/${agent_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
-#  launcher:
-#    account: hk-project-sustainebot
-#    timeout_min: 500
-#    name: libero #${hydra.job.name}
-#    partition: accelerated
-#    #    gpus_per_node: 4
-#    gres: gpu:1
-##    cpus-per-task: 152
-##    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
+  # launcher:
+  #   account: hk-project-sustainebot
+  #   timeout_min: 720
+  #   name: robocasa #${hydra.job.name}
+  #   partition: accelerated
+  #   gres: gpu:1
 
 env_name: PnPCabToCounter
 seed: 42
@@ -38,7 +36,7 @@ camera_names:
   - "robot0_agentview_left"
   - "robot0_agentview_right"
 
-dataset_path: /home/i53/student/donat/master_thesis/robocasa/datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/processed_demo_2.hdf5
+dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/robocasa_datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/mg/2024-07-12-04-33-29/processed_demo.hdf5
 
 # Model Setting
 window_size: ${add:${obs_seq_len},${pred_seq_len},-1}
@@ -48,12 +46,12 @@ pred_seq_len: 16
 multistep: ${window_size} # only for inference, could be different from act_seq_len
 goal_window_size: 1
 
-goal_conditioned: True
+goal_conditioned: False
 
 # Training
-train_batch_size: 64
-val_batch_size: 64
-num_workers: 8
+train_batch_size: 256
+val_batch_size: 1
+num_workers: 16
 device: 'cuda'
 epoch: 2000
 eval_every_n_epochs: 1
@@ -64,13 +62,15 @@ scaler_type: 'standard'
 obs_dim: 13
 action_dim: 7
 max_len_data: 260
+point_cloud_num_points: 1024
+use_segmented_point_cloud: True
 
 obs_tokens: ${obs_seq_len}
 
 ## Observations
 if_robot_states: False
-img_width: 128
-img_height: 128
+img_width: 426
+img_height: 240
 shape_meta:
   # acceptable types: rgb, low_dim
   obs:
@@ -80,19 +80,19 @@ shape_meta:
         - ${img_height}
         - ${img_width}
       type: rgb
-    # robot0_agentview_left_image:
-    #   shape:
-    #     - 3
-    #     - ${img_height}
-    #     - ${img_width}
-    #   type: rgb
-    # robot0_agentview_right_image:
-    #   shape:
-    #     - 3
-    #     - ${img_height}
-    #     - ${img_width}
-    #   type: rgb
-
+    robot0_agentview_left_image:
+      shape:
+        - 3
+        - ${img_height}
+        - ${img_width}
+      type: rgb
+    robot0_agentview_right_image:
+      shape:
+        - 3
+        - ${img_height}
+        - ${img_width}
+      type: rgb
+  
 ##########################################################################################
 # Common Parameters
 ##########################################################################################
@@ -139,6 +139,7 @@ trainset:
   device: ${device}
   max_len_data: ${max_len_data}
   window_size: ${window_size}
+  use_segmented_point_cloud: ${use_segmented_point_cloud}
 
 valset:
   _target_: environments.dataset.robocasa_dataset.RobocasaDataset
@@ -149,6 +150,7 @@ valset:
   device: ${device}
   max_len_data: ${max_len_data}
   window_size: ${window_size}
+  use_segmented_point_cloud: ${use_segmented_point_cloud}
 
 simulation:
   _target_: simulation.robocasa_sim.RoboCasaSim
@@ -163,3 +165,4 @@ simulation:
   render: True
   n_cores: 1
   if_vision: True
+  use_segmented_point_cloud: ${use_segmented_point_cloud}
