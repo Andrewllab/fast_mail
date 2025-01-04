@@ -18,7 +18,7 @@ model_paths: #where to save the model
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: fast_mail_horeka
+  project: fast_mail_benchmark
 
 group: bc_${task_suite}
 
@@ -68,7 +68,7 @@ train_batch_size: 256
 val_batch_size: 32
 num_workers: 4
 device: 'cuda'
-epoch: 50
+epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'standard'
@@ -101,7 +101,7 @@ latent_dim: 256
 ##########################################################################################
 # Transformer Parameters (encoder-decoder)
 ##########################################################################################
-encoder_n_layer: 4
+encoder_n_layer: 6
 decoder_n_layer: 6
 n_heads: 8
 
