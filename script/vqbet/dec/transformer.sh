@@ -4,5 +4,6 @@ python run.py  --config-name=libero_horeka_config \
             group=vqbet_decoder_only \
             agents/model=vqbet/vqbet_dec_transformer \
             task_suite=libero_object \
-            epoch=100,200 \
+            epoch=100 \
+            simulation.use_multiprocessing=False \
             seed=0

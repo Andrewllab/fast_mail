@@ -50,7 +50,6 @@ class xlstmEncoder(nn.Module):
         # Convert DictConfig to the required configuration objects
         print(f"xlstm_config:  {xlstm_config}")
 
-
         mlstm_block=mLSTMBlockConfig(
             mlstm=mLSTMLayerConfig(
                 conv1d_kernel_size=xlstm_config.mlstm_block.mlstm.conv1d_kernel_size,
