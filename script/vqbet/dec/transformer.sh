@@ -4,4 +4,5 @@ python run.py  --config-name=libero_horeka_config \
             group=vqbet_decoder_only \
             agents/model=vqbet/vqbet_dec_transformer \
             task_suite=libero_object \
-            seed=0,1,2
+            epoch=100,200 \
+            seed=0
