@@ -1,0 +1,9 @@
+python run.py  --config-name=libero_horeka_config \
+            --multirun agents=bc_agent \
+            agent_name=bc_mamba \
+            group=bc_encoder_decoder \
+            agents/model=bc/bc_encdec_mamba \
+            task_suite=libero_object \
+            mamba_n_layer_encoder=4 \
+            mamba_n_layer_decoder=8 \
+            seed=0
