@@ -13,7 +13,7 @@ pretrain_vqvae_epoch: 60 # number of epochs to pretrain the vqvae
 pretrain_vqvae_path: "/home/xuan/datasets/fast_mail/checkpoints/vqvae/2024-12-30/18-31-55/" #pre train vae folder
 
 model_paths: #where to save the model
-  vqvae: "${save_path}/checkpoints/vqvae/${now:%Y-%m-%d}/${now:%H-%M-%S}/"
+  vqvae: "checkpoints/vqvae/"
 
 # insert wandb here
 wandb:
