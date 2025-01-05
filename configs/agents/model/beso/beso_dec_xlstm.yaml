@@ -27,7 +27,7 @@ inner_model:
       mlstm_block:
         mlstm:
           conv1d_kernel_size: 4
-          qkv_proj_blocksize: 4
+          qkv_proj_blocksize: 8
           num_heads: 8
           proj_factor: 2.0
           dropout: 0.0
@@ -42,7 +42,7 @@ inner_model:
           proj_factor: 1.3
           act_fn: "gelu"
       context_length: 0 #edit in xlstm.py
-      num_blocks: 16
+      num_blocks: 8
       embedding_dim: ${n_embd}  # Using the same embedding dimension
       add_post_blocks_norm: true
       bias: false
