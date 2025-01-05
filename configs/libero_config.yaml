@@ -73,6 +73,8 @@ eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'standard'
 
+if_use_ema: True
+
 ## Environment
 obs_dim: 9
 action_dim: 7
@@ -127,7 +129,8 @@ mamba_decoder_cfg:
 ##########################################################################################
 # xLSTM Parameters
 ##########################################################################################
-
+xlstm_encoder_blocks: 16
+xlstm_decoder_blocks: 16
 
 # Dataset
 trainset:

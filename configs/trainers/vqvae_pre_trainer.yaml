@@ -16,4 +16,4 @@ scaler_type: ${scaler_type}
 eval_every_n_epochs: ${eval_every_n_epochs}
 
 decay_ema: 0.995
-if_use_ema: True
+if_use_ema: ${if_use_ema}

@@ -1,7 +1,8 @@
 python run.py  --config-name=libero_horeka_config \
             --multirun agents=bc_agent \
             agent_name=bc_xlstm \
-            group=bc_decoder_only \
+            group=bc_decoder_only_non_ema \
             agents/model=bc/bc_dec_xlstm \
-            task_suite=libero_object,libero_goal,libero_10,libero_spatial \
+            task_suite=libero_spatial \
+            if_use_ema=False \
             seed=0,1,2
