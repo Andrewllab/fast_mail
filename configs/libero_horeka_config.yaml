@@ -9,7 +9,7 @@ agent_name: bc
 log_dir: logs/${task_suite}/
 save_path: "/home/xuan/datasets/fast_mail" #your save path. vae model will be saved here.
 pretrain_vqvae: True #if true, pretrain the vqvae from scratch; if false, load the pretrained vqvae from the path
-pretrain_vqvae_epoch: 60 # number of epochs to pretrain the vqvae 
+pretrain_vqvae_epoch: 100 # number of epochs to pretrain the vqvae
 pretrain_vqvae_path: "/home/xuan/datasets/fast_mail/checkpoints/vqvae/2024-12-30/18-31-55/" #pre train vae folder
 
 model_paths: #where to save the model
