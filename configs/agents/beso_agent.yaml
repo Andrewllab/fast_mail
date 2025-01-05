@@ -2,7 +2,7 @@ _target_: agents.beso_agent.BesoAgent
 _recursive_: false
 
 defaults:
-  - model: beso/beso_dec_transformer
+  - model: beso/beso_encdec_mamba
   - obs_encoders: resnet
   - language_encoders: clip
 

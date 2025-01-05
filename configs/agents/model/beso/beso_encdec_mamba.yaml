@@ -20,25 +20,22 @@ inner_model:
   linear_output: true
 
   use_ada_conditioning: False
-  forward_type: 'cross_attn'
+  forward_type: 'context_token'
 
   encoder:
-    _target_: agents.backbones.transformer.blocks.TransformerEncoder
-    embed_dim: ${n_embd}
-    n_heads: ${n_heads}
-    n_layers: ${encoder_n_layer}
-    attn_pdrop: 0.3
-    resid_pdrop: 0.1
-    mlp_pdrop: 0.1
-    bias: False
+    _target_: agents.backbones.mamba.mamba.MixerModel
+    ssm_cfg: ${mamba_encoder_cfg}
+    d_model: ${n_embd}
+    n_layer: ${mamba_n_layer_encoder}
+    d_intermediate: ${n_embd}
+    device: ${device}
+    adaLN_zero: False
 
   decoder:
-    _target_: agents.backbones.transformer.blocks.TransformerDecoder
-    embed_dim: ${n_embd}
-    n_heads: ${n_heads}
-    n_layers: ${decoder_n_layer}
-    attn_pdrop: 0.3
-    resid_pdrop: 0.1
-    mlp_pdrop: 0.1
-    bias: False
-    use_cross_attention: True
+    _target_: agents.backbones.mamba.mamba.MixerModel
+    ssm_cfg: ${mamba_decoder_cfg}
+    d_model: ${n_embd}
+    n_layer: ${mamba_n_layer_decoder}
+    d_intermediate: ${n_embd}
+    device: ${device}
+    adaLN_zero: True
