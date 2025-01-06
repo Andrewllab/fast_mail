@@ -65,8 +65,8 @@ class BaseAgent(nn.Module, abc.ABC):
 
         # print(f"the shape of this dict is {obs_dict[list(obs_dict.keys())[0]].shape}")
         # B, T, C, H, W = obs_dict[list(obs_dict.keys())[0]].shape
-        # B, T, C, H, W = obs_dict["agentview_rgb"].shape
-        B, T, C, H, W = obs_dict["robot0_agentview_center_image"].shape
+        B, T, C, H, W = obs_dict["agentview_rgb"].shape
+        # B, T, C, H, W = obs_dict["robot0_agentview_center_image"].shape
 
         for camera in obs_dict.keys():
             if "rgb" not in camera and "image" not in camera:
@@ -98,6 +98,7 @@ class BaseAgent(nn.Module, abc.ABC):
     def reset(self):
         """Resets the context of the model."""
         self.rollout_step_counter = 0
+        self.obs_seq: dict[str, deque[torch.Tensor]] = {}
 
     @torch.no_grad()
     def predict(self, obs_dict: dict[str, torch.Tensor]) -> torch.Tensor:

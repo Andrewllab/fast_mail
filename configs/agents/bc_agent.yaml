@@ -2,7 +2,7 @@ _target_: agents.bc_agent.BC_Agent
 _recursive_: false
 
 defaults:
-  - model: bc/bc_dec_xlstm
+  - model: bc/bc_dec_transformer
 #  - model: bc/bc_xlstm
   - obs_encoders: resnet
   - language_encoders: clip
@@ -12,7 +12,8 @@ optimization:
   lr: 1e-5
   weight_decay: 0
 
-action_seq_size: ${act_seq_len}
+obs_seq_len: ${obs_seq_len}
+act_seq_len: ${act_seq_len}
 
 if_robot_states: False
 if_film_condition: False

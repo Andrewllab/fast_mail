@@ -1,5 +1,5 @@
 defaults:
-  - agents: beso_agent
+  - agents: bc_agent
   - trainers: base_trainer
   - trainers@vqvae_pre_trainer: vqvae_pre_trainer
 #  - override hydra/launcher: submitit_slurm
@@ -68,7 +68,7 @@ train_batch_size: 256
 val_batch_size: 32
 num_workers: 4
 device: 'cuda'
-epoch: 60
+epoch: 1
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'standard'

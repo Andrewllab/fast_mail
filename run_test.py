@@ -28,7 +28,7 @@ def set_seed_everywhere(seed):
     random.seed(seed)
 
 
-@hydra.main(config_path="configs", config_name="libero_config.yaml", version_base="1.3")
+@hydra.main(config_path="configs", config_name="robocasa_config.yaml", version_base="1.3")
 def main(cfg: DictConfig) -> None:
 
     set_seed_everywhere(cfg.seed)
@@ -40,7 +40,7 @@ def main(cfg: DictConfig) -> None:
         project=cfg.wandb.project,
         entity=cfg.wandb.entity,
         group=cfg.group,
-        # mode="disabled",
+        mode="disabled",
         config=wandb.config
     )
 
@@ -61,11 +61,14 @@ def main(cfg: DictConfig) -> None:
                 log.info(f"Loaded pretrained vqvae from {cfg.pretrain_vqvae_path}")
 
     agent.get_params()
-    trainer.main(agent)
+
+    # trainer.main(agent)
+
+    agent.set_scaler(trainer.scaler)
 
     # simulate the model
     env_sim = hydra.utils.instantiate(cfg.simulation)
-    env_sim.get_task_embs(trainer.trainset.tasks)
+    # env_sim.get_task_embs(trainer.trainset.tasks)
     #
     # sv_dir = sim_framework_path("pretrain_weights")
     #
