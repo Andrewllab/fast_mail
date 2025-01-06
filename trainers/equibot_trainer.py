@@ -6,13 +6,12 @@ from pathlib import Path
 
 import einops
 import hydra
-import numpy as np
 import torch
 import wandb
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from utils.camera_utils import quat2mat_torch
+from utils.transform_utils import quat2mat_torch
 
 log = logging.getLogger(__name__)
 
@@ -74,31 +73,6 @@ class EquiBotTrainer:
             for data in tqdm(self.train_dataloader):
                 obs_dict, action, mask = data
 
-                eef_rot_mat = quat2mat_torch(obs_dict["eef_quat"][:, : self.obs_seq_len])
-                dir1 = eef_rot_mat[:, :, :, 0]
-                dir2 = eef_rot_mat[:, :, :, 2]
-
-                gravity_dir = einops.repeat(
-                    torch.tensor([0, 0, -1]),
-                    "d -> b t d",
-                    b=action.shape[0],
-                    t=self.obs_seq_len,
-                )
-
-                obs_dict = {
-                    "pc": obs_dict["point_cloud"][:, : self.obs_seq_len, :, :3],
-                    "robot_states": torch.cat(
-                        [
-                            obs_dict["eef_pos"][:, : self.obs_seq_len],
-                            dir1,
-                            dir2,
-                            gravity_dir,
-                            obs_dict["gripper_state"][:, : self.obs_seq_len],
-                        ],
-                        dim=-1,
-                    ),
-                }
-
                 # put data on cuda
                 for camera in obs_dict.keys():
                     if camera == "lang":
@@ -114,7 +88,7 @@ class EquiBotTrainer:
 
                 epoch_loss += batch_loss
 
-            if num_epoch % 20 == 0:
+            if num_epoch % 100 == 0:
                 agent.save_snapshot(Path(self.working_dir) / f"epoch_{num_epoch}.pth")
 
             epoch_loss = epoch_loss / len(self.train_dataloader)

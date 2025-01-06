@@ -63,6 +63,9 @@ scaler_type: "standard"
 obs_dim: 13
 action_dim: 7
 max_len_data: 260
+point_cloud_num_points: 1024
+obj_max_num_points: 512
+use_segmented_point_cloud: True
 global_action: False
 
 obs_tokens: ${obs_seq_len}
@@ -131,7 +134,7 @@ mamba_decoder_cfg:
 ##########################################################################################
 
 trainset:
-  _target_: environments.dataset.robocasa_dataset.RobocasaDataset
+  _target_: environments.dataset.robocasa_pc_dataset.RobocasaDataset
   data_directory: ${dataset_path}
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
@@ -139,10 +142,11 @@ trainset:
   device: ${device}
   max_len_data: ${max_len_data}
   window_size: ${window_size}
+  use_segmented_point_cloud: ${use_segmented_point_cloud}
   global_action: ${global_action}
 
 valset:
-  _target_: environments.dataset.robocasa_dataset.RobocasaDataset
+  _target_: environments.dataset.robocasa_pc_dataset.RobocasaDataset
   data_directory: ${dataset_path}
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
@@ -150,10 +154,11 @@ valset:
   device: ${device}
   max_len_data: ${max_len_data}
   window_size: ${window_size}
+  use_segmented_point_cloud: ${use_segmented_point_cloud}
   global_action: ${global_action}
 
 simulation:
-  _target_: simulation.robocasa_sim.RoboCasaSim
+  _target_: simulation.robocasa_pc_sim.RoboCasaSim
   env_name: ${env_name}
   camera_names: ${camera_names}
   seed: ${seed}
@@ -165,4 +170,7 @@ simulation:
   render: True
   n_cores: 1
   if_vision: True
+  use_segmented_point_cloud: ${use_segmented_point_cloud}
   global_action: ${global_action}
+  pc_num_points: ${point_cloud_num_points}
+  obj_max_num_points: ${obj_max_num_points}

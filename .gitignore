@@ -9,3 +9,4 @@ logs/*
 .vscode/*
 
 *.egg-info
+slurm_jobs/output/
