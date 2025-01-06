@@ -6,9 +6,21 @@ import robosuite.utils.transform_utils as T
 import torch
 from omegaconf import ListConfig
 from robocasa.utils.env_utils import create_env
+from termcolor import cprint
 from tqdm import tqdm
 
 from agents.base_agent import BaseAgent
+from custom_robocasa.env_wrappers.point_cloud_sampling_wrapper import (
+    PointCloudSamplingWrapper,
+)
+from custom_robocasa.env_wrappers.point_cloud_wrapper import PointCloudWrapper
+from custom_robocasa.env_wrappers.segmentation_wrapper import SegmentationWrapper
+from custom_robocasa.env_wrappers.segmented_point_cloud_sampling_wrapper import (
+    SegmentedPointCloudSamplingWrapper,
+)
+from custom_robocasa.utils.point_cloud.sampling.fps_pc_sampler import (
+    FPSPointCloudSampler,
+)
 from environments.wrappers.robosuite_wrapper import RobosuiteWrapper
 from simulation.base_sim import BaseSim
 
@@ -29,6 +41,9 @@ class RoboCasaSim(BaseSim):
         render: bool = True,
         n_cores: int = 1,
         if_vision: bool = False,
+        pc_num_points: int = 1024,
+        obj_max_num_points: int = 512,
+        use_segmented_point_cloud: bool = False,
         global_action: bool = False,
     ):
         super().__init__(seed, device, render, n_cores, if_vision)
@@ -43,7 +58,25 @@ class RoboCasaSim(BaseSim):
             img_width,
             img_height,
             render,
+            pc_num_points,
+            obj_max_num_points,
+            use_segmented_point_cloud,
         )
+
+        self.pc_key = (
+            "segmented_sampled_point_cloud"
+            if use_segmented_point_cloud
+            else "sampled_point_cloud"
+        )
+
+        self.pos_key = "robot0_eef_pos" if global_action else "robot0_base_to_eef_pos"
+        self.quat_key = (
+            "robot0_eef_quat" if global_action else "robot0_base_to_eef_quat"
+        )
+
+        cprint(f"Using point cloud key: {self.pc_key}", "blue")
+        cprint(f"Using position key: {self.pos_key}", "blue")
+        cprint(f"Using quaternion key: {self.quat_key}", "blue")
 
     def test_agent(self, agent: BaseAgent, cpu_set, epoch):
         success_count = 0
@@ -64,25 +97,24 @@ class RoboCasaSim(BaseSim):
                 obs_dict["lang"] = lang
 
                 gripper_state = torch.from_numpy(obs["robot0_gripper_qpos"]).float()
-                gripper_state = einops.rearrange(gripper_state, "d -> 1 1 d").to(
+                obs_dict["gripper_state"] = einops.rearrange(
+                    gripper_state, "d -> 1 1 d"
+                ).to(self.device)
+
+                eef_pos = torch.from_numpy(obs[self.pos_key]).float()
+                obs_dict["eef_pos"] = einops.rearrange(eef_pos, "d -> 1 1 d").to(
                     self.device
                 )
 
-                joint_pos = torch.from_numpy(obs["robot0_joint_pos"]).float()
-                joint_pos = einops.rearrange(joint_pos, "d -> 1 1 d").to(self.device)
+                eef_quat = torch.from_numpy(obs[self.quat_key]).float()
+                obs_dict["eef_quat"] = einops.rearrange(eef_quat, "d -> 1 1 d").to(
+                    self.device
+                )
 
-                robot_state = torch.cat([gripper_state, joint_pos], dim=-1)
-                obs_dict["robot_states"] = robot_state
-
-                for cam_name in self.camera_names:
-                    rgb = (
-                        torch.from_numpy(obs[f"{cam_name}_image"])
-                        .float()
-                        .permute(2, 0, 1)
-                        / 255.0
-                    )
-                    rgb = einops.rearrange(rgb, "c h w -> 1 1 c h w").to(self.device)
-                    obs_dict[f"{cam_name}_image"] = rgb
+                sampled_point_cloud = torch.from_numpy(obs[self.pc_key][:, :3]).float()
+                obs_dict["point_cloud"] = einops.rearrange(
+                    sampled_point_cloud, "num_points d -> 1 1 num_points d"
+                ).to(self.device)
 
                 action = agent.predict(obs_dict).cpu().numpy()
 
@@ -147,6 +179,9 @@ class RoboCasaSim(BaseSim):
         img_width,
         img_height,
         render,
+        pc_num_points,
+        obj_max_num_points,
+        use_segmented_point_cloud,
     ):
         base_env = create_env(
             env_name=env_name,
@@ -157,4 +192,31 @@ class RoboCasaSim(BaseSim):
             seed=self.seed,
         )
 
-        self.env = RobosuiteWrapper(base_env)
+        if use_segmented_point_cloud:
+            self.env = SegmentedPointCloudSamplingWrapper(
+                PointCloudWrapper(
+                    SegmentationWrapper(
+                        RobosuiteWrapper(base_env),
+                        classes=[
+                            "PandaOmron",
+                            "PandaGripper",
+                            "Counter",
+                            "SingleCabinet",
+                            "HingeCabinet",
+                        ],
+                    ),
+                    global_frame=False,
+                    get_segmented_pc=True,
+                    get_normal_pc=False,
+                ),
+                obj_sampler=FPSPointCloudSampler(),
+                rest_sampler=FPSPointCloudSampler(),
+                num_points=pc_num_points,
+                obj_max_num_points=obj_max_num_points,
+            )
+        else:
+            self.env = PointCloudSamplingWrapper(
+                PointCloudWrapper(RobosuiteWrapper(base_env), global_frame=False),
+                pc_sampler=FPSPointCloudSampler(),
+                num_points=pc_num_points,
+            )

@@ -1,0 +1,19 @@
+_target_: agents.equibot_agent.EquiBotAgent
+_recursive_: false
+
+defaults:
+  - model: equibot/equibot_policy
+  - obs_encoders: resnet
+  - language_encoders: clip
+
+optimization:
+  _target_: torch.optim.AdamW
+  lr: 3e-5
+  weight_decay: 1e-6
+
+# multistep: ${multistep}
+device: ${device}
+state_dim: ${obs_dim}
+latent_dim: ${latent_dim}
+obs_seq_len: ${obs_seq_len}
+act_seq_len: ${act_seq_len}

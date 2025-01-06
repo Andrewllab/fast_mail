@@ -28,7 +28,9 @@ def set_seed_everywhere(seed):
     random.seed(seed)
 
 
-@hydra.main(config_path="configs", config_name="libero_config.yaml", version_base="1.3")
+@hydra.main(
+    config_path="configs", config_name="robocasa_config.yaml", version_base="1.3"
+)
 def main(cfg: DictConfig) -> None:
 
     set_seed_everywhere(cfg.seed)
@@ -47,7 +49,8 @@ def main(cfg: DictConfig) -> None:
     # load vqvae before training the agent: add path to the config file
     # train the agent
     agent = hydra.utils.instantiate(cfg.agents)
-    trainer = hydra.utils.instantiate(cfg.trainers)
+    agent.load_snapshot("/home/i53/student/donat/fast_mail/logs/PnPCabToCounter/sweeps/equibot/2025-01-03/03-14-05/epoch_1100.pth")
+    # trainer = hydra.utils.instantiate(cfg.trainers)
 
     ## if agent is vqbet, pretrain the vqvae first
     if cfg.agent_name == "vqbet":
@@ -60,16 +63,12 @@ def main(cfg: DictConfig) -> None:
             if(agent.vqvae.load_model(cfg.pretrain_vqvae_path)):
                 log.info(f"Loaded pretrained vqvae from {cfg.pretrain_vqvae_path}")
 
-    agent.get_params()
-
-    trainer.main(agent)
+    # trainer.main(agent)
 
     # simulate the model
     env_sim = hydra.utils.instantiate(cfg.simulation)
-    env_sim.get_task_embs(trainer.trainset.tasks)
-    #
-    # sv_dir = sim_framework_path("pretrain_weights")
-    #
+    # env_sim.get_task_embs(trainer.trainset.tasks)
+
     env_sim.test_agent(agent, cfg.agents, epoch=cfg.epoch)
 
     log.info("Training done")
