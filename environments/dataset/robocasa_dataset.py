@@ -111,7 +111,7 @@ class RobocasaDataset(TrajectoryDataset):
 
         for cam_name in self.cam_names:
             rgb = (
-                torch.from_numpy(demo["obs"][f"{cam_name}_image"][start:end])
+                torch.from_numpy(demo["obs"][f"{cam_name}_image"][start:start+1])
                 .float()
                 .permute(0, 3, 1, 2)
                 / 255.0

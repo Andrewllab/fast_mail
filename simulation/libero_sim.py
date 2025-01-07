@@ -141,8 +141,8 @@ class MultiTaskSim(BaseSim):
                 # agentview_rgb = self.reverse_rgb_channels(agentview_rgb)
                 # eye_in_hand_rgb = self.reverse_rgb_channels(eye_in_hand_rgb)
 
-                obs_dict = {"agentview_rgb": agentview_rgb,
-                            "eye_in_hand_rgb": eye_in_hand_rgb,
+                obs_dict = {"agentview_image": agentview_rgb,
+                            "eye_in_hand_image": eye_in_hand_rgb,
                             "lang_emb": task_emb,
                             "robot_states": robot_states}
 

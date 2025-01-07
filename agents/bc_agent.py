@@ -23,6 +23,7 @@ class BC_Agent(BaseAgent):
         optimization: DictConfig,
         obs_seq_len: int,
         act_seq_len: int,
+        cam_names: list[str],
         if_robot_states: bool = False,
         if_film_condition: bool = False,
         device: str = "cpu",
@@ -37,7 +38,8 @@ class BC_Agent(BaseAgent):
             state_dim=state_dim,
             latent_dim=latent_dim,
             obs_seq_len=obs_seq_len,
-            act_seq_len=act_seq_len
+            act_seq_len=act_seq_len,
+            cam_names=cam_names
         )
 
         # self.img_encoder = hydra.utils.instantiate(obs_encoders).to(device)

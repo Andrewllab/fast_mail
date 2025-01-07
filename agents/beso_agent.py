@@ -33,6 +33,7 @@ class BesoAgent(BaseAgent):
             decay: float,
             obs_seq_len: int,
             act_seq_len: int,
+            cam_names: list[str],
             state_dim = 7,
             use_lr_scheduler: bool = True,
             sampler_type: str = 'ddim',
@@ -56,7 +57,8 @@ class BesoAgent(BaseAgent):
             state_dim=state_dim,
             latent_dim=latent_dim,
             obs_seq_len=obs_seq_len,
-            act_seq_len=act_seq_len
+            act_seq_len=act_seq_len,
+            cam_names=cam_names
         )
 
         self.action_dim = action_dim

@@ -83,13 +83,18 @@ max_len_data: 520
 
 ## Observations
 if_robot_states: False
+
+camera_names:
+  - "agentview"
+  - "eye_in_hand"
+
 shape_meta:
   # acceptable types: rgb, low_dim
   obs:
-    agentview_rgb:
+    agentview_image:
       shape: [ 3, 128, 128 ]
       type: rgb
-    eye_in_hand_rgb:
+    eye_in_hand_image:
       shape: [ 3, 128, 128 ]
       type: rgb
 

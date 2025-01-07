@@ -68,7 +68,7 @@ class RoboCasaSim(BaseSim):
                     self.device
                 )
 
-                joint_pos = torch.from_numpy(obs["robot0_joint_pos"]).float()
+                joint_pos = torch.from_numpy(obs["robot0_joint_pos_cos"]).float()
                 joint_pos = einops.rearrange(joint_pos, "d -> 1 1 d").to(self.device)
 
                 robot_state = torch.cat([gripper_state, joint_pos], dim=-1)
@@ -76,7 +76,7 @@ class RoboCasaSim(BaseSim):
 
                 for cam_name in self.camera_names:
                     rgb = (
-                        torch.from_numpy(obs[f"{cam_name}_image"])
+                        torch.from_numpy(obs[f"{cam_name}_image"].copy())
                         .float()
                         .permute(2, 0, 1)
                         / 255.0

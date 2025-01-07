@@ -29,6 +29,7 @@ class BaseAgent(nn.Module, abc.ABC):
         latent_dim: int,
         obs_seq_len: int,
         act_seq_len: int,
+        cam_names: list[str]
     ):
         super().__init__()
 
@@ -41,6 +42,8 @@ class BaseAgent(nn.Module, abc.ABC):
         self.language_encoder = hydra.utils.instantiate(language_encoders).to(device)
         self.model = hydra.utils.instantiate(model).to(device)
         self.state_emb = nn.Linear(state_dim, latent_dim)
+
+        self.cam_names = cam_names
 
         # for inference
         self.rollout_step_counter = 0
@@ -57,29 +60,43 @@ class BaseAgent(nn.Module, abc.ABC):
         """
         Compute the required embeddings for the visual ones and the latent goal.
         """
-
+        #########################################
+        # deal with language embedding
+        #########################################
         if "lang" in obs_dict:
             obs_dict["lang_emb"] = self.language_encoder(obs_dict["lang"]).float()
 
         latent_goal = obs_dict["lang_emb"]
 
-        # print(f"the shape of this dict is {obs_dict[list(obs_dict.keys())[0]].shape}")
-        # B, T, C, H, W = obs_dict[list(obs_dict.keys())[0]].shape
-        B, T, C, H, W = obs_dict["agentview_rgb"].shape
-        # B, T, C, H, W = obs_dict["robot0_agentview_center_image"].shape
+        #########################################
+        # using RGB images or point clouds
+        #########################################
+        if self.cam_names is not None:
 
-        for camera in obs_dict.keys():
-            if "rgb" not in camera and "image" not in camera:
-                continue
-            # print(obs_dict[camera].shape)
-            obs_dict[camera] = obs_dict[camera].view(B * T, C, H, W)
-        # print(self.if_film_condition)
-        if self.if_film_condition:
-            perceptual_emb = self.img_encoder(obs_dict, latent_goal)
+            B, T, C, H, W = obs_dict[f"{self.cam_names[0]}_image"].shape
+            # B, T, C, H, W = obs_dict["robot0_agentview_center_image"].shape
+
+            for camera in self.cam_names:
+                obs_dict[f"{camera}_image"] = obs_dict[f"{camera}_image"].view(B * T, C, H, W)
+
+            # for camera in obs_dict.keys():
+            #     if "rgb" not in camera and "image" not in camera:
+            #         continue
+            #     # print(obs_dict[camera].shape)
+            #     obs_dict[camera] = obs_dict[camera].view(B * T, C, H, W)
+
+            # print(self.if_film_condition)
+            if self.if_film_condition:
+                perceptual_emb = self.img_encoder(obs_dict, latent_goal)
+            else:
+                # obs_dict is a dict with two images and one lang: images are [64,3,256,256]
+                perceptual_emb = self.img_encoder(obs_dict)
         else:
-            # obs_dict is a dict with two images and one lang: images are [64,3,256,256]
-            perceptual_emb = self.img_encoder(obs_dict)
+            raise NotImplementedError("point cloud not implemented yet")
 
+        #########################################
+        # add robot states
+        #########################################
         if self.if_robot_states and "robot_states" in obs_dict.keys():
             robot_states = obs_dict["robot_states"]
             robot_states = self.state_emb(robot_states)
@@ -109,6 +126,9 @@ class BaseAgent(nn.Module, abc.ABC):
 
         for key in obs_dict.keys():
             self.obs_seq[key].append(obs_dict[key])
+
+            if key == "lang":
+                continue
             obs_dict[key] = torch.concat(list(self.obs_seq[key]), dim=1)
 
             if obs_dict[key].shape[1] < self.obs_seq_len:
