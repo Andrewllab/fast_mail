@@ -37,7 +37,7 @@ seed: 42
 
 # dataset config
 task_suite: pushT
-traj_per_task: 100
+traj_per_task: 200
 
 ## change the path of dataset
 # dataset_path: /home/david/2024/datasets/${task_suite}
@@ -60,7 +60,7 @@ train_batch_size: 128
 val_batch_size: 32
 num_workers: 4
 device: 'cuda'
-epoch: 50
+epoch: 30
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'standard'
@@ -152,3 +152,8 @@ simulation:
   max_step_per_episode: 600
   use_multiprocessing: false
   debug_dataset: ${trainset}
+
+# Model
+model:
+  weight_path: "/home/huang/ml_workspace/fast_mail_workspace/fast_mail/logs/pushT/sweeps/bc/2025-01-07/12-28-03"
+  sv_name: last_model.pth

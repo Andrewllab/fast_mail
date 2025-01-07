@@ -60,7 +60,8 @@ def main(cfg: DictConfig) -> None:
             if(agent.vqvae.load_model(cfg.pretrain_vqvae_path)):
                 log.info(f"Loaded pretrained vqvae from {cfg.pretrain_vqvae_path}")
     
-    trainer.main(agent)
+    # trainer.main(agent)
+    agent.load_pretrained_model(cfg.model.weight_path, sv_name=cfg.model.sv_name)
 
     # # simulate the model
     env_sim = hydra.utils.instantiate(cfg.simulation)

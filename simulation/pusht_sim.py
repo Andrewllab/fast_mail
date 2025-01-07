@@ -66,6 +66,12 @@ class PushTSim(BaseSim):
                    counter,
                    agent_config=None,
                    ):
+        """
+        success: [num_tasks, num_episode]
+        contexts: [num_tasks * num_episode]
+
+        """
+
         # Only set CPU affinity if using multiprocessing
         if self.use_multiprocessing:
             print(os.getpid(), cpu_set)
@@ -76,10 +82,6 @@ class PushTSim(BaseSim):
 
         print(contexts)
         env_args = {
-            # "bddl_file_name": task_bddl_file,
-            # "camera_heights": 128,
-            # "camera_widths": 128
-
             "legacy": False,
             "block_cog": None,
             "damping": None,
@@ -91,13 +93,16 @@ class PushTSim(BaseSim):
         env = PushTEnv(**env_args)
         env.seed(self.seed)
         curr_context = contexts[0]
-
+        count = -1
         for context in contexts:
             agent.reset()
             if curr_context == context:
                 obs = env.reset()
+                count += 1
             else:
                 obs = env.reset_new_test_case()
+                count = 0
+            curr_context = context
 
             # multiprocessing simulation
             for j in range(self.max_step_per_episode):
@@ -114,6 +119,14 @@ class PushTSim(BaseSim):
                 obs, r, done, info = env.step(action)
                 if self.render:
                     env.render(mode='human')
+
+                if done:
+                    success[curr_context,  count] = 1
+                    episode_lengths[curr_context, count] = j + 1
+                    break
+
+            if episode_lengths[curr_context, count] == 0:
+                episode_lengths[curr_context, count] = self.max_step_per_episode
 
             # env.close()
             if hasattr(counter, 'get_lock'):  # If it's a multiprocessing Value
@@ -255,6 +268,8 @@ class PushTSim(BaseSim):
 
         contexts = np.arange(num_tasks)
         contexts = np.repeat(contexts, self.num_episode)
+
+        print(contexts.shape, success.shape)
 
         context_ind = np.arange(self.num_episode)
         context_ind = np.tile(context_ind, num_tasks)
