@@ -32,7 +32,7 @@ hydra:
 env_name: PnPCabToCounter
 seed: 42
 
-dataset_path: /home/david/2024/bi_manual/robocasa/datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/demo_gentex_im128_randcams.hdf5
+dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/david/custom_robocasa/custom_robocasa/datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/demo_gentex_im128_randcams.hdf5
 # dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/robocasa_datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/processed_demo_${img_width}_${img_height}.hdf5
 
 # Model Setting
@@ -50,7 +50,7 @@ train_batch_size: 256
 val_batch_size: 1
 num_workers: 4
 device: "cuda"
-epoch: 50
+epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: "standard"
@@ -115,7 +115,7 @@ latent_dim: 512
 ##########################################################################################
 encoder_n_layer: 4
 decoder_n_layer: 6
-n_heads: 4
+n_heads: 8
 
 ##########################################################################################
 # Mamba Parameters
