@@ -141,9 +141,11 @@ class BaseAgent(nn.Module, abc.ABC):
                 obs_dict[key] = torch.cat([pad, obs_dict[key]], dim=1)
                 
         if self.rollout_step_counter == 0:
+            self.eval()
+
             # predict action sequence
             pred_action_seq = self(obs_dict)[:, :self.act_seq_len]
-            # pred_action_seq = self.scaler.inverse_scale_output(pred_action_seq)
+            pred_action_seq = self.scaler.inverse_scale_output(pred_action_seq)
             self.pred_action_seq = pred_action_seq
 
         current_action = self.pred_action_seq[0, self.rollout_step_counter]
