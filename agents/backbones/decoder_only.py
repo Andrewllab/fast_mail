@@ -8,6 +8,8 @@ from typing import Optional
 from torch.nn import functional as F
 import logging
 
+from agents.utils.time_embedding import BESO_TimeEmbedding, RF_TimeEmbedding
+
 logger = logging.getLogger(__name__)
 
 
@@ -121,21 +123,6 @@ class Dec_only(nn.Module):
         return pred_actions
 
 
-class SinusoidalPosEmb(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
-
-    def forward(self, x):
-        device = x.device
-        half_dim = self.dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=device) * -emb)
-        emb = x[:, None] * emb[None, :]
-        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
-        return emb
-
-
 # Diffusion based decoder-only model, we need time embedding and noisy antions inputs here
 class Noise_Dec_only(nn.Module):
     def __init__(
@@ -152,7 +139,8 @@ class Noise_Dec_only(nn.Module):
             obs_seq_len: int,
             action_seq_len: int,
             linear_output: bool = False,
-            use_ada_conditioning: bool = False
+            use_ada_conditioning: bool = False,
+            diffusion_type: str = "beso" # ddpm, beso or rf
     ):
         super().__init__()
 
@@ -177,12 +165,14 @@ class Noise_Dec_only(nn.Module):
         # linear embedding for the action
         self.action_emb = nn.Linear(action_dim, embed_dim)
 
-        self.sigma_emb = nn.Sequential(
-            SinusoidalPosEmb(embed_dim),
-            nn.Linear(embed_dim, embed_dim * 2),
-            nn.Mish(),
-            nn.Linear(embed_dim * 2, embed_dim),
-        ).to(self.device)
+        self.diffusion_type = diffusion_type
+
+        if diffusion_type == "beso":
+            self.sigma_emb = BESO_TimeEmbedding(embed_dim)
+        elif diffusion_type == "rf":
+            self.sigma_emb = RF_TimeEmbedding(embed_dim)
+        else:
+            raise ValueError(f"Diffusion type {diffusion_type} is not supported")
 
         # position embedding
         self.pos_emb = nn.Parameter(torch.zeros(1, self.seq_size, embed_dim))
@@ -224,14 +214,6 @@ class Noise_Dec_only(nn.Module):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
 
-    def process_sigma_embeddings(self, sigma):
-        sigmas = sigma.log() / 4
-        sigmas = einops.rearrange(sigmas, 'b -> b 1')
-        emb_t = self.sigma_emb(sigmas)
-        if len(emb_t.shape) == 2:
-            emb_t = einops.rearrange(emb_t, 'b d -> b 1 d')
-        return emb_t
-
     def forward(
             self,
             states,
@@ -257,7 +239,7 @@ class Noise_Dec_only(nn.Module):
         action_embed = self.action_emb(actions)
         action_x = self.drop(action_embed + self.pos_emb[:, (self.goal_seq_len + t):(self.goal_seq_len + t + t_a), :])
 
-        emb_t = self.process_sigma_embeddings(sigma)
+        emb_t = self.sigma_emb(sigma)
 
         if self.goal_conditioned:
             input_seq = torch.cat([emb_t, goal_x, state_x, action_x], dim=1)

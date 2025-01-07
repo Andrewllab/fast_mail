@@ -70,9 +70,9 @@ class MultiTaskSim(BaseSim):
                    agent_config=None,
                    model_states=None):
         # Only set CPU affinity if using multiprocessing
-        if self.use_multiprocessing:
-            print(os.getpid(), cpu_set)
-            assign_process_to_cpu(os.getpid(), cpu_set)
+        # if self.use_multiprocessing:
+        #     print(os.getpid(), cpu_set)
+        #     assign_process_to_cpu(os.getpid(), cpu_set)
 
         # Handle agent initialization based on input type
         if agent_config is not None:
@@ -141,8 +141,8 @@ class MultiTaskSim(BaseSim):
                 # agentview_rgb = self.reverse_rgb_channels(agentview_rgb)
                 # eye_in_hand_rgb = self.reverse_rgb_channels(eye_in_hand_rgb)
 
-                obs_dict = {"agentview_rgb": agentview_rgb,
-                            "eye_in_hand_rgb": eye_in_hand_rgb,
+                obs_dict = {"agentview_image": agentview_rgb,
+                            "eye_in_hand_image": eye_in_hand_rgb,
                             "lang_emb": task_emb,
                             "robot_states": robot_states}
 

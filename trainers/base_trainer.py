@@ -16,9 +16,9 @@ from torch.utils.data.distributed import DistributedSampler
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 
-from fast_mail.agents.utils.scaler import Scaler, ActionScaler, MinMaxScaler
-from fast_mail.agents.utils.ema import ExponentialMovingAverage
-from fast_mail.agents.base_agent import BaseAgent
+from agents.utils.scaler import Scaler, ActionScaler, MinMaxScaler
+from agents.utils.ema import ExponentialMovingAverage
+from agents.base_agent import BaseAgent
 
 log = logging.getLogger(__name__)
 
@@ -131,10 +131,10 @@ class BaseTrainer:
             self.ema_helper.store(agent.parameters())
             self.ema_helper.copy_to(agent.parameters())
 
-        agent.store_model_weights(agent.working_dir, sv_name='last_model.pth')
+        agent.store_model_weights(agent.working_dir, sv_name='last_model')
         # or send weight out of the class
 
-    def train_one_step(self, agent: BaseAgent , obs_dict, action):
+    def train_one_step(self, agent: BaseAgent, obs_dict, action):
         """Run a single training step."""
         agent.train()
 

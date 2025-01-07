@@ -22,5 +22,12 @@ class PointCloudSamplingWrapper(gym.Wrapper):
         obs_dict["sampled_point_cloud"] = self.pc_sampler.sample(obs_dict["point_cloud"], self.num_points)
         return obs_dict
     
+    def reset_to(self, state):
+        obs_dict = self.env.reset_to(state)
+        self.pc_generator.sim = self.env.sim
+        
+        obs_dict["sampled_point_cloud"] = self.pc_sampler.sample(obs_dict["point_cloud"], self.num_points)
+        return obs_dict
+    
     def _check_success(self):
         return self.env._check_success()

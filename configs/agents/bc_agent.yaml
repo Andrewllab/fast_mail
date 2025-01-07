@@ -12,7 +12,10 @@ optimization:
   lr: 2e-5
   weight_decay: 0
 
-action_seq_size: ${act_seq_len}
+obs_seq_len: ${obs_seq_len}
+act_seq_len: ${act_seq_len}
+
+cam_names: ${camera_names}
 
 if_robot_states: False
 if_film_condition: False

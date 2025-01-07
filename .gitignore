@@ -7,3 +7,6 @@ logs/*
 
 .idea/*
 .vscode/*
+
+*.egg-info
+slurm_jobs/output/

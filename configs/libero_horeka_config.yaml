@@ -2,19 +2,23 @@ defaults:
   - agents: bc_agent
   - trainers: base_trainer
   - trainers@vqvae_pre_trainer: vqvae_pre_trainer
-#  - override hydra/launcher: submitit_slurm
+  - override hydra/launcher: submitit_slurm
 
 # agent_name: beso
 agent_name: bc
 log_dir: logs/${task_suite}/
-# pretrain: True
-pretrain_epoch: 30
-pretrain_save_path: ${log_dir}/vqvae_weights
+save_path: "/home/xuan/datasets/fast_mail" #your save path. vae model will be saved here.
+pretrain_vqvae: True #if true, pretrain the vqvae from scratch; if false, load the pretrained vqvae from the path
+pretrain_vqvae_epoch: 100 # number of epochs to pretrain the vqvae
+pretrain_vqvae_path: "/home/xuan/datasets/fast_mail/checkpoints/vqvae/2024-12-30/18-31-55/" #pre train vae folder
+
+model_paths: #where to save the model
+  vqvae: "checkpoints/vqvae/"
 
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: fast_mail_horeka
+  project: fast_mail_benchmark
 
 group: bc_${task_suite}
 
@@ -27,15 +31,15 @@ hydra:
   sweep:
     dir: ${log_dir}/sweeps/${agent_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
-#  launcher:
-#    account: hk-project-sustainebot
-#    timeout_min: 500
-#    name: libero #${hydra.job.name}
-#    partition: accelerated
-#    #    gpus_per_node: 4
-#    gres: gpu:1
-##    cpus-per-task: 152
-##    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
+  launcher:
+    account: hk-project-sustainebot
+    timeout_min: 500
+    name: libero #${hydra.job.name}
+    partition: accelerated
+    #    gpus_per_node: 4
+    gres: gpu:1
+#    cpus-per-task: 152
+#    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
 
 seed: 42
 
@@ -64,26 +68,33 @@ train_batch_size: 256
 val_batch_size: 32
 num_workers: 4
 device: 'cuda'
-epoch: 2
+epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'standard'
+
+if_use_ema: True
 
 ## Environment
 obs_dim: 9
 action_dim: 7
 state_dim: 110
-max_len_data: 260
+max_len_data: 520
 
 ## Observations
 if_robot_states: False
+
+camera_names:
+  - "agentview"
+  - "eye_in_hand"
+
 shape_meta:
   # acceptable types: rgb, low_dim
   obs:
-    agentview_rgb:
+    agentview_image:
       shape: [ 3, 128, 128 ]
       type: rgb
-    eye_in_hand_rgb:
+    eye_in_hand_image:
       shape: [ 3, 128, 128 ]
       type: rgb
 
@@ -97,14 +108,14 @@ latent_dim: 256
 ##########################################################################################
 # Transformer Parameters (encoder-decoder)
 ##########################################################################################
-encoder_n_layer: 4
+encoder_n_layer: 6
 decoder_n_layer: 6
 n_heads: 8
 
 ##########################################################################################
 # Mamba Parameters
 ##########################################################################################
-Mamba_type: Mamba2
+Mamba_type: Mamba1
 
 mamba_n_layer_encoder: 10
 mamba_encoder_cfg:
@@ -123,7 +134,8 @@ mamba_decoder_cfg:
 ##########################################################################################
 # xLSTM Parameters
 ##########################################################################################
-
+xlstm_encoder_blocks: 16
+xlstm_decoder_blocks: 16
 
 # Dataset
 trainset:
@@ -157,4 +169,4 @@ simulation:
   n_cores: 5
   num_episode: 20
   max_step_per_episode: 600
-  use_multiprocessing: false
+  use_multiprocessing: True

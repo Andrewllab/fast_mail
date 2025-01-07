@@ -7,8 +7,8 @@ import h5py
 import os
 import torch
 import numpy as np
-from fast_mail.environments.dataset.base_dataset import TrajectoryDataset
-from fast_mail.agents.utils.sim_path import sim_framework_path
+from environments.dataset.base_dataset import TrajectoryDataset
+from agents.utils.sim_path import sim_framework_path
 
 log = logging.getLogger(__name__)
 
@@ -218,8 +218,8 @@ class LiberoDataset(TrajectoryDataset):
         act = self.actions[i, start:end]
         mask = self.masks[i, start:end]
 
-        obs["agentview_rgb"] = agentview_rgb
-        obs["eye_in_hand_rgb"] = eye_in_hand_rgb
+        obs["agentview_image"] = agentview_rgb
+        obs["eye_in_hand_image"] = eye_in_hand_rgb
         obs["lang_emb"] = task_emb
 
         obs["robot_states"] = torch.from_numpy(robot_states).to(self.device).float()

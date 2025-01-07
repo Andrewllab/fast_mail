@@ -1,15 +1,16 @@
 defaults:
-  - agents: bc_agent
+  - agents: fm_agent
   - trainers: base_trainer
+  # - override hydra/launcher: "submitit_slurm"
 
-agent_name: bc
+agent_name: fm
 log_dir: logs/${env_name}/
 
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: fast_mail
-  
+  project: fast_mail_robocasa
+
 group: bc_${env_name}
 
 hydra:
@@ -21,80 +22,92 @@ hydra:
   sweep:
     dir: ${log_dir}/sweeps/${agent_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
-#  launcher:
-#    account: hk-project-sustainebot
-#    timeout_min: 500
-#    name: libero #${hydra.job.name}
-#    partition: accelerated
-#    #    gpus_per_node: 4
-#    gres: gpu:1
-##    cpus-per-task: 152
-##    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
+  # launcher:
+  #   account: hk-project-sustainebot
+  #   timeout_min: 720
+  #   name: robocasa #${hydra.job.name}
+  #   partition: accelerated
+  #   gres: gpu:1
 
 env_name: PnPCabToCounter
 seed: 42
-camera_names:
-  - "robot0_agentview_center"
-  # - "robot0_agentview_left"
-  # - "robot0_agentview_right"
 
-dataset_path: /home/i53/student/donat/master_thesis/robocasa/datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/processed_demo.hdf5
+dataset_path: /home/david/2024/bi_manual/robocasa/datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/demo_gentex_im128_randcams.hdf5
+# dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/robocasa_datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/processed_demo_${img_width}_${img_height}.hdf5
 
 # Model Setting
-window_size: 1
+window_size: ${add:${obs_seq_len},${pred_seq_len},-1}
 obs_seq_len: 1
-act_seq_len: ${window_size}
+act_seq_len: 10
+pred_seq_len: 10
 multistep: ${window_size} # only for inference, could be different from act_seq_len
 goal_window_size: 1
 
+goal_conditioned: True
+
 # Training
-train_batch_size: 64
-val_batch_size: 32
+train_batch_size: 256
+val_batch_size: 1
 num_workers: 4
-device: 'cuda'
-epoch: 1
+device: "cuda"
+epoch: 50
 eval_every_n_epochs: 1
 scale_data: True
-scaler_type: 'standard'
+scaler_type: "standard"
+
+if_use_ema: True
 
 ## Environment
-obs_dim: 15
+obs_dim: 13
 action_dim: 7
 max_len_data: 260
+global_action: False
 
-obs_tokens: 3
+obs_tokens: 3 #${obs_seq_len}
 
 ## Observations
 if_robot_states: False
-img_width: 640
-img_height: 360
+img_width: 128
+img_height: 128
+
+camera_names:
+#  - "robot0_agentview_center"
+  - "robot0_agentview_left"
+  - "robot0_agentview_right"
+  - "robot0_eye_in_hand"
+
 shape_meta:
   # acceptable types: rgb, low_dim
   obs:
-    robot0_agentview_center_image:
+#    robot0_agentview_center_image:
+#      shape:
+#        - 3
+#        - ${img_height}
+#        - ${img_width}
+#      type: rgb
+    robot0_agentview_left_image:
       shape:
         - 3
         - ${img_height}
         - ${img_width}
       type: rgb
-    # robot0_agentview_left_image:
-    #   shape:
-    #     - 3
-    #     - ${img_height}
-    #     - ${img_width}
-    #   type: rgb
-    # robot0_agentview_right_image:
-    #   shape:
-    #     - 3
-    #     - ${img_height}
-    #     - ${img_width}
-    #   type: rgb
-
+    robot0_agentview_right_image:
+      shape:
+        - 3
+        - ${img_height}
+        - ${img_width}
+      type: rgb
+    robot0_eye_in_hand_image:
+      shape:
+        - 3
+        - ${img_height}
+        - ${img_width}
+      type: rgb
 ##########################################################################################
 # Common Parameters
 ##########################################################################################
 n_embd: 256
-goal_dim: 1024
+goal_dim: 512
 latent_dim: 256
 
 ##########################################################################################
@@ -107,16 +120,16 @@ n_heads: 4
 ##########################################################################################
 # Mamba Parameters
 ##########################################################################################
-Mamba_type: Mamba2
+Mamba_type: Mamba1
 
-mamba_n_layer_encoder: 10
+mamba_n_layer_encoder: 4
 mamba_encoder_cfg:
   layer: ${Mamba_type}
   d_state: 64
   d_conv: 4
   expand: 2
 
-mamba_n_layer_decoder: 10
+mamba_n_layer_decoder: 8
 mamba_decoder_cfg:
   layer: ${Mamba_type}
   d_state: 64
@@ -126,6 +139,8 @@ mamba_decoder_cfg:
 ##########################################################################################
 # xLSTM Parameters
 ##########################################################################################
+xlstm_encoder_blocks: 16
+xlstm_decoder_blocks: 16
 
 trainset:
   _target_: environments.dataset.robocasa_dataset.RobocasaDataset
@@ -136,6 +151,7 @@ trainset:
   device: ${device}
   max_len_data: ${max_len_data}
   window_size: ${window_size}
+  global_action: ${global_action}
 
 valset:
   _target_: environments.dataset.robocasa_dataset.RobocasaDataset
@@ -146,6 +162,7 @@ valset:
   device: ${device}
   max_len_data: ${max_len_data}
   window_size: ${window_size}
+  global_action: ${global_action}
 
 simulation:
   _target_: simulation.robocasa_sim.RoboCasaSim
@@ -155,8 +172,9 @@ simulation:
   device: ${device}
   img_height: ${img_height}
   img_width: ${img_width}
-  num_episode: 1
-  max_step_per_episode: 300
-  render: False
+  num_episode: 20
+  max_step_per_episode: 400
+  render: True
   n_cores: 1
-  if_vision: False
+  if_vision: True
+  global_action: ${global_action}

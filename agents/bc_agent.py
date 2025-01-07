@@ -21,13 +21,14 @@ class BC_Agent(BaseAgent):
         obs_encoders: DictConfig,
         language_encoders: DictConfig,
         optimization: DictConfig,
-        action_seq_size: int,
+        obs_seq_len: int,
+        act_seq_len: int,
+        cam_names: list[str],
         if_robot_states: bool = False,
         if_film_condition: bool = False,
         device: str = "cpu",
         state_dim: int = 7,
         latent_dim: int = 64,
-        multistep: int = 10,
     ):
         super().__init__(
             model=model,
@@ -36,7 +37,9 @@ class BC_Agent(BaseAgent):
             device=device,
             state_dim=state_dim,
             latent_dim=latent_dim,
-            multistep=multistep
+            obs_seq_len=obs_seq_len,
+            act_seq_len=act_seq_len,
+            cam_names=cam_names
         )
 
         # self.img_encoder = hydra.utils.instantiate(obs_encoders).to(device)
@@ -48,8 +51,6 @@ class BC_Agent(BaseAgent):
 
         self.eval_model_name = "eval_best_bc.pth"
         self.last_model_name = "last_bc.pth"
-
-        self.action_seq_size = action_seq_size
 
         self.optimizer_config = optimization
         self.use_lr_scheduler = False

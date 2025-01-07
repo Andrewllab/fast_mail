@@ -30,8 +30,10 @@ class BesoAgent(BaseAgent):
             lr_scheduler: DictConfig,
             latent_dim,
             action_dim,
-            action_seq_len,
             decay: float,
+            obs_seq_len: int,
+            act_seq_len: int,
+            cam_names: list[str],
             state_dim = 7,
             use_lr_scheduler: bool = True,
             sampler_type: str = 'ddim',
@@ -44,7 +46,6 @@ class BesoAgent(BaseAgent):
             device: str = "cpu",
             if_film_condition: bool = False,
             if_robot_states: bool = False,
-            multistep: int = 10,
             use_text_not_embedding: bool = False,
             ckpt_path=None,
     ):
@@ -55,16 +56,12 @@ class BesoAgent(BaseAgent):
             device=device,
             state_dim=state_dim,
             latent_dim=latent_dim,
-            multistep=multistep
+            obs_seq_len=obs_seq_len,
+            act_seq_len=act_seq_len,
+            cam_names=cam_names
         )
 
-        # self.img_encoder = hydra.utils.instantiate(obs_encoders).to(self.device)
-        # self.model = hydra.utils.instantiate(model).to(device)
-
-        # self.language_goal = hydra.utils.instantiate(language_goal).to(self.device)
-        
         self.action_dim = action_dim
-        self.action_seq_len = action_seq_len
 
         self.use_lr_scheduler = use_lr_scheduler
 
@@ -171,7 +168,7 @@ class BesoAgent(BaseAgent):
         input_state = perceptual_emb
         sigmas = self.get_noise_schedule(sampling_steps, self.noise_scheduler)
 
-        x = torch.randn((len(perceptual_emb), self.action_seq_len, self.action_dim), device=self.device) * self.sigma_max
+        x = torch.randn((len(perceptual_emb), self.act_seq_len, self.action_dim), device=self.device) * self.sigma_max
 
         actions = self.sample_loop(sigmas, x, input_state, latent_goal, self.sampler_type, extra_args)
 

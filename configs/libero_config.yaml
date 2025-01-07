@@ -1,15 +1,22 @@
 defaults:
   - agents: bc_agent
   - trainers: base_trainer
+  - trainers@vqvae_pre_trainer: vqvae_pre_trainer
 #  - override hydra/launcher: submitit_slurm
 
-# agent_name: beso
-agent_name: bc
+agent_name: beso
 log_dir: logs/${task_suite}/
+save_path: "/home/xuan/datasets/fast_mail" #your save path. vae model will be saved here.
+pretrain_vqvae: False  # if true, pretrain the vqvae from scratch; if false, load the pretrained vqvae from the path
+pretrain_vqvae_epoch: 50 # number of epochs to pretrain the vqvae
+pretrain_vqvae_path: "/home/xuan/datasets/fast_mail/checkpoints/vqvae/2025-01-03/13-04-01/" #pre train vae folder
+
+model_paths:
+  vqvae: "${save_path}/checkpoints/vqvae/${now:%Y-%m-%d}/${now:%H-%M-%S}/"
 
 # insert wandb here
 wandb:
-  entity: x-huang
+  entity: tiger_or_cat
   project: fast_mail
 
 group: bc_${task_suite}
@@ -40,17 +47,18 @@ task_suite: libero_object
 traj_per_task: 10
 
 ## change the path of dataset
-# dataset_path: /home/david/2024/datasets/${task_suite}
+dataset_path: /home/david/2024/datasets/${task_suite}
 #dataset_path: /home/xuan/datasets/${task_suite}
 #dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
-dataset_path: /home/huang/ml_workspace/fast_mail_workspace/datasets/${task_suite}
+#dataset_path: /home/huang/ml_workspace/fast_mail_workspace/datasets/${task_suite}
 
 # Model Setting
 window_size: 10
 obs_seq_len: 1
 act_seq_len: ${window_size}
+multistep: ${window_size} # only for inference, could be different from act_seq_len
 goal_window_size: 1
-goal_conditioned: False
+goal_conditioned: True
 
 # obs_tokens: goal_window_size + obs_seq_len * len(obs_modalities)
 obs_tokens: 3
@@ -60,10 +68,12 @@ train_batch_size: 256
 val_batch_size: 32
 num_workers: 4
 device: 'cuda'
-epoch: 50
+epoch: 1
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'standard'
+
+if_use_ema: True
 
 ## Environment
 obs_dim: 9
@@ -73,13 +83,18 @@ max_len_data: 260
 
 ## Observations
 if_robot_states: False
+
+camera_names:
+  - "agentview"
+  - "eye_in_hand"
+
 shape_meta:
   # acceptable types: rgb, low_dim
   obs:
-    agentview_rgb:
+    agentview_image:
       shape: [ 3, 128, 128 ]
       type: rgb
-    eye_in_hand_rgb:
+    eye_in_hand_image:
       shape: [ 3, 128, 128 ]
       type: rgb
 
@@ -100,9 +115,9 @@ n_heads: 4
 ##########################################################################################
 # Mamba Parameters
 ##########################################################################################
-Mamba_type: Mamba2
+Mamba_type: Mamba1
 
-mamba_n_layer_encoder: 10
+mamba_n_layer_encoder: 5
 mamba_encoder_cfg:
   layer: ${Mamba_type}
   d_state: 64
@@ -119,7 +134,8 @@ mamba_decoder_cfg:
 ##########################################################################################
 # xLSTM Parameters
 ##########################################################################################
-
+xlstm_encoder_blocks: 16
+xlstm_decoder_blocks: 16
 
 # Dataset
 trainset:

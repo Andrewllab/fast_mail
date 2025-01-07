@@ -1,11 +1,15 @@
 import logging
 
+import einops
 import numpy as np
-from omegaconf import ListConfig
+import robosuite.utils.transform_utils as T
 import torch
+from omegaconf import ListConfig
+from robocasa.utils.env_utils import create_env
+from tqdm import tqdm
 
 from agents.base_agent import BaseAgent
-from robocasa.environments.kitchen.kitchen import REGISTERED_KITCHEN_ENVS
+from environments.wrappers.robosuite_wrapper import RobosuiteWrapper
 from simulation.base_sim import BaseSim
 
 log = logging.getLogger(__name__)
@@ -25,46 +29,21 @@ class RoboCasaSim(BaseSim):
         render: bool = True,
         n_cores: int = 1,
         if_vision: bool = False,
+        global_action: bool = False,
     ):
         super().__init__(seed, device, render, n_cores, if_vision)
 
         self.num_episode = num_episode
         self.max_step_per_episode = max_step_per_episode
         self.camera_names = list(camera_names)
+        self.global_action = global_action
 
-        self.env = REGISTERED_KITCHEN_ENVS[env_name](
-            robots="PandaMobile",
-            controller_configs={
-                "type": "OSC_POSE",
-                "input_max": 1,
-                "input_min": -1,
-                "output_max": [0.05, 0.05, 0.05, 0.5, 0.5, 0.5],
-                "output_min": [-0.05, -0.05, -0.05, -0.5, -0.5, -0.5],
-                "kp": 150,
-                "damping_ratio": 1,
-                "impedance_mode": "fixed",
-                "kp_limits": [0, 300],
-                "damping_ratio_limits": [0, 10],
-                "position_limits": None,
-                "orientation_limits": None,
-                "uncouple_pos_ori": True,
-                "control_delta": True,
-                "interpolation": None,
-                "ramp_ratio": 0.2,
-            },
-            has_renderer=render,
-            has_offscreen_renderer=True,
-            camera_names=self.camera_names,
-            use_camera_obs=True,
-            camera_depths=True,
-            camera_heights=img_height,
-            camera_widths=img_width,
-            # obj_registries=("objaverse", "aigen"),
-            # camera_segmentations="geom",
-            seed=seed
+        self._init_env(
+            env_name,
+            img_width,
+            img_height,
+            render,
         )
-
-        # self.env.seed(seed)
 
     def test_agent(self, agent: BaseAgent, cpu_set, epoch):
         success_count = 0
@@ -80,33 +59,43 @@ class RoboCasaSim(BaseSim):
 
             lang = self.env.get_ep_meta()["lang"]
 
-            for j in range(self.max_step_per_episode):
+            for j in tqdm(range(self.max_step_per_episode)):
                 obs_dict = {}
                 obs_dict["lang"] = lang
 
-                gripper_state = torch.from_numpy(obs['robot0_gripper_qpos'])
-                joint_pos_sin = torch.from_numpy(obs['robot0_joint_pos_sin'])
-                joint_pos_cos = torch.from_numpy(obs['robot0_joint_pos_cos'])
-                robot_state = torch.cat([gripper_state, joint_pos_sin, joint_pos_cos]).to(self.device).unsqueeze(0).unsqueeze(0)
+                gripper_state = torch.from_numpy(obs["robot0_gripper_qpos"]).float()
+                gripper_state = einops.rearrange(gripper_state, "d -> 1 1 d").to(
+                    self.device
+                )
+
+                joint_pos = torch.from_numpy(obs["robot0_joint_pos_cos"]).float()
+                joint_pos = einops.rearrange(joint_pos, "d -> 1 1 d").to(self.device)
+
+                robot_state = torch.cat([gripper_state, joint_pos], dim=-1)
                 obs_dict["robot_states"] = robot_state
 
-                # sampled_point_cloud = torch.from_numpy(obs["sampled_point_cloud"]).to(self.device)
-                # obs_dict["sampled_point_cloud"] = sampled_point_cloud
-
-                # custom_sampled_point_cloud = torch.from_numpy(obs["custom_sampled_point_cloud"]).to(self.device)
-                # obs_dict["custom_sampled_point_cloud"] = custom_sampled_point_cloud
-
                 for cam_name in self.camera_names:
-                    rgb = torch.from_numpy(obs[f"{cam_name}_image"]).to(self.device).float().permute(2, 0, 1).unsqueeze(0).unsqueeze(0) / 255.
-                    depth = torch.from_numpy(obs[f"{cam_name}_depth"]).to(self.device).float().permute(2, 0, 1).unsqueeze(0).unsqueeze(0)
-
+                    rgb = (
+                        torch.from_numpy(obs[f"{cam_name}_image"].copy())
+                        .float()
+                        .permute(2, 0, 1)
+                        / 255.0
+                    )
+                    rgb = einops.rearrange(rgb, "c h w -> 1 1 c h w").to(self.device)
                     obs_dict[f"{cam_name}_image"] = rgb
-                    obs_dict[f"{cam_name}_depth"] = depth
 
                 action = agent.predict(obs_dict).cpu().numpy()
-                
-                action = np.concatenate([action, np.array([0, 0, 0, 0, -1])])
-                
+
+                action = np.concatenate(
+                    [action, np.array([0, 0, 0, 0, -1])]
+                )
+
+                # action = np.concatenate(
+                #     [action[1:], action[:1], np.array([0, 0, 0, 0, -1])]
+                # )
+                if self.global_action:
+                    action = self.get_local_action(action)
+
                 obs, _, done, _ = self.env.step(action)
 
                 if self.render:
@@ -137,3 +126,39 @@ class RoboCasaSim(BaseSim):
         print(f"Success rate: {success_rate}")
 
         return success_rate
+
+    def _get_local_action(self, global_action: np.ndarray) -> np.ndarray:
+        base_mat = self.env.sim.data.get_site_xmat(
+            f"mobilebase{self.env.robots[0].idn}_center"
+        )
+
+        global_action_pos = global_action[:3]
+        global_action_axis_angle = global_action[3:6]
+        global_action_mat = T.quat2mat(T.axisangle2quat(global_action_axis_angle))
+
+        local_action_pos = base_mat.T @ global_action_pos
+        local_action_mat = base_mat.T @ global_action_mat @ base_mat
+        local_action_axis_angle = T.quat2axisangle(T.mat2quat(local_action_mat))
+
+        local_action = np.concatenate(
+            [local_action_pos, local_action_axis_angle, global_action[6:]]
+        )
+        return local_action
+
+    def _init_env(
+        self,
+        env_name,
+        img_width,
+        img_height,
+        render,
+    ):
+        base_env = create_env(
+            env_name=env_name,
+            camera_widths=img_width,
+            camera_heights=img_height,
+            camera_names=self.camera_names,
+            has_renderer=render,
+            seed=self.seed,
+        )
+
+        self.env = RobosuiteWrapper(base_env)

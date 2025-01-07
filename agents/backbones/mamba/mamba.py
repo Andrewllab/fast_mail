@@ -16,9 +16,10 @@ from mamba_ssm.modules.mamba_simple import Mamba
 from mamba_ssm.modules.mamba2 import Mamba2
 from mamba_ssm.modules.mha import MHA
 from mamba_ssm.modules.mlp import GatedMLP
-from mamba_ssm.modules.block import Block
+# from mamba_ssm.modules.block import Block
 from mamba_ssm.utils.generation import GenerationMixin
 from mamba_ssm.utils.hf import load_config_hf, load_state_dict_hf
+from .blocks import Block, ConditionedBlock
 
 try:
     from mamba_ssm.ops.triton.layer_norm import RMSNorm, layer_norm_fn, rms_norm_fn
@@ -39,6 +40,7 @@ def create_block(
     layer_idx=None,
     device=None,
     dtype=None,
+    adaLN_zero=False
 ):
     if ssm_cfg is None:
         ssm_cfg = {}
@@ -70,14 +72,25 @@ def create_block(
         mlp_cls = partial(
             GatedMLP, hidden_features=d_intermediate, out_features=d_model, **factory_kwargs
         )
-    block = Block(
-        d_model,
-        mixer_cls,
-        mlp_cls,
-        norm_cls=norm_cls,
-        fused_add_norm=fused_add_norm,
-        residual_in_fp32=residual_in_fp32,
-    )
+
+    if adaLN_zero:
+        block = ConditionedBlock(
+            d_model,
+            mixer_cls,
+            mlp_cls,
+            norm_cls=norm_cls,
+            fused_add_norm=fused_add_norm,
+            residual_in_fp32=residual_in_fp32,
+        )
+    else:
+        block = Block(
+            d_model,
+            mixer_cls,
+            mlp_cls,
+            norm_cls=norm_cls,
+            fused_add_norm=fused_add_norm,
+            residual_in_fp32=residual_in_fp32,
+        )
     block.layer_idx = layer_idx
     return block
 
@@ -132,6 +145,7 @@ class MixerModel(nn.Module):
         residual_in_fp32=False,
         device=None,
         dtype=None,
+        adaLN_zero=False
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
@@ -149,6 +163,8 @@ class MixerModel(nn.Module):
             if layer_norm_fn is None or rms_norm_fn is None:
                 raise ImportError("Failed to import Triton LayerNorm / RMSNorm kernels")
 
+        self.adaLN_zero = adaLN_zero
+
         self.layers = nn.ModuleList(
             [
                 create_block(
@@ -162,6 +178,7 @@ class MixerModel(nn.Module):
                     residual_in_fp32=residual_in_fp32,
                     fused_add_norm=fused_add_norm,
                     layer_idx=i,
+                    adaLN_zero=adaLN_zero,
                     **factory_kwargs,
                 )
                 for i in range(n_layer)
@@ -187,18 +204,25 @@ class MixerModel(nn.Module):
             for i, layer in enumerate(self.layers)
         }
 
-    def forward(self, hidden_states, inference_params=None, cond=None, **mixer_kwargs):
+    def forward(self, hidden_states, cond=None, inference_params=None, **mixer_kwargs):
         # we did linear layer before, so we just delete this layer
         # hidden_states = self.embedding(input_ids)
 
         residual = None
-        for layer in self.layers:
-            hidden_states, residual = layer(
-                hidden_states, residual, inference_params=inference_params, **mixer_kwargs
-            )
 
-            if cond is not None:
-                hidden_states = hidden_states + cond
+        if self.adaLN_zero:
+            for layer in self.layers:
+                hidden_states, residual = layer(
+                    hidden_states, residual, inference_params=inference_params, cond=cond, **mixer_kwargs
+                )
+        else:
+            for layer in self.layers:
+                hidden_states, residual = layer(
+                    hidden_states, residual, inference_params=inference_params, **mixer_kwargs
+                )
+
+                # if cond is not None:
+                #     hidden_states = hidden_states + cond
 
         if not self.fused_add_norm:
             residual = (hidden_states + residual) if residual is not None else hidden_states

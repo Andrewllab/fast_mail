@@ -5,4 +5,5 @@ _recursive_: false
 # device: ${device}
 # pretrained_model: ${clip_lang_model_name}
 # model_name: ${clip_lang_model_name}
+model_name: "ViT-B/32"
 # 16 or 32 "RN101", "RN50x4", "RN50x16", "ViT-B/32", "ViT-B/16"

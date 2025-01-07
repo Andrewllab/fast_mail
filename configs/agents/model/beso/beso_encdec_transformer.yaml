@@ -4,7 +4,7 @@ _recursive_: false
 sigma_data: 0.5
 
 inner_model:
-  _target_: agents.backbones.decoder_only.Noise_Dec_only
+  _target_: agents.backbones.encoder_decoder.Noise_EncDec
   _recursive_: false
   state_dim: ${latent_dim}
   action_dim: ${action_dim}
@@ -21,6 +21,7 @@ inner_model:
 
   use_ada_conditioning: False
   forward_type: 'cross_attn'
+  diffusion_type: 'beso'
 
   encoder:
     _target_: agents.backbones.transformer.blocks.TransformerEncoder
