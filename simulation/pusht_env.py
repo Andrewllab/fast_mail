@@ -328,7 +328,7 @@ class PushTEnv(gym.Env):
         goal_area = goal_geom.area
         coverage = intersection_area / goal_area
         reward = np.clip(coverage / self.success_threshold, 0, 1)
-        done = False  # coverage > self.success_threshold
+        done = coverage > self.success_threshold
 
         self.coverage_arr.append(coverage)
         observation = self._get_obs()

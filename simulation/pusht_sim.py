@@ -17,6 +17,8 @@ import einops
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 
+from fast_mail.agents.utils.push_t_debug_utils import *
+
 log = logging.getLogger(__name__)
 
 
@@ -81,7 +83,7 @@ class PushTSim(BaseSim):
             "legacy": False,
             "block_cog": None,
             "damping": None,
-            "render_action": True,
+            "render_action": False,
             "render_size": 224,
             "reset_to_state": None,  # position x 2, position x2, angle
         }
@@ -99,7 +101,6 @@ class PushTSim(BaseSim):
 
             # multiprocessing simulation
             for j in range(self.max_step_per_episode):
-                # ToDo XI: Use this for the new observation dictionary
                 obs = einops.rearrange(obs, "H W C -> 1 1 C H W") / 255.0  # 1 view
 
                 # Convert to torch tensor
@@ -111,7 +112,6 @@ class PushTSim(BaseSim):
                 action = agent.predict(obs_dict)
                 action = action.detach().cpu().numpy()
                 obs, r, done, info = env.step(action)
-                print(f"action: {action}")
                 if self.render:
                     env.render(mode='human')
 
@@ -152,6 +152,8 @@ class PushTSim(BaseSim):
 
         env = None
         # Get the first data from the dataloader
+        cnt = 0
+        final_sim_obs = None
         for data in self.debug_dataloader:
             obs, action, mask = data
             init_state = obs["state"][0, 0, :].detach().cpu().numpy()
@@ -165,7 +167,7 @@ class PushTSim(BaseSim):
                     "legacy": False,
                     "block_cog": None,
                     "damping": None,
-                    "render_action": True,
+                    "render_action": False,
                     "render_size": 224,
                     "reset_to_state": None,  # position x 2, position x2, angle
                 }
@@ -192,8 +194,7 @@ class PushTSim(BaseSim):
             for j in range(T):
                 a = action[0, j, :].detach().cpu().numpy()
                 pa = pa.detach().cpu().numpy()
-                print(f"action: {a}", f"predicted action: {pa}")
-                new_obs, r, done, info = env.step(pa)
+                new_obs, r, done, info = env.step(a)
 
                 new_obs = einops.rearrange(new_obs, "H W C -> 1 1 C H W") / 255.0  # 1 view
 
@@ -204,9 +205,11 @@ class PushTSim(BaseSim):
                             "lang_emb": False}
                 pa = agent.predict(obs_dict)
 
-                if self.render:
-                    env.render(mode='human')
-
+            #     if self.render:
+            #         env.render(mode='human')
+            #
+            #
+            # plot_batch_images(new_obs, 1, "BT-CHW")
             print("done", action.shape)
 
 
@@ -218,6 +221,15 @@ class PushTSim(BaseSim):
                 counter.value += 1
                 current_count = counter.value
                 counter.update()
+
+            # Roll out the agent
+            if cnt == 1:
+                final_sim_obs = new_obs
+
+            if cnt == 9:
+                compare_dataset_sim_observation(obs["agentview_rgb"], final_sim_obs)
+                cnt = 1
+            cnt += 1
 
     def get_task_embs(self, task_embs):
         self.task_embs = task_embs
@@ -257,7 +269,7 @@ class PushTSim(BaseSim):
 
             counter.update = update_pbar  # Add update method to counter
 
-            self.debug_agent(
+            self.eval_agent(
                 contexts=contexts,
                 success=success,
                 episode_lengths=episode_lengths,
