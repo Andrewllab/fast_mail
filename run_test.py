@@ -49,10 +49,10 @@ def main(cfg: DictConfig) -> None:
     trainer = hydra.utils.instantiate(cfg.trainers)
 
     agent.get_params()
-    # trainer.main(agent)
+    trainer.main(agent)
 
     agent.set_scaler(trainer.scaler)
-    agent.load_pretrained_model('/home/david/2025/fast_mail/logs/PnPCabToCounter/sweeps/beso/2025-01-07/11-01-58', sv_name='last_model')
+    # agent.load_pretrained_model('/home/david/2025/fast_mail/logs/PnPCabToCounter/sweeps/beso/2025-01-07/11-01-58', sv_name='last_model')
 
     # simulate the model
     env_sim = hydra.utils.instantiate(cfg.simulation)

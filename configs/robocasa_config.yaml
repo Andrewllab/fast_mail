@@ -1,9 +1,9 @@
 defaults:
-  - agents: beso_agent
+  - agents: fm_agent
   - trainers: base_trainer
   # - override hydra/launcher: "submitit_slurm"
 
-agent_name: beso
+agent_name: fm
 log_dir: logs/${env_name}/
 
 # insert wandb here

@@ -1,9 +1,10 @@
-_target_: agents.models.beso.models.edm_diffusion.score_wrappers.GCDenoiser
+_target_: agents.models.flow_matching.rf.RF
 _recursive_: false
 
-sigma_data: 0.5
+ln: False
+device: ${device}
 
-inner_model:
+backbones:
   _target_: agents.backbones.decoder_only.Noise_Dec_only
   _recursive_: false
   state_dim: ${latent_dim}
@@ -20,7 +21,7 @@ inner_model:
   linear_output: true
 
   use_ada_conditioning: False
-  diffusion_type: 'beso'
+  diffusion_type: 'rf'
 
   encoder:
     _target_: agents.backbones.transformer.blocks.TransformerEncoder

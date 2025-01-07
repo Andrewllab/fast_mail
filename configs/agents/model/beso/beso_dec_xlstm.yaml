@@ -20,6 +20,7 @@ inner_model:
   linear_output: true
 
   use_ada_conditioning: False
+  diffusion_type: 'beso'
 
   encoder:
     _target_: agents.backbones.xlstm.xlstm.xlstmEncoder
