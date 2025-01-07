@@ -87,8 +87,12 @@ class RoboCasaSim(BaseSim):
                 action = agent.predict(obs_dict).cpu().numpy()
 
                 action = np.concatenate(
-                    [action[1:], action[:1], np.array([0, 0, 0, 0, -1])]
+                    [action, np.array([0, 0, 0, 0, -1])]
                 )
+
+                # action = np.concatenate(
+                #     [action[1:], action[:1], np.array([0, 0, 0, 0, -1])]
+                # )
                 if self.global_action:
                     action = self.get_local_action(action)
 
