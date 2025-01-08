@@ -1,7 +1,7 @@
 defaults:
   - agents: beso_agent
   - trainers: base_trainer
-  # - override hydra/launcher: "submitit_slurm"
+  - override hydra/launcher: "submitit_slurm"
 
 agent_name: beso
 log_dir: logs/robocasa/
@@ -14,7 +14,7 @@ wandb:
 group: bc_robocasa
 
 hydra:
-  mode: MULTIRUN # needed for launcher to be used
+  mode: MULTIRUN  # needed for launcher to be used
   run:
     dir: ${log_dir}/runs/${agent_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
   job:
@@ -22,12 +22,15 @@ hydra:
   sweep:
     dir: ${log_dir}/sweeps/${agent_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
-  # launcher:
-  #   account: hk-project-sustainebot
-  #   timeout_min: 720
-  #   name: robocasa #${hydra.job.name}
-  #   partition: accelerated
-  #   gres: gpu:1
+  launcher:
+    account: hk-project-sustainebot
+    timeout_min: 500
+    name: robocasa #${hydra.job.name}
+    partition: accelerated
+    #    gpus_per_node: 4
+    gres: gpu:1
+#    cpus-per-task: 152
+#    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
 
 env_name:
   - PnPSinkToCounter
@@ -54,7 +57,7 @@ train_batch_size: 256
 val_batch_size: 1
 num_workers: 16
 device: "cuda"
-epoch: 1
+epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: "standard"
@@ -174,11 +177,11 @@ simulation:
   _target_: simulation.robocasa_sim.RoboCasaSim
   env_name: ${env_name}
   camera_names: ${camera_names}
-  seed: ${seed}
+  seed: 42 #${seed}
   device: ${device}
   img_height: ${img_height}
   img_width: ${img_width}
-  num_episode: 1
+  num_episode: 30
   max_step_per_episode: 400
   render: False
   n_cores: 1
