@@ -4,14 +4,14 @@ defaults:
   # - override hydra/launcher: "submitit_slurm"
 
 agent_name: beso
-log_dir: logs/${env_name}/
+log_dir: logs/robocasa/
 
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: fast_mail_robocasa
+  project: david_robocasa
 
-group: bc_${env_name}
+group: bc_robocasa
 
 hydra:
   mode: MULTIRUN # needed for launcher to be used
@@ -29,10 +29,14 @@ hydra:
   #   partition: accelerated
   #   gres: gpu:1
 
-env_name: PnPCabToCounter
+env_name:
+  - PnPSinkToCounter
+  - CloseSingleDoor
+  - OpenDrawer
+  - CoffeePressButton
 seed: 42
 
-dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/david/custom_robocasa/custom_robocasa/datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/demo_gentex_im128_randcams.hdf5
+dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/david/custom_robocasa/custom_robocasa/datasets/v0.1/single_stage/
 # dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/robocasa_datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/processed_demo_${img_width}_${img_height}.hdf5
 
 # Model Setting
@@ -48,9 +52,9 @@ goal_conditioned: True
 # Training
 train_batch_size: 256
 val_batch_size: 1
-num_workers: 4
+num_workers: 16
 device: "cuda"
-epoch: 100
+epoch: 1
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: "standard"
@@ -145,6 +149,7 @@ xlstm_decoder_blocks: 16
 trainset:
   _target_: environments.dataset.robocasa_dataset.RobocasaDataset
   data_directory: ${dataset_path}
+  env_name: ${env_name}
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
   cam_names: ${camera_names}
@@ -156,6 +161,7 @@ trainset:
 valset:
   _target_: environments.dataset.robocasa_dataset.RobocasaDataset
   data_directory: ${dataset_path}
+  env_name: ${env_name}
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
   cam_names: ${camera_names}
@@ -172,9 +178,9 @@ simulation:
   device: ${device}
   img_height: ${img_height}
   img_width: ${img_width}
-  num_episode: 20
+  num_episode: 1
   max_step_per_episode: 400
-  render: True
+  render: False
   n_cores: 1
   if_vision: True
   global_action: ${global_action}
