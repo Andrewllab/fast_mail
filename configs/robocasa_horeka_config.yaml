@@ -33,10 +33,13 @@ hydra:
 #    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
 
 env_name:
-  - PnPSinkToCounter
+#  - PnPSinkToCounter
   - CloseSingleDoor
   - OpenDrawer
+  - TurnOnStove
   - CoffeePressButton
+  - CoffeeServeMug
+
 seed: 42
 
 dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/david/custom_robocasa/custom_robocasa/datasets/v0.1/single_stage/
@@ -57,7 +60,7 @@ train_batch_size: 256
 val_batch_size: 1
 num_workers: 16
 device: "cuda"
-epoch: 100
+epoch: 200
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: "standard"
@@ -113,7 +116,7 @@ shape_meta:
 ##########################################################################################
 # Common Parameters
 ##########################################################################################
-n_embd: 256
+n_embd: 512
 goal_dim: 512
 latent_dim: 512
 
@@ -181,7 +184,7 @@ simulation:
   device: ${device}
   img_height: ${img_height}
   img_width: ${img_width}
-  num_episode: 30
+  num_episode: 50
   max_step_per_episode: 400
   render: False
   n_cores: 1

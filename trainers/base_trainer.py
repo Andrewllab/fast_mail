@@ -80,6 +80,8 @@ class BaseTrainer:
         else:
             self.scaler = ActionScaler(self.trainset.get_all_actions(), scale_data, device)
 
+        log.info("Number of training samples: {}".format(len(self.trainset)))
+
     def main(self, agent):
         """Run main training/testing pipeline."""
 

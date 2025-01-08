@@ -43,6 +43,8 @@ class RobocasaDataset(TrajectoryDataset):
                 data_dir = os.path.join(data_directory, "kitchen_drawer", env)
             elif 'Coffee' in env:
                 data_dir = os.path.join(data_directory, "kitchen_coffee", env)
+            elif 'Stove' in env:
+                data_dir = os.path.join(data_directory, "kitchen_stove", env)
             else:
                 raise ValueError(f"Unknown environment: {env}")
 
