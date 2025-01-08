@@ -24,7 +24,7 @@ hydra:
     subdir: ${hydra.job.override_dirname}
   launcher:
     account: hk-project-sustainebot
-    timeout_min: 600
+    timeout_min: 800
     name: robocasa #${hydra.job.name}
     partition: accelerated
     #    gpus_per_node: 4
