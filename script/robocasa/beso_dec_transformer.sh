@@ -1,4 +1,4 @@
-python run.py  --config-name=robocasa_horeka_config \
+python run_test.py  --config-name=robocasa_horeka_config \
             --multirun agents=beso_agent \
             agent_name=beso_transformer \
             group=beso_decoder_only \
