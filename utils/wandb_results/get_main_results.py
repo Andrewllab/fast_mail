@@ -33,19 +33,17 @@ if __name__ == '__main__':
     # sv_dir = 'benchmark_results'
     # os.makedirs(sv_dir, exist_ok=True)
 
-    task_suite = ["libero_object", "libero_spatial", "libero_10"]
+    task_suite = ["libero_spatial", "libero_object", "libero_goal", "libero_10"]
 
     store = ['max', 'mean']
 
-    groups = ['beso_decoder_only', 'bc_decoder_only']
-    fields = ['epoch100_average_success']
+    groups = ['bc_decoder_only', 'bc_encoder_decoder', 'beso_decoder_only', 'beso_encoder_decoder']
+    fields = ['epoch100_average_success', 'None']
 
     # csv_file = open(sv_dir + '/bc_dec_results.csv', 'w', newline='')
     # writer = csv.writer(csv_file)
 
     for group in groups:
-
-        strings = []
 
         if 'bc' in group:
             agent_names = ['bc_transformer', 'bc_mamba', 'bc_xlstm']
@@ -59,6 +57,9 @@ if __name__ == '__main__':
             raise ValueError('Invalid group')
 
         for agent_name in agent_names:
+
+            strings = []
+            task_success_rates = []
 
             for task in task_suite:
 
@@ -83,17 +84,21 @@ if __name__ == '__main__':
 
                     data_dict, config_list = wandb2numpy.export_data(config)
 
+                    if len(data_dict) == 0 or len(data_dict['local'][evaluation]) == 0:
+                        strings.append("& -")
+                        continue
+
                     success = data_dict['local'][evaluation]
                     success = np.squeeze(success)
 
-                    mean_result = success.mean()
-                    std_result = success.std()
+                    mean_result = success.mean() * 100
+                    std_result = success.std() * 100
 
-                    number_string = f"& ${mean_result:.3f} \scriptstyle \pm {std_result:.3f}$"
+                    number_string = f"& ${mean_result:.1f} \scriptstyle \pm {std_result:.1f}$"
                     print(bcolors.WARNING + number_string + bcolors.ENDC)
 
                     strings.append(number_string)
-
+                    task_success_rates.append(mean_result)
                     # success_list.append(success)
 
                 # success_list = np.concatenate(success_list, axis=-1)
@@ -105,8 +110,11 @@ if __name__ == '__main__':
                 # writer.writerow([''])
                 # writer.writerow([''])
 
-        print(bcolors.WARNING + f'-------------------{group}-------------------\n' + bcolors.ENDC)
-        print(agent_names, task_suite)
-        for string in strings:
-            print(string)
+            mean_task_success_rates = np.array(task_success_rates).mean()
+            mean_string = f"& ${mean_task_success_rates:.1f}$"
 
+            print(bcolors.WARNING + f'-------------------{group},{agent_name}-------------------\n' + bcolors.ENDC)
+            print(agent_names, task_suite)
+            for string in strings:
+                print(string)
+            print(mean_string)
