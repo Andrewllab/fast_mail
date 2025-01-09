@@ -1,8 +1,8 @@
 python run.py  --config-name=libero_horeka_config \
-            --multirun agents=bc_agent \
-            agent_name=bc_mamba \
-            group=bc_encoder_decoder \
-            agents/model=bc/bc_encdec_mamba \
+            --multirun agents=fm_agent \
+            agent_name=fm_mamba \
+            group=fm_encoder_decoder \
+            agents/model=fm/fm_encdec_mamba \
             task_suite=libero_object,libero_goal,libero_10,libero_spatial \
             traj_per_task=10,50 \
             mamba_n_layer_encoder=4 \

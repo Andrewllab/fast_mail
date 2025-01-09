@@ -3,10 +3,10 @@ _recursive_: false
 
 defaults:
   - model: beso/beso_dec_transformer
-  - obs_encoders: pretrained_resnet_film
+  - obs_encoders: resnet
   - language_encoders: clip
 
-if_film_condition: True
+if_film_condition: False
 if_robot_states: False
 
 #language_goal:
