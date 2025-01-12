@@ -25,7 +25,7 @@ lr_scheduler:
     phase_ratio: "(0.02, 0.08, 0.9)"
     lr: 1e-4
 
-use_lr_scheduler: True
+use_lr_scheduler: False
 
 obs_seq_len: ${obs_seq_len}
 act_seq_len: ${act_seq_len}
