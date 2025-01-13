@@ -1,5 +1,6 @@
 import sys
-sys.path.append("/home/david/2025")
+# sys.path.append("/home/david/2025")
+sys.path.append("/hkfs/work/workspace/scratch/ll6323-david_dataset_2/david")
 
 import logging
 
