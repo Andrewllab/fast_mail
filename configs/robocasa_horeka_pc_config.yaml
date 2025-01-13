@@ -1,7 +1,7 @@
 defaults:
   - agents: beso_agent
   - trainers: base_trainer
-  # - override hydra/launcher: "submitit_slurm"
+#  - override hydra/launcher: "submitit_slurm"
 
 agent_name: beso
 log_dir: logs/robocasa/
@@ -9,12 +9,12 @@ log_dir: logs/robocasa/
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: fast_mail_robocasa
+  project: david_robocasa_point_cloud
 
 group: bc_robocasa
 
 hydra:
-  mode: MULTIRUN # needed for launcher to be used
+  mode: MULTIRUN  # needed for launcher to be used
   run:
     dir: ${log_dir}/runs/${agent_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
   job:
@@ -22,23 +22,27 @@ hydra:
   sweep:
     dir: ${log_dir}/sweeps/${agent_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
-  # launcher:
-  #   account: hk-project-sustainebot
-  #   timeout_min: 720
-  #   name: robocasa #${hydra.job.name}
-  #   partition: accelerated
-  #   gres: gpu:1
+#  launcher:
+##    account: hk-project-sustainebot
+#    timeout_min: 1000
+#    name: robocasa #${hydra.job.name}
+#    partition: accelerated
+#    #    gpus_per_node: 4
+#    gres: gpu:1
+##    cpus-per-task: 152
+##    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
 
 env_name:
-#  - PnPCabToCounter
-#  - PnPStoveToCounter
 #  - PnPSinkToCounter
   - CloseSingleDoor
-#  - OpenDrawer
-#  - CoffeePressButton
+  - OpenDrawer
+  - TurnOnStove
+  - CoffeePressButton
+  - CoffeeServeMug
+
 seed: 42
 
-dataset_path: /home/david/2025/custom_robocasa/custom_robocasa/datasets/v0.1/single_stage/
+dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/david/custom_robocasa/custom_robocasa/datasets/v0.1/single_stage/
 # dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/robocasa_datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/processed_demo_${img_width}_${img_height}.hdf5
 
 # Model Setting
@@ -52,11 +56,11 @@ goal_window_size: 1
 goal_conditioned: True
 
 # Training
-train_batch_size: 64
+train_batch_size: 256
 val_batch_size: 1
-num_workers: 4
+num_workers: 16
 device: "cuda"
-epoch: 1
+epoch: 2
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: "standard"
@@ -119,7 +123,7 @@ shape_meta:
 ##########################################################################################
 # Common Parameters
 ##########################################################################################
-n_embd: 256
+n_embd: 512
 goal_dim: 512
 latent_dim: 512
 
@@ -128,7 +132,7 @@ latent_dim: 512
 ##########################################################################################
 encoder_n_layer: 4
 decoder_n_layer: 6
-n_heads: 4
+n_heads: 8
 
 ##########################################################################################
 # Mamba Parameters
@@ -191,7 +195,7 @@ simulation:
   img_width: ${img_width}
   num_episode: 1
   max_step_per_episode: 400
-  render: True
+  render: False
   n_cores: 1
   if_vision: True
   use_full_point_cloud: ${use_full_point_cloud}
