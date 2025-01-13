@@ -53,4 +53,4 @@ inner_model:
       slstm_at: [ 1 ]
     embed_dim: ${n_embd}
     bias: false
-    block_size: 14
+    block_size: 1036
