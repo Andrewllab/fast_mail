@@ -21,6 +21,7 @@ class RobocasaDataset(TrajectoryDataset):
         window_size: int = 1,
         use_segmented_point_cloud: bool = False,
         global_action: bool = False,
+        use_pc_color: bool = False
     ):
         super().__init__(
             data_directory=data_directory,
@@ -69,6 +70,8 @@ class RobocasaDataset(TrajectoryDataset):
             "robot0_eef_quat" if global_action else "robot0_base_to_eef_quat"
         )
         self.action_key = "global_actions" if global_action else "actions"
+
+        self.use_pc_color = use_pc_color
 
         cprint(f"Using dataset: {data_directory}", "green")
         cprint(f"Using point cloud key: {self.pc_key}", "blue")
@@ -156,6 +159,12 @@ class RobocasaDataset(TrajectoryDataset):
         obs["eef_quat"] = eef_quat
 
         point_cloud = torch.from_numpy(demo["obs"][self.pc_key][start:start+1]).float()
+
+        if not self.use_pc_color:
+            point_cloud = point_cloud[:, :, :3]
+        else:
+            point_cloud[:, :, 3:] /= 255.
+
         obs["point_cloud"] = point_cloud
 
         obs["lang"] = json.loads(demo.attrs["ep_meta"])["lang"]

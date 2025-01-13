@@ -19,6 +19,8 @@ inner_model:
   device: ${device}
   linear_output: true
 
+  use_pos_emb: False
+
   use_ada_conditioning: False
   diffusion_type: 'beso'
 

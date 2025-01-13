@@ -140,7 +140,8 @@ class Noise_Dec_only(nn.Module):
             action_seq_len: int,
             linear_output: bool = False,
             use_ada_conditioning: bool = False,
-            diffusion_type: str = "beso" # ddpm, beso or rf
+            diffusion_type: str = "beso", # ddpm, beso or rf
+            use_pos_emb: bool = True
     ):
         super().__init__()
 
@@ -174,8 +175,11 @@ class Noise_Dec_only(nn.Module):
         else:
             raise ValueError(f"Diffusion type {diffusion_type} is not supported")
 
-        # position embedding
-        self.pos_emb = nn.Parameter(torch.zeros(1, self.seq_size, embed_dim))
+        self.use_pos_emb = use_pos_emb
+        if use_pos_emb:
+            # position embedding
+            self.pos_emb = nn.Parameter(torch.zeros(1, self.seq_size, embed_dim))
+
         self.drop = nn.Dropout(embed_pdrob)
         self.drop.to(self.device)
 
@@ -231,13 +235,19 @@ class Noise_Dec_only(nn.Module):
 
         if self.goal_conditioned:
             goal_embed = self.goal_emb(goals)
-            goal_x = self.drop(goal_embed + self.pos_emb[:, :self.goal_seq_len, :])
+            if self.use_pos_emb:
+                goal_embed += self.pos_emb[:, :self.goal_seq_len, :]
+            goal_x = self.drop(goal_embed)
 
         state_embed = self.tok_emb(states)
-        state_x = self.drop(state_embed + self.pos_emb[:, self.goal_seq_len:(self.goal_seq_len + t), :])
+        if self.use_pos_emb:
+            state_embed += self.pos_emb[:, self.goal_seq_len:(self.goal_seq_len + t), :]
+        state_x = self.drop(state_embed)
 
         action_embed = self.action_emb(actions)
-        action_x = self.drop(action_embed + self.pos_emb[:, (self.goal_seq_len + t):(self.goal_seq_len + t + t_a), :])
+        if self.use_pos_emb:
+            action_embed += self.pos_emb[:, (self.goal_seq_len + t):(self.goal_seq_len + t + t_a), :]
+        action_x = self.drop(action_embed)
 
         emb_t = self.sigma_emb(sigma)
 

@@ -146,6 +146,9 @@ class RoboCasaSim(BaseSim):
                     sampled_point_cloud = torch.from_numpy(obs[self.pc_key]).float()
                     if not self.use_pc_color:
                         sampled_point_cloud = sampled_point_cloud[:, :3]
+                    else:
+                        sampled_point_cloud[:, 3:] /= 255.0
+
                     obs_dict["point_cloud"] = einops.rearrange(
                         sampled_point_cloud, "num_points d -> 1 1 num_points d"
                     ).to(self.device)

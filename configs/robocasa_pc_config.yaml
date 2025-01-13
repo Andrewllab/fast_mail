@@ -52,7 +52,7 @@ goal_window_size: 1
 goal_conditioned: True
 
 # Training
-train_batch_size: 64
+train_batch_size: 32
 val_batch_size: 1
 num_workers: 4
 device: "cuda"
@@ -72,7 +72,7 @@ point_cloud_num_points: 1024
 obj_max_num_points: 512
 use_segmented_point_cloud: False
 use_full_point_cloud: False
-use_pc_color: True
+use_pc_color: False
 
 global_action: False
 
@@ -121,12 +121,12 @@ shape_meta:
 ##########################################################################################
 n_embd: 256
 goal_dim: 512
-latent_dim: 512
+latent_dim: 256
 
 ##########################################################################################
 # Transformer Parameters (encoder-decoder)
 ##########################################################################################
-encoder_n_layer: 4
+encoder_n_layer: 6
 decoder_n_layer: 6
 n_heads: 4
 
@@ -167,6 +167,7 @@ trainset:
   window_size: ${window_size}
   use_segmented_point_cloud: ${use_segmented_point_cloud}
   global_action: ${global_action}
+  use_pc_color: ${use_pc_color}
 
 valset:
   _target_: environments.dataset.robocasa_pc_dataset.RobocasaDataset
@@ -180,6 +181,7 @@ valset:
   window_size: ${window_size}
   use_segmented_point_cloud: ${use_segmented_point_cloud}
   global_action: ${global_action}
+  use_pc_color: ${use_pc_color}
 
 simulation:
   _target_: simulation.robocasa_pc_sim.RoboCasaSim

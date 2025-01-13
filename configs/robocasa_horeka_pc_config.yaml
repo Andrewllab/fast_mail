@@ -60,7 +60,7 @@ train_batch_size: 128
 val_batch_size: 1
 num_workers: 16
 device: "cuda"
-epoch: 2
+epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: "standard"
@@ -76,7 +76,7 @@ point_cloud_num_points: 1024
 obj_max_num_points: 512
 use_segmented_point_cloud: False
 use_full_point_cloud: False
-use_pc_color: True
+use_pc_color: False
 
 global_action: False
 
@@ -125,7 +125,7 @@ shape_meta:
 ##########################################################################################
 n_embd: 256
 goal_dim: 512
-latent_dim: 512
+latent_dim: 256
 
 ##########################################################################################
 # Transformer Parameters (encoder-decoder)
@@ -171,6 +171,7 @@ trainset:
   window_size: ${window_size}
   use_segmented_point_cloud: ${use_segmented_point_cloud}
   global_action: ${global_action}
+  use_pc_color: ${use_pc_color}
 
 valset:
   _target_: environments.dataset.robocasa_pc_dataset.RobocasaDataset
@@ -184,12 +185,13 @@ valset:
   window_size: ${window_size}
   use_segmented_point_cloud: ${use_segmented_point_cloud}
   global_action: ${global_action}
+  use_pc_color: ${use_pc_color}
 
 simulation:
   _target_: simulation.robocasa_pc_sim.RoboCasaSim
   env_name: ${env_name}
   camera_names: ${camera_names}
-  seed: ${seed}
+  seed: 42 #${seed}
   device: ${device}
   img_height: ${img_height}
   img_width: ${img_width}
