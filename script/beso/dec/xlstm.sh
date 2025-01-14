@@ -4,5 +4,6 @@ python run.py  --config-name=libero_horeka_config \
             group=beso_decoder_only_test \
             agents/model=beso/beso_dec_xlstm \
             task_suite=libero_spatial \
+            xlstm_encoder_blocks=8 \
             traj_per_task=10 \
             seed=0,1,2
