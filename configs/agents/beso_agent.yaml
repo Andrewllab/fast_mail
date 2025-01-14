@@ -3,7 +3,7 @@ _recursive_: false
 
 defaults:
   - model: beso/beso_dec_xlstm
-  - obs_encoders: point_mlp
+  - obs_encoders: resnet
   - language_encoders: clip
 
 if_film_condition: False
@@ -44,7 +44,7 @@ act_seq_len: ${act_seq_len}
 cam_names: ${camera_names}
 
 decay: 0.995
-use_lr_scheduler: True
+use_lr_scheduler: False
 
 # diffusion params
 sampler_type: 'ddim'

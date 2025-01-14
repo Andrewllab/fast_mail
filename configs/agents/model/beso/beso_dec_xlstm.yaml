@@ -19,7 +19,7 @@ inner_model:
   device: ${device}
   linear_output: true
 
-  use_pos_emb: False
+#  use_pos_emb: False
 
   use_ada_conditioning: False
   diffusion_type: 'beso'
@@ -29,7 +29,7 @@ inner_model:
     embedding_dim: ${n_embd}
     num_heads: 4
     num_blocks: ${xlstm_encoder_blocks}
-    vocab_size: 1036
+    vocab_size: 14
     chunkwise_kernel: "parallel--native_autograd"
     mode: "train"
     adaLN_zero: False
