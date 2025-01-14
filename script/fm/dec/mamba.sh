@@ -5,4 +5,5 @@ python run.py  --config-name=libero_horeka_config \
             agents/model=fm/fm_dec_mamba \
             task_suite=libero_object,libero_goal,libero_10,libero_spatial \
             traj_per_task=10,50 \
+            scaler_type='minmax' \
             seed=0,1,2

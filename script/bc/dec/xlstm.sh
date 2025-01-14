@@ -5,4 +5,5 @@ python run.py  --config-name=libero_horeka_config \
             agents/model=bc/bc_dec_xlstm \
             task_suite=libero_object,libero_goal,libero_10,libero_spatial \
             traj_per_task=10,50 \
+            xlstm_encoder_blocks=8 \
             seed=0,1,2
