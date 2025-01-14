@@ -2,7 +2,7 @@ defaults:
   - agents: bc_agent
   - trainers: base_trainer
   - trainers@vqvae_pre_trainer: vqvae_pre_trainer
-  - override hydra/launcher: submitit_slurm
+#  - override hydra/launcher: submitit_slurm
 
 # agent_name: beso
 agent_name: bc
@@ -31,15 +31,15 @@ hydra:
   sweep:
     dir: ${log_dir}/sweeps/${agent_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
-  launcher:
-    account: hk-project-sustainebot
-    timeout_min: 500
-    name: libero #${hydra.job.name}
-    partition: accelerated
-    #    gpus_per_node: 4
-    gres: gpu:1
-#    cpus-per-task: 152
-#    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
+#  launcher:
+#    account: hk-project-sustainebot
+#    timeout_min: 500
+#    name: libero #${hydra.job.name}
+#    partition: accelerated
+#    #    gpus_per_node: 4
+#    gres: gpu:1
+##    cpus-per-task: 152
+##    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
 
 seed: 42
 
