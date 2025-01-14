@@ -27,7 +27,7 @@ inner_model:
   encoder:
     _target_: agents.backbones.xlstm.blocks.xLSTMBlockStack
     embedding_dim: ${n_embd}
-    num_heads: 4
+    num_heads: 8
     num_blocks: ${xlstm_encoder_blocks}
     vocab_size: 14
     chunkwise_kernel: "parallel--native_autograd"
