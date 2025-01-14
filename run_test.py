@@ -40,7 +40,7 @@ def main(cfg: DictConfig) -> None:
         project=cfg.wandb.project,
         entity=cfg.wandb.entity,
         group=cfg.group,
-        # mode="disabled",
+        mode="disabled",
         config=wandb.config
     )
 
