@@ -71,7 +71,7 @@ device: 'cuda'
 epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
-scaler_type: 'standard'
+scaler_type: 'minmax'
 
 if_use_ema: True
 
