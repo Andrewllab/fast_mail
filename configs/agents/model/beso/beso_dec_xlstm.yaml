@@ -30,6 +30,6 @@ inner_model:
     num_heads: 8
     num_blocks: ${xlstm_encoder_blocks}
     vocab_size: 1036
-    chunkwise_kernel: "chunkwise--triton_limit_chunk" #"parallel--native_autograd"
+    chunkwise_kernel: "chunkwise--native_autograd" #"parallel--native_autograd"
     mode: "train_with_padding" #"train"
     adaLN_zero: False
