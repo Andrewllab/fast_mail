@@ -65,6 +65,8 @@ eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'standard'
 
+if_use_ema: False
+
 ## Environment
 obs_dim: 9
 action_dim: 2
@@ -73,6 +75,10 @@ max_len_data: 260
 
 ## Observations
 if_robot_states: False
+
+camera_names:
+  - "agentview_rgb"
+
 shape_meta:
   # acceptable types: rgb, low_dim
   obs:
