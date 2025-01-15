@@ -12,6 +12,7 @@ class RobocasaDataset(TrajectoryDataset):
     def __init__(
         self,
         cam_names: list[str],
+        env_name: list[str],
         data_directory: os.PathLike,
         device: str = "cpu",
         obs_dim: int = 20,
@@ -20,6 +21,7 @@ class RobocasaDataset(TrajectoryDataset):
         window_size: int = 1,
         use_segmented_point_cloud: bool = False,
         global_action: bool = False,
+        use_pc_color: bool = False
     ):
         super().__init__(
             data_directory=data_directory,
@@ -30,9 +32,30 @@ class RobocasaDataset(TrajectoryDataset):
             window_size=window_size,
         )
 
+        self.env_name = env_name
         self.cam_names = cam_names
-        self.data_file = h5py.File(data_directory, "r")
-        self.demos = self.data_file["data"]
+
+        self.envs_data = []
+        for env in self.env_name:
+            if 'PnP' in env:
+                data_dir = os.path.join(data_directory, "kitchen_pnp", env)
+            elif 'Door' in env:
+                data_dir = os.path.join(data_directory, "kitchen_doors", env)
+            elif 'Drawer' in env:
+                data_dir = os.path.join(data_directory, "kitchen_drawer", env)
+            elif 'Coffee' in env:
+                data_dir = os.path.join(data_directory, "kitchen_coffee", env)
+            elif 'Stove' in env:
+                data_dir = os.path.join(data_directory, "kitchen_stove", env)
+            else:
+                raise ValueError(f"Unknown environment: {env}")
+
+            data_dir = os.path.join(data_dir, os.listdir(data_dir)[0], "processed_demo_128_128.hdf5")
+
+            env_data = h5py.File(data_dir, "r")
+            env_data = env_data["data"]
+
+            self.envs_data.append(env_data)
 
         self.slices = self.get_slices()
 
@@ -48,6 +71,8 @@ class RobocasaDataset(TrajectoryDataset):
         )
         self.action_key = "global_actions" if global_action else "actions"
 
+        self.use_pc_color = use_pc_color
+
         cprint(f"Using dataset: {data_directory}", "green")
         cprint(f"Using point cloud key: {self.pc_key}", "blue")
         cprint(f"Using position key: {self.pos_key}", "blue")
@@ -57,34 +82,39 @@ class RobocasaDataset(TrajectoryDataset):
     def get_slices(self):
         slices = []
 
-        for demo in self.demos:
-            i = int(demo.split("_")[1])
-            T = self.get_seq_length(i)
+        for num, env_data in enumerate(self.envs_data):
 
-            if T - self.window_size < 0:
-                print(
-                    f"Ignored short sequence #{i}: len={T}, window={self.window_size}"
-                )
-            else:
-                slices += [
-                    (i, start, start + self.window_size)
-                    for start in range(T - self.window_size + 1)
-                ]  # slice indices follow convention [start, end)
+            for demo in env_data:
+                i = int(demo.split("_")[1])
+                T = env_data[demo].attrs["num_samples"]
+
+                if T - self.window_size < 0:
+                    print(
+                        f"Ignored short sequence #{i}: len={T}, window={self.window_size}"
+                    )
+                else:
+                    slices += [
+                        (num, i, start, start + self.window_size)
+                        for start in range(T - self.window_size + 1)
+                    ]  # slice indices follow convention [start, end)
 
         return slices
 
     def get_seq_length(self, idx):
-        return self.demos[f"demo_{idx}"].attrs["num_samples"]
+        pass
+        # return self.demos[f"demo_{idx}"].attrs["num_samples"]
 
     def get_all_actions(self):
         result = []
 
-        for demo in self.demos:
-            result.append(
-                torch.from_numpy(
-                    self.demos[demo][self.action_key][:, : self.action_dim]
+        for num, env_data in enumerate(self.envs_data):
+
+            for demo in env_data:
+                result.append(
+                    torch.from_numpy(
+                        env_data[demo][self.action_key][:, : self.action_dim]
+                    )
                 )
-            )
 
         return torch.cat(result, dim=0).to(self.device)
 
@@ -107,15 +137,13 @@ class RobocasaDataset(TrajectoryDataset):
         return len(self.slices)
 
     def __getitem__(self, idx):
-        i, start, end = self.slices[idx]
+        num_env, i, start, end = self.slices[idx]
 
-        demo = self.demos[f"demo_{i}"]
+        demo = self.envs_data[num_env][f"demo_{i}"]
 
         action = torch.from_numpy(
             demo[self.action_key][start:end, : self.action_dim]
         ).float()
-
-        action = torch.cat([action[:, 6:], action[:, :6]], dim=-1)
 
         obs = {}
 
@@ -130,7 +158,13 @@ class RobocasaDataset(TrajectoryDataset):
         eef_quat = torch.from_numpy(demo["obs"][self.quat_key][start:end]).float()
         obs["eef_quat"] = eef_quat
 
-        point_cloud = torch.from_numpy(demo["obs"][self.pc_key][start:end]).float()
+        point_cloud = torch.from_numpy(demo["obs"][self.pc_key][start:start+1]).float()
+
+        if not self.use_pc_color:
+            point_cloud = point_cloud[:, :, :3]
+        else:
+            point_cloud[:, :, 3:] /= 255.
+
         obs["point_cloud"] = point_cloud
 
         obs["lang"] = json.loads(demo.attrs["ep_meta"])["lang"]

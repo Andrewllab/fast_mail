@@ -6,6 +6,9 @@ defaults:
   - obs_encoders: resnet
   - language_encoders: clip
 
+if_film_condition: False
+if_robot_states: False
+
 optimizer:
   _target_: torch.optim.AdamW
   transformer_weight_decay: 0.05
@@ -22,13 +25,13 @@ lr_scheduler:
     phase_ratio: "(0.02, 0.08, 0.9)"
     lr: 1e-4
 
+use_lr_scheduler: False
+
 obs_seq_len: ${obs_seq_len}
 act_seq_len: ${act_seq_len}
 
 cam_names: ${camera_names}
 
-if_robot_states: False
-if_film_condition: False
 device: ${device}
 state_dim: ${obs_dim}
 latent_dim: ${latent_dim}

@@ -71,7 +71,16 @@ class BaseAgent(nn.Module, abc.ABC):
         #########################################
         # using RGB images or point clouds
         #########################################
-        if self.cam_names is not None:
+        if "point_cloud" in obs_dict:
+            assert obs_dict["point_cloud"].shape[-1] in [3, 6], "Point cloud should have 3 or 6 channels"
+
+            pc = einops.rearrange(obs_dict["point_cloud"], "b t n d -> (b t) n d")
+            if self.if_film_condition:
+                perceptual_emb = self.img_encoder(pc, latent_goal)
+            else:
+                perceptual_emb = self.img_encoder(pc)
+
+        elif self.cam_names is not None:
 
             B, T, C, H, W = obs_dict[f"{self.cam_names[0]}_image"].shape
             # B, T, C, H, W = obs_dict["robot0_agentview_center_image"].shape
@@ -92,7 +101,7 @@ class BaseAgent(nn.Module, abc.ABC):
                 # obs_dict is a dict with two images and one lang: images are [64,3,256,256]
                 perceptual_emb = self.img_encoder(obs_dict)
         else:
-            raise NotImplementedError("point cloud not implemented yet")
+            raise NotImplementedError("Either use point clouds or images as input.")
 
         #########################################
         # add robot states

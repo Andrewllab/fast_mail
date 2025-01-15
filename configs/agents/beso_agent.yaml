@@ -2,9 +2,12 @@ _target_: agents.beso_agent.BesoAgent
 _recursive_: false
 
 defaults:
-  - model: beso/beso_encdec_mamba
+  - model: beso/beso_dec_xlstm
   - obs_encoders: resnet
   - language_encoders: clip
+
+if_film_condition: False
+if_robot_states: False
 
 #language_goal:
 #  _target_: agents.mdt.models.networks.clip_lang_encoder.LangClip
@@ -41,7 +44,7 @@ act_seq_len: ${act_seq_len}
 cam_names: ${camera_names}
 
 decay: 0.995
-use_lr_scheduler: true
+use_lr_scheduler: False
 
 # diffusion params
 sampler_type: 'ddim'
@@ -53,8 +56,6 @@ noise_scheduler: 'exponential'
 sigma_sample_density_type: 'loglogistic'
 
 device: ${device}
-if_film_condition: False
-if_robot_states: False
 
 use_text_not_embedding: False
 ckpt_path: null

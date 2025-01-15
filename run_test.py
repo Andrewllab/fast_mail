@@ -28,7 +28,7 @@ def set_seed_everywhere(seed):
     random.seed(seed)
 
 
-@hydra.main(config_path="configs", config_name="robocasa_config.yaml", version_base="1.3")
+@hydra.main(config_path="configs", config_name="robocasa_pc_config.yaml", version_base="1.3")
 def main(cfg: DictConfig) -> None:
 
     set_seed_everywhere(cfg.seed)
@@ -51,8 +51,8 @@ def main(cfg: DictConfig) -> None:
     agent.get_params()
     trainer.main(agent)
 
-    agent.set_scaler(trainer.scaler)
-    # agent.load_pretrained_model('/home/david/2025/fast_mail/logs/PnPCabToCounter/sweeps/beso/2025-01-07/11-01-58', sv_name='last_model')
+    # agent.set_scaler(trainer.scaler)
+    # agent.load_pretrained_model('/home/david/2025/fast_mail/logs/PnPCabToCounter/sweeps/beso/2025-01-07/22-10-06', sv_name='last_model')
 
     # simulate the model
     env_sim = hydra.utils.instantiate(cfg.simulation)
@@ -60,7 +60,7 @@ def main(cfg: DictConfig) -> None:
     #
     # sv_dir = sim_framework_path("pretrain_weights")
     #
-    env_sim.test_agent(agent, cfg.agents, epoch=cfg.epoch)
+    env_sim.test_agent(agent)
 
     log.info("Training done")
     log.info("state_dict saved in {}".format(agent.working_dir))

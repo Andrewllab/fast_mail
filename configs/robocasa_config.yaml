@@ -1,17 +1,17 @@
 defaults:
-  - agents: fm_agent
+  - agents: beso_agent
   - trainers: base_trainer
   # - override hydra/launcher: "submitit_slurm"
 
-agent_name: fm
-log_dir: logs/${env_name}/
+agent_name: beso
+log_dir: logs/robocasa/
 
 # insert wandb here
 wandb:
   entity: tiger_or_cat
   project: fast_mail_robocasa
 
-group: bc_${env_name}
+group: bc_robocasa
 
 hydra:
   mode: MULTIRUN # needed for launcher to be used
@@ -29,10 +29,16 @@ hydra:
   #   partition: accelerated
   #   gres: gpu:1
 
-env_name: PnPCabToCounter
+env_name:
+  - PnPCabToCounter
+  - PnPStoveToCounter
+#  - PnPSinkToCounter
+#  - CloseSingleDoor
+#  - OpenDrawer
+#  - CoffeePressButton
 seed: 42
 
-dataset_path: /home/david/2024/bi_manual/robocasa/datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/demo_gentex_im128_randcams.hdf5
+dataset_path: /home/david/2024/bi_manual/robocasa/datasets/v0.1/single_stage/
 # dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/robocasa_datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/processed_demo_${img_width}_${img_height}.hdf5
 
 # Model Setting
@@ -50,7 +56,7 @@ train_batch_size: 256
 val_batch_size: 1
 num_workers: 4
 device: "cuda"
-epoch: 50
+epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: "standard"
@@ -108,7 +114,7 @@ shape_meta:
 ##########################################################################################
 n_embd: 256
 goal_dim: 512
-latent_dim: 256
+latent_dim: 512
 
 ##########################################################################################
 # Transformer Parameters (encoder-decoder)
@@ -145,6 +151,7 @@ xlstm_decoder_blocks: 16
 trainset:
   _target_: environments.dataset.robocasa_dataset.RobocasaDataset
   data_directory: ${dataset_path}
+  env_name: ${env_name}
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
   cam_names: ${camera_names}
@@ -156,6 +163,7 @@ trainset:
 valset:
   _target_: environments.dataset.robocasa_dataset.RobocasaDataset
   data_directory: ${dataset_path}
+  env_name: ${env_name}
   obs_dim: ${obs_dim}
   action_dim: ${action_dim}
   cam_names: ${camera_names}
@@ -172,7 +180,7 @@ simulation:
   device: ${device}
   img_height: ${img_height}
   img_width: ${img_width}
-  num_episode: 20
+  num_episode: 1
   max_step_per_episode: 400
   render: True
   n_cores: 1
