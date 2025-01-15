@@ -56,7 +56,7 @@ goal_conditioned: False
 obs_tokens: 3
 
 # Training
-train_batch_size: 128
+train_batch_size: 64
 val_batch_size: 32
 num_workers: 4
 device: 'cuda'
@@ -82,7 +82,7 @@ camera_names:
 shape_meta:
   # acceptable types: rgb, low_dim
   obs:
-    agentview_rgb:
+    agentview_rgb_image:
       shape: [ 3, 224, 224 ]
       type: rgb
 

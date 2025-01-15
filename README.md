@@ -138,3 +138,7 @@ The code of this repository relies on the following existing codebases:
 - [ ] Standardize camera image observations across LIBERO and RoboCasa
 - [ ] Resolve XLSTM context length issues
 - [ ] Add custom XLSTM block stacking functionality
+
+### Xi
+- [ ] Can we make it possible to choose whether we want to load language models? For now, it initializes CLIP by default.
+- [ ] Is it necessary to distinguish camera_name and the name of observation? Would it be better to keep them unified?

@@ -152,7 +152,7 @@ class PushTDataset(TrajectoryDataset):
         state = self.states[i, start:end]
 
         # Wrap in a dictionary
-        obs_dict = {"agentview_rgb": obs, "lang_emb": False, "state": state}
+        obs_dict = {"agentview_rgb_image": obs, "lang_emb": False, "state": state}
         return obs_dict, act, mask
 
     def __len__(self):
