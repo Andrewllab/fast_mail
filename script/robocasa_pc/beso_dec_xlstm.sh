@@ -10,5 +10,7 @@ python run_test.py  --config-name=robocasa_horeka_pc_config \
             agent_name=beso_xlstm \
             group=beso_decoder_only_benchmark \
             agents/model=beso/beso_dec_xlstm \
+            agents/obs_encoders=point_mlp \
             xlstm_encoder_blocks=8 \
+            scaler_type='minmax' \
             seed=0
