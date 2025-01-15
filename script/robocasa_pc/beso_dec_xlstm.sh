@@ -11,5 +11,4 @@ python run_test.py  --config-name=robocasa_horeka_pc_config \
             group=beso_decoder_only_benchmark \
             agents/model=beso/beso_dec_xlstm \
             xlstm_encoder_blocks=8 \
-            scaler_type='minmax' \
             seed=0
