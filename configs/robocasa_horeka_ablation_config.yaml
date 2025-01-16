@@ -164,7 +164,7 @@ xlstm_decoder_adaLN_zero: False
 xlstm_decoder_in_context_cond: False
 
 trainset:
-  _target_: environments.dataset.robocasa_dataset.RobocasaDataset
+  _target_: environments.dataset.robocasa_dataset_memory.RobocasaDataset
   data_directory: ${dataset_path}
   env_name: ${env_name}
   obs_dim: ${obs_dim}
@@ -176,7 +176,7 @@ trainset:
   global_action: ${global_action}
 
 valset:
-  _target_: environments.dataset.robocasa_dataset.RobocasaDataset
+  _target_: environments.dataset.robocasa_dataset_memory.RobocasaDataset
   data_directory: ${dataset_path}
   env_name: ${env_name}
   obs_dim: ${obs_dim}

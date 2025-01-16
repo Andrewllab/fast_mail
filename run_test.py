@@ -28,7 +28,7 @@ def set_seed_everywhere(seed):
     random.seed(seed)
 
 
-@hydra.main(config_path="configs", config_name="robocasa_pc_config.yaml", version_base="1.3")
+@hydra.main(config_path="configs", config_name="robocasa_config.yaml", version_base="1.3")
 def main(cfg: DictConfig) -> None:
 
     set_seed_everywhere(cfg.seed)
@@ -40,7 +40,7 @@ def main(cfg: DictConfig) -> None:
         project=cfg.wandb.project,
         entity=cfg.wandb.entity,
         group=cfg.group,
-        # mode="disabled",
+        mode="disabled",
         config=wandb.config
     )
 
