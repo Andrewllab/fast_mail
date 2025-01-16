@@ -1,0 +1,9 @@
+python run.py  --config-name=robocasa_horeka_ablation_config \
+            --multirun agents=beso_agent \
+            agent_name=beso_xlstm \
+            group=beso_encoder_decoder \
+            agents/model=beso/beso_encdec_xlstm \
+            scaler_type='minmax' \
+            xlstm_encoder_blocks=4 \
+            xlstm_decoder_blocks=8 \
+            seed=0
