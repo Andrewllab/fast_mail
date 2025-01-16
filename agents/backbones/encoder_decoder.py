@@ -145,7 +145,7 @@ class EncDec(nn.Module):
 
         decoder_output = self.decoder(action_seq, encoder_output)
 
-        pred_actions = self.action_pred(decoder_output)
+        pred_actions = self.action_pred(decoder_output[:, -self.action_seq_len:, :])
 
         return pred_actions
 
@@ -179,7 +179,7 @@ class EncDec(nn.Module):
 
         decoder_output = self.decoder(action_seq, encoder_output)
 
-        pred_actions = self.action_pred(decoder_output)
+        pred_actions = self.action_pred(decoder_output[:, -self.action_seq_len:, :])
 
         return pred_actions
 
@@ -366,7 +366,7 @@ class Noise_EncDec(nn.Module):
             encoder_output = self.encoder(input_seq)
             decoder_output = self.decoder(action_x, encoder_output)
 
-        pred_actions = self.action_pred(decoder_output)
+        pred_actions = self.action_pred(decoder_output[:, -self.action_seq_len:, :])
 
         return pred_actions
 
@@ -415,7 +415,7 @@ class Noise_EncDec(nn.Module):
             encoder_output = self.encoder(input_seq)[:, -1:, :]
             decoder_output = self.decoder(action_x, encoder_output)
 
-        pred_actions = self.action_pred(decoder_output)
+        pred_actions = self.action_pred(decoder_output[:, -self.action_seq_len:, :])
 
         return pred_actions
 

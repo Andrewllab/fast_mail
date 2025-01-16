@@ -109,7 +109,17 @@ class xLSTMLargeConfig:
 
 
 class xLSTMBlockStack(nn.Module):
-    def __init__(self, embedding_dim, num_heads, num_blocks, vocab_size, chunkwise_kernel="parallel--native_autograd", mode="train", adaLN_zero=False):
+    def __init__(
+            self,
+            embedding_dim,
+            num_heads,
+            num_blocks,
+            vocab_size,
+            chunkwise_kernel="parallel--native_autograd",
+            mode="train",
+            adaLN_zero=False,
+            in_context_cond=False
+    ):
         super().__init__()
 
         config = xLSTMLargeConfig(
@@ -121,6 +131,7 @@ class xLSTMBlockStack(nn.Module):
             mode=mode
         )
 
+        self.in_context_cond = in_context_cond
         self.adaLN_zero = adaLN_zero
 
         if adaLN_zero:
@@ -149,13 +160,23 @@ class xLSTMBlockStack(nn.Module):
         if state is None:
             state = {i: None for i in range(len(self.blocks))}
 
+        if self.in_context_cond:
+            assert cond is not None, "Contextual conditioning is enabled but no context is provided."
+
+            # in-context conditioning will concatenate the context to the action tokens
+            x = torch.cat([cond, x], dim=1)
+
         for i, block in enumerate(self.blocks):
             block_state = state[i]
 
             if self.adaLN_zero:
                 x = block(x, block_state, cond)
             else:
-                x = block(x, block_state)
+                if self.in_context_cond:
+                    x = block(x, block_state)
+                    x = cond + x
+                else:
+                    x = block(x, block_state)
 
         x = self.out_norm(x)
 

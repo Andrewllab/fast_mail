@@ -32,13 +32,15 @@ inner_model:
     chunkwise_kernel: "parallel--native_autograd"
     mode: "train"
     adaLN_zero: False
+    in_context_cond: False
 
   decoder:
     _target_: agents.backbones.xlstm.blocks.xLSTMBlockStack
     embedding_dim: ${n_embd}
     num_heads: 8
     num_blocks: ${xlstm_decoder_blocks}
-    vocab_size: 10
+    vocab_size: 11
     chunkwise_kernel: "parallel--native_autograd"
     mode: "train"
-    adaLN_zero: True
+    adaLN_zero: False
+    in_context_cond: True
