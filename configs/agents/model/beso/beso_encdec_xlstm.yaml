@@ -19,7 +19,7 @@ inner_model:
   device: ${device}
   linear_output: true
 
-  use_ada_conditioning: True
+  use_ada_conditioning: False
   forward_type: 'context_token'
   diffusion_type: 'beso'
 
