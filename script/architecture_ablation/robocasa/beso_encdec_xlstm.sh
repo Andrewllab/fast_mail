@@ -1,4 +1,4 @@
-python run.py  --config-name=robocasa_horeka_ablation_config \
+python run_test_rgb_ada_false.py  --config-name=robocasa_horeka_ablation_config \
             --multirun agents=beso_agent \
             agent_name=beso_xlstm \
             group=beso_encoder_decoder \

@@ -37,7 +37,7 @@ if __name__ == '__main__':
 
     store = ['max', 'mean']
 
-    groups = ['beso_encoder_decoder_benchmark', 'fm_decoder_only_benchmark', 'fm_encoder_decoder_benchmark']
+    groups = ['beso_decoder_only_benchmark']
     fields = ['CloseSingleDoor_average_success', 'OpenDrawer_average_success', 'TurnOnStove_average_success', 'CoffeePressButton_average_success', 'CoffeeServeMug_average_success']
 
     # csv_file = open(sv_dir + '/bc_dec_results.csv', 'w', newline='')
@@ -72,9 +72,9 @@ if __name__ == '__main__':
                 config['local']['fields'] = [evaluation]
 
                 config['local']['config'] = {
-                    # 'task_suite': {
-                    #     'values': [task]
-                    # },
+                    'scaler_type': {
+                        'values': ['minmax']
+                    },
                     'agent_name': {
                         'values': [agent_name]
                     }
