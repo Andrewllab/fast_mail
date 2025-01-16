@@ -20,7 +20,7 @@ class bcolors:
 config = {
     "local": {
         'entity': 'tiger_or_cat',
-        'project': 'icml_libero',
+        'project': 'icml_libero_final',
         'groups': '',
         'fields': '',
         'runs': ["all"],
@@ -35,7 +35,8 @@ if __name__ == '__main__':
 
     task_suite = ["libero_spatial", "libero_object", "libero_goal", "libero_10"]
 
-    groups = ['bc_decoder_only', 'bc_encoder_decoder', 'beso_decoder_only', 'beso_encoder_decoder', 'fm_decoder_only']
+    # groups = ['bc_decoder_only', 'bc_encoder_decoder', 'beso_decoder_only', 'beso_encoder_decoder', 'fm_decoder_only']
+    groups = ['bc_decoder_only', 'beso_decoder_only', 'fm_decoder_only']
     fields = ['epoch100_average_success']
 
     # csv_file = open(sv_dir + '/bc_dec_results.csv', 'w', newline='')
