@@ -1,6 +1,6 @@
 import sys
-# sys.path.append("/home/david/2025")
-sys.path.append("/hkfs/work/workspace/scratch/ll6323-david_dataset_2/david")
+sys.path.append("/home/david/2025")
+# sys.path.append("/hkfs/work/workspace/scratch/ll6323-david_dataset_2/david")
 
 import logging
 
@@ -29,6 +29,7 @@ from custom_robocasa.utils.point_cloud.sampling.fps_pc_sampler import (
 )
 from environments.wrappers.robosuite_wrapper import RobosuiteWrapper
 from simulation.base_sim import BaseSim
+from utils.hilbert_curve import reorder_point_cloud_with_hilbert_curve
 
 log = logging.getLogger(__name__)
 
@@ -144,14 +145,17 @@ class RoboCasaSim(BaseSim):
                         self.device
                     )
 
-                    sampled_point_cloud = torch.from_numpy(obs[self.pc_key]).float()
+                    sampled_point_cloud = obs[self.pc_key]
                     if not self.use_pc_color:
                         sampled_point_cloud = sampled_point_cloud[:, :3]
                     else:
                         sampled_point_cloud[:, 3:] /= 255.0
 
+                    sampled_point_cloud = reorder_point_cloud_with_hilbert_curve(np.expand_dims(sampled_point_cloud, axis=0))
+                    sampled_point_cloud = torch.from_numpy(sampled_point_cloud).float()
+
                     obs_dict["point_cloud"] = einops.rearrange(
-                        sampled_point_cloud, "num_points d -> 1 1 num_points d"
+                        sampled_point_cloud, "1 num_points d -> 1 1 num_points d"
                     ).to(self.device)
 
                     action = agent.predict(obs_dict).cpu().numpy()

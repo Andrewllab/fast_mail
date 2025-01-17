@@ -5,7 +5,7 @@ export CUB_HOME=$HOME/project/atalay_master_thesis/3D-Diffusion-Policy/third_par
 export CXXFLAGS="-O2 -march=core-avx2"
 export CFLAGS="-O2 -march=core-avx2"
 
-python run_test_pc.py  --config-name=robocasa_horeka_pc_config \
+python run_test.py  --config-name=robocasa_horeka_pc_config \
             --multirun agents=beso_agent \
             agent_name=beso_xlstm \
             group=beso_decoder_only_benchmark \
@@ -13,5 +13,5 @@ python run_test_pc.py  --config-name=robocasa_horeka_pc_config \
             agents/obs_encoders=point_mlp \
             xlstm_encoder_blocks=6 \
             scaler_type='minmax' \
-            use_pc_color=True,False \
+            use_pc_color=False \
             seed=0,1
