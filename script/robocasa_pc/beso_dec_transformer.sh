@@ -10,5 +10,6 @@ python run_test.py  --config-name=robocasa_horeka_pc_config \
             agent_name=beso_transformer \
             group=beso_decoder_only_benchmark \
             agents/model=beso/beso_dec_transformer \
+            agents/obs_encoders=point_mlp \
             encoder_n_layer=5 \
             seed=0,1,2
