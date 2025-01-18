@@ -16,7 +16,7 @@ def reorder_point_cloud_with_hilbert_curve(point_cloud):
     batch_size, num_points, _ = point_cloud.shape
     reordered_point_cloud = np.zeros_like(point_cloud)
 
-    hilbert_resolution = 15
+    hilbert_resolution = 6
     hilbert_max_index = 2 ** hilbert_resolution - 1
 
     # Initialize Hilbert curve

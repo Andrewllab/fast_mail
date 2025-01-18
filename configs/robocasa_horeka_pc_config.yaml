@@ -58,7 +58,7 @@ goal_conditioned: True
 # Training
 train_batch_size: 256
 val_batch_size: 1
-num_workers: 16
+num_workers: 32
 device: "cuda"
 epoch: 200
 eval_every_n_epochs: 1
