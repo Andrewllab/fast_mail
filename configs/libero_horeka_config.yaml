@@ -33,7 +33,7 @@ hydra:
     subdir: ${hydra.job.override_dirname}
   launcher:
     account: hk-project-sustainebot
-    timeout_min: 300
+    timeout_min: 500
     name: libero #${hydra.job.name}
     partition: accelerated
     #    gpus_per_node: 4
@@ -71,7 +71,7 @@ device: 'cuda'
 epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
-scaler_type: 'standard'
+scaler_type: 'minmax'
 
 if_use_ema: True
 
