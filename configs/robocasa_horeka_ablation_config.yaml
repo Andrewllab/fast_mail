@@ -9,7 +9,7 @@ log_dir: logs/robocasa/
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: david_robocasa_ablation
+  project: david_robocasa
 
 group: bc_robocasa
 
@@ -24,7 +24,7 @@ hydra:
     subdir: ${hydra.job.override_dirname}
   launcher:
     account: hk-project-sustainebot
-    timeout_min: 500
+    timeout_min: 800
     name: robocasa #${hydra.job.name}
     partition: accelerated
     #    gpus_per_node: 4
@@ -34,10 +34,10 @@ hydra:
 
 env_name:
 #  - PnPSinkToCounter
-#  - CloseSingleDoor
-#  - OpenDrawer
+  - CloseSingleDoor
+  - OpenDrawer
   - TurnOnStove
-#  - CoffeePressButton
+  - CoffeePressButton
   - CoffeeServeMug
 
 seed: 42
