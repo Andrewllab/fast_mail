@@ -9,7 +9,7 @@ log_dir: logs/robocasa/
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: david_robocasa
+  project: david_robocasa_diffusion_steps
 
 group: bc_robocasa
 
@@ -34,10 +34,10 @@ hydra:
 
 env_name:
 #  - PnPSinkToCounter
-  - CloseSingleDoor
-  - OpenDrawer
+#  - CloseSingleDoor
+#  - OpenDrawer
   - TurnOnStove
-  - CoffeePressButton
+#  - CoffeePressButton
   - CoffeeServeMug
 
 seed: 42
@@ -54,6 +54,8 @@ multistep: ${window_size} # only for inference, could be different from act_seq_
 goal_window_size: 1
 
 goal_conditioned: True
+
+num_sampling_steps: 4
 
 # Training
 train_batch_size: 256

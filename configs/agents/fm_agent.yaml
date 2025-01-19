@@ -37,4 +37,4 @@ state_dim: ${obs_dim}
 latent_dim: ${latent_dim}
 action_dim: ${action_dim}
 
-sampling_steps: 4
+sampling_steps: ${num_sampling_steps}

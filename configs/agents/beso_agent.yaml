@@ -48,7 +48,7 @@ use_lr_scheduler: False
 
 # diffusion params
 sampler_type: 'ddim'
-num_sampling_steps: 4
+num_sampling_steps: ${num_sampling_steps}
 sigma_data: 0.5
 sigma_min: 0.001
 sigma_max: 80

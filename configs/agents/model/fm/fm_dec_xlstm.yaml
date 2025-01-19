@@ -28,7 +28,7 @@ backbones:
     embedding_dim: ${n_embd}
     num_heads: 8
     num_blocks: ${xlstm_encoder_blocks}
-    vocab_size: 14
+    vocab_size: 15
     chunkwise_kernel: "parallel--native_autograd"
     mode: "train"
     adaLN_zero: False
