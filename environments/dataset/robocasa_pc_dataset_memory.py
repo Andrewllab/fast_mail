@@ -98,7 +98,7 @@ class RobocasaDataset(TrajectoryDataset):
                     demo_point_clouds[:, :, 3:] /= 255.
 
                 # Reorder point clouds with Hilbert curve
-                # demo_point_clouds = reorder_point_cloud_with_hilbert_curve(demo_point_clouds)
+                demo_point_clouds = reorder_point_cloud_with_hilbert_curve(demo_point_clouds)
 
                 self.data["point_cloud"].append(demo_point_clouds)
 

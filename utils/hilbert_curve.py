@@ -1,6 +1,31 @@
 import numpy as np
 from hilbertcurve.hilbertcurve import HilbertCurve
 
+import matplotlib.pyplot as plt
+# import matplotlib.animation as animation
+# from mpl_toolkits.mplot3d import Axes3D
+
+
+def animate_hilbert_order(points_sorted):
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    num_points = len(points_sorted)
+
+    for frame in range(num_points):
+        ax.clear()
+        ax.scatter(points_sorted[:frame, 0], points_sorted[:frame, 1], points_sorted[:frame, 2],
+                   c=np.linspace(0, 1, frame), cmap="plasma", s=5)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title(f'Hilbert Order - Step {frame}/{num_points}')
+
+        plt.draw()  # Force plot update
+        plt.pause(0.001)  # Allow update to render
+
+    plt.show()  # Keep the final plot open
+
 
 def reorder_point_cloud_with_hilbert_curve(point_cloud):
     """
@@ -34,7 +59,11 @@ def reorder_point_cloud_with_hilbert_curve(point_cloud):
 
         # Reorder based on Hilbert indices
         sorted_indices = np.argsort(hilbert_indices)
-        reordered_point_cloud[b] = point_cloud[b][sorted_indices]
+
+        # reordered_point_cloud[b] = point_cloud[b][sorted_indices]
+        reordered_point_cloud[b] = normalized_points[sorted_indices]
+
+        # animate_hilbert_order(normalized_points[sorted_indices])
 
     return reordered_point_cloud
 

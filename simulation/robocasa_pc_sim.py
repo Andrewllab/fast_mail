@@ -151,8 +151,8 @@ class RoboCasaSim(BaseSim):
                     else:
                         sampled_point_cloud[:, 3:] /= 255.0
 
-                    # sampled_point_cloud = reorder_point_cloud_with_hilbert_curve(np.expand_dims(sampled_point_cloud, axis=0))
-                    sampled_point_cloud = np.expand_dims(sampled_point_cloud, axis=0)
+                    sampled_point_cloud = reorder_point_cloud_with_hilbert_curve(np.expand_dims(sampled_point_cloud, axis=0))
+                    # sampled_point_cloud = np.expand_dims(sampled_point_cloud, axis=0)
                     sampled_point_cloud = torch.from_numpy(sampled_point_cloud).float()
 
                     obs_dict["point_cloud"] = einops.rearrange(
