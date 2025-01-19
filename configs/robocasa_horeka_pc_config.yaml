@@ -34,9 +34,9 @@ hydra:
 
 env_name:
 #  - PnPSinkToCounter
-  - CloseSingleDoor
+#  - CloseSingleDoor
 #  - OpenDrawer
-#  - TurnOnStove
+  - TurnOnStove
 #  - CoffeePressButton
 #  - CoffeeServeMug
 
