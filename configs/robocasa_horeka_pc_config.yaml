@@ -53,6 +53,8 @@ pred_seq_len: 10
 multistep: ${window_size} # only for inference, could be different from act_seq_len
 goal_window_size: 1
 
+num_sampling_steps: 4
+
 goal_conditioned: True
 
 # Training
