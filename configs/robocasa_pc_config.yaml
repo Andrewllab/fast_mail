@@ -51,6 +51,8 @@ goal_window_size: 1
 
 goal_conditioned: True
 
+num_sampling_steps: 4
+
 # Training
 train_batch_size: 32
 val_batch_size: 1

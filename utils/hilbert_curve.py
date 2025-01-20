@@ -63,7 +63,8 @@ def reorder_point_cloud_with_hilbert_curve(point_cloud):
         # reordered_point_cloud[b] = point_cloud[b][sorted_indices]
         reordered_point_cloud[b] = normalized_points[sorted_indices]
 
-        # animate_hilbert_order(normalized_points[sorted_indices])
+        animate_hilbert_order(normalized_points)
+        animate_hilbert_order(normalized_points[sorted_indices])
 
     return reordered_point_cloud
 
