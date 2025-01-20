@@ -1,7 +1,7 @@
 defaults:
   - agents: beso_agent
   - trainers: base_trainer
-#  - override hydra/launcher: "submitit_slurm"
+  - override hydra/launcher: "submitit_slurm"
 
 agent_name: beso
 log_dir: logs/robocasa/
@@ -22,23 +22,23 @@ hydra:
   sweep:
     dir: ${log_dir}/sweeps/${agent_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
-#  launcher:
-##    account: hk-project-sustainebot
-#    timeout_min: 500
-#    name: robocasa #${hydra.job.name}
-#    partition: accelerated
-#    #    gpus_per_node: 4
-#    gres: gpu:1
-##    cpus-per-task: 152
-##    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
+  launcher:
+#    account: hk-project-sustainebot
+    timeout_min: 600
+    name: robocasa #${hydra.job.name}
+    partition: accelerated
+    #    gpus_per_node: 4
+    gres: gpu:1
+#    cpus-per-task: 152
+#    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
 
 env_name:
 #  - PnPSinkToCounter
-#  - CloseSingleDoor
-#  - OpenDrawer
+  - CloseSingleDoor
+  - OpenDrawer
   - TurnOnStove
-#  - CoffeePressButton
-#  - CoffeeServeMug
+  - CoffeePressButton
+  - CoffeeServeMug
 
 seed: 42
 
@@ -53,6 +53,7 @@ pred_seq_len: 10
 multistep: ${window_size} # only for inference, could be different from act_seq_len
 goal_window_size: 1
 
+use_pos_emb: True
 num_sampling_steps: 4
 
 goal_conditioned: True
@@ -62,7 +63,7 @@ train_batch_size: 256
 val_batch_size: 1
 num_workers: 32
 device: "cuda"
-epoch: 100
+epoch: 200
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: "minmax"
