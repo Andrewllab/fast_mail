@@ -291,11 +291,16 @@ class PushTEnv(gym.Env):
                     rs.randn() * 2 * np.pi - np.pi,
                 ]
             )
+        self.set_task_goal(self.goal_pose)
         self._set_state(state)
 
         self.coverage_arr = []
         observation = self._get_obs()
         return observation
+
+    def reset_new_test_case(self):
+        self._seed += 1
+        return self.reset()
 
     def step(self, action):
         dt = 1.0 / self.sim_hz
@@ -323,7 +328,9 @@ class PushTEnv(gym.Env):
         goal_area = goal_geom.area
         coverage = intersection_area / goal_area
         reward = np.clip(coverage / self.success_threshold, 0, 1)
-        done = False  # coverage > self.success_threshold
+        done = coverage > self.success_threshold
+        # if coverage > 0.8:
+        #     print(f"coverage: {coverage}")
 
         self.coverage_arr.append(coverage)
         observation = self._get_obs()
@@ -350,11 +357,12 @@ class PushTEnv(gym.Env):
         return TeleopAgent(act)
 
     def _get_obs(self):
-        obs = np.array(
-            tuple(self.agent.position)
-            + tuple(self.block.position)
-            + (self.block.angle % (2 * np.pi),)
-        )
+        # obs = np.array(
+        #     tuple(self.agent.position)
+        #     + tuple(self.block.position)
+        #     + (self.block.angle % (2 * np.pi),)
+        # )
+        obs = self._render_frame(mode="rgb_array")
         return obs
 
     def _get_goal_pose_body(self, pose):
@@ -370,12 +378,14 @@ class PushTEnv(gym.Env):
     def _get_info(self):
         n_steps = self.sim_hz // self.control_hz
         n_contact_points_per_step = int(np.ceil(self.n_contact_points / n_steps))
+        img = self._render_frame(mode="rgb_array")
         info = {
             "pos_agent": np.array(self.agent.position),
             "vel_agent": np.array(self.agent.velocity),
             "block_pose": np.array(list(self.block.position) + [self.block.angle]),
             "goal_pose": self.goal_pose,
             "n_contacts": n_contact_points_per_step,
+            "agentview_image": img,
         }
         return info
 

@@ -12,7 +12,7 @@ def plot_batch_images(data, length=5, order="BT-CHW"):
     """
     if order == "BT-CHW":
         first_data = data[:length, :].detach().cpu().numpy()
-        first_data = einops.rearrange(first_data, "l c h w -> l h w c")
+        first_data = einops.rearrange(first_data, "1 l c h w -> l h w c")
     else:
         raise ValueError(f"Order {order} not supported.")
 
@@ -50,5 +50,26 @@ def plot_action_sequence(observation, actions, obs_order="BT-CHW"):
         print(f"action: {first_actions[i]}")
         plt.scatter(first_actions[i][0], -first_actions[i][1], alpha=alpha, c="red")
         alpha = alpha * 0.9
+
+    plt.show()
+
+
+def compare_dataset_sim_observation(dataset_obs, sim_obs):
+    """
+    Compare the observation from the dataset and the simulation.
+    Args:
+        dataset_obs (torch.Tensor): Observation from the dataset.
+        sim_obs (torch.Tensor): Observation from the simulation.
+    """
+    dataset_obs = dataset_obs.detach().cpu().numpy()
+    sim_obs = sim_obs.detach().cpu().numpy()
+
+    dataset_obs = einops.rearrange(dataset_obs, "1 1 c h w -> h w c")
+    sim_obs = einops.rearrange(sim_obs, "1 1 c h w -> h w c")
+
+    fig, axs = plt.subplots(1, 2, figsize=(10, 10))
+    axs[0].imshow(dataset_obs)
+    axs[0].set_title("Dataset Observation")
+    axs[1].imshow(sim_obs)
 
     plt.show()

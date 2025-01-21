@@ -28,7 +28,7 @@ def set_seed_everywhere(seed):
     random.seed(seed)
 
 
-@hydra.main(config_path="configs", config_name="libero_config.yaml", version_base="1.3")
+@hydra.main(config_path="configs", config_name="pushT_config.yaml", version_base="1.3")
 def main(cfg: DictConfig) -> None:
 
     set_seed_everywhere(cfg.seed)
@@ -40,7 +40,7 @@ def main(cfg: DictConfig) -> None:
         project=cfg.wandb.project,
         entity=cfg.wandb.entity,
         group=cfg.group,
-        # mode="disabled",
+        mode="disabled",
         config=wandb.config
     )
 
@@ -59,21 +59,24 @@ def main(cfg: DictConfig) -> None:
         else:
             if(agent.vqvae.load_model(cfg.pretrain_vqvae_path)):
                 log.info(f"Loaded pretrained vqvae from {cfg.pretrain_vqvae_path}")
-
-    agent.get_params()
+    
     trainer.main(agent)
+    # agent.load_pretrained_model(cfg.model.weight_path, sv_name=cfg.model.sv_name)
 
-    # simulate the model
+    # # simulate the model
     env_sim = hydra.utils.instantiate(cfg.simulation)
-    env_sim.get_task_embs(trainer.trainset.tasks)
-    #
-    # sv_dir = sim_framework_path("pretrain_weights")
-    #
-    env_sim.test_agent(agent, cfg.agents, epoch=cfg.epoch)
+    # env_sim.get_task_embs(trainer.trainset.tasks)
+    # #
+    # # sv_dir = sim_framework_path("pretrain_weights")
+    # #
+    agent.set_scaler(trainer.scaler)
+    env_sim.test_agent(agent, cfg.agents)
+    # env_sim.test_agent(agent, cfg.agents, epoch=cfg.epoch)
 
-    log.info("Training done")
-    log.info("state_dict saved in {}".format(agent.working_dir))
-    wandb.finish()
+    #
+    # log.info("Training done")
+    # log.info("state_dict saved in {}".format(agent.working_dir))
+    # wandb.finish()
 
 
 if __name__ == "__main__":
