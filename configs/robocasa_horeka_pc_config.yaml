@@ -24,7 +24,7 @@ hydra:
     subdir: ${hydra.job.override_dirname}
   launcher:
 #    account: hk-project-sustainebot
-    timeout_min: 600
+    timeout_min: 1000
     name: robocasa #${hydra.job.name}
     partition: accelerated
     #    gpus_per_node: 4
@@ -34,11 +34,11 @@ hydra:
 
 env_name:
 #  - PnPSinkToCounter
-  - CloseSingleDoor
+#  - CloseSingleDoor
   - OpenDrawer
   - TurnOnStove
   - CoffeePressButton
-  - CoffeeServeMug
+#  - CoffeeServeMug
 
 seed: 42
 
@@ -63,7 +63,7 @@ train_batch_size: 256
 val_batch_size: 1
 num_workers: 32
 device: "cuda"
-epoch: 200
+epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: "minmax"
@@ -126,9 +126,9 @@ shape_meta:
 ##########################################################################################
 # Common Parameters
 ##########################################################################################
-n_embd: 512
+n_embd: 128
 goal_dim: 512
-latent_dim: 512
+latent_dim: 128
 
 ##########################################################################################
 # Transformer Parameters (encoder-decoder)
@@ -160,9 +160,9 @@ mamba_decoder_cfg:
 # xLSTM Parameters
 ##########################################################################################
 xlstm_encoder_blocks: 4
-xlstm_encoder_vocab_size: 13
-xlstm_encoder_chunkwise_kernel: "parallel--native_autograd"
-xlstm_encoder_mode: "train"
+xlstm_encoder_vocab_size: 1036
+xlstm_encoder_chunkwise_kernel: "chunkwise--native_autograd"   # "parallel--native_autograd"
+xlstm_encoder_mode: "train_with_padding"  # "train"
 xlstm_encoder_adaLN_zero: False
 xlstm_encoder_in_context_cond: False
 
