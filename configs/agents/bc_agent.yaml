@@ -9,7 +9,7 @@ defaults:
 
 optimization:
   _target_: torch.optim.Adam
-  lr: 2e-5
+  lr: 1e-4
   weight_decay: 0
 
 obs_seq_len: ${obs_seq_len}

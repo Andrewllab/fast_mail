@@ -49,19 +49,8 @@ def main(cfg: DictConfig) -> None:
     agent = hydra.utils.instantiate(cfg.agents)
     trainer = hydra.utils.instantiate(cfg.trainers)
 
-    ## if agent is vqbet, pretrain the vqvae first
-    if cfg.agent_name == "vqbet":
-        if cfg.pretrain_vqvae:
-            vqe_pretrainer = hydra.utils.instantiate(cfg.vqvae_pre_trainer)
-            vqe_pretrainer.train(agent, save_path=cfg.model_paths.vqvae)
-            # save weights
-            agent.vqvae.save_model(cfg.model_paths.vqvae)
-        else:
-            if(agent.vqvae.load_model(cfg.pretrain_vqvae_path)):
-                log.info(f"Loaded pretrained vqvae from {cfg.pretrain_vqvae_path}")
-    
+    agent.get_params()
     trainer.main(agent)
-    # agent.load_pretrained_model(cfg.model.weight_path, sv_name=cfg.model.sv_name)
 
     # # simulate the model
     env_sim = hydra.utils.instantiate(cfg.simulation)
@@ -69,7 +58,6 @@ def main(cfg: DictConfig) -> None:
     # #
     # # sv_dir = sim_framework_path("pretrain_weights")
     # #
-    agent.set_scaler(trainer.scaler)
     env_sim.test_agent(agent, cfg.agents)
     # env_sim.test_agent(agent, cfg.agents, epoch=cfg.epoch)
 
