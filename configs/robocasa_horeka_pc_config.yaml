@@ -34,8 +34,8 @@ hydra:
 
 env_name:
 #  - PnPSinkToCounter
-  - CloseSingleDoor
-  - OpenDrawer
+#  - CloseSingleDoor
+#  - OpenDrawer
   - TurnOnStove
   - CoffeePressButton
   - CoffeeServeMug
@@ -91,20 +91,20 @@ img_width: 128
 img_height: 128
 
 camera_names:
-  - "robot0_agentview_center"
+#  - "robot0_agentview_center"
   - "robot0_agentview_left"
   - "robot0_agentview_right"
-#  - "robot0_eye_in_hand"
+  - "robot0_eye_in_hand"
 
 shape_meta:
   # acceptable types: rgb, low_dim
   obs:
-    robot0_agentview_center_image:
-      shape:
-        - 3
-        - ${img_height}
-        - ${img_width}
-      type: rgb
+#    robot0_agentview_center_image:
+#      shape:
+#        - 3
+#        - ${img_height}
+#        - ${img_width}
+#      type: rgb
     robot0_agentview_left_image:
       shape:
         - 3
@@ -117,18 +117,18 @@ shape_meta:
         - ${img_height}
         - ${img_width}
       type: rgb
-#    robot0_eye_in_hand_image:
-#      shape:
-#        - 3
-#        - ${img_height}
-#        - ${img_width}
-#      type: rgb
+    robot0_eye_in_hand_image:
+      shape:
+        - 3
+        - ${img_height}
+        - ${img_width}
+      type: rgb
 ##########################################################################################
 # Common Parameters
 ##########################################################################################
 n_embd: 512
 goal_dim: 512
-latent_dim: 128
+latent_dim: 512
 
 ##########################################################################################
 # Transformer Parameters (encoder-decoder)

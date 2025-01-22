@@ -219,14 +219,14 @@ class RoboCasaSim(BaseSim):
         return local_action
 
     def _init_env(
-        self,
-        env_name,
-        img_width,
-        img_height,
-        render,
-        pc_num_points,
-        obj_max_num_points,
-        use_segmented_point_cloud,
+            self,
+            env_name,
+            img_width,
+            img_height,
+            render,
+            pc_num_points,
+            obj_max_num_points,
+            use_segmented_point_cloud,
     ):
         base_env = create_env(
             env_name=env_name,
@@ -239,21 +239,19 @@ class RoboCasaSim(BaseSim):
 
         if use_segmented_point_cloud:
             self.env = SegmentedPointCloudSamplingWrapper(
-                PointCloudWrapper(
-                    SegmentationWrapper(
-                        RobosuiteWrapper(base_env),
-                        classes=[
-                            "PandaOmron",
-                            "PandaGripper",
-                            "Counter",
-                            "SingleCabinet",
-                            "HingeCabinet",
-                        ],
+                PointCloudSamplingWrapper(
+                    PointCloudWrapper(
+                        SegmentationWrapper(
+                            RobosuiteWrapper(base_env),
+                            env_name=env_name,
+                        ),
+                        global_frame=False,
+                        get_segmented_pc=True,
                     ),
-                    global_frame=False,
-                    get_segmented_pc=True,
-                    get_normal_pc=False,
+                    pc_sampler=FPSPointCloudSampler(),
+                    num_points=pc_num_points,
                 ),
+                env_name=env_name,
                 obj_sampler=FPSPointCloudSampler(),
                 rest_sampler=FPSPointCloudSampler(),
                 num_points=pc_num_points,
