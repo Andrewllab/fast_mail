@@ -42,7 +42,8 @@ env_name:
 
 seed: 42
 
-dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/david/custom_robocasa/custom_robocasa/datasets/v0.1/single_stage/
+dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/robocasa_datasets/v0.1/single_stage/
+#dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/david/custom_robocasa/custom_robocasa/datasets/v0.1/single_stage/
 # dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/robocasa_datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/processed_demo_${img_width}_${img_height}.hdf5
 
 # Model Setting
