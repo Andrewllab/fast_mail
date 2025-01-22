@@ -17,7 +17,7 @@ import einops
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 
-from fast_mail.agents.utils.push_t_debug_utils import *
+from agents.utils.push_t_debug_utils import *
 
 log = logging.getLogger(__name__)
 
@@ -111,8 +111,8 @@ class PushTSim(BaseSim):
                 # Convert to torch tensor
                 obs = torch.from_numpy(obs).float().to(self.device)
 
-                obs_dict = {"agentview_rgb": obs,
-                            "lang_emb": False}
+                obs_dict = {"agentview_rgb_image": obs,
+                            "lang_emb": obs}
 
                 action = agent.predict(obs_dict)
                 action = action.detach().cpu().numpy()
@@ -214,7 +214,7 @@ class PushTSim(BaseSim):
                 # Convert to torch tensor
                 new_obs = torch.from_numpy(new_obs).float().to(self.device)
 
-                obs_dict = {"agentview_rgb": new_obs,
+                obs_dict = {"agentview_rgb_image": new_obs,
                             "lang_emb": False}
                 pa = agent.predict(obs_dict)
 
@@ -259,7 +259,6 @@ class PushTSim(BaseSim):
             print("there is {} cpus".format(num_cpu))
         else:
             print("not using multiprocessing, run on 1 cpu")
-
 
         num_tasks = self.n_tasks
         success = torch.zeros([num_tasks, self.num_episode]).share_memory_()

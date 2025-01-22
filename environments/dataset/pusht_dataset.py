@@ -14,8 +14,8 @@ import os
 import torch
 import numpy as np
 import einops
-from fast_mail.environments.dataset.base_dataset import TrajectoryDataset
-from fast_mail.agents.utils.sim_path import sim_framework_path
+from environments.dataset.base_dataset import TrajectoryDataset
+from agents.utils.sim_path import sim_framework_path
 
 log = logging.getLogger(__name__)
 

@@ -40,10 +40,10 @@ task_suite: pushT
 traj_per_task: 200
 
 ## change the path of dataset
-# dataset_path: /home/david/2024/datasets/${task_suite}
+dataset_path: /home/david/2025/datasets/${task_suite}
 #dataset_path: /home/xuan/datasets/${task_suite}
 #dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
-dataset_path: /home/huang/ml_workspace/fast_mail_workspace/datasets/${task_suite}
+#dataset_path: /home/huang/ml_workspace/fast_mail_workspace/datasets/${task_suite}
 
 # Model Setting
 window_size: 10
@@ -52,20 +52,22 @@ act_seq_len: ${window_size}
 goal_window_size: 1
 goal_conditioned: False
 
-# obs_tokens: goal_window_size + obs_seq_len * len(obs_modalities)
-obs_tokens: 3
+use_pos_emb: True
+num_sampling_steps: 4
+
+obs_tokens: 1
 
 # Training
-train_batch_size: 64
+train_batch_size: 256
 val_batch_size: 32
 num_workers: 4
 device: 'cuda'
-epoch: 30
+epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
-scaler_type: 'standard'
+scaler_type: 'minmax'
 
-if_use_ema: False
+if_use_ema: True
 
 ## Environment
 obs_dim: 9
@@ -122,7 +124,19 @@ mamba_decoder_cfg:
 ##########################################################################################
 # xLSTM Parameters
 ##########################################################################################
+xlstm_encoder_blocks: 4
+xlstm_encoder_vocab_size: 12
+xlstm_encoder_chunkwise_kernel: "parallel--native_autograd"   # "parallel--native_autograd" "chunkwise--native_autograd"
+xlstm_encoder_mode: "train"  # "train" "train_with_padding"
+xlstm_encoder_adaLN_zero: False
+xlstm_encoder_in_context_cond: False
 
+xlstm_decoder_blocks: 8
+xlstm_decoder_vocab_size: 11
+xlstm_decoder_chunkwise_kernel: "parallel--native_autograd"
+xlstm_decoder_mode: "train"
+xlstm_decoder_adaLN_zero: False
+xlstm_decoder_in_context_cond: False
 
 # Dataset
 trainset:
