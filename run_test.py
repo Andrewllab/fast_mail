@@ -40,7 +40,7 @@ def main(cfg: DictConfig) -> None:
         project=cfg.wandb.project,
         entity=cfg.wandb.entity,
         group=cfg.group,
-        # mode="disabled",
+        mode="disabled",
         config=wandb.config
     )
 
@@ -49,9 +49,9 @@ def main(cfg: DictConfig) -> None:
     trainer = hydra.utils.instantiate(cfg.trainers)
 
     agent.get_params()
-    trainer.main(agent)
+    # trainer.main(agent)
 
-    # agent.set_scaler(trainer.scaler)
+    agent.set_scaler(trainer.scaler)
     # agent.load_pretrained_model('/home/david/2025/fast_mail/logs/PnPCabToCounter/sweeps/beso/2025-01-07/22-10-06', sv_name='last_model')
 
     # simulate the model
