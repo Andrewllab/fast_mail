@@ -8,9 +8,9 @@ export CFLAGS="-O2 -march=core-avx2"
 python run_test.py  --config-name=robocasa_horeka_pc_config \
             --multirun agents=beso_agent \
             agent_name=beso_xlstm \
-            group=beso_decoder_only \
+            group=beso_decoder_only_new \
             agents/model=beso/beso_dec_xlstm \
-            agents/obs_encoders=point_attn \
+            agents/obs_encoders=point_mlp_pooling \
             xlstm_encoder_blocks=8 \
             use_pos_emb=True \
             seed=0,1,2
