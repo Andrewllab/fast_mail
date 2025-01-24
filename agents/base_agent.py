@@ -68,6 +68,24 @@ class BaseAgent(nn.Module, abc.ABC):
 
         latent_goal = obs_dict["lang_emb"]
 
+        if "point_cloud" in obs_dict and "robot0_agentview_left_image" in obs_dict:
+
+            assert obs_dict["point_cloud"].shape[-1] in [3, 6], "Point cloud should have 3 or 6 channels"
+
+            obs_dict["point_cloud"] = einops.rearrange(obs_dict["point_cloud"], "b t n d -> (b t) n d")
+
+            B, T, C, H, W = obs_dict[f"{self.cam_names[0]}_image"].shape
+            # B, T, C, H, W = obs_dict["robot0_agentview_center_image"].shape
+            for camera in self.cam_names:
+                obs_dict[f"{camera}_image"] = obs_dict[f"{camera}_image"].view(B * T, C, H, W)
+
+            if self.if_film_condition:
+                perceptual_emb = self.img_encoder(obs_dict, latent_goal)
+            else:
+                perceptual_emb = self.img_encoder(obs_dict)
+
+            return perceptual_emb, latent_goal
+
         #########################################
         # using RGB images or point clouds
         #########################################

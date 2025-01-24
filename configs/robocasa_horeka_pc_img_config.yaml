@@ -1,7 +1,7 @@
 defaults:
   - agents: beso_agent
   - trainers: base_trainer
-  # - override hydra/launcher: "submitit_slurm"
+  - override hydra/launcher: "submitit_slurm"
 
 agent_name: beso
 log_dir: logs/robocasa/
@@ -9,12 +9,12 @@ log_dir: logs/robocasa/
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: fast_mail_robocasa
+  project: david_robocasa_pc_benchmark
 
 group: bc_robocasa
 
 hydra:
-  mode: MULTIRUN # needed for launcher to be used
+  mode: MULTIRUN  # needed for launcher to be used
   run:
     dir: ${log_dir}/runs/${agent_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
   job:
@@ -22,23 +22,28 @@ hydra:
   sweep:
     dir: ${log_dir}/sweeps/${agent_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
-  # launcher:
-  #   account: hk-project-sustainebot
-  #   timeout_min: 720
-  #   name: robocasa #${hydra.job.name}
-  #   partition: accelerated
-  #   gres: gpu:1
+  launcher:
+#    account: hk-project-sustainebot
+    timeout_min: 1000
+    name: robocasa #${hydra.job.name}
+    partition: accelerated
+    #    gpus_per_node: 4
+    gres: gpu:1
+#    cpus-per-task: 152
+#    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
 
 env_name:
-#  - PnPCabToCounter
-#  - PnPStoveToCounter
 #  - PnPSinkToCounter
   - CloseSingleDoor
-#  - OpenDrawer
-#  - CoffeePressButton
+  - OpenDrawer
+  - TurnOnStove
+  - CoffeePressButton
+  - CoffeeServeMug
+
 seed: 42
 
-dataset_path: /home/david/2025/custom_robocasa/custom_robocasa/datasets/v0.1/single_stage/
+dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/robocasa_datasets/v0.1/single_stage/
+#dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/david/custom_robocasa/custom_robocasa/datasets/v0.1/single_stage/
 # dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset_2/robocasa_datasets/v0.1/single_stage/kitchen_pnp/PnPCabToCounter/2024-04-24/processed_demo_${img_width}_${img_height}.hdf5
 
 # Model Setting
@@ -49,20 +54,20 @@ pred_seq_len: 10
 multistep: ${window_size} # only for inference, could be different from act_seq_len
 goal_window_size: 1
 
-goal_conditioned: True
-
 use_pos_emb: True
 num_sampling_steps: 4
 
+goal_conditioned: True
+
 # Training
-train_batch_size: 32
+train_batch_size: 256
 val_batch_size: 1
-num_workers: 4
+num_workers: 32
 device: "cuda"
-epoch: 1
+epoch: 200
 eval_every_n_epochs: 1
 scale_data: True
-scaler_type: "standard"
+scaler_type: "minmax"
 
 if_use_ema: True
 
@@ -79,7 +84,7 @@ use_pc_color: False
 
 global_action: False
 
-obs_tokens: 1024 #${obs_seq_len}
+obs_tokens: 4 #${obs_seq_len}
 
 ## Observations
 if_robot_states: False
@@ -129,9 +134,9 @@ latent_dim: 512
 ##########################################################################################
 # Transformer Parameters (encoder-decoder)
 ##########################################################################################
-encoder_n_layer: 6
+encoder_n_layer: 4
 decoder_n_layer: 6
-n_heads: 4
+n_heads: 8
 
 ##########################################################################################
 # Mamba Parameters
@@ -156,9 +161,9 @@ mamba_decoder_cfg:
 # xLSTM Parameters
 ##########################################################################################
 xlstm_encoder_blocks: 4
-xlstm_encoder_vocab_size: 1036
-xlstm_encoder_chunkwise_kernel: "chunkwise--native_autograd"   # "parallel--native_autograd"
-xlstm_encoder_mode: "train_with_padding"  # "train"
+xlstm_encoder_vocab_size: 16
+xlstm_encoder_chunkwise_kernel: "parallel--native_autograd"   # "parallel--native_autograd" "chunkwise--native_autograd"
+xlstm_encoder_mode: "train"  # "train" "train_with_padding"
 xlstm_encoder_adaLN_zero: False
 xlstm_encoder_in_context_cond: False
 
@@ -201,13 +206,13 @@ simulation:
   _target_: simulation.robocasa_pc_img_sim.RoboCasaSim
   env_name: ${env_name}
   camera_names: ${camera_names}
-  seed: ${seed}
+  seed: 42 #${seed}
   device: ${device}
   img_height: ${img_height}
   img_width: ${img_width}
-  num_episode: 1
+  num_episode: 50
   max_step_per_episode: 400
-  render: True
+  render: False
   n_cores: 1
   if_vision: True
   use_full_point_cloud: ${use_full_point_cloud}

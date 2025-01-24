@@ -3,6 +3,7 @@ import os
 
 import h5py
 import torch
+import einops
 from termcolor import cprint
 from tqdm import tqdm
 
@@ -50,7 +51,10 @@ class RobocasaDataset(TrajectoryDataset):
         self.data = {
             "lang": [],
             "action": [],
-            "point_cloud": []
+            "point_cloud": [],
+            "robot0_agentview_left_image": [],
+            "robot0_agentview_right_image": [],
+            "robot0_eye_in_hand_image": []
         }
 
         i = 0
@@ -99,8 +103,23 @@ class RobocasaDataset(TrajectoryDataset):
 
                 # Reorder point clouds with Hilbert curve
                 # demo_point_clouds = reorder_point_cloud_with_hilbert_curve(demo_point_clouds)
-
                 self.data["point_cloud"].append(demo_point_clouds)
+
+                full_point_clouds = env_data[demo]["obs"]["point_cloud"]
+
+                rgbs = (
+                        einops.rearrange(
+                            full_point_clouds[:, :, 3:],
+                            "t (num_cam h w) c -> t num_cam c h w",
+                            num_cam=len(cam_names),
+                            h=128,
+                            w=128,
+                        )
+                        / 255.0
+                )
+
+                for cam_idx, cam_name in enumerate(cam_names):
+                    self.data[f"{cam_name}_image"].append(rgbs[:, cam_idx])
 
                 i += 1
 
@@ -153,6 +172,20 @@ class RobocasaDataset(TrajectoryDataset):
         obs = {}
 
         point_cloud = torch.from_numpy(self.data['point_cloud'][i][start:start+1]).float()
+
+        left_img = torch.from_numpy(self.data["robot0_agentview_left_image"][i][
+                   start: start + 1
+                   ]).float()
+        right_img = torch.from_numpy(self.data["robot0_agentview_right_image"][i][
+                    start: start + 1
+                    ]).float()
+        eye_in_hand_img = torch.from_numpy(self.data["robot0_eye_in_hand_image"][i][
+                          start: start + 1
+                          ]).float()
+
+        obs["robot0_agentview_left_image"] = left_img
+        obs["robot0_agentview_right_image"] = right_img
+        obs["robot0_eye_in_hand_image"] = eye_in_hand_img
 
         obs["point_cloud"] = point_cloud
         obs["lang"] = self.data["lang"][i]
