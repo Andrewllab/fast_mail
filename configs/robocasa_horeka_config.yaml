@@ -24,7 +24,7 @@ hydra:
     subdir: ${hydra.job.override_dirname}
   launcher:
     account: hk-project-sustainebot
-    timeout_min: 800
+    timeout_min: 1200
     name: robocasa #${hydra.job.name}
     partition: accelerated
     #    gpus_per_node: 4
@@ -34,10 +34,10 @@ hydra:
 
 env_name:
 #  - PnPSinkToCounter
-#  - CloseSingleDoor
-#  - OpenDrawer
+  - CloseSingleDoor
+  - OpenDrawer
   - TurnOnStove
-#  - CoffeePressButton
+  - CoffeePressButton
   - CoffeeServeMug
 
 seed: 42
