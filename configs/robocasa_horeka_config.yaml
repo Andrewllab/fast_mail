@@ -34,10 +34,10 @@ hydra:
 
 env_name:
 #  - PnPSinkToCounter
-  - CloseSingleDoor
-  - OpenDrawer
+#  - CloseSingleDoor
+#  - OpenDrawer
   - TurnOnStove
-  - CoffeePressButton
+#  - CoffeePressButton
   - CoffeeServeMug
 
 seed: 42
@@ -151,8 +151,19 @@ mamba_decoder_cfg:
 ##########################################################################################
 # xLSTM Parameters
 ##########################################################################################
-xlstm_encoder_blocks: 16
-xlstm_decoder_blocks: 16
+xlstm_encoder_blocks: 4
+xlstm_encoder_vocab_size: 15
+xlstm_encoder_chunkwise_kernel: "parallel--native_autograd"   # "parallel--native_autograd" "chunkwise--native_autograd"
+xlstm_encoder_mode: "train"  # "train" "train_with_padding"
+xlstm_encoder_adaLN_zero: False
+xlstm_encoder_in_context_cond: False
+
+xlstm_decoder_blocks: 8
+xlstm_decoder_vocab_size: 11
+xlstm_decoder_chunkwise_kernel: "parallel--native_autograd"
+xlstm_decoder_mode: "train"
+xlstm_decoder_adaLN_zero: False
+xlstm_decoder_in_context_cond: False
 
 trainset:
   _target_: environments.dataset.robocasa_dataset.RobocasaDataset

@@ -8,7 +8,7 @@ from typing import Optional
 from torch.nn import functional as F
 import logging
 
-from agents.utils.time_embedding import BESO_TimeEmbedding, RF_TimeEmbedding
+from agents.utils.time_embedding import BESO_TimeEmbedding, RF_TimeEmbedding, DDPM_TimeEmbedding
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +172,8 @@ class Noise_Dec_only(nn.Module):
             self.sigma_emb = BESO_TimeEmbedding(embed_dim)
         elif diffusion_type == "rf":
             self.sigma_emb = RF_TimeEmbedding(embed_dim)
+        elif diffusion_type == "ddpm":
+            self.sigma_emb = DDPM_TimeEmbedding(embed_dim)
         else:
             raise ValueError(f"Diffusion type {diffusion_type} is not supported")
 

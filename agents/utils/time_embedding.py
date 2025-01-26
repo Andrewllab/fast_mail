@@ -40,6 +40,21 @@ class BESO_TimeEmbedding(nn.Module):
         return emb_t
 
 
+class DDPM_TimeEmbedding(nn.Module):
+    def __init__(self, embed_dim):
+        super().__init__()
+        self.time_emb = nn.Sequential(
+            SinusoidalPosEmb(embed_dim),
+            nn.Linear(embed_dim, embed_dim * 2),
+            nn.Mish(),
+            nn.Linear(embed_dim * 2, embed_dim),
+        )
+
+    def forward(self, t):
+        t = einops.rearrange(t, 'b -> b 1')
+        return self.time_emb(t)
+
+
 class RF_TimeEmbedding(nn.Module):
     def __init__(self, hidden_size, frequency_embedding_size=256):
         super().__init__()
