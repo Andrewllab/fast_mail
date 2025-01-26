@@ -37,7 +37,7 @@ if __name__ == '__main__':
 
     store = ['max', 'mean']
 
-    groups = ['beso_decoder_only']
+    groups = ['beso_decoder_only_new']
     fields = ['CloseSingleDoor_average_success', 'OpenDrawer_average_success', 'TurnOnStove_average_success', 'CoffeePressButton_average_success', 'CoffeeServeMug_average_success']
 
     # csv_file = open(sv_dir + '/bc_dec_results.csv', 'w', newline='')
@@ -81,8 +81,8 @@ if __name__ == '__main__':
                     'use_pos_emb': {
                         'values': [True]
                     },
-                    'epoch': {
-                        'values': [200]
+                    'agents.if_film_condition': {
+                        'values': [True]
                     }
                 }
 

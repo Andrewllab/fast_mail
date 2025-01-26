@@ -10,3 +10,5 @@ logs/*
 
 *.egg-info
 slurm_jobs/output/
+
+utils/figures/*
