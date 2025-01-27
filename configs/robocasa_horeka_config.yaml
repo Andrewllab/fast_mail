@@ -1,7 +1,7 @@
 defaults:
   - agents: beso_agent
   - trainers: base_trainer
-#  - override hydra/launcher: "submitit_slurm"
+  - override hydra/launcher: "submitit_slurm"
 
 agent_name: beso
 log_dir: logs/robocasa/
@@ -22,15 +22,15 @@ hydra:
   sweep:
     dir: ${log_dir}/sweeps/${agent_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
-#  launcher:
-#    account: hk-project-sustainebot
-#    timeout_min: 1200
-#    name: robocasa #${hydra.job.name}
-#    partition: accelerated
-#    #    gpus_per_node: 4
-#    gres: gpu:1
-##    cpus-per-task: 152
-##    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
+  launcher:
+    account: hk-project-sustainebot
+    timeout_min: 1200
+    name: robocasa #${hydra.job.name}
+    partition: accelerated
+    #    gpus_per_node: 4
+    gres: gpu:1
+#    cpus-per-task: 152
+#    additional_parameters: { "ntasks": 1, "gres": gpu:4, "cpus-per-task": 152 }
 
 env_name:
 #  - PnPSinkToCounter
