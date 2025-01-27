@@ -20,7 +20,7 @@ inner_model:
   linear_output: true
 
   use_ada_conditioning: False
-  forward_type: 'cross_attn'
+  forward_type: 'context_token'
   diffusion_type: 'beso'
 
   encoder:
@@ -34,7 +34,7 @@ inner_model:
     bias: False
 
   decoder:
-    _target_: agents.backbones.transformer.blocks.TransformerDecoder
+    _target_: agents.backbones.transformer.blocks.TransformerFiLMEncoder
     embed_dim: ${n_embd}
     n_heads: ${n_heads}
     n_layers: ${decoder_n_layer}
@@ -42,4 +42,4 @@ inner_model:
     resid_pdrop: 0.1
     mlp_pdrop: 0.1
     bias: False
-    use_cross_attention: True
+    use_cross_attention: False
