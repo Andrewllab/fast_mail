@@ -73,6 +73,7 @@ eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'minmax'
 
+use_pos_emb: True
 if_use_ema: True
 
 ## Environment
@@ -103,7 +104,7 @@ shape_meta:
 ##########################################################################################
 n_embd: 256
 goal_dim: 512
-latent_dim: 256
+latent_dim: 512
 
 ##########################################################################################
 # Transformer Parameters (encoder-decoder)
@@ -135,7 +136,7 @@ mamba_decoder_cfg:
 # xLSTM Parameters
 ##########################################################################################
 xlstm_encoder_blocks: 4
-xlstm_encoder_vocab_size: 5
+xlstm_encoder_vocab_size: 14
 xlstm_encoder_chunkwise_kernel: "parallel--native_autograd"
 xlstm_encoder_mode: "train"
 xlstm_encoder_adaLN_zero: False

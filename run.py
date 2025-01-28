@@ -40,7 +40,7 @@ def main(cfg: DictConfig) -> None:
         project=cfg.wandb.project,
         entity=cfg.wandb.entity,
         group=cfg.group,
-        mode="disabled",
+        # mode="disabled",
         config=wandb.config
     )
 
@@ -54,17 +54,16 @@ def main(cfg: DictConfig) -> None:
 
     # # simulate the model
     env_sim = hydra.utils.instantiate(cfg.simulation)
-    # env_sim.get_task_embs(trainer.trainset.tasks)
+    env_sim.get_task_embs(trainer.trainset.tasks)
     # #
     # # sv_dir = sim_framework_path("pretrain_weights")
     # #
-    env_sim.test_agent(agent, cfg.agents)
-    # env_sim.test_agent(agent, cfg.agents, epoch=cfg.epoch)
+    # env_sim.test_agent(agent, cfg.agents)
+    env_sim.test_agent(agent, cfg.agents, epoch=cfg.epoch)
 
-    #
-    # log.info("Training done")
-    # log.info("state_dict saved in {}".format(agent.working_dir))
-    # wandb.finish()
+    log.info("Training done")
+    log.info("state_dict saved in {}".format(agent.working_dir))
+    wandb.finish()
 
 
 if __name__ == "__main__":
