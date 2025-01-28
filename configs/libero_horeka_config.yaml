@@ -73,6 +73,7 @@ eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'minmax'
 
+num_sampling_steps: 4
 use_pos_emb: True
 if_use_ema: True
 
