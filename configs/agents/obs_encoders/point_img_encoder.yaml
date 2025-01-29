@@ -2,13 +2,12 @@ _target_: agents.encoders.point_img_encoder.PointMLPResNetEncoder
 _recursive_: false
 
 point_mlp_encoder:
-  _target_: agents.encoders.point_mlp_encoder.PointMLPEncoder_Pool
+  _target_: agents.encoders.point_attn_encoder.PointAttnEncoder
   _recursive_: false
 
   use_pc_color: ${use_pc_color}
   out_channels: ${latent_dim}
-  use_layer_norm: true
-  use_final_layer_norm: true
+  n_layers: 4
 
 resnet_encoder:
   _target_: agents.encoders.multi_image_obs_encoder.MultiImageObsEncoder

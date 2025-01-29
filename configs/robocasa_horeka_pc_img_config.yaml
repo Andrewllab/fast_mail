@@ -64,7 +64,7 @@ train_batch_size: 256
 val_batch_size: 1
 num_workers: 32
 device: "cuda"
-epoch: 200
+epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: "minmax"
@@ -127,9 +127,9 @@ shape_meta:
 ##########################################################################################
 # Common Parameters
 ##########################################################################################
-n_embd: 512
+n_embd: 256
 goal_dim: 512
-latent_dim: 512
+latent_dim: 256
 
 ##########################################################################################
 # Transformer Parameters (encoder-decoder)
@@ -161,7 +161,7 @@ mamba_decoder_cfg:
 # xLSTM Parameters
 ##########################################################################################
 xlstm_encoder_blocks: 4
-xlstm_encoder_vocab_size: 6
+xlstm_encoder_vocab_size: 16
 xlstm_encoder_chunkwise_kernel: "parallel--native_autograd"   # "parallel--native_autograd" "chunkwise--native_autograd"
 xlstm_encoder_mode: "train"  # "train" "train_with_padding"
 xlstm_encoder_adaLN_zero: False
