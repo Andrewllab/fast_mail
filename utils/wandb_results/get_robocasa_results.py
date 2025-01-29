@@ -20,7 +20,7 @@ class bcolors:
 config = {
     "local": {
         'entity': 'tiger_or_cat',
-        'project': 'david_robocasa',
+        'project': 'david_robocasa_diffusion_steps',
         'groups': '',
         'fields': '',
         'runs': ["all"],
@@ -37,7 +37,7 @@ if __name__ == '__main__':
 
     store = ['max', 'mean']
 
-    groups = ['beso_decoder_only_benchmark']
+    groups = ['beso_decoder_only_clip']
     fields = ['CloseSingleDoor_average_success', 'OpenDrawer_average_success', 'TurnOnStove_average_success', 'CoffeePressButton_average_success', 'CoffeeServeMug_average_success']
 
     # csv_file = open(sv_dir + '/bc_dec_results.csv', 'w', newline='')
@@ -49,6 +49,7 @@ if __name__ == '__main__':
             agent_names = ['bc_transformer', 'bc_mamba', 'bc_xlstm']
         elif 'beso' in group:
             agent_names = ['beso_transformer', 'beso_mamba', 'beso_xlstm']
+            agent_names = ['beso_xlstm']
         elif 'vqbet' in group:
             agent_names = ['vqbet_transformer', 'vqbet_mamba', 'vqbet_xlstm']
         elif 'fm' in group:

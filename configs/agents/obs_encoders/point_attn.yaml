@@ -3,4 +3,4 @@ _recursive_: false
 
 use_pc_color: ${use_pc_color}
 out_channels: ${latent_dim}
-n_layers: 2
+n_layers: 4

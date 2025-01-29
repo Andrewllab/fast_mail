@@ -9,12 +9,27 @@ class PointAttnEncoder(nn.Module):
         use_pc_color: bool,
         out_channels: int,
         n_layers: int = 4,
+        use_layer_norm: bool = True,
     ):
         super().__init__()
         self.use_pc_color = use_pc_color
         self.in_channels = 6 if use_pc_color else 3
 
-        self.point_emb = nn.Linear(self.in_channels, out_channels)
+        block_channel = [64, 128, out_channels]
+
+        self.mlp = nn.Sequential(
+            nn.Linear(self.in_channels, block_channel[0]),
+            nn.LayerNorm(block_channel[0]) if use_layer_norm else nn.Identity(),
+            nn.ReLU(),
+            nn.Linear(block_channel[0], block_channel[1]),
+            nn.LayerNorm(block_channel[1]) if use_layer_norm else nn.Identity(),
+            nn.ReLU(),
+            nn.Linear(block_channel[1], block_channel[2]),
+            nn.LayerNorm(block_channel[2]) if use_layer_norm else nn.Identity(),
+            nn.ReLU()
+        )
+
+        # self.point_emb = nn.Linear(self.in_channels, out_channels)
         self.attn = TransformerEncoder(
             embed_dim=out_channels,
             n_heads=8,
@@ -34,7 +49,7 @@ class PointAttnEncoder(nn.Module):
 
         b, t, dim = x.size()
 
-        x = self.point_emb(x)
+        x = self.mlp(x)
         point_token = self.point_out_token.weight.unsqueeze(0).repeat(b, 1, 1)
 
         x = torch.cat([x, point_token], dim=1)

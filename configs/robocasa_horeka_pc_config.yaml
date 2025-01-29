@@ -9,7 +9,7 @@ log_dir: logs/robocasa/
 # insert wandb here
 wandb:
   entity: tiger_or_cat
-  project: david_robocasa_pc_benchmark
+  project: david_robocasa_pc_last
 
 group: bc_robocasa
 
@@ -64,7 +64,7 @@ train_batch_size: 256
 val_batch_size: 1
 num_workers: 32
 device: "cuda"
-epoch: 200
+epoch: 100
 eval_every_n_epochs: 1
 scale_data: True
 scaler_type: "minmax"
@@ -127,9 +127,9 @@ shape_meta:
 ##########################################################################################
 # Common Parameters
 ##########################################################################################
-n_embd: 512
+n_embd: 256
 goal_dim: 512
-latent_dim: 512
+latent_dim: 256
 
 ##########################################################################################
 # Transformer Parameters (encoder-decoder)
