@@ -16,8 +16,8 @@ class PointMLPResNetEncoder(nn.Module):
         self.resnet_encoder = hydra.utils.instantiate(resnet_encoder)
 
         self.align_mlp = nn.Sequential(
-            nn.Linear(512, 256),
-            nn.LayerNorm(256),
+            nn.Linear(512, 128),
+            nn.LayerNorm(128),
         )
 
     def forward(self, obs_dict, lang_cond=None):
