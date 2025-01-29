@@ -8,9 +8,9 @@ export CFLAGS="-O2 -march=core-avx2"
 python run_test.py  --config-name=robocasa_horeka_pc_config \
             --multirun agents=beso_agent \
             agent_name=beso_mamba \
-            group=beso_decoder_only_new \
+            group=beso_decoder_only_tune \
             agents/model=beso/beso_dec_mamba \
             agents/obs_encoders=point_attn \
-            mamba_n_layer_encoder=8 \
+            mamba_n_layer_encoder=8,10,12,14 \
             use_pos_emb=True \
             seed=0,1,2
