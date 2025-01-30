@@ -49,6 +49,7 @@ if __name__ == '__main__':
             agent_names = ['bc_transformer', 'bc_mamba', 'bc_xlstm']
         elif 'beso' in group:
             agent_names = ['beso_transformer', 'beso_mamba', 'beso_xlstm']
+            agent_names = ['beso_xlstm']
         elif 'vqbet' in group:
             agent_names = ['vqbet_transformer', 'vqbet_mamba', 'vqbet_xlstm']
         elif 'fm' in group:
