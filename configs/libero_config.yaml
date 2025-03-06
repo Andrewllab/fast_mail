@@ -2,6 +2,7 @@ defaults:
   - agents: bc_agent
   - trainers: base_trainer
   - trainers@vqvae_pre_trainer: vqvae_pre_trainer
+  - _self_
 #  - override hydra/launcher: submitit_slurm
 
 agent_name: beso
@@ -16,7 +17,7 @@ model_paths:
 
 # insert wandb here
 wandb:
-  entity: tiger_or_cat
+  entity: null
   project: fast_mail
 
 group: bc_${task_suite}
@@ -47,7 +48,7 @@ task_suite: libero_object
 traj_per_task: 10
 
 ## change the path of dataset
-dataset_path: /home/david/2024/datasets/${task_suite}
+dataset_path: /home/balazs/repos/external/LIBERO/libero/datasets/${task_suite}
 #dataset_path: /home/xuan/datasets/${task_suite}
 #dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
 #dataset_path: /home/huang/ml_workspace/fast_mail_workspace/datasets/${task_suite}
@@ -73,6 +74,8 @@ eval_every_n_epochs: 1
 scale_data: True
 scaler_type: 'standard'
 
+num_sampling_steps: 4
+use_pos_emb: True
 if_use_ema: True
 
 ## Environment

@@ -39,6 +39,22 @@ pip install -r requirements.txt
 git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git
 cd LIBERO
 pip install -e .
+pip install termcolor  # missing dependency for download utils
+```
+
+Download the LIBERO datasets with:
+```
+python benchmark_scripts/download_libero_datasets.py
+```
+or run e.g.
+```
+python benchmark_scripts/download_libero_datasets.py --datasets libero_object
+```
+to download just a single dataset, like LIBERO-Object.
+
+Run training on LIBERO-Object with:
+```
+python run.py --config-name=libero_config agents=beso_agent agents/model=beso/beso_dec_transformer epoch=500
 ```
 
 ### Installing RoboCasa Setup

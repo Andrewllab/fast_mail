@@ -89,6 +89,16 @@ class MultiTaskSim(BaseSim):
 
         # print(contexts)
 
+        # register non-torch types that need to be unpickled from init_states files
+        unsafe_globals = [
+            "numpy.core.multiarray._reconstruct",
+            "numpy.dtype",
+            "numpy.ndarray",
+            "numpy.dtypes.Float64DType",
+        ]
+        unsafe_globals = [(hydra.utils.get_object(o), o) for o in unsafe_globals]
+        torch.serialization.add_safe_globals(unsafe_globals)
+
         for i, context in enumerate(contexts):
 
             task_suite = benchmark.get_benchmark_dict()[self.task_suite]()
