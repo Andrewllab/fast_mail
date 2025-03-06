@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - slurm
+  - override /hydra/launcher: submitit_slurm
+  - _self_
+
+platform_name: horeka
+hydra:
+  mode: MULTIRUN
+  launcher:
+    account: ???
+    timeout_min: 2880
+    partition: accelerated
+    gres: gpu:1
+    cpus-per-task: ???
+    setup:
+      # Create wandb folder in fast, job-local storage: https://www.nhr.kit.edu/userdocs/horeka/filesystems/#tmpdir
+      # NOTE: wandb folder will be deleted after job completion, but by then it will have synced with server
+      - export WANDB_DIR=$TMPDIR/wandb
+      - mkdir -pv $WANDB_DIR
+      - wandb enabled

@@ -1,0 +1,8 @@
+# Debug messages from these modules (or all modules if True) should
+# always be logged to file, even if suppressed in console output.
+always_log_debug_to_file: True
+
+# Debug messages from these modules should never be logged to file,
+# even if hydra.verbose=True. This setting overrides
+# `always_log_debug_to_file`.
+always_suppress_debug_from: null
