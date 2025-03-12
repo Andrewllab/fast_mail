@@ -1,0 +1,110 @@
+defaults:
+  - dataset: null
+  - augmentation: null
+  - agents: bc_agent
+  - trainers: base_trainer
+  - logging: default
+  - paths: default
+  - hydra: default
+  - _self_
+  - optional local: default
+  - platform: default
+  - experiment: null
+
+
+wandb:
+  tags: null
+  notes: null
+
+seed: null
+
+
+# agent_name: beso
+agent_name: bc
+
+# dataset config
+task_suite: pushT
+traj_per_task: 200
+
+## change the path of dataset
+dataset_path: /home/david/2025/datasets/${task_suite}
+#dataset_path: /home/xuan/datasets/${task_suite}
+#dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
+#dataset_path: /home/huang/ml_workspace/fast_mail_workspace/datasets/${task_suite}
+
+# Model Setting
+window_size: 10
+obs_seq_len: 1
+act_seq_len: ${window_size}
+goal_window_size: 1
+goal_conditioned: False
+
+use_pos_emb: True
+num_sampling_steps: 4
+
+obs_tokens: 1
+
+# Training
+train_batch_size: 256
+val_batch_size: 32
+num_workers: 4
+device: 'cuda'
+epoch: 100
+eval_every_n_epochs: 1
+scale_data: True
+scaler_type: 'minmax'
+
+if_use_ema: True
+
+## Environment
+obs_dim: 9
+action_dim: 2
+state_dim: 110
+max_len_data: 260
+
+## Observations
+if_robot_states: False
+
+camera_names:
+  - "agentview_rgb"
+
+shape_meta:
+  # acceptable types: rgb, low_dim
+  obs:
+    agentview_rgb_image:
+      shape: [ 3, 224, 224 ]
+      type: rgb
+
+##########################################################################################
+# Common Parameters
+##########################################################################################
+n_embd: 256
+goal_dim: 16
+latent_dim: 256
+
+##########################################################################################
+# Transformer Parameters (encoder-decoder)
+##########################################################################################
+encoder_n_layer: 4
+decoder_n_layer: 6
+n_heads: 4
+
+
+## TODO
+simulation:
+  _target_: simulation.pusht_sim.PushTSim
+  _convert_: all
+  seed: ${seed}
+  device: ${device}
+  render: True
+  n_cores: 2
+  n_test_tasks: 20
+  num_episode: 2
+  max_step_per_episode: 600
+  use_multiprocessing: false
+  debug_dataset: ${trainset}
+
+# Model
+model:
+  weight_path: "/home/huang/ml_workspace/fast_mail_workspace/fast_mail/logs/pushT/sweeps/bc/2025-01-07/12-28-03"
+  sv_name: last_model.pth
