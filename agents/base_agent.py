@@ -3,6 +3,7 @@ import logging
 import os
 import pickle
 from collections import deque
+from typing import Sequence
 
 import einops
 import hydra
@@ -29,7 +30,7 @@ class BaseAgent(nn.Module, abc.ABC):
         latent_dim: int,
         obs_seq_len: int,
         act_seq_len: int,
-        cam_names: list[str]
+        camera_names: Sequence[str],
     ):
         super().__init__()
 
@@ -43,7 +44,7 @@ class BaseAgent(nn.Module, abc.ABC):
         self.model = hydra.utils.instantiate(model).to(device)
         self.state_emb = nn.Linear(state_dim, latent_dim)
 
-        self.cam_names = cam_names
+        self.camera_names = camera_names
 
         # for inference
         self.rollout_step_counter = 0
@@ -55,8 +56,7 @@ class BaseAgent(nn.Module, abc.ABC):
     def set_scaler(self, scaler):
         self.scaler = scaler
 
-    # @abc.abstractmethod
-    def compute_input_embeddings(self, obs_dict):
+    def encode_obs(self, obs_dict):
         """
         Compute the required embeddings for the visual ones and the latent goal.
         """
@@ -68,58 +68,22 @@ class BaseAgent(nn.Module, abc.ABC):
 
         latent_goal = obs_dict["lang_emb"]
 
-        if "point_cloud" in obs_dict and "robot0_agentview_left_image" in obs_dict:
-
-            assert obs_dict["point_cloud"].shape[-1] in [3, 6], "Point cloud should have 3 or 6 channels"
-
-            obs_dict["point_cloud"] = einops.rearrange(obs_dict["point_cloud"], "b t n d -> (b t) n d")
-
-            B, T, C, H, W = obs_dict[f"{self.cam_names[0]}_image"].shape
-            # B, T, C, H, W = obs_dict["robot0_agentview_center_image"].shape
-            for camera in self.cam_names:
-                obs_dict[f"{camera}_image"] = obs_dict[f"{camera}_image"].view(B * T, C, H, W)
-
-            if self.if_film_condition:
-                perceptual_emb = self.img_encoder(obs_dict, latent_goal)
-            else:
-                perceptual_emb = self.img_encoder(obs_dict)
-
-            return perceptual_emb, latent_goal
-
         #########################################
         # using RGB images or point clouds
         #########################################
-        if "point_cloud" in obs_dict:
-            assert obs_dict["point_cloud"].shape[-1] in [3, 6], "Point cloud should have 3 or 6 channels"
+        # flatten batch and time dimensions of all camera images
+        for camera in self.camera_names:
+            # should have shape [B, T, C, H, W]
+            assert obs_dict[f"{camera}_image"].ndim == 5
+            obs_dict[f"{camera}_image"] = obs_dict[f"{camera}_image"].flatten(
+                start_dim=0, end_dim=1
+            )
 
-            pc = einops.rearrange(obs_dict["point_cloud"], "b t n d -> (b t) n d")
-            if self.if_film_condition:
-                perceptual_emb = self.img_encoder(pc, latent_goal)
-            else:
-                perceptual_emb = self.img_encoder(pc)
-
-        elif self.cam_names is not None:
-
-            B, T, C, H, W = obs_dict[f"{self.cam_names[0]}_image"].shape
-            # B, T, C, H, W = obs_dict["robot0_agentview_center_image"].shape
-
-            for camera in self.cam_names:
-                obs_dict[f"{camera}_image"] = obs_dict[f"{camera}_image"].view(B * T, C, H, W)
-
-            # for camera in obs_dict.keys():
-            #     if "rgb" not in camera and "image" not in camera:
-            #         continue
-            #     # print(obs_dict[camera].shape)
-            #     obs_dict[camera] = obs_dict[camera].view(B * T, C, H, W)
-
-            # print(self.if_film_condition)
-            if self.if_film_condition:
-                perceptual_emb = self.img_encoder(obs_dict, latent_goal)
-            else:
-                # obs_dict is a dict with two images and one lang: images are [64,3,256,256]
-                perceptual_emb = self.img_encoder(obs_dict)
+        if self.if_film_condition:
+            obs_embedding = self.img_encoder(obs_dict, latent_goal)
         else:
-            raise NotImplementedError("Either use point clouds or images as input.")
+            # obs_dict is a dict with two images and one lang: images are [64,3,256,256]
+            obs_embedding = self.img_encoder(obs_dict)
 
         #########################################
         # add robot states
@@ -128,9 +92,9 @@ class BaseAgent(nn.Module, abc.ABC):
             robot_states = obs_dict["robot_states"]
             robot_states = self.state_emb(robot_states)
 
-            perceptual_emb = torch.cat([perceptual_emb, robot_states], dim=1)
+            obs_embedding = torch.cat([obs_embedding, robot_states], dim=1)
 
-        return perceptual_emb, latent_goal
+        return obs_embedding, latent_goal
 
     @abc.abstractmethod
     def forward(self, obs_dict: dict[str, torch.Tensor], actions=None) -> torch.Tensor:
@@ -166,12 +130,12 @@ class BaseAgent(nn.Module, abc.ABC):
                     t=self.obs_seq_len - obs_dict[key].shape[1],
                 )
                 obs_dict[key] = torch.cat([pad, obs_dict[key]], dim=1)
-                
+
         if self.rollout_step_counter == 0:
             self.eval()
 
             # predict action sequence
-            pred_action_seq = self(obs_dict)[:, :self.act_seq_len]
+            pred_action_seq = self(obs_dict)[:, : self.act_seq_len]
             pred_action_seq = self.scaler.inverse_scale_output(pred_action_seq)
             self.pred_action_seq = pred_action_seq
 

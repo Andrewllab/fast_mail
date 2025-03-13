@@ -1,5 +1,6 @@
 import abc
 import os
+from typing import Sequence
 
 from torch.utils.data import Dataset
 
@@ -14,16 +15,18 @@ class TrajectoryDataset(Dataset, abc.ABC):
     """
 
     def __init__(
-            self,
-            data_directory: os.PathLike,
-            device="cpu",
-            obs_dim: int = 20,
-            action_dim: int = 2,
-            max_len_data: int = 256,
-            window_size: int = 1,
+        self,
+        data_directory: os.PathLike,
+        camera_names: Sequence[str],
+        device="cpu",
+        obs_dim: int = 20,
+        action_dim: int = 2,
+        max_len_data: int = 256,
+        window_size: int = 1,
     ):
 
         self.data_directory = data_directory
+        self._camera_names = camera_names
         self.device = device
 
         self.max_len_data = max_len_data
@@ -31,6 +34,10 @@ class TrajectoryDataset(Dataset, abc.ABC):
         self.obs_dim = obs_dim
 
         self.window_size = window_size
+
+    @property
+    def camera_names(self) -> str:
+        return self._camera_names
 
     @abc.abstractmethod
     def get_seq_length(self, idx):

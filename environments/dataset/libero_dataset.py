@@ -1,42 +1,44 @@
 import logging
-import random
-import pickle
-
-import cv2
-import h5py
 import os
-import torch
+import pickle
+from typing import Sequence
+
+import h5py
 import numpy as np
-from environments.dataset.base_dataset import TrajectoryDataset
+import torch
+
 from agents.utils.sim_path import sim_framework_path
+from environments.dataset.base_dataset import TrajectoryDataset
 
 log = logging.getLogger(__name__)
 
 
 class LiberoDataset(TrajectoryDataset):
     def __init__(
-            self,
-            data_directory: os.PathLike,
-            device="cpu",
-            obs_dim: int = 32,
-            action_dim: int = 7,
-            state_dim: int = 45,
-            max_len_data: int = 136,
-            window_size: int = 1,
-            start_idx: int = 0,
-            traj_per_task: int = 1,
+        self,
+        data_directory: os.PathLike,
+        camera_names: Sequence[str],
+        device="cpu",
+        obs_dim: int = 32,
+        action_dim: int = 7,
+        state_dim: int = 45,
+        max_len_data: int = 136,
+        window_size: int = 1,
+        start_idx: int = 0,
+        traj_per_task: int = 1,
     ):
         super().__init__(
             data_directory=data_directory,
+            camera_names=camera_names,
             device=device,
             obs_dim=obs_dim,
             action_dim=action_dim,
             max_len_data=max_len_data,
-            window_size=window_size
+            window_size=window_size,
         )
 
         self.data_dir = sim_framework_path(self.data_directory)
-        logging.info("The dataset is loading from {}".format(self.data_dir))  # show the dataset directory
+        log.info("Loading dataset from {}".format(self.data_dir))
 
         self.obs_dim = obs_dim
         self.state_dim = state_dim
@@ -45,7 +47,7 @@ class LiberoDataset(TrajectoryDataset):
         task_suite = os.path.basename(data_directory)
         task_emb_dir = sim_framework_path("task_embeddings")
 
-        with open(task_emb_dir + "/" + task_suite + ".pkl", 'rb') as f:
+        with open(task_emb_dir + "/" + task_suite + ".pkl", "rb") as f:
             tasks = pickle.load(f)
 
         data_embs = []
@@ -59,13 +61,13 @@ class LiberoDataset(TrajectoryDataset):
         file_list = os.listdir(self.data_dir)
 
         for file in file_list:
-            if not file.endswith('.hdf5'):
+            if not file.endswith(".hdf5"):
                 continue
 
-            filename = os.path.basename(file).split('.')[0][:-5]
+            filename = os.path.basename(file).split(".")[0][:-5]
             task_emb = tasks[filename]
 
-            f = h5py.File(os.path.join(self.data_dir, file), 'r')
+            f = h5py.File(os.path.join(self.data_dir, file), "r")
 
             log.info("Loading demo: {}".format(file))
 
@@ -74,20 +76,22 @@ class LiberoDataset(TrajectoryDataset):
             indices = np.argsort([int(elem[5:]) for elem in demo_keys_list])
 
             # load the states and actions in demos according to demo_keys_list
-            for i in indices[start_idx: start_idx + traj_per_task]:
+            for i in indices[start_idx : start_idx + traj_per_task]:
 
                 demo_name = demo_keys_list[i]
                 demo = f["data"][demo_name]
                 demo_length = demo.attrs["num_samples"]
 
                 # zero_states = np.zeros((1, self.max_len_data, self.state_dim), dtype=np.float32)
-                zero_actions = np.zeros((1, self.max_len_data, self.action_dim), dtype=np.float32)
+                zero_actions = np.zeros(
+                    (1, self.max_len_data, self.action_dim), dtype=np.float32
+                )
                 # zero_rewards = np.zeros((1, self.max_len_data), dtype=np.float32)
                 # zero_dones = np.zeros((1, self.max_len_data), dtype=np.float32)
                 zero_mask = np.zeros((1, self.max_len_data), dtype=np.float32)
 
                 # states_data = demo['states'][:]
-                action_data = demo['actions'][:]
+                action_data = demo["actions"][:]
                 # rewards_data = demo['rewards'][:]
                 # dones_data = demo['dones'][:]
 
@@ -104,11 +108,11 @@ class LiberoDataset(TrajectoryDataset):
 
                 # zero_agentview = np.zeros((self.max_len_data, H, W, C), dtype=np.float32)
                 # zero_inhand = np.zeros((self.max_len_data, H, W, C), dtype=np.float32)
-                agent_view = demo['obs']['agentview_rgb'][:]
-                eye_in_hand = demo['obs']['eye_in_hand_rgb'][:]
+                agent_view = demo["obs"]["agentview_rgb"][:]
+                eye_in_hand = demo["obs"]["eye_in_hand_rgb"][:]
 
-                joint_states = demo['obs']['joint_states'][:]
-                gripper_states = demo['obs']['gripper_states'][:]
+                joint_states = demo["obs"]["joint_states"][:]
+                gripper_states = demo["obs"]["gripper_states"][:]
 
                 robot_states = np.concatenate((joint_states, gripper_states), axis=-1)
 
@@ -134,7 +138,9 @@ class LiberoDataset(TrajectoryDataset):
             f.close()
 
         # self.states = torch.from_numpy(np.concatenate(states)).to(device).float()
-        self.actions = torch.from_numpy(np.concatenate(actions)).to(device).float()  # shape: B, T, D
+        self.actions = (
+            torch.from_numpy(np.concatenate(actions)).to(device).float()
+        )  # shape: B, T, D
 
         self.agentview_rgb = agentview_rgb
         self.eye_in_hand_rgb = eye_in_hand_rgb
@@ -152,7 +158,7 @@ class LiberoDataset(TrajectoryDataset):
 
         self.slices = self.get_slices()
 
-    def get_slices(self):  #Extract sample slices that meet certain conditions
+    def get_slices(self):  # Extract sample slices that meet certain conditions
         slices = []
 
         min_seq_length = np.inf
@@ -161,10 +167,13 @@ class LiberoDataset(TrajectoryDataset):
             min_seq_length = min(T, min_seq_length)
 
             if T - self.window_size < 0:
-                print(f"Ignored short sequence #{i}: len={T}, window={self.window_size}")
+                print(
+                    f"Ignored short sequence #{i}: len={T}, window={self.window_size}"
+                )
             else:
                 slices += [
-                    (i, start, start + self.window_size) for start in range(T - self.window_size + 1)
+                    (i, start, start + self.window_size)
+                    for start in range(T - self.window_size + 1)
                 ]  # slice indices follow convention [start, end)
 
         return slices
@@ -205,15 +214,24 @@ class LiberoDataset(TrajectoryDataset):
 
         task_emb = self.data_embs[i]
 
-        agentview_rgb = self.agentview_rgb[i][start:start+1]
-        eye_in_hand_rgb = self.eye_in_hand_rgb[i][start:start+1]
+        agentview_rgb = self.agentview_rgb[i][start : start + 1]
+        eye_in_hand_rgb = self.eye_in_hand_rgb[i][start : start + 1]
 
-        robot_states = self.all_states[i][start:start+1]
+        robot_states = self.all_states[i][start : start + 1]
 
         task_emb = task_emb.to(self.device).float()
 
-        agentview_rgb = torch.from_numpy(agentview_rgb).to(self.device).float().permute(0, 3, 1, 2) / 255.
-        eye_in_hand_rgb = torch.from_numpy(eye_in_hand_rgb).to(self.device).float().permute(0, 3, 1, 2) / 255.
+        agentview_rgb = (
+            torch.from_numpy(agentview_rgb).to(self.device).float().permute(0, 3, 1, 2)
+            / 255.0
+        )
+        eye_in_hand_rgb = (
+            torch.from_numpy(eye_in_hand_rgb)
+            .to(self.device)
+            .float()
+            .permute(0, 3, 1, 2)
+            / 255.0
+        )
 
         act = self.actions[i, start:end]
         mask = self.masks[i, start:end]

@@ -41,8 +41,6 @@ action_dim: ${action_dim}
 obs_seq_len: ${obs_seq_len}
 act_seq_len: ${act_seq_len}
 
-cam_names: ${camera_names}
-
 decay: 0.995
 use_lr_scheduler: False
 

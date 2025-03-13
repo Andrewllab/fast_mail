@@ -37,12 +37,17 @@ def main(cfg: DictConfig) -> None:
     rng = get_rng(cfg)
     manual_seed(rng)
 
+    # instantiate dataset
+    dataset = hydra.utils.instantiate(cfg.dataset.dataset)
+
     # instantiate agent
     with open_dict(cfg):
         cfg.agent.pop("name", None)
-    agent = hydra.utils.instantiate(cfg.agents)
+    agent = hydra.utils.instantiate(cfg.agents, camera_names=dataset.camera_names)
 
-    trainer = hydra.utils.instantiate(cfg.trainers)
+    trainer = hydra.utils.instantiate(
+        cfg.trainers, trainset=dataset, dataloader_cfg=cfg.dataset.dataloader
+    )
 
     agent.get_params()
     trainer.main(agent)
