@@ -1,10 +1,13 @@
 _target_: agents.beso_agent.BesoAgent
-_recursive_: false
 
 defaults:
   - model: beso/beso_dec_xlstm
-  - obs_encoders: resnet
-  - language_encoders: clip
+  - obs_encoder:
+    - depth/promptda
+  - language_encoder: clip
+
+# BALAZS: does this work?
+obs_encoder._target_: torch.nn.ModuleList
 
 if_film_condition: False
 if_robot_states: False

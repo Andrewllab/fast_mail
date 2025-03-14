@@ -24,9 +24,9 @@ log = logging.getLogger(__name__)
 class BesoAgent(BaseAgent):
     def __init__(
         self,
-        model: DictConfig,
-        language_encoders: DictConfig,
-        obs_encoders: DictConfig,
+        model: nn.Module,
+        language_encoder: nn.Module,
+        obs_encoder: nn.Module,
         optimizer: DictConfig,
         lr_scheduler: DictConfig,
         latent_dim,
@@ -52,8 +52,8 @@ class BesoAgent(BaseAgent):
     ):
         super().__init__(
             model=model,
-            obs_encoders=obs_encoders,
-            language_encoders=language_encoders,
+            obs_encoder=obs_encoder,
+            language_encoder=language_encoder,
             device=device,
             state_dim=state_dim,
             latent_dim=latent_dim,
@@ -67,7 +67,6 @@ class BesoAgent(BaseAgent):
         self.use_lr_scheduler = use_lr_scheduler
 
         self.latent_dim = latent_dim
-        self.device = device
         self.optimizer_config = optimizer
         self.lr_scheduler = lr_scheduler
 
@@ -150,7 +149,9 @@ class BesoAgent(BaseAgent):
         """
         Computes the score matching loss given the perceptual embedding, latent goal, and desired actions.
         """
+        # BALAZS: lightning should handle putting in train mode
         self.model.train()
+        # BALAZS: can we put everything on the device before calling this?
         sigmas = self.make_sample_density()(
             shape=(len(actions),), device=self.device
         ).to(self.device)

@@ -1,8 +1,8 @@
 defaults:
-  - dataset: null
+  - dataset: ???
   - augmentation: null
-  - agents: bc_agent
-  - trainers: base_trainer
+  - agent: ???
+  - trainer: base_trainer
   - logging: default
   - paths: default
   - hydra: default
@@ -19,18 +19,9 @@ wandb:
 seed: null
 
 
-# agent_name: beso
-agent_name: bc
-
 # dataset config
 task_suite: pushT
 traj_per_task: 200
-
-## change the path of dataset
-dataset_path: /home/david/2025/datasets/${task_suite}
-#dataset_path: /home/xuan/datasets/${task_suite}
-#dataset_path: /hkfs/work/workspace/scratch/ll6323-david_dataset/data/libero/${task_suite}
-#dataset_path: /home/huang/ml_workspace/fast_mail_workspace/datasets/${task_suite}
 
 # Model Setting
 window_size: 10

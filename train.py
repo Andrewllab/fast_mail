@@ -45,6 +45,9 @@ def main(cfg: DictConfig) -> None:
         cfg.agent.pop("name", None)
     agent = hydra.utils.instantiate(cfg.agents, camera_names=dataset.camera_names)
 
+    device = torch.device(cfg.device)
+    agent = agent.to(device)
+
     trainer = hydra.utils.instantiate(
         cfg.trainers, trainset=dataset, dataloader_cfg=cfg.dataset.dataloader
     )

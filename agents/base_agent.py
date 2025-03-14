@@ -18,13 +18,13 @@ from agents.utils.scaler import ActionScaler, MinMaxScaler, Scaler
 log = logging.getLogger(__name__)
 
 
-class BaseAgent(nn.Module, abc.ABC):
+class BaseAgent(nn.Module):
 
     def __init__(
         self,
-        model: DictConfig,
-        obs_encoders: DictConfig,
-        language_encoders: DictConfig,
+        model: nn.Module,
+        obs_encoder: nn.Module,
+        language_encoder: nn.Module,
         device: str,
         state_dim: int,
         latent_dim: int,
@@ -39,9 +39,9 @@ class BaseAgent(nn.Module, abc.ABC):
         self.scaler = None
 
         # Initialize model and encoder
-        self.img_encoder = hydra.utils.instantiate(obs_encoders).to(device)
-        self.language_encoder = hydra.utils.instantiate(language_encoders).to(device)
-        self.model = hydra.utils.instantiate(model).to(device)
+        self.model = model
+        self.obs_encoder = obs_encoder
+        self.language_encoder = language_encoder
         self.state_emb = nn.Linear(state_dim, latent_dim)
 
         self.camera_names = camera_names
@@ -75,15 +75,18 @@ class BaseAgent(nn.Module, abc.ABC):
         for camera in self.camera_names:
             # should have shape [B, T, C, H, W]
             assert obs_dict[f"{camera}_image"].ndim == 5
+            # BALAZS: when is T ever not 1?
+            assert obs_dict[f"{camera}_image"].shape[1] == 1
             obs_dict[f"{camera}_image"] = obs_dict[f"{camera}_image"].flatten(
                 start_dim=0, end_dim=1
             )
 
         if self.if_film_condition:
-            obs_embedding = self.img_encoder(obs_dict, latent_goal)
+            obs_embedding = self.obs_encoder(obs_dict, latent_goal)
         else:
             # obs_dict is a dict with two images and one lang: images are [64,3,256,256]
-            obs_embedding = self.img_encoder(obs_dict)
+            # obs_embedding has shape [B, N, E], where N is number of cameras and E is embedding dim
+            obs_embedding = self.obs_encoder(obs_dict)
 
         #########################################
         # add robot states
@@ -96,12 +99,11 @@ class BaseAgent(nn.Module, abc.ABC):
 
         return obs_embedding, latent_goal
 
-    @abc.abstractmethod
     def forward(self, obs_dict: dict[str, torch.Tensor], actions=None) -> torch.Tensor:
         """
         Forward pass of the model
         """
-        pass
+        raise NotImplementedError
 
     def reset(self):
         """Resets the context of the model."""
