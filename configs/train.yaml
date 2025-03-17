@@ -1,7 +1,7 @@
 defaults:
-  - dataset: ???
+  - dataset: one_leg
   - augmentation: null
-  - agent: ???
+  - agent: beso_agent
   - trainer: base_trainer
   - logging: default
   - paths: default
@@ -76,23 +76,3 @@ latent_dim: 256
 encoder_n_layer: 4
 decoder_n_layer: 6
 n_heads: 4
-
-
-## TODO
-simulation:
-  _target_: simulation.pusht_sim.PushTSim
-  _convert_: all
-  seed: ${seed}
-  device: ${device}
-  render: True
-  n_cores: 2
-  n_test_tasks: 20
-  num_episode: 2
-  max_step_per_episode: 600
-  use_multiprocessing: false
-  debug_dataset: ${trainset}
-
-# Model
-model:
-  weight_path: "/home/huang/ml_workspace/fast_mail_workspace/fast_mail/logs/pushT/sweeps/bc/2025-01-07/12-28-03"
-  sv_name: last_model.pth

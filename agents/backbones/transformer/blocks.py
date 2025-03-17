@@ -1,25 +1,16 @@
-from matplotlib.pyplot import cla
+import logging
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import einops
-from inspect import isfunction
-
-from typing import Optional, Tuple
-
-import logging
-import math
-from typing import Optional
-
-import torch
-import torch.nn as nn
 from torch.nn import functional as F
-from omegaconf import DictConfig
-import einops
+
+log = logging.getLogger(__name__)
 
 
 class LayerNorm(nn.Module):
-    """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
+    """LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False"""
 
     def __init__(self, ndim, bias):
         super().__init__()
@@ -34,7 +25,7 @@ class LayerNorm(nn.Module):
 class RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-8) -> None:
         super().__init__()
-        self.scale, self.eps = dim ** -0.5, eps
+        self.scale, self.eps = dim**-0.5, eps
         self.g = nn.Parameter(torch.ones(dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -55,15 +46,15 @@ class SwishGLU(nn.Module):
 
 class Attention(nn.Module):
     def __init__(
-            self,
-            n_embd: int,
-            n_head: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            block_size: int = 100,
-            causal: bool = False,
-            bias=False,
-            qk_norm: bool = False,
+        self,
+        n_embd: int,
+        n_head: int,
+        attn_pdrop: float,
+        resid_pdrop: float,
+        block_size: int = 100,
+        causal: bool = False,
+        bias=False,
+        qk_norm: bool = False,
     ):
         super().__init__()
         assert n_embd % n_head == 0
@@ -77,9 +68,9 @@ class Attention(nn.Module):
         self.n_embd = n_embd
         self.causal = causal
 
-        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+        self.flash = hasattr(torch.nn.functional, "scaled_dot_product_attention")
         if not self.flash and causal:
-            print("WARNING: Using slow attention. Flash Attention requires PyTorch >= 2.0")
+            log.warning("Using slow attention. Flash Attention requires PyTorch >= 2.0")
         # Dynamically compute causal mask instead of using a fixed bias buffer
         self.block_size = block_size
         self.qk_norm = qk_norm
@@ -94,9 +85,17 @@ class Attention(nn.Module):
         B, T, C = x.size()
 
         if context is not None:
-            k = self.key(context).view(B, -1, self.n_head, C // self.n_head).transpose(1, 2)
+            k = (
+                self.key(context)
+                .view(B, -1, self.n_head, C // self.n_head)
+                .transpose(1, 2)
+            )
             q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-            v = self.value(context).view(B, -1, self.n_head, C // self.n_head).transpose(1, 2)
+            v = (
+                self.value(context)
+                .view(B, -1, self.n_head, C // self.n_head)
+                .transpose(1, 2)
+            )
         else:
             k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
             q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
@@ -106,19 +105,26 @@ class Attention(nn.Module):
         k = self.k_norm(k)
 
         if self.flash:
-            y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=custom_attn_mask,
-                                                                 dropout_p=self.attn_dropout.p if self.training else 0,
-                                                                 is_causal=self.causal)
+            y = torch.nn.functional.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=custom_attn_mask,
+                dropout_p=self.attn_dropout.p if self.training else 0,
+                is_causal=self.causal,
+            )
         else:
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
 
             # Optimize custom attention masking
             if custom_attn_mask is not None:
-                att = att.masked_fill(custom_attn_mask == 0, float('-inf'))
+                att = att.masked_fill(custom_attn_mask == 0, float("-inf"))
             elif self.causal:
                 # Dynamically compute causal mask based on current sequence length T
-                causal_mask = torch.tril(torch.ones(T, T, device=x.device)).view(1, 1, T, T)
-                att = att.masked_fill(causal_mask == 0, float('-inf'))
+                causal_mask = torch.tril(torch.ones(T, T, device=x.device)).view(
+                    1, 1, T, T
+                )
+                att = att.masked_fill(causal_mask == 0, float("-inf"))
 
             att = F.softmax(att, dim=-1)
             att = self.attn_dropout(att)
@@ -131,12 +137,12 @@ class Attention(nn.Module):
 
 class MLP(nn.Module):
     def __init__(
-            self,
-            n_embd: int,
-            bias: bool,
-            use_swish: bool = True,
-            use_relus: bool = False,
-            dropout: float = 0,
+        self,
+        n_embd: int,
+        bias: bool,
+        use_swish: bool = True,
+        use_relus: bool = False,
+        dropout: float = 0,
     ):
         super().__init__()
         layers = []
@@ -161,25 +167,36 @@ class MLP(nn.Module):
 
 class Block(nn.Module):
     def __init__(
-            self,
-            n_embd: int,
-            n_heads: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            mlp_pdrop: float,
-            block_size: int = 100,
-            causal: bool = True,
-            use_cross_attention: bool = False,
-            bias: bool = False,  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
-            qk_norm: bool = True,
+        self,
+        n_embd: int,
+        n_heads: int,
+        attn_pdrop: float,
+        resid_pdrop: float,
+        mlp_pdrop: float,
+        block_size: int = 100,
+        causal: bool = True,
+        use_cross_attention: bool = False,
+        bias: bool = False,  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+        qk_norm: bool = True,
     ):
         super().__init__()
         self.ln_1 = RMSNorm(n_embd, eps=1e-6)
-        self.attn = Attention(n_embd, n_heads, attn_pdrop, resid_pdrop, block_size, causal, bias, qk_norm)
+        self.attn = Attention(
+            n_embd, n_heads, attn_pdrop, resid_pdrop, block_size, causal, bias, qk_norm
+        )
         self.use_cross_attention = use_cross_attention
 
         if self.use_cross_attention:
-            self.cross_att = Attention(n_embd, n_heads, attn_pdrop, resid_pdrop, block_size, causal, bias, qk_norm)
+            self.cross_att = Attention(
+                n_embd,
+                n_heads,
+                attn_pdrop,
+                resid_pdrop,
+                block_size,
+                causal,
+                bias,
+                qk_norm,
+            )
             self.ln3 = RMSNorm(n_embd, eps=1e-6)
 
         self.ln_2 = RMSNorm(n_embd, eps=1e-6)
@@ -188,7 +205,9 @@ class Block(nn.Module):
     def forward(self, x, context=None, custom_attn_mask=None):
         x = x + self.attn(self.ln_1(x), custom_attn_mask=custom_attn_mask)
         if self.use_cross_attention and context is not None:
-            x = x + self.cross_att(self.ln3(x), context, custom_attn_mask=custom_attn_mask)
+            x = x + self.cross_att(
+                self.ln3(x), context, custom_attn_mask=custom_attn_mask
+            )
         x = x + self.mlp(self.ln_2(x))
         return x
 
@@ -201,8 +220,7 @@ class AdaLNZero(nn.Module):
     def __init__(self, hidden_size):
         super().__init__()
         self.modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(hidden_size, 6 * hidden_size, bias=True)
+            nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size, bias=True)
         )
         # Initialize weights and biases to zero
         # nn.init.zeros_(self.modulation[1].weight)
@@ -222,25 +240,37 @@ class ConditionedBlock(Block):
     """
 
     def __init__(
-            self,
-            n_embd: int,
-            n_heads: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            mlp_pdrop: float,
-            block_size: int = 100,
-            causal: bool = True,
-            use_cross_attention: bool = False,
-            bias: bool = False,  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
-            qk_norm: bool = True,
+        self,
+        n_embd: int,
+        n_heads: int,
+        attn_pdrop: float,
+        resid_pdrop: float,
+        mlp_pdrop: float,
+        block_size: int = 100,
+        causal: bool = True,
+        use_cross_attention: bool = False,
+        bias: bool = False,  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+        qk_norm: bool = True,
     ):
-        super().__init__(n_embd, n_heads, attn_pdrop, resid_pdrop, mlp_pdrop, block_size, causal,
-                         use_cross_attention, bias, qk_norm)
+        super().__init__(
+            n_embd,
+            n_heads,
+            attn_pdrop,
+            resid_pdrop,
+            mlp_pdrop,
+            block_size,
+            causal,
+            use_cross_attention,
+            bias,
+            qk_norm,
+        )
 
         self.adaLN_zero = AdaLNZero(n_embd)
 
     def forward(self, x, c, context=None, custom_attn_mask=None):
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_zero(c)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
+            self.adaLN_zero(c)
+        )
 
         # Attention with modulation
         x_attn = self.ln_1(x)
@@ -249,7 +279,9 @@ class ConditionedBlock(Block):
 
         # Cross attention if used
         if self.use_cross_attention and context is not None:
-            x = x + self.cross_att(self.ln3(x), context, custom_attn_mask=custom_attn_mask)
+            x = x + self.cross_att(
+                self.ln3(x), context, custom_attn_mask=custom_attn_mask
+            )
 
         # MLP with modulation
         x_mlp = self.ln_2(x)
@@ -261,34 +293,36 @@ class ConditionedBlock(Block):
 
 class TransformerEncoder(nn.Module):
     def __init__(
-            self,
-            embed_dim: int,
-            n_heads: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            n_layers: int,
-            block_size: int = 100,
-            causal: bool = True,
-            qk_norm: bool = True,
-            bias: bool = False,
-            mlp_pdrop: float = 0,
-            use_cross_attention: bool = False
+        self,
+        embed_dim: int,
+        n_heads: int,
+        attn_pdrop: float,
+        resid_pdrop: float,
+        n_layers: int,
+        block_size: int = 100,
+        causal: bool = True,
+        qk_norm: bool = True,
+        bias: bool = False,
+        mlp_pdrop: float = 0,
+        use_cross_attention: bool = False,
     ):
         super().__init__()
         self.blocks = nn.Sequential(
-            *[Block(
-                embed_dim,
-                n_heads,
-                attn_pdrop,
-                resid_pdrop,
-                mlp_pdrop,
-                block_size,
-                causal=causal,
-                use_cross_attention=use_cross_attention,
-                bias=bias,
-                qk_norm=qk_norm,
-            )
-                for _ in range(n_layers)]
+            *[
+                Block(
+                    embed_dim,
+                    n_heads,
+                    attn_pdrop,
+                    resid_pdrop,
+                    mlp_pdrop,
+                    block_size,
+                    causal=causal,
+                    use_cross_attention=use_cross_attention,
+                    bias=bias,
+                    qk_norm=qk_norm,
+                )
+                for _ in range(n_layers)
+            ]
         )
         self.ln = RMSNorm(embed_dim, eps=1e-6)
 
@@ -301,34 +335,36 @@ class TransformerEncoder(nn.Module):
 
 class TransformerFiLMEncoder(nn.Module):
     def __init__(
-            self,
-            embed_dim: int,
-            n_heads: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            n_layers: int,
-            block_size: int = 100,
-            causal: bool = True,
-            qk_norm: bool = True,
-            bias: bool = False,
-            mlp_pdrop: float = 0,
-            use_cross_attention: bool = False
+        self,
+        embed_dim: int,
+        n_heads: int,
+        attn_pdrop: float,
+        resid_pdrop: float,
+        n_layers: int,
+        block_size: int = 100,
+        causal: bool = True,
+        qk_norm: bool = True,
+        bias: bool = False,
+        mlp_pdrop: float = 0,
+        use_cross_attention: bool = False,
     ):
         super().__init__()
         self.blocks = nn.Sequential(
-            *[ConditionedBlock(
-                embed_dim,
-                n_heads,
-                attn_pdrop,
-                resid_pdrop,
-                mlp_pdrop,
-                block_size,
-                causal=causal,
-                use_cross_attention=use_cross_attention,
-                bias=bias,
-                qk_norm=qk_norm,
-            )
-                for _ in range(n_layers)]
+            *[
+                ConditionedBlock(
+                    embed_dim,
+                    n_heads,
+                    attn_pdrop,
+                    resid_pdrop,
+                    mlp_pdrop,
+                    block_size,
+                    causal=causal,
+                    use_cross_attention=use_cross_attention,
+                    bias=bias,
+                    qk_norm=qk_norm,
+                )
+                for _ in range(n_layers)
+            ]
         )
         self.ln = RMSNorm(embed_dim, eps=1e-6)
 
@@ -341,34 +377,36 @@ class TransformerFiLMEncoder(nn.Module):
 
 class TransformerDecoder(nn.Module):
     def __init__(
-            self,
-            embed_dim: int,
-            n_heads: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            n_layers: int,
-            block_size: int = 100,
-            causal: bool = True,
-            qk_norm: bool = True,
-            bias: bool = False,
-            mlp_pdrop: float = 0,
-            use_cross_attention: bool = True
+        self,
+        embed_dim: int,
+        n_heads: int,
+        attn_pdrop: float,
+        resid_pdrop: float,
+        n_layers: int,
+        block_size: int = 100,
+        causal: bool = True,
+        qk_norm: bool = True,
+        bias: bool = False,
+        mlp_pdrop: float = 0,
+        use_cross_attention: bool = True,
     ):
         super().__init__()
         self.blocks = nn.Sequential(
-            *[Block(
-                embed_dim,
-                n_heads,
-                attn_pdrop,
-                resid_pdrop,
-                mlp_pdrop,
-                block_size,
-                causal=causal,
-                use_cross_attention=use_cross_attention,
-                bias=bias,
-                qk_norm=qk_norm,
-            )
-                for _ in range(n_layers)]
+            *[
+                Block(
+                    embed_dim,
+                    n_heads,
+                    attn_pdrop,
+                    resid_pdrop,
+                    mlp_pdrop,
+                    block_size,
+                    causal=causal,
+                    use_cross_attention=use_cross_attention,
+                    bias=bias,
+                    qk_norm=qk_norm,
+                )
+                for _ in range(n_layers)
+            ]
         )
         self.ln = RMSNorm(embed_dim, eps=1e-6)
 
@@ -381,34 +419,36 @@ class TransformerDecoder(nn.Module):
 
 class TransformerFiLMDecoder(nn.Module):
     def __init__(
-            self,
-            embed_dim: int,
-            n_heads: int,
-            attn_pdrop: float,
-            resid_pdrop: float,
-            n_layers: int,
-            block_size: int = 100,
-            causal: bool = True,
-            qk_norm: bool = True,
-            bias: bool = False,
-            mlp_pdrop: float = 0,
-            use_cross_attention: bool = True
+        self,
+        embed_dim: int,
+        n_heads: int,
+        attn_pdrop: float,
+        resid_pdrop: float,
+        n_layers: int,
+        block_size: int = 100,
+        causal: bool = True,
+        qk_norm: bool = True,
+        bias: bool = False,
+        mlp_pdrop: float = 0,
+        use_cross_attention: bool = True,
     ):
         super().__init__()
         self.blocks = nn.Sequential(
-            *[ConditionedBlock(
-                embed_dim,
-                n_heads,
-                attn_pdrop,
-                resid_pdrop,
-                mlp_pdrop,
-                block_size,
-                causal=causal,
-                use_cross_attention=use_cross_attention,
-                bias=bias,
-                qk_norm=qk_norm,
-            )
-                for _ in range(n_layers)]
+            *[
+                ConditionedBlock(
+                    embed_dim,
+                    n_heads,
+                    attn_pdrop,
+                    resid_pdrop,
+                    mlp_pdrop,
+                    block_size,
+                    causal=causal,
+                    use_cross_attention=use_cross_attention,
+                    bias=bias,
+                    qk_norm=qk_norm,
+                )
+                for _ in range(n_layers)
+            ]
         )
         self.ln = RMSNorm(embed_dim, eps=1e-6)
 
@@ -417,4 +457,3 @@ class TransformerFiLMDecoder(nn.Module):
             x = layer(x, c, cond, custom_attn_mask=custom_attn_mask)
         x = self.ln(x)
         return x
-

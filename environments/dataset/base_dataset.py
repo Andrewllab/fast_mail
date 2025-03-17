@@ -1,11 +1,10 @@
-import abc
 import os
 from typing import Sequence
 
 from torch.utils.data import Dataset
 
 
-class TrajectoryDataset(Dataset, abc.ABC):
+class TrajectoryDataset(Dataset):
     """
     A dataset containing trajectories.
     TrajectoryDataset[i] returns: (observations, actions, mask)
@@ -16,44 +15,48 @@ class TrajectoryDataset(Dataset, abc.ABC):
 
     def __init__(
         self,
-        data_directory: os.PathLike,
+        root_dir: os.PathLike,
         camera_names: Sequence[str],
-        device="cpu",
-        obs_dim: int = 20,
-        action_dim: int = 2,
+        device,
+        obs_dim: int,
+        action_dim: int,
         max_len_data: int = 256,
         window_size: int = 1,
     ):
 
-        self.data_directory = data_directory
-        self._camera_names = camera_names
+        self.root_dir = root_dir
+        self._camera_names = list(camera_names)
         self.device = device
 
+        self._action_dim = action_dim
+        self._obs_dim = obs_dim
         self.max_len_data = max_len_data
-        self.action_dim = action_dim
-        self.obs_dim = obs_dim
-
         self.window_size = window_size
 
     @property
-    def camera_names(self) -> str:
+    def camera_names(self) -> list[str]:
         return self._camera_names
 
-    @abc.abstractmethod
+    @property
+    def obs_dim(self) -> int:
+        return self._obs_dim
+
+    @property
+    def action_dim(self) -> int:
+        return self._action_dim
+
     def get_seq_length(self, idx):
         """
         Returns the length of the idx-th trajectory.
         """
         raise NotImplementedError
 
-    @abc.abstractmethod
     def get_all_actions(self):
         """
         Returns all actions from all trajectories, concatenated on dim 0 (time).
         """
         raise NotImplementedError
 
-    @abc.abstractmethod
     def get_all_observations(self):
         """
         Returns all actions from all trajectories, concatenated on dim 0 (time).

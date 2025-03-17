@@ -20,5 +20,5 @@ def manual_seed(rng):
     torch.manual_seed(rng.integers(np.iinfo(np.int64).max))
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(rng.integers(np.iinfo(np.int64).max))
-    np.random.seed(rng.integers(np.iinfo(np.int64).max))
+    np.random.seed(rng.integers(np.iinfo(np.uint32).max))
     random.seed(rng.integers(np.iinfo(np.int64).max))

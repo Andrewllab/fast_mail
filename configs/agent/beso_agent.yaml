@@ -1,13 +1,12 @@
-_target_: agents.beso_agent.BesoAgent
-
 defaults:
-  - model: beso/beso_dec_xlstm
-  - obs_encoder:
-    - depth/promptda
+  - model: beso/beso_dec_transformer
+  - obs_encoder: default
   - language_encoder: clip
 
-# BALAZS: does this work?
-obs_encoder._target_: torch.nn.ModuleList
+_target_: agents.beso_agent.BesoAgent
+
+# Arguments required at runtime:
+# dataset: ???
 
 if_film_condition: False
 if_robot_states: False
@@ -23,7 +22,6 @@ if_robot_states: False
 #  # 16 or 32 "RN101", "RN50x4", "RN50x16", "ViT-B/32", "ViT-B/16"
 
 optimizer:
-  _target_: torch.optim.AdamW
   transformer_weight_decay: 0.05
   obs_encoder_weight_decay: 0.05
   learning_rate: 1e-4
@@ -39,7 +37,6 @@ lr_scheduler:
     lr: 1e-4
 
 latent_dim: ${latent_dim}
-action_dim: ${action_dim}
 
 obs_seq_len: ${obs_seq_len}
 act_seq_len: ${act_seq_len}

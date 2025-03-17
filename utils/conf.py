@@ -3,7 +3,7 @@ from __future__ import annotations
 import os.path as osp
 
 import numpy as np
-from omegaconf import OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 
 def setup_resolvers(exclude: list[str] | None = None):
@@ -26,3 +26,14 @@ def setup_resolvers(exclude: list[str] | None = None):
 
     if "abspath" not in exclude:
         OmegaConf.register_new_resolver("abspath", lambda s: osp.abspath(s))
+
+
+def pop_names(cfg: DictConfig) -> DictConfig:
+    with open_dict(cfg):
+        cfg.pop("name", None)
+
+    for key, value in cfg.items():
+        if isinstance(value, DictConfig):
+            cfg[key] = pop_names(value)
+
+    return cfg

@@ -5,7 +5,8 @@ defaults:
   - override /hydra/launcher: submitit_slurm
   - _self_
 
-platform_name: horeka
+platform:
+  name: horeka
 hydra:
   mode: MULTIRUN
   launcher:

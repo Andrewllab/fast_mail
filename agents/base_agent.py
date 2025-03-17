@@ -1,20 +1,15 @@
-import abc
 import logging
 import os
 import pickle
 from collections import deque
-from typing import Sequence
 
 import einops
-import hydra
 import torch
 import torch.nn as nn
 import wandb
-from omegaconf import DictConfig
 
 from agents.utils.scaler import ActionScaler, MinMaxScaler, Scaler
 
-# A logger for this file
 log = logging.getLogger(__name__)
 
 
@@ -30,7 +25,7 @@ class BaseAgent(nn.Module):
         latent_dim: int,
         obs_seq_len: int,
         act_seq_len: int,
-        camera_names: Sequence[str],
+        dataset,
     ):
         super().__init__()
 
@@ -44,7 +39,7 @@ class BaseAgent(nn.Module):
         self.language_encoder = language_encoder
         self.state_emb = nn.Linear(state_dim, latent_dim)
 
-        self.camera_names = camera_names
+        self.camera_names = dataset.camera_names
 
         # for inference
         self.rollout_step_counter = 0
@@ -67,19 +62,6 @@ class BaseAgent(nn.Module):
             obs_dict["lang_emb"] = self.language_encoder(obs_dict["lang"]).float()
 
         latent_goal = obs_dict["lang_emb"]
-
-        #########################################
-        # using RGB images or point clouds
-        #########################################
-        # flatten batch and time dimensions of all camera images
-        for camera in self.camera_names:
-            # should have shape [B, T, C, H, W]
-            assert obs_dict[f"{camera}_image"].ndim == 5
-            # BALAZS: when is T ever not 1?
-            assert obs_dict[f"{camera}_image"].shape[1] == 1
-            obs_dict[f"{camera}_image"] = obs_dict[f"{camera}_image"].flatten(
-                start_dim=0, end_dim=1
-            )
 
         if self.if_film_condition:
             obs_embedding = self.obs_encoder(obs_dict, latent_goal)

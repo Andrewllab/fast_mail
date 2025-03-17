@@ -6,7 +6,7 @@ import torch
 import wandb
 from omegaconf import DictConfig, OmegaConf, open_dict
 
-from utils.conf import setup_resolvers
+from utils.conf import pop_names, setup_resolvers
 from utils.logging import configure_logging
 from utils.seeding import get_rng, manual_seed
 
@@ -30,6 +30,10 @@ def main(cfg: DictConfig) -> None:
         notes=notes,
     )
 
+    # recursively pop any "name" fields in config dictionary
+    # we want these to be saved to WandB but we don't want them for instantiation
+    cfg = pop_names(cfg)
+
     # BALAZS: do we need this?
     torch.cuda.empty_cache()
 
@@ -41,12 +45,13 @@ def main(cfg: DictConfig) -> None:
     dataset = hydra.utils.instantiate(cfg.dataset.dataset)
 
     # instantiate agent
-    with open_dict(cfg):
-        cfg.agent.pop("name", None)
-    agent = hydra.utils.instantiate(cfg.agents, camera_names=dataset.camera_names)
+    agent = hydra.utils.instantiate(cfg.agent, dataset=dataset)
 
     device = torch.device(cfg.device)
     agent = agent.to(device)
+
+    log.warning("Exiting after instantiating agent since script is not finished yet.")
+    return
 
     trainer = hydra.utils.instantiate(
         cfg.trainers, trainset=dataset, dataloader_cfg=cfg.dataset.dataloader

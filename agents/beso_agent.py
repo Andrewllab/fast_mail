@@ -1,15 +1,8 @@
 import logging
-import os
-from collections import deque
 from functools import partial
-from typing import Any, Dict, NamedTuple, Optional, Tuple
+from typing import Optional, Tuple
 
-import einops
-import hydra
 import torch
-import torch.distributed as dist
-import torch.optim as optim
-import wandb
 from omegaconf import DictConfig, OmegaConf
 
 from agents.base_agent import BaseAgent
@@ -17,6 +10,7 @@ from agents.models.beso.models.edm_diffusion.gc_sampling import *
 from agents.models.beso.utils.lr_schedulers.tri_stage_scheduler import (
     TriStageLRScheduler,
 )
+from environments.dataset.base_dataset import TrajectoryDataset
 
 log = logging.getLogger(__name__)
 
@@ -30,11 +24,10 @@ class BesoAgent(BaseAgent):
         optimizer: DictConfig,
         lr_scheduler: DictConfig,
         latent_dim,
-        action_dim,
         decay: float,
         obs_seq_len: int,
         act_seq_len: int,
-        camera_names: list[str],
+        dataset: TrajectoryDataset,
         state_dim=7,
         use_lr_scheduler: bool = True,
         sampler_type: str = "ddim",
@@ -59,10 +52,10 @@ class BesoAgent(BaseAgent):
             latent_dim=latent_dim,
             obs_seq_len=obs_seq_len,
             act_seq_len=act_seq_len,
-            camera_names=camera_names,
+            dataset=dataset,
         )
 
-        self.action_dim = action_dim
+        self.action_dim = dataset.action_dim
 
         self.use_lr_scheduler = use_lr_scheduler
 
