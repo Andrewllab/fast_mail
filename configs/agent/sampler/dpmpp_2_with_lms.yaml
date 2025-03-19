@@ -1,0 +1,4 @@
+name: dpmpp_2_with_lms
+_target_: agents.models.beso.models.edm_diffusion.gc_sampling.sample_dpmpp_2_with_lms
+_partial_: True
+disable: True

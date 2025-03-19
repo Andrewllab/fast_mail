@@ -1,0 +1,6 @@
+name: discrete
+_target_: agents.beso.edm_diffusion.noise_distributions.rand_discrete
+_partial_: True
+sigma_min: ${..sigma_min}
+sigma_max: ${..sigma_max}
+n_total_steps: ${prod:${..num_sampling_steps},1e5}

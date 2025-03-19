@@ -1,42 +1,48 @@
+from __future__ import annotations
+
 import logging
 import os
 import pickle
 from collections import deque
+from typing import TYPE_CHECKING, Callable
 
 import einops
+import lightning as L
 import torch
 import torch.nn as nn
 import wandb
 
 from agents.utils.scaler import ActionScaler, MinMaxScaler, Scaler
 
+if TYPE_CHECKING:
+    from environments.dataset.base_dataset import TrajectoryDataset
+
+
 log = logging.getLogger(__name__)
 
 
-class BaseAgent(nn.Module):
+class BaseAgent(L.LightningModule):
 
     def __init__(
         self,
         model: nn.Module,
-        obs_encoder: nn.Module,
+        obs_encoder: Callable[[TrajectoryDataset], nn.Module],
         language_encoder: nn.Module,
-        device: str,
-        state_dim: int,
-        latent_dim: int,
+        latent_dim: int,  # BALAZS: add to state_encoder to hydra
         obs_seq_len: int,
         act_seq_len: int,
-        dataset,
+        dataset: TrajectoryDataset,
     ):
         super().__init__()
 
-        self.device = device
-        self.working_dir = os.getcwd()
         self.scaler = None
 
         # Initialize model and encoder
         self.model = model
-        self.obs_encoder = obs_encoder
+        self.obs_encoder = obs_encoder(dataset)
         self.language_encoder = language_encoder
+
+        state_dim = dataset.state_dim
         self.state_emb = nn.Linear(state_dim, latent_dim)
 
         self.camera_names = dataset.camera_names
@@ -81,19 +87,12 @@ class BaseAgent(nn.Module):
 
         return obs_embedding, latent_goal
 
-    def forward(self, obs_dict: dict[str, torch.Tensor], actions=None) -> torch.Tensor:
-        """
-        Forward pass of the model
-        """
-        raise NotImplementedError
-
     def reset(self):
         """Resets the context of the model."""
         self.rollout_step_counter = 0
         self.obs_seq: dict[str, deque[torch.Tensor]] = {}
 
-    @torch.no_grad()
-    def predict(self, obs_dict: dict[str, torch.Tensor]) -> torch.Tensor:
+    def predict_step(self, obs_dict: dict[str, torch.Tensor]) -> torch.Tensor:
         # initialize self.obs_seq if empty
         if not self.obs_seq:
             for key in obs_dict.keys():

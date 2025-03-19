@@ -1,0 +1,5 @@
+name: ve
+_target_: agents.models.beso.models.edm_diffusion.gc_sampling.get_sigmas_ve
+_partial_: True
+sigma_min: ${..sigma_min}
+sigma_max: ${..sigma_min}

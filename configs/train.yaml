@@ -31,7 +31,6 @@ goal_window_size: 1
 goal_conditioned: False
 
 use_pos_emb: True
-num_sampling_steps: 4
 
 obs_tokens: 1
 

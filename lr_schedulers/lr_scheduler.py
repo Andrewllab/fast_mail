@@ -20,10 +20,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.lr_scheduler import LRScheduler
 
 
-class LearningRateScheduler(_LRScheduler):
+class LearningRateScheduler(LRScheduler):
     r"""
     Provides inteface of learning rate scheduler.
 
@@ -31,16 +31,8 @@ class LearningRateScheduler(_LRScheduler):
         Do not use this class directly, use one of the sub classes.
     """
 
-    def __init__(self, optimizer, init_lr):
-        self.optimizer = optimizer
-        self.init_lr = init_lr
-
-    def step(self, *args, **kwargs):
-        raise NotImplementedError
-
-    @staticmethod
-    def set_lr(optimizer, lr):
-        for g in optimizer.param_groups:
+    def set_lr(self, lr):
+        for g in self.optimizer.param_groups:
             g["lr"] = lr
 
     def get_lr(self):

@@ -1,0 +1,4 @@
+name: euler_ancestral
+_target_: agents.models.beso.models.edm_diffusion.gc_sampling.sample_euler_ancestral
+_partial_: True
+disable: True

@@ -1,0 +1,6 @@
+name: heun
+_target_: agents.models.beso.models.edm_diffusion.gc_sampling.sample_heun
+_partial_: True
+s_churn: 0
+s_min: 0
+disable: True

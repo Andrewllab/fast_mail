@@ -1,0 +1,6 @@
+name: karras
+_target_: agents.models.beso.models.edm_diffusion.gc_sampling.get_sigmas_karras
+_partial_: True
+sigma_min: ${..sigma_min}
+sigma_max: ${..sigma_min}
+rho: 7.0

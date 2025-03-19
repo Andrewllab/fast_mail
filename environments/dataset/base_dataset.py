@@ -18,6 +18,7 @@ class TrajectoryDataset(Dataset):
         root_dir: os.PathLike,
         camera_names: Sequence[str],
         device,
+        state_dim: int,
         obs_dim: int,
         action_dim: int,
         max_len_data: int = 256,
@@ -28,14 +29,19 @@ class TrajectoryDataset(Dataset):
         self._camera_names = list(camera_names)
         self.device = device
 
-        self._action_dim = action_dim
+        self._state_dim = state_dim
         self._obs_dim = obs_dim
+        self._action_dim = action_dim
         self.max_len_data = max_len_data
         self.window_size = window_size
 
     @property
     def camera_names(self) -> list[str]:
         return self._camera_names
+
+    @property
+    def state_dim(self) -> int:
+        return self._state_dim
 
     @property
     def obs_dim(self) -> int:

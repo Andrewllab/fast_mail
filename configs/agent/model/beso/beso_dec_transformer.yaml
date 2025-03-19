@@ -1,11 +1,9 @@
 _target_: agents.models.beso.models.edm_diffusion.score_wrappers.GCDenoiser
-_recursive_: false
 
-sigma_data: 0.5
+sigma_data: ${..sigma_data}
 
 inner_model:
   _target_: agents.backbones.decoder_only.Noise_Dec_only
-  _recursive_: false
   state_dim: ${latent_dim}
   action_dim: ${action_dim}
   goal_dim: ${goal_dim}
@@ -16,7 +14,6 @@ inner_model:
   embed_pdrob: 0
   # Architecture details
   embed_dim: ${n_embd}
-  device: ${device}
   linear_output: true
 
   use_pos_emb: ${use_pos_emb}
@@ -24,7 +21,7 @@ inner_model:
   use_ada_conditioning: False
   diffusion_type: 'beso'
 
-  encoder:
+  model:
     _target_: agents.backbones.transformer.blocks.TransformerEncoder
     embed_dim: ${n_embd}
     n_heads: ${n_heads}

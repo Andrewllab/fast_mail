@@ -1,40 +1,36 @@
-import hydra
-from omegaconf import DictConfig, OmegaConf
-import torch
-import torch.nn as nn
-import einops
-import math
-from typing import Optional
-from torch.nn import functional as F
 import logging
 
-from agents.utils.time_embedding import BESO_TimeEmbedding, RF_TimeEmbedding, DDPM_TimeEmbedding
+import torch
+import torch.nn as nn
+
+from agents.utils.time_embedding import (
+    BESO_TimeEmbedding,
+    DDPM_TimeEmbedding,
+    RF_TimeEmbedding,
+)
 
 logger = logging.getLogger(__name__)
 
 
-# Non-diffusion based decoder-only model
 class Dec_only(nn.Module):
     def __init__(
-            self,
-            encoder: DictConfig,
-            state_dim: int,
-            action_dim: int,
-            goal_dim: int,
-            device: str,
-            goal_conditioned: bool,
-            embed_dim: int,
-            embed_pdrob: float,
-            goal_seq_len: int,
-            obs_seq_len: int,
-            action_seq_len: int,
-            linear_output: bool = False,
+        self,
+        model: nn.Module,
+        state_dim: int,
+        action_dim: int,
+        goal_dim: int,
+        goal_conditioned: bool,
+        embed_dim: int,
+        embed_pdrob: float,
+        goal_seq_len: int,
+        obs_seq_len: int,
+        action_seq_len: int,
+        linear_output: bool = False,
     ):
+        """Non-diffusion based decoder-only model"""
         super().__init__()
 
-        self.encoder = hydra.utils.instantiate(encoder)
-
-        self.device = device
+        self.model = model
 
         # mainly used for language condition or goal image condition
         self.goal_conditioned = goal_conditioned
@@ -53,7 +49,6 @@ class Dec_only(nn.Module):
         # position embedding
         self.pos_emb = nn.Parameter(torch.zeros(1, self.seq_size, embed_dim))
         self.drop = nn.Dropout(embed_pdrob)
-        self.drop.to(self.device)
 
         # get an action embedding
         self.query_embed = nn.Embedding(action_seq_len, embed_dim)
@@ -71,17 +66,11 @@ class Dec_only(nn.Module):
             self.action_pred = nn.Linear(embed_dim, action_dim)
         else:
             self.action_pred = nn.Sequential(
-                nn.Linear(embed_dim, 100),
-                nn.GELU(),
-                nn.Linear(100, self.action_dim)
+                nn.Linear(embed_dim, 100), nn.GELU(), nn.Linear(100, self.action_dim)
             )
-        self.action_pred.to(self.device)
 
         self.apply(self._init_weights)
 
-        # logger.info(
-        #     "number of parameters: %e", sum(p.numel() for p in self.parameters())
-        # )
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
@@ -91,11 +80,7 @@ class Dec_only(nn.Module):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
 
-    def forward(
-            self,
-            states,
-            goals=None,
-    ):
+    def forward(self, states, goals=None):
 
         if len(states.size()) != 3:
             states = states.unsqueeze(0)
@@ -104,10 +89,13 @@ class Dec_only(nn.Module):
 
         if self.goal_conditioned:
             goal_embed = self.goal_emb(goals)
-            goal_x = self.drop(goal_embed + self.pos_emb[:, :self.goal_seq_len, :])
+            goal_x = self.drop(goal_embed + self.pos_emb[:, : self.goal_seq_len, :])
 
         state_embed = self.tok_emb(states)
-        state_x = self.drop(state_embed + self.pos_emb[:, self.goal_seq_len:(self.goal_seq_len + t), :])
+        state_x = self.drop(
+            state_embed
+            + self.pos_emb[:, self.goal_seq_len : (self.goal_seq_len + t), :]
+        )
 
         action_seq = self.query_embed.weight.unsqueeze(0).repeat(b, 1, 1)
 
@@ -116,9 +104,9 @@ class Dec_only(nn.Module):
         else:
             input_seq = torch.cat([state_x, action_seq], dim=1)
 
-        encoder_output = self.encoder(input_seq)
+        output = self.model(input_seq)
 
-        pred_actions = self.action_pred(encoder_output[:, -self.action_seq_len:, :])
+        pred_actions = self.action_pred(output[:, -self.action_seq_len :, :])
 
         return pred_actions
 
@@ -126,28 +114,25 @@ class Dec_only(nn.Module):
 # Diffusion based decoder-only model, we need time embedding and noisy antions inputs here
 class Noise_Dec_only(nn.Module):
     def __init__(
-            self,
-            encoder: DictConfig,
-            state_dim: int,
-            action_dim: int,
-            goal_dim: int,
-            device: str,
-            goal_conditioned: bool,
-            embed_dim: int,
-            embed_pdrob: float,
-            goal_seq_len: int,
-            obs_seq_len: int,
-            action_seq_len: int,
-            linear_output: bool = False,
-            use_ada_conditioning: bool = False,
-            diffusion_type: str = "beso", # ddpm, beso or rf
-            use_pos_emb: bool = True
+        self,
+        model: nn.Module,
+        state_dim: int,
+        action_dim: int,
+        goal_dim: int,
+        goal_conditioned: bool,
+        embed_dim: int,
+        embed_pdrob: float,
+        goal_seq_len: int,
+        obs_seq_len: int,
+        action_seq_len: int,
+        linear_output: bool = False,
+        use_ada_conditioning: bool = False,
+        diffusion_type: str = "beso",  # ddpm, beso or rf
+        use_pos_emb: bool = True,
     ):
         super().__init__()
 
-        self.encoder = hydra.utils.instantiate(encoder)
-
-        self.device = device
+        self.model = model
 
         # mainly used for language condition or goal image condition
         self.goal_conditioned = goal_conditioned
@@ -183,10 +168,8 @@ class Noise_Dec_only(nn.Module):
             self.pos_emb = nn.Parameter(torch.zeros(1, self.seq_size, embed_dim))
 
         self.drop = nn.Dropout(embed_pdrob)
-        self.drop.to(self.device)
 
         self.action_dim = action_dim
-        self.obs_dim = state_dim
         self.embed_dim = embed_dim
 
         self.goal_seq_len = goal_seq_len
@@ -200,17 +183,11 @@ class Noise_Dec_only(nn.Module):
             self.action_pred = nn.Linear(embed_dim, action_dim)
         else:
             self.action_pred = nn.Sequential(
-                nn.Linear(embed_dim, 100),
-                nn.GELU(),
-                nn.Linear(100, self.action_dim)
+                nn.Linear(embed_dim, 100), nn.GELU(), nn.Linear(100, self.action_dim)
             )
-        self.action_pred.to(self.device)
 
         self.apply(self._init_weights)
 
-        # logger.info(
-        #     "number of parameters: %e", sum(p.numel() for p in self.parameters())
-        # )
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
@@ -220,13 +197,7 @@ class Noise_Dec_only(nn.Module):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
 
-    def forward(
-            self,
-            states,
-            actions,
-            goals,
-            sigma
-    ):
+    def forward(self, states, actions, goals, sigma):
 
         if len(states.size()) != 3:
             states = states.unsqueeze(0)
@@ -238,17 +209,21 @@ class Noise_Dec_only(nn.Module):
         if self.goal_conditioned:
             goal_embed = self.goal_emb(goals)
             if self.use_pos_emb:
-                goal_embed += self.pos_emb[:, :self.goal_seq_len, :]
+                goal_embed += self.pos_emb[:, : self.goal_seq_len, :]
             goal_x = self.drop(goal_embed)
 
         state_embed = self.tok_emb(states)
         if self.use_pos_emb:
-            state_embed += self.pos_emb[:, self.goal_seq_len:(self.goal_seq_len + t), :]
+            state_embed += self.pos_emb[
+                :, self.goal_seq_len : (self.goal_seq_len + t), :
+            ]
         state_x = self.drop(state_embed)
 
         action_embed = self.action_emb(actions)
         if self.use_pos_emb:
-            action_embed += self.pos_emb[:, (self.goal_seq_len + t):(self.goal_seq_len + t + t_a), :]
+            action_embed += self.pos_emb[
+                :, (self.goal_seq_len + t) : (self.goal_seq_len + t + t_a), :
+            ]
         action_x = self.drop(action_embed)
 
         emb_t = self.sigma_emb(sigma)
@@ -259,10 +234,10 @@ class Noise_Dec_only(nn.Module):
             input_seq = torch.cat([emb_t, state_x, action_x], dim=1)
 
         if self.use_ada_conditioning:
-            encoder_output = self.encoder(input_seq, emb_t)
+            output = self.model(input_seq, emb_t)
         else:
-            encoder_output = self.encoder(input_seq)
+            output = self.model(input_seq)
 
-        pred_actions = self.action_pred(encoder_output[:, -self.action_seq_len:, :])
+        pred_actions = self.action_pred(output[:, -self.action_seq_len :, :])
 
         return pred_actions

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os.path as osp
 
 import numpy as np
@@ -21,8 +22,16 @@ def setup_resolvers(exclude: list[str] | None = None):
     if "add" not in exclude:
         OmegaConf.register_new_resolver("add", lambda *numbers: sum(numbers))
 
+    if "prod" not in exclude:
+        OmegaConf.register_new_resolver(
+            "prod", lambda *numbers: np.prod(numbers).item()
+        )
+
     if "sub" not in exclude:
         OmegaConf.register_new_resolver("sub", lambda x, y: x - y)
+
+    if "log" not in exclude:
+        OmegaConf.register_new_resolver("log", lambda x: math.log(x))
 
     if "abspath" not in exclude:
         OmegaConf.register_new_resolver("abspath", lambda s: osp.abspath(s))

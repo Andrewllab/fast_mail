@@ -1,0 +1,4 @@
+name: cosine_beta
+_target_: agents.models.beso.models.edm_diffusion.gc_sampling.cosine_beta_schedule
+_partial_: True
+s: 0.008

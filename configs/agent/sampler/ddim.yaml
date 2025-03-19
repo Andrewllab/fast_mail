@@ -1,0 +1,4 @@
+name: ddim
+_target_: agents.models.beso.models.edm_diffusion.gc_sampling.sample_ddim
+_partial_: True
+disable: True

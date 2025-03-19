@@ -1,0 +1,10 @@
+name: TriStageLRScheduler
+_target_: lr_schedulers.tri_stage_scheduler.TriStageLRScheduler
+_partial_: True
+# optimizer: ???
+
+lr: 1e-4  # initial lr
+init_lr_scale: 0.1  # ratio of initial lr to peak lr
+final_lr_scale: 1e-6  # ratio of final lr to peak lr
+total_steps: 50000
+phase_ratio: [0.02, 0.08, 0.9]
