@@ -48,7 +48,9 @@ def main(cfg: DictConfig) -> None:
 
     # instantiate dataset
     dataset = hydra.utils.instantiate(cfg.dataset.dataset)
-    dataloader = DataLoader(dataset, **cfg.dataloader)
+    dataloader = DataLoader(
+        dataset, **cfg.dataloader, shuffle=True, pin_memory=True, drop_last=True
+    )
 
     # instantiate agent
     agent = hydra.utils.instantiate(cfg.agent, dataset=dataset)

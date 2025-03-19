@@ -103,7 +103,7 @@ class BesoAgent(BaseAgent):
 
         return loss
 
-    def predict_step(self, batch, batch_idx) -> tuple[Tensor, Tensor]:
+    def predict_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
         """Denoise the next sequence of actions"""
         obs_dict, actions, mask = batch
         perceptual_emb, latent_goal = self.encode_obs(obs_dict)
@@ -133,3 +133,13 @@ class BesoAgent(BaseAgent):
         )
 
         return actions
+
+    def validation_step(self, batch, batch_idx):
+        metrics = self._eval_step(batch, batch_idx)
+
+    def test_step(self, batch, batch_idx):
+        metrics = self._eval_step(batch, batch_idx)
+
+    def _eval_step(self, batch, batch_idx):
+        actions = self.predict_step(batch, batch_idx)
+        return {}
