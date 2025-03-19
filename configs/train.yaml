@@ -2,7 +2,7 @@ defaults:
   - dataset: one_leg
   - augmentation: null
   - agent: beso_agent
-  - trainer: base_trainer
+  # - trainer: base_trainer
   - logging: default
   - paths: default
   - hydra: default
@@ -18,6 +18,31 @@ wandb:
 
 seed: null
 
+disable_validation: True
+
+dataloader:
+  batch_size: 256
+  num_workers: 4
+
+sim_dataloader:
+  batch_size: 1
+  num_workers: 0
+
+trainer:
+  deterministic: True
+  accelerator: auto
+  devices: auto
+  default_root_dir: ${hydra:runtime.output_dir}
+  max_epochs: 100
+  check_val_every_n_epoch: 1
+  # enable_checkpointing: False
+  # fast_dev_run: True
+  callbacks:
+    - {
+        _target_: lightning.pytorch.callbacks.ModelCheckpoint, 
+        every_n_epochs: 2,
+        save_weights_only: True,
+      }
 
 # dataset config
 task_suite: pushT
@@ -35,15 +60,9 @@ use_pos_emb: True
 obs_tokens: 1
 
 # Training
-train_batch_size: 256
 val_batch_size: 32
-num_workers: 4
-device: cuda
-epoch: 100
 
 # BALAZS: where do these belong?
-scale_data: True
-scaler_type: minmax
 if_use_ema: True
 
 ## Environment

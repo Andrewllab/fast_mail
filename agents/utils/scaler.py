@@ -24,7 +24,7 @@ class Scaler(nn.Module):
 
     def unnormalize(self, y: Tensor) -> Tensor: ...
 
-    def clip_action(self, y: Tensor) -> Tensor: ...
+    def clip_output(self, y: Tensor) -> Tensor: ...
 
 
 class MinMaxScaler(Scaler):
@@ -56,7 +56,7 @@ class MinMaxScaler(Scaler):
         return (y + 1) / 2 * self.y_range + self.y_min
 
     @torch.no_grad()
-    def clip_action(self, y: Tensor) -> Tensor:
+    def clip_output(self, y: Tensor) -> Tensor:
         return torch.clamp(y, self.lower_bound * 1.1, self.upper_bound * 1.1)
 
 
@@ -92,5 +92,5 @@ class NormalizingScaler(Scaler):
         return y * (self.y_std + 1e-12) + self.y_mean
 
     @torch.no_grad()
-    def clip_action(self, y: Tensor) -> Tensor:
+    def clip_output(self, y: Tensor) -> Tensor:
         return torch.clamp(y, self.lower_bound * 1.1, self.upper_bound * 1.1)

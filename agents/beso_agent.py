@@ -44,7 +44,6 @@ class BesoAgent(BaseAgent):
         sigma_max: float,
         if_film_condition: bool = False,
         if_robot_states: bool = False,
-        ckpt_path=None,
     ):
         super().__init__(
             model=model,
@@ -76,9 +75,6 @@ class BesoAgent(BaseAgent):
         self.if_film_condition = if_film_condition
         self.if_robot_states = if_robot_states
 
-        if ckpt_path is not None:
-            self.load_pretrained_model(ckpt_path)
-
     def configure_optimizers(self):
         optimizer = self.optimizer(self.parameters())
 
@@ -103,32 +99,21 @@ class BesoAgent(BaseAgent):
         # BALAZS: does this belong inside the model?
         loss, _ = self.model.loss(perceptual_emb, actions, latent_goal, noise, sigmas)
 
+        self.log_dict({"loss": loss}, on_epoch=True)
+
         return loss
 
-    def predict_step(  # type: ignore
-        self,
-        batch,
-        batch_idx,
-        inference: bool = False,
-        extra_args={},
-    ) -> tuple[Tensor, Tensor]:
-        """
-        Denoise the next sequence of actions
-        """
+    def predict_step(self, batch, batch_idx) -> tuple[Tensor, Tensor]:
+        """Denoise the next sequence of actions"""
         obs_dict, actions, mask = batch
         perceptual_emb, latent_goal = self.encode_obs(obs_dict)
-
-        if inference:
-            sampling_steps = self.num_sampling_steps
-        else:
-            sampling_steps = 10
 
         # if len(latent_goal.shape) < len(
         #         perceptual_emb['state_images'].shape if isinstance(perceptual_emb, dict) else perceptual_emb.shape):
         #     latent_goal = latent_goal.unsqueeze(1)  # .expand(-1, seq_len, -1)
 
         input_state = perceptual_emb
-        sigmas = self.noise_schedule(sampling_steps, device=self.device)
+        sigmas = self.noise_schedule(self.num_sampling_steps, device=self.device)
 
         x = (
             torch.randn(
@@ -144,7 +129,7 @@ class BesoAgent(BaseAgent):
             action=x,
             goal=latent_goal,
             sigmas=sigmas,
-            scaler=None,  # BALAZS: optionally use self.scaler?
+            scaler=None,  # scalar only used for clipping actions
         )
 
         return actions

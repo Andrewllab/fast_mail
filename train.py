@@ -4,7 +4,9 @@ import hydra
 import numpy as np
 import torch
 import wandb
+from lightning import Trainer, seed_everything
 from omegaconf import DictConfig, OmegaConf, open_dict
+from torch.utils.data import DataLoader
 
 from utils.conf import pop_names, setup_resolvers
 from utils.logging import configure_logging
@@ -38,40 +40,34 @@ def main(cfg: DictConfig) -> None:
     torch.cuda.empty_cache()
 
     # seeding
-    rng = get_rng(cfg)
-    manual_seed(rng)
+    if cfg.trainer.deterministic:
+        rng = get_rng(cfg)
+        seed = rng.integers(np.iinfo(np.uint32).max)
+        log.info(f"Seeding pytorch, numpy, random, and workers with seed {seed}")
+        seed_everything(seed, workers=True)
 
     # instantiate dataset
     dataset = hydra.utils.instantiate(cfg.dataset.dataset)
+    dataloader = DataLoader(dataset, **cfg.dataloader)
 
     # instantiate agent
     agent = hydra.utils.instantiate(cfg.agent, dataset=dataset)
 
-    device = torch.device(cfg.device)
-    agent = agent.to(device)
+    param_count = sum(p.numel() for p in agent.parameters())
+    log.info(f"Model parameter count: {param_count}")
 
-    log.warning("Exiting after instantiating agent since script is not finished yet.")
-    return
+    trainer = Trainer(**cfg.trainer)
 
-    trainer = hydra.utils.instantiate(
-        cfg.trainers, trainset=dataset, dataloader_cfg=cfg.dataset.dataloader
-    )
+    # unless disabled, create a simulation for validation during training
+    val_dataloader = ()
+    if not cfg.disable_validation:
+        sim = hydra.utils.instantiate(cfg.dataset.simulation)
+        sim_dataloader = DataLoader(sim, **cfg.sim_dataloader)
+        val_dataloader += (sim_dataloader,)
 
-    agent.get_params()
-    trainer.main(agent)
-
-    # # simulate the model
-    env_sim = hydra.utils.instantiate(cfg.simulation)
-    env_sim.get_task_embs(trainer.trainset.tasks)
-    # #
-    # # sv_dir = sim_framework_path("pretrain_weights")
-    # #
-    # env_sim.test_agent(agent, cfg.agents)
-    env_sim.test_agent(agent, cfg.agents, epoch=cfg.epoch)
+    trainer.fit(agent, dataloader, *val_dataloader)
 
     log.info("Training done")
-    log.info("state_dict saved in {}".format(agent.working_dir))
-
     run.finish()
 
 
