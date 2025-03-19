@@ -4,7 +4,7 @@ import logging
 import os
 import pickle
 from collections import deque
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Type
 
 import einops
 import lightning as L
@@ -12,9 +12,8 @@ import torch
 import torch.nn as nn
 import wandb
 
-from agents.utils.scaler import ActionScaler, MinMaxScaler, Scaler
-
 if TYPE_CHECKING:
+    from agents.utils.scaler import Scaler
     from environments.dataset.base_dataset import TrajectoryDataset
 
 
@@ -22,11 +21,11 @@ log = logging.getLogger(__name__)
 
 
 class BaseAgent(L.LightningModule):
-
     def __init__(
         self,
         model: nn.Module,
         obs_encoder: Callable[[TrajectoryDataset], nn.Module],
+        scaler: Type[Scaler],
         language_encoder: nn.Module,
         latent_dim: int,  # BALAZS: add to state_encoder to hydra
         obs_seq_len: int,
@@ -35,11 +34,9 @@ class BaseAgent(L.LightningModule):
     ):
         super().__init__()
 
-        self.scaler = None
-
-        # Initialize model and encoder
         self.model = model
         self.obs_encoder = obs_encoder(dataset)
+        self.scaler = scaler(dataset.all_actions)
         self.language_encoder = language_encoder
 
         state_dim = dataset.state_dim
@@ -53,9 +50,6 @@ class BaseAgent(L.LightningModule):
         self.obs_seq_len = obs_seq_len
 
         self.obs_seq: dict[str, deque[torch.Tensor]] = {}
-
-    def set_scaler(self, scaler):
-        self.scaler = scaler
 
     def encode_obs(self, obs_dict):
         """
@@ -119,7 +113,7 @@ class BaseAgent(L.LightningModule):
 
             # predict action sequence
             pred_action_seq = self(obs_dict)[:, : self.act_seq_len]
-            pred_action_seq = self.scaler.inverse_scale_output(pred_action_seq)
+            pred_action_seq = self.scaler.unnormalize(pred_action_seq)
             self.pred_action_seq = pred_action_seq
 
         current_action = self.pred_action_seq[0, self.rollout_step_counter]

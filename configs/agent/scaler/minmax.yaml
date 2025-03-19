@@ -1,0 +1,2 @@
+_target_: agent.utils.scaler.MinMaxScaler
+_partial_: True

@@ -111,7 +111,7 @@ class BaseTrainer:
                         :, : self.obs_seq_len
                     ].contiguous()
 
-                action = self.scaler.scale_output(action)
+                action = self.scaler.normalize(action)
                 action = action[:, self.obs_seq_len - 1 :, :].contiguous()
 
                 batch_loss = self.train_one_step(agent, obs_dict, action)

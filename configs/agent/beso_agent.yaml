@@ -3,6 +3,7 @@ defaults:
   - noise_distribution: loglogistic
   - noise_schedule: exponential
   - sampler: ddim
+  - scaler@action_scaler: minmax
   - obs_encoder: default
   - language_encoder: clip
   - optimizer: adamw

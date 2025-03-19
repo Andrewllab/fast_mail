@@ -1,7 +1,10 @@
 import os
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 from torch.utils.data import Dataset
+
+if TYPE_CHECKING:
+    from torch import Tensor
 
 
 class TrajectoryDataset(Dataset):
@@ -50,6 +53,10 @@ class TrajectoryDataset(Dataset):
     @property
     def action_dim(self) -> int:
         return self._action_dim
+
+    @property
+    def all_actions(self) -> Tensor:
+        raise NotImplementedError
 
     def get_seq_length(self, idx):
         """

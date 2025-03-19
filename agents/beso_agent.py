@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Callable, Iterable
+from typing import TYPE_CHECKING, Callable, Iterable, Type
 
 import torch
 import torch.nn as nn
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
     from agents.beso.edm_diffusion.gc_sampling import NoiseScheduleType, SamplerType
     from agents.beso.edm_diffusion.noise_distributions import NoiseDistributionType
+    from agents.utils.scaler import Scaler
     from environments.dataset.base_dataset import TrajectoryDataset
 
 
@@ -30,6 +31,7 @@ class BesoAgent(BaseAgent):
         noise_schedule: NoiseScheduleType,
         sampler: SamplerType,
         obs_encoder: Callable[[TrajectoryDataset], nn.Module],
+        scaler: Type[Scaler],
         language_encoder: nn.Module,
         latent_dim: int,
         optimizer: Callable[[Iterable[Tensor]], Optimizer],
@@ -47,6 +49,7 @@ class BesoAgent(BaseAgent):
         super().__init__(
             model=model,
             obs_encoder=obs_encoder,
+            scaler=scaler,
             language_encoder=language_encoder,
             latent_dim=latent_dim,
             obs_seq_len=obs_seq_len,
@@ -91,10 +94,8 @@ class BesoAgent(BaseAgent):
         """
         obs_dict, actions, mask = batch
 
-        # BALAZS: verify this business with scaler
-        actions = self.scaler.scale_output(actions)
-
         perceptual_emb, latent_goal = self.encode_obs(obs_dict)
+        actions = self.scaler.normalize(actions)
 
         sigmas = self.noise_distribution(shape=(len(actions),), device=self.device)
         noise = torch.randn_like(actions)
