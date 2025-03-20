@@ -1,0 +1,3 @@
+name: linear
+_target_: torch.nn.LazyLinear
+out_features: ${..obs_embed_dim}

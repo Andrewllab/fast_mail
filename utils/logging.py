@@ -1,5 +1,5 @@
 import logging
-from functools import partial
+from functools import lru_cache, partial
 from itertools import accumulate
 from typing import Literal
 
@@ -92,3 +92,8 @@ def configure_logging(logging_cfg: DictConfig) -> None:
     # always suppressed, even if root logger is set to DEBUG
     for logger in {blacklist} if isinstance(blacklist, str) else set(blacklist):
         logging.getLogger(logger).setLevel("INFO")
+
+
+@lru_cache(maxsize=None)
+def warn_once(logger: logging.Logger, msg: str):
+    logger.warning(msg)
