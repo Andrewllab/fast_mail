@@ -2,8 +2,11 @@ defaults:
   - model: beso/beso_dec_transformer
   - optimizer: adamw
   - lr_scheduler: tristage
-  - obs_encoder: default
-  - robot_state_encoder: linear
+  # - obs_encoder: default
+  - obs_encoder/depth: raw
+  - obs_encoder/pixels: raw
+  - obs_encoder/tokenizer: pointpatch
+  - obs_encoder/robot_state_encoder: linear
   - scaler: minmax
   - language_encoder: none
   - sampler: ddim
@@ -15,7 +18,10 @@ _target_: agents.beso_agent.BesoAgent
 # Arguments required at runtime:
 # dataset: ???
 
-latent_dim: ${latent_dim}
+obs_encoder:
+  _target_: agents.encoders.encoder.ObservationEncoder
+  _partial_: True
+  embed_dim: 256
 
 # diffusion params
 num_sampling_steps: 4
@@ -23,6 +29,4 @@ sigma_data: 0.5
 sigma_min: 0.001
 sigma_max: 80
 
-# TODO: currently not supported
-# required refactor so that all learnable parameters are inside single torch Module inside lighning Module
 # decay_ema: 0.995

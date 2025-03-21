@@ -2,7 +2,7 @@ name: iddpm
 _target_: agents.models.beso.models.edm_diffusion.gc_sampling.get_iddpm_sigmas
 _partial_: True
 sigma_min: ${..sigma_min}
-sigma_max: ${..sigma_min}
+sigma_max: ${..sigma_max}
 M: 1000
 j_0: 0
 C_1: 0.001

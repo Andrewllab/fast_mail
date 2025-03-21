@@ -1,6 +1,6 @@
 import math
 import os
-from typing import TYPE_CHECKING, Callable, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 import torch
@@ -16,10 +16,23 @@ from . import utils
 if TYPE_CHECKING:
     from torch import Tensor, device
 
+    from agents.utils.scaler import Scaler
+
     DeviceType = device | str | int
 
     class NoiseScheduleType(Protocol):
         def __call__(self, n: int, device: device) -> Tensor: ...
+
+    class SamplerType(Protocol):
+        def __call__(
+            self,
+            model: nn.Module,
+            state: Tensor,
+            action: Tensor,
+            goal: Any,
+            sigmas: Tensor,
+            scaler: Scaler | None = None,
+        ) -> Tensor: ...
 
 
 """
@@ -185,18 +198,6 @@ class BrownianTreeNoiseSampler:
             torch.as_tensor(sigma_next)
         )
         return self.tree(t0, t1) / (t1 - t0).abs().sqrt()
-
-
-class SamplerType(Protocol):
-    def __call__(
-        self,
-        model: nn.Module,
-        state: Tensor,
-        action: Tensor,
-        goal: Tensor,
-        sigmas: Tensor,
-        scaler: None | Callable = None,  # BALAZS: verify
-    ) -> Tensor: ...
 
 
 @torch.no_grad()

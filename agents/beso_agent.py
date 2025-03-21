@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 
 from agents.base_agent import BaseAgent
+from agents.beso.edm_diffusion.utils import unsqueeze_to
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -25,17 +26,16 @@ log = logging.getLogger(__name__)
 class BesoAgent(BaseAgent):
     def __init__(
         self,
-        model: nn.Module,
-        optimizer: Callable[[Iterable[Tensor]], Optimizer],
-        lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
-        obs_encoder: Callable[[TrajectoryDataset], nn.Module],
-        robot_state_encoder: nn.Module | None,
-        scaler: Type[Scaler],
-        language_encoder: nn.Module | None,
-        dataset: TrajectoryDataset,
+        noise_model: Callable[[TrajectoryDataset], nn.Module],
         noise_distribution: NoiseDistributionType,
         noise_schedule: NoiseScheduleType,
         sampler: SamplerType,
+        obs_encoder: Callable[[TrajectoryDataset], nn.Module],
+        optimizer: Callable[[Iterable[Tensor]], Optimizer],
+        lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
+        scaler: Type[Scaler],
+        language_encoder: nn.Module | None,
+        dataset: TrajectoryDataset,
         num_sampling_steps: int,
         sigma_data: float,
         sigma_min: float,
@@ -43,11 +43,10 @@ class BesoAgent(BaseAgent):
         ema_decay: float = 0.0,
     ):
         super().__init__(
-            model=model,
+            model=noise_model,
+            obs_encoder=obs_encoder,
             optimizer=optimizer,
             lr_scheduler=lr_scheduler,
-            obs_encoder=obs_encoder,
-            robot_state_encoder=robot_state_encoder,
             scaler=scaler,
             language_encoder=language_encoder,
             dataset=dataset,
@@ -58,7 +57,6 @@ class BesoAgent(BaseAgent):
         self.noise_schedule = noise_schedule
         self.sampler = sampler
 
-        # diffusion stuff
         self.num_sampling_steps = num_sampling_steps
         self.sigma_data = sigma_data
         self.sigma_min = sigma_min
@@ -71,16 +69,22 @@ class BesoAgent(BaseAgent):
         """
         Computes the score matching loss given the perceptual embedding, latent goal, and desired actions.
         """
-        obs_dict, actions, mask = batch
+        obs_dict, action, mask = batch
 
-        perceptual_emb, latent_goal = self.encode_obs(obs_dict)
-        actions = self.scaler.normalize(actions)
+        obs = self.obs_encoder(obs_dict)
+        action = self.scaler.normalize(action)
+        goal = self.encode_language(obs_dict)
 
-        sigmas = self.noise_distribution(shape=(len(actions),), device=self.device)
-        noise = torch.randn_like(actions)
+        sigma = self.noise_distribution(shape=(len(action),), device=self.device)
+        noise = torch.randn_like(action)
 
-        # BALAZS: does this belong inside the model?
-        loss, _ = self.model.loss(perceptual_emb, actions, latent_goal, noise, sigmas)
+        c_skip, c_out, c_in = [
+            unsqueeze_to(c, action) for c in self.get_scalings(sigma)
+        ]
+        noised_input = action + noise * unsqueeze_to(sigma, action)
+        model_output = self.model(obs, noised_input * c_in, goal, sigma)
+        target = (action - c_skip * noised_input) / c_out
+        loss = (model_output - target).pow(2).mean()
 
         self.log_dict({"loss": loss}, on_epoch=True)
 
@@ -88,34 +92,31 @@ class BesoAgent(BaseAgent):
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
         """Denoise the next sequence of actions"""
-        obs_dict, actions, mask = batch
-        perceptual_emb, latent_goal = self.encode_obs(obs_dict)
+        obs_dict, action, mask = batch
 
-        # if len(latent_goal.shape) < len(
-        #         perceptual_emb['state_images'].shape if isinstance(perceptual_emb, dict) else perceptual_emb.shape):
-        #     latent_goal = latent_goal.unsqueeze(1)  # .expand(-1, seq_len, -1)
+        obs = self.obs_encoder(obs_dict)
+        goal = self.encode_language(obs_dict)
 
-        input_state = perceptual_emb
         sigmas = self.noise_schedule(self.num_sampling_steps, device=self.device)
 
         x = (
             torch.randn(
-                (len(perceptual_emb), self.act_seq_len, self.action_dim),
+                (obs.shape[0], self.act_seq_len, self.action_dim),
                 device=self.device,
             )
             * self.sigma_max
         )
 
-        actions = self.sampler(
-            model=self.model,
-            state=input_state,
+        action = self.sampler(
+            model=self,
+            state=obs,
             action=x,
-            goal=latent_goal,
+            goal=goal,
             sigmas=sigmas,
             scaler=None,  # scalar only used for clipping actions
         )
 
-        return actions
+        return action
 
     def validation_step(self, batch, batch_idx):
         metrics = self._eval_step(batch, batch_idx)
@@ -126,3 +127,27 @@ class BesoAgent(BaseAgent):
     def _eval_step(self, batch, batch_idx):
         actions = self.predict_step(batch, batch_idx)
         return {}
+
+    def get_scalings(self, sigma):
+        """
+        Compute the scalings for the denoising process.
+
+        Args:
+            sigma: The input sigma.
+        Returns:
+            The computed scalings for skip connections, output, and input.
+        """
+        c_skip = self.sigma_data**2 / (sigma**2 + self.sigma_data**2)
+        c_out = sigma * self.sigma_data / (sigma**2 + self.sigma_data**2) ** 0.5
+        c_in = 1 / (sigma**2 + self.sigma_data**2) ** 0.5
+        return c_skip, c_out, c_in
+
+    def forward(
+        self, obs: Tensor, action: Tensor, goal: Tensor, sigma: Tensor
+    ) -> Tensor:
+        """Predict the noise in action as part of sampling."""
+
+        c_skip, c_out, c_in = [
+            unsqueeze_to(c, action) for c in self.get_scalings(sigma)
+        ]
+        return self.model(obs, action * c_in, goal, sigma) * c_out + action * c_skip

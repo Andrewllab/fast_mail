@@ -1,9 +1,15 @@
 import math
+from typing import TYPE_CHECKING
 
 import einops
 import numpy as np
 import torch
 import torch.nn as nn
+
+if TYPE_CHECKING:
+    from torch import Tensor
+
+    ShapeType = tuple[int, ...]
 
 
 def return_time_sigma_embedding_model(embedding_type, time_embed_dim, device):
@@ -147,11 +153,9 @@ class TEncoder(nn.Module):
         return self.emb(x)
 
 
-def append_dims(x, target_dims):
-    """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
-    dims_to_append = target_dims - x.ndim
-    if dims_to_append < 0:
-        raise ValueError(
-            f"input has {x.ndim} dims but target_dims is {target_dims}, which is less"
-        )
-    return x[(...,) + (None,) * dims_to_append]
+def unsqueeze_to(x: Tensor, target: Tensor) -> Tensor:
+    """Appends dimensions to the end of a tensor until it has the same
+    dimensionality as the target.
+    """
+    n_unsqueeze = max(0, target.ndim - x.ndim)
+    return x[(...,) + (None,) * n_unsqueeze]
