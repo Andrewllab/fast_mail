@@ -1,0 +1,71 @@
+from typing import TYPE_CHECKING, Sequence, Type
+
+import torch.nn as nn
+
+if TYPE_CHECKING:
+    from torch import Tensor
+
+
+def linear_action_prediction(embed_dim: int, action_dim: int) -> nn.Module:
+    return MlpModel(input_size=embed_dim, hidden_sizes=None, output_size=action_dim)
+
+
+def mlp_action_prediction(
+    embed_dim: int,
+    action_dim: int,
+    hidden_sizes: int | Sequence[int],
+    non_linearity: Type[nn.Module],
+) -> nn.Module:
+    return MlpModel(
+        input_size=embed_dim,
+        output_size=action_dim,
+        hidden_sizes=hidden_sizes,
+        nonlinearity=non_linearity,
+    )
+
+
+class MlpModel(nn.Module):
+    """Multilayer Perceptron with last layer linear.
+
+    Args:
+        input_size (int): number of inputs
+        hidden_sizes (list): can be empty list for none (linear model).
+        output_size: linear layer at output, or if ``None``, the last hidden size will be the output size and will have nonlinearity applied
+        nonlinearity: torch nonlinearity Module (not Functional).
+    """
+
+    def __init__(
+        self,
+        input_size: int,
+        hidden_sizes: int | Sequence[int] | None,
+        output_size: int | None,
+        nonlinearity: type[nn.Module] = nn.ReLU,
+    ):
+        super().__init__()
+        if isinstance(hidden_sizes, int):
+            hidden_sizes = [hidden_sizes]
+        elif hidden_sizes is None:
+            hidden_sizes = []
+        else:
+            hidden_sizes = list(hidden_sizes)
+        hidden_layers = [
+            nn.Linear(n_in, n_out)
+            for n_in, n_out in zip([input_size] + hidden_sizes[:-1], hidden_sizes)
+        ]
+        sequence = list()
+        for layer in hidden_layers:
+            sequence.extend([layer, nonlinearity()])
+        if output_size is not None:
+            last_size = hidden_sizes[-1] if hidden_sizes else input_size
+            sequence.append(nn.Linear(last_size, output_size))
+        self.model = nn.Sequential(*sequence)
+        self._output_size = hidden_sizes[-1] if output_size is None else output_size
+
+    def forward(self, input: Tensor) -> Tensor:
+        """Compute the model on the input, assuming input shape [B,input_size]."""
+        return self.model(input)
+
+    @property
+    def output_size(self) -> int:
+        """Retuns the output size of the model."""
+        return self._output_size

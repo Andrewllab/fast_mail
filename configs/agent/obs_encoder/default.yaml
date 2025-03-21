@@ -2,9 +2,10 @@ defaults:
   - depth: raw
   - pixels: raw
   - tokenizer: pointpatch
+  - robot_state_encoder: linear
 
 _target_: agents.encoders.encoder.ObservationEncoder
 _partial_: True
 
-# Arguments required at runtime:
-# camera_names: ???
+# Arguments passed at runtime:
+# dataset: ???

@@ -5,14 +5,13 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Type
 
 import lightning as L
 import torch
-import torch.nn as nn
-from lightning.pytorch.core.optimizer import LightningOptimizer
-from torch.optim.optimizer import Optimizer
 
 from utils.logging import warn_once
 
 if TYPE_CHECKING:
+    from lightning.pytorch.core.optimizer import LightningOptimizer
     from torch import Tensor
+    from torch.nn import Module
     from torch.optim import Optimizer
     from torch.optim.lr_scheduler import LRScheduler
 
@@ -26,33 +25,38 @@ log = logging.getLogger(__name__)
 class BaseAgent(L.LightningModule):
     def __init__(
         self,
-        model: Callable[[TrajectoryDataset], nn.Module],
-        obs_encoder: Callable[[TrajectoryDataset], nn.Module],
+        model: Callable[[TrajectoryDataset, Module], Module],
+        obs_encoder: Callable[[TrajectoryDataset], Module],
         optimizer: Callable[[Iterable[Tensor]], Optimizer],
         lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
         scaler: Type[Scaler],
-        language_encoder: nn.Module | None,
+        language_encoder: Module | None,
         dataset: TrajectoryDataset,
         ema_decay: float = 0.0,
     ):
         super().__init__()
 
-        self._model = model(dataset)
         self._obs_encoder = obs_encoder(dataset)
+        self._model = model(dataset, self._obs_encoder)
         self._optimizer_func = optimizer
         self._lr_scheduler_func = lr_scheduler
         self.scaler = scaler(dataset.all_actions)
         self.language_encoder = language_encoder
         self.ema_decay = ema_decay
 
+        if self.language_encoder is not None and dataset.goal_seq_len == 0:
+            log.warning(
+                f"A language encoder has been instantiated, but dataset does not provide any goals!"
+            )
+
     @property
-    def model(self) -> nn.Module:
+    def model(self) -> Module:
         if self.ema_decay > 0 and not self.training:
             return self._ema_model
         return self._model
 
     @property
-    def obs_encoder(self) -> nn.Module:
+    def obs_encoder(self) -> Module:
         if self.ema_decay > 0 and not self.training:
             return self._ema_obs_encoder
         return self._obs_encoder
@@ -104,6 +108,8 @@ class BaseAgent(L.LightningModule):
         # maybe compute language embeddings
         if self.language_encoder is not None:
             if "lang" in obs_dict:
+                # put lang embedding back into obs_dict in case obs_encoder needs it
+
                 obs_dict["lang_emb"] = self.language_encoder(obs_dict["lang"])
             else:
                 warn_once(
@@ -113,6 +119,7 @@ class BaseAgent(L.LightningModule):
 
         # language embeddings might be float16 type
         if "lang_embed" in obs_dict:
-            return obs_dict["lang_emb"].to(torch.float32)
+            obs_dict["lang_emb"] = obs_dict["lang_emb"].to(torch.float32)
+            return obs_dict["lang_emb"]
         else:
             return None

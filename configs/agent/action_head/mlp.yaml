@@ -1,0 +1,5 @@
+name: MLP
+_target_: agents.backbones.mlp.mlp_action_prediction
+_partial_: True
+hidden_sizes: 100
+non_linearity: {_target_: torch.nn.GELU, _partial_: True}

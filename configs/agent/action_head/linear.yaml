@@ -1,0 +1,3 @@
+name: Linear
+_target_: agents.backbones.mlp.linear_action_prediction
+_partial_: True

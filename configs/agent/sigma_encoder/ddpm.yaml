@@ -1,0 +1,3 @@
+name: DDPM
+_target_: agents.backbones.sigma_encoder.DDPM_SigmaEncoder
+_partial_: True

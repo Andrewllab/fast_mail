@@ -36,10 +36,21 @@ class ObservationEncoder(nn.Module):
         self._embed_dim = embed_dim
 
         self.camera_names = dataset.camera_names
+        self.obs_seq_len = dataset.obs_seq_len
 
     @property
     def embed_dim(self) -> int:
         return self._embed_dim
+
+    @property
+    def embed_seq_len(self) -> int:
+        """Number of tokens in the output embedding."""
+        return (
+            len(self.camera_names)  # one token per camera
+            + int(
+                self.robot_state_encoder is not None
+            )  # plus maybe one for robot state
+        ) * self.obs_seq_len  # multiplied by the number of observed frames
 
     def forward(self, obs: dict) -> Tensor:
         # flatten batch and time dimensions of all camera images

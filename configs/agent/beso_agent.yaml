@@ -1,5 +1,10 @@
 defaults:
-  - model: beso/beso_dec_transformer
+  - _self_
+  - noise_model: decoder_only
+  - backbone@noise_model.decoder: transformer
+  - time_encoder@noise_model.time_encoder: learned
+  - sigma_encoder@noise_model.sigma_encoder: beso
+  - action_head@noise_model.action_head: linear
   - optimizer: adamw
   - lr_scheduler: tristage
   # - obs_encoder: default
@@ -15,7 +20,7 @@ defaults:
 
 _target_: agents.beso_agent.BesoAgent
 
-# Arguments required at runtime:
+# Arguments passed at runtime:
 # dataset: ???
 
 obs_encoder:

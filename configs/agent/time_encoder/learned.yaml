@@ -1,0 +1,3 @@
+name: learned
+_target_: torch.nn.Embedding
+_partial_: True

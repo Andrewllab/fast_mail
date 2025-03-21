@@ -4,13 +4,13 @@ import logging
 from typing import TYPE_CHECKING, Callable, Iterable, Type
 
 import torch
-import torch.nn as nn
 
 from agents.base_agent import BaseAgent
 from agents.beso.edm_diffusion.utils import unsqueeze_to
 
 if TYPE_CHECKING:
     from torch import Tensor
+    from torch.nn import Module
     from torch.optim import Optimizer
     from torch.optim.lr_scheduler import LRScheduler
 
@@ -26,15 +26,15 @@ log = logging.getLogger(__name__)
 class BesoAgent(BaseAgent):
     def __init__(
         self,
-        noise_model: Callable[[TrajectoryDataset], nn.Module],
+        noise_model: Callable[[TrajectoryDataset, Module], Module],
         noise_distribution: NoiseDistributionType,
         noise_schedule: NoiseScheduleType,
         sampler: SamplerType,
-        obs_encoder: Callable[[TrajectoryDataset], nn.Module],
+        obs_encoder: Callable[[TrajectoryDataset], Module],
         optimizer: Callable[[Iterable[Tensor]], Optimizer],
         lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
         scaler: Type[Scaler],
-        language_encoder: nn.Module | None,
+        language_encoder: Module | None,
         dataset: TrajectoryDataset,
         num_sampling_steps: int,
         sigma_data: float,
