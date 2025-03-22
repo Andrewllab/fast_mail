@@ -1,5 +1,5 @@
 name: decoder_only
-_target_: agents.backbones.decoder_only.Noise_Dec_only
+_target_: agents.backbones.decoder_only.DecoderOnlyNoise
 _partial_: True
 
 # Arguments defined in parent config:
@@ -12,19 +12,5 @@ action_head: ???
 # dataset: ???
 # obs_encoder: ???
 
-state_dim: ${latent_dim}
-action_dim: ${action_dim}
-goal_dim: ${goal_dim}
-goal_conditioned: ${goal_conditioned}
-goal_seq_len: 1
-obs_seq_len: ${obs_tokens}
-action_seq_len: ${act_seq_len}
-embed_pdrob: 0
-# Architecture details
-embed_dim: ${n_embd}
-linear_output: true
-
-use_pos_emb: ${use_pos_emb}
-
-use_ada_conditioning: False
-diffusion_type: 'beso'
+token_dim: 256
+dropout_prob: 0

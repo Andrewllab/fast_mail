@@ -129,7 +129,7 @@ class Dec_only(nn.Module):
 
 
 # Diffusion based decoder-only model, we need time embedding and noisy antions inputs here
-class Noise_Dec_only(nn.Module):
+class DecoderOnlyNoise(nn.Module):
     def __init__(
         self,
         decoder: Module,
@@ -138,38 +138,41 @@ class Noise_Dec_only(nn.Module):
         action_head: Callable[[int, int], Module],
         dataset: TrajectoryDataset,
         obs_encoder: ObservationEncoder,
-        embed_dim: int,
-        embed_pdrob: float,
+        token_dim: int,
+        dropout_prob: float,
     ):
         super().__init__()
 
         self.decoder = decoder
-        self.sigma_encoder = sigma_encoder(embed_dim)
-        self.action_head = action_head(embed_dim, dataset.action_dim)
+        self.sigma_encoder = sigma_encoder(token_dim)
+        self.action_head = action_head(token_dim, dataset.action_dim)
 
         # we use time to refer to the position in the sequence of tokens
         # this often corresponds to real time, but not always, e.g. with goal tokens
         if time_encoder is not None:
-            self.obs_time_encoder = time_encoder(obs_encoder.obs_seq_len, embed_dim)
-            self.action_time_encoder = time_encoder(dataset.action_seq_len, embed_dim)
+            self.obs_time_encoder = time_encoder(obs_encoder.obs_seq_len, token_dim)
+            self.action_time_encoder = time_encoder(dataset.action_seq_len, token_dim)
 
             if self.dataset.goal_seq_len > 0:
-                self.goal_time_encoder = time_encoder(dataset.goal_seq_len, embed_dim)
+                self.goal_time_encoder = time_encoder(dataset.goal_seq_len, token_dim)
         else:
             self.obs_time_encoder = time_encoder
             self.action_time_encoder = time_encoder
             self.goal_time_encoder = time_encoder
 
         # linear embedding for the state
-        self.state_encoder = nn.LazyLinear(embed_dim)
+        self.state_encoder = nn.LazyLinear(token_dim)
 
         # linear embedding for the goal
-        self.goal_encoder = nn.LazyLinear(embed_dim)
+        self.goal_encoder = nn.LazyLinear(token_dim)
 
         # linear embedding for the action
-        self.action_encoder = nn.LazyLinear(embed_dim)
+        self.action_encoder = nn.LazyLinear(token_dim)
 
-        self.drop = nn.Dropout(embed_pdrob)
+        if dropout_prob > 0:
+            self.drop = nn.Dropout(dropout_prob)
+        else:
+            self.drop = lambda x: x
 
         self.action_seq_len = dataset.action_seq_len
 

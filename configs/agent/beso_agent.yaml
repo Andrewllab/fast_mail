@@ -6,7 +6,7 @@ defaults:
   - sigma_encoder@noise_model.sigma_encoder: beso
   - action_head@noise_model.action_head: linear
   - optimizer: adamw
-  - lr_scheduler: tristage
+  - lr_scheduler: none
   # - obs_encoder: default
   - obs_encoder/depth: raw
   - obs_encoder/pixels: raw
@@ -34,4 +34,4 @@ sigma_data: 0.5
 sigma_min: 0.001
 sigma_max: 80
 
-# decay_ema: 0.995
+decay_ema: 0.995
