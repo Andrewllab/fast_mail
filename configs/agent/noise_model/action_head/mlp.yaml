@@ -1,4 +1,4 @@
-name: MLP
+name: mlp
 _target_: agents.backbones.mlp.mlp_action_prediction
 _partial_: True
 hidden_sizes: 100

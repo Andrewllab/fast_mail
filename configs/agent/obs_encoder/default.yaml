@@ -3,9 +3,12 @@ defaults:
   - pixels: raw
   - tokenizer: pointpatch
   - robot_state_encoder: linear
+  - _self_
 
 _target_: agents.encoders.encoder.ObservationEncoder
 _partial_: True
 
 # Arguments passed at runtime:
 # dataset: ???
+
+embed_dim: 256

@@ -1,4 +1,4 @@
-name: AdamW
+name: adamw
 _target_: torch.optim.AdamW
 _partial_: True
 lr: 1e-4

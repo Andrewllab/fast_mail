@@ -1,5 +1,5 @@
 name: uniform
-_target_: agents.beso.edm_diffusion.noise_distributions.rand_uniform
+_target_: agents.edm_diffusion.noise_distributions.rand_uniform
 _partial_: True
 min_value: ${..sigma_min}
 max_value: ${..sigma_max}

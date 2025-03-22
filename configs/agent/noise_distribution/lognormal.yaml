@@ -1,5 +1,5 @@
 name: lognormal
-_target_: agents.beso.edm_diffusion.noise_distributions.rand_log_normal
+_target_: agents.edm_diffusion.noise_distributions.rand_log_normal
 _partial_: True
 loc: ${..sigma_data}
 scale: 0.5

@@ -1,12 +1,13 @@
+defaults:
+  - backbone@decoder: transformer
+  - time_encoder: learned
+  - sigma_encoder: beso
+  - action_head: linear
+  - _self_
+
 name: decoder_only
 _target_: agents.backbones.decoder_only.DecoderOnlyNoise
 _partial_: True
-
-# Arguments defined in parent config:
-decoder: ???
-time_encoder: ???
-sigma_encoder: ???
-action_head: ???
 
 # Arguments passed at runtime:
 # dataset: ???

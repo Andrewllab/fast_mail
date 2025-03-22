@@ -1,5 +1,5 @@
 name: split-lognormal
-_target_: agents.beso.edm_diffusion.noise_distributions.rand_v_difrand_split_log_normalfusion
+_target_: agents.edm_diffusion.noise_distributions.rand_v_difrand_split_log_normalfusion
 _partial_: True
 loc: ${..sigma_data}
 scale_1: ???

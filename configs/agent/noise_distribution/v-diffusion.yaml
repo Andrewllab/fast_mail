@@ -1,5 +1,5 @@
 name: v-diffusion
-_target_: agents.beso.edm_diffusion.noise_distributions.rand_v_diffusion
+_target_: agents.edm_diffusion.noise_distributions.rand_v_diffusion
 _partial_: True
 sigma_data: ${..sigma_data}
 sigma_min: ${..sigma_min}

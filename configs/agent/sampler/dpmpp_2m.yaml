@@ -1,4 +1,4 @@
 name: dpmpp_2m
-_target_: agents.models.beso.models.edm_diffusion.gc_sampling.sample_dpmpp_2m
+_target_: agents.edm_diffusion.gc_sampling.sample_dpmpp_2m
 _partial_: True
 disable: True

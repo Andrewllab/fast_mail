@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Callable, Iterable, Type
 import torch
 
 from agents.base_agent import BaseAgent
-from agents.beso.edm_diffusion.utils import unsqueeze_to
+from agents.edm_diffusion.utils import unsqueeze_to
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     from torch.optim import Optimizer
     from torch.optim.lr_scheduler import LRScheduler
 
-    from agents.beso.edm_diffusion.gc_sampling import NoiseScheduleType, SamplerType
-    from agents.beso.edm_diffusion.noise_distributions import NoiseDistributionType
+    from agents.edm_diffusion.gc_sampling import NoiseScheduleType, SamplerType
+    from agents.edm_diffusion.noise_distributions import NoiseDistributionType
     from agents.utils.scaler import Scaler
     from environments.dataset.base_dataset import TrajectoryDataset
 

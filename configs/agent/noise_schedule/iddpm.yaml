@@ -1,5 +1,5 @@
 name: iddpm
-_target_: agents.models.beso.models.edm_diffusion.gc_sampling.get_iddpm_sigmas
+_target_: agents.edm_diffusion.gc_sampling.get_iddpm_sigmas
 _partial_: True
 sigma_min: ${..sigma_min}
 sigma_max: ${..sigma_max}

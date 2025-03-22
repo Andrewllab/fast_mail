@@ -1,9 +1,7 @@
-from typing import List
-
 import torch
 import torch.nn as nn
 
-from agents.models.beso.models.networks.clip import build_model, load_clip, tokenize
+from agents.encoders.clip import build_model, load_clip, tokenize
 
 
 class LangClip(nn.Module):
@@ -21,7 +19,7 @@ class LangClip(nn.Module):
         model, _ = load_clip(model_name, device=self.device)
         self.clip_rn50 = build_model(model.state_dict()).to(self.device)
 
-    def forward(self, x: List) -> torch.Tensor:
+    def forward(self, x: list[str]) -> torch.Tensor:
         with torch.no_grad():
             tokens = tokenize(x).to(self.device)
             emb = self.clip_rn50.encode_text(tokens)

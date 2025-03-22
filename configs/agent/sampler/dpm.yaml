@@ -1,4 +1,4 @@
 name: dpm
-_target_: agents.models.beso.models.edm_diffusion.gc_sampling.sample_dpm_2
+_target_: agents.edm_diffusion.gc_sampling.sample_dpm_2
 _partial_: True
 disable: True

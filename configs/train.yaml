@@ -2,7 +2,6 @@ defaults:
   - dataset: one_leg
   - augmentation: null
   - agent: beso_agent
-  # - trainer: base_trainer
   - logging: default
   - paths: default
   - hydra: default

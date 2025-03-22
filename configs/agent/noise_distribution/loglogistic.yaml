@@ -1,5 +1,5 @@
 name: loglogistic
-_target_: agents.beso.edm_diffusion.noise_distributions.rand_log_logistic
+_target_: agents.edm_diffusion.noise_distributions.rand_log_logistic
 _partial_: True
 loc: ${..sigma_data}
 min_value: ${..sigma_min}

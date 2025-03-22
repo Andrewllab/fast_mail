@@ -1,12 +1,19 @@
+import einops
 import torch
 from torch import nn
-import einops
 from torchvision.transforms import Compose
-from agents.models.beso.models.networks.clip import available_models, load_clip
+
+from agents.encoders.clip import available_models, load_clip
 
 
 class CLIPImgEncoder(nn.Module):
-    def __init__(self, model_name: str, freeze_backbone: bool, device: str, camera_names: list[str] = None):
+    def __init__(
+        self,
+        model_name: str,
+        freeze_backbone: bool,
+        device: str,
+        camera_names: list[str],
+    ):
         super().__init__()
 
         self.clip_model, clip_transforms = load_clip(model_name, device=device)
