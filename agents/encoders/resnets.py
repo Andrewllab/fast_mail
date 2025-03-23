@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 import torch.nn as nn
@@ -21,11 +23,14 @@ def beso_resnet_encoder(
     def make_group_norm(num_features: int):
         return nn.GroupNorm(num_groups=num_features // 16, num_channels=num_features)
 
-    model = torchvision.models.resnet18(
-        pretrained=pretrained_weights,
+    resnet_kwargs = {}
+    if pretrained_weights is None:
         # if we are loading pretrained weights, layer sizes must match the pretrained model
-        num_classes=embed_dim if pretrained_weights is not None else None,
-        norm_layer=make_group_norm,
+        # so we only set this if we are not using pretrained weights
+        resnet_kwargs["num_classes"] = embed_dim
+
+    model = torchvision.models.resnet18(
+        pretrained=pretrained_weights, norm_layer=make_group_norm, **resnet_kwargs
     )
 
     if freeze_backbone:

@@ -7,11 +7,12 @@ embed_dim: ${..embed_dim}
 
 rgb_model:
   _target_: agents.encoders.resnets.beso_resnet_encoder
+  _partial_: True
   embed_dim: ${..embed_dim}
   pretrained_weights: null
 
 resize_shape: null
+crop_shape: null
 random_crop: False
-use_group_norm: True
 share_rgb_model: False
 imagenet_norm: True

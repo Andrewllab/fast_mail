@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from torch.utils.data import Dataset
@@ -24,8 +26,22 @@ class TrajectoryDataset(Dataset):
         raise NotImplementedError
 
     @property
-    def goal_seq_len(self) -> int:
-        raise NotImplementedError
+    def goal_embed_seq_len(self) -> int:
+        try:
+            goal_embed_space = self.obs_space["goal_embed"]
+        except KeyError:
+            return 0
+
+        return goal_embed_space["shape"][0]
+
+    @property
+    def goal_embed_dim(self) -> int:
+        try:
+            goal_embed_space = self.obs_space["goal_embed"]
+        except KeyError:
+            return 0
+
+        return goal_embed_space["shape"][-1]
 
     @property
     def state_dim(self) -> int:

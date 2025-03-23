@@ -36,8 +36,8 @@ class BaseAgent(L.LightningModule):
     ):
         super().__init__()
 
-        self._obs_encoder = obs_encoder(dataset)
-        self._model = model(dataset, self._obs_encoder)
+        self._obs_encoder = obs_encoder(dataset=dataset)
+        self._model = model(dataset=dataset, obs_encoder=self._obs_encoder)
         self._optimizer_func = optimizer
         self._lr_scheduler_func = lr_scheduler
         self.scaler = scaler(dataset.get_all_actions())
@@ -71,14 +71,14 @@ class BaseAgent(L.LightningModule):
 
             # only these models have learnable parameters
             self._ema_model = AveragedModel(
-                self.model,
+                self._model,
                 multi_avg_fn=get_ema_multi_avg_fn(self.ema_decay),
                 # required for using EMA with BatchNorm
                 # https://pytorch.org/docs/stable/generated/torch.optim.swa_utils.AveragedModel.html
                 use_buffers=True,
             )
             self._ema_obs_encoder = AveragedModel(
-                self.obs_encoder,
+                self._obs_encoder,
                 multi_avg_fn=get_ema_multi_avg_fn(self.ema_decay),
                 # required for using EMA with BatchNorm
                 # https://pytorch.org/docs/stable/generated/torch.optim.swa_utils.AveragedModel.html
@@ -101,16 +101,16 @@ class BaseAgent(L.LightningModule):
         super().optimizer_step(epoch, batch_idx, optimizer, optimizer_closure)
 
         if self.ema_decay > 0:
-            self._ema_model.update_parameters(self)
-            self._ema_obs_encoder.update_parameters(self)
+            self._ema_model.update_parameters(self._model)
+            self._ema_obs_encoder.update_parameters(self._obs_encoder)
 
     def encode_language(self, obs_dict: dict[str, Tensor]) -> Tensor | None:
         # maybe compute language embeddings
         if self.language_encoder is not None:
             if "lang" in obs_dict:
-                # put lang embedding back into obs_dict in case obs_encoder needs it
+                # put goal embedding back into obs_dict in case obs_encoder needs it
 
-                obs_dict["lang_emb"] = self.language_encoder(obs_dict["lang"])
+                obs_dict["goal_embed"] = self.language_encoder(obs_dict["lang"])
             else:
                 warn_once(
                     log,
@@ -118,8 +118,8 @@ class BaseAgent(L.LightningModule):
                 )
 
         # language embeddings might be float16 type
-        if "lang_embed" in obs_dict:
-            obs_dict["lang_emb"] = obs_dict["lang_emb"].to(torch.float32)
-            return obs_dict["lang_emb"]
+        if "goal_embed" in obs_dict:
+            obs_dict["goal_embed"] = obs_dict["goal_embed"].to(torch.float32)
+            return obs_dict["goal_embed"]
         else:
             return None

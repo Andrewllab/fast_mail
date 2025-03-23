@@ -22,14 +22,13 @@ class ObservationEncoder(nn.Module):
         tokenizer: Callable[[TrajectoryDataset], nn.Module],
         dataset: TrajectoryDataset,
         embed_dim: int,
-        robot_state_encoder: nn.Module | None = None,
+        robot_state_encoder: Callable[[int, int], nn.Module] | None = None,
     ):
         super().__init__()
 
-        self.depth = depth(dataset) if depth is not None else lambda x: x
-        self.pixels = pixels(dataset) if pixels is not None else lambda x: x
-        self.tokenizer = tokenizer(dataset)
-        self.robot_state_encoder = robot_state_encoder
+        self.depth = depth(dataset=dataset) if depth is not None else lambda x: x
+        self.pixels = pixels(dataset=dataset) if pixels is not None else lambda x: x
+        self.tokenizer = tokenizer(dataset=dataset)
 
         self._embed_dim = embed_dim
 
@@ -41,13 +40,14 @@ class ObservationEncoder(nn.Module):
         self._embed_seq_len: int = self.tokenizer.embed_seq_len
 
         # if we encode the states, add additional tokens for each observed time step
-        if self.robot_state_encoder is not None:
-            try:
-                self._embed_seq_len += self.obs_space["robot_state"].shape[0]
-            except KeyError:
-                log.error(
-                    "A robot state encoder has been instantiated, but the data does not contain a `robot_state` field!"
-                )
+        if robot_state_encoder is not None:
+            robot_state_shape = self.obs_space["robot_state"]["shape"]
+            state_seq_len, state_dim = robot_state_shape
+            robot_state_encoder = robot_state_encoder(state_dim, embed_dim)
+
+            # increase length of embedding sequence to account for state tokens
+            self._embed_seq_len += state_seq_len
+        self.robot_state_encoder = robot_state_encoder
 
     @property
     def embed_dim(self) -> int:
@@ -64,18 +64,11 @@ class ObservationEncoder(nn.Module):
             # BALAZS: replace this with einops
 
             # should have shape [B, T, C, H, W]
-            assert obs[f"{camera}_rgb"].ndim == 5
-            assert obs[f"{camera}_rgb"].shape[1] == 1
-
-            # should have shape [B, T, C, H, W]
-            assert obs[f"{camera}_depth"].ndim == 5
-            assert obs[f"{camera}_depth"].shape[2] == 1  # only one channel
-            assert obs[f"{camera}_depth"].shape[1] == 1
+            assert obs[camera].ndim == 5
+            assert obs[camera].shape[1] == 1
 
             # BALAZS: move to dataset transform (on_after_batch_transfer)
-            obs[f"{camera}_rgb"] = (
-                obs[f"{camera}_rgb"].permute(0, 3, 1, 2).float().div(255.0)
-            )
+            obs[camera] = obs[camera].permute(0, 1, 4, 2, 3).float().div(255.0)
 
         obs = self.depth(obs)
         obs = self.pixels(obs)

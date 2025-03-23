@@ -17,20 +17,16 @@ class LiberoDataset(TrajectoryDataset):
     def __init__(
         self,
         data_directory: os.PathLike,
-        obs_seq_len: int,
         obs_dim: int,
-        action_seq_len: int,
         action_dim: int,
         state_dim: int,
         max_len_data: int,
         window_size: int,
-        start_idx: int,
-        traj_per_task: int,
+        start_idx: int = 0,
+        traj_per_task: int = 1,
     ):
         self.data_directory = data_directory
-        self._obs_seq_len = obs_seq_len
         self._obs_dim = obs_dim
-        self._action_seq_len = action_seq_len
         self._action_dim = action_dim
         self._state_dim = state_dim
         self.max_len_data = max_len_data
@@ -152,19 +148,19 @@ class LiberoDataset(TrajectoryDataset):
     def obs_space(self) -> dict:
         return {
             "agentview_image": {
-                "shape": [1, 3, 128, 128],
+                "shape": (1, 3, 128, 128),
                 "type": "rgb",
             },
             "eye_in_hand_image": {
-                "shape": [1, 3, 128, 128],
+                "shape": (1, 3, 128, 128),
                 "type": "rgb",
             },
             "robot_state": {
-                "shape": [1, 9],
+                "shape": (1, 9),
                 "type": "state",
             },
-            "lang_emb": {
-                "shape": [1, 512],
+            "goal_embed": {
+                "shape": (1, 512),
                 "type": "goal",
             },
         }
@@ -248,8 +244,8 @@ class LiberoDataset(TrajectoryDataset):
 
         obs["agentview_image"] = agentview_rgb
         obs["eye_in_hand_image"] = eye_in_hand_rgb
-        obs["lang_emb"] = task_emb
+        obs["goal_embed"] = task_emb
 
-        obs["robot_states"] = torch.from_numpy(robot_states).float()
+        obs["robot_state"] = torch.from_numpy(robot_states).float()
 
         return obs, act, mask

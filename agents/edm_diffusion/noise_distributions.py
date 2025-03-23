@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import math
 from typing import TYPE_CHECKING, Protocol
 
 import torch
 
-from agents.beso.edm_diffusion.gc_sampling import get_sigmas_exponential
+from agents.edm_diffusion.gc_sampling import get_sigmas_exponential
 
 if TYPE_CHECKING:
     from torch import Tensor, device, dtype

@@ -21,4 +21,4 @@ sigma_data: 0.5
 sigma_min: 0.001
 sigma_max: 80
 
-decay_ema: 0.995
+ema_decay: 0.995

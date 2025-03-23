@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING
 
@@ -11,9 +13,6 @@ log = logging.getLogger(__name__)
 
 
 class Scaler(nn.Module):
-    def __init__(self, y_data: Tensor):
-        raise NotImplementedError
-
     @property
     def lower_bound(self) -> Tensor: ...
 
@@ -35,8 +34,9 @@ class MinMaxScaler(Scaler):
     y_range: Tensor
 
     def __init__(self, y_data: Tensor):
-        self.register_buffer("y_min", y_data.min(0))
-        self.register_buffer("y_max", y_data.max(0))
+        super().__init__()
+        self.register_buffer("y_min", y_data.min(0).values)
+        self.register_buffer("y_max", y_data.max(0).values)
         self.register_buffer("y_range", self.y_max - self.y_min)
 
     @property
@@ -67,10 +67,11 @@ class NormalizingScaler(Scaler):
     y_max: Tensor
 
     def __init__(self, y_data: Tensor):
+        super().__init__()
         self.register_buffer("y_mean", y_data.mean(0))
         self.register_buffer("y_std", y_data.std(0))
-        self.register_buffer("y_min", y_data.min(0))
-        self.register_buffer("y_max", y_data.max(0))
+        self.register_buffer("y_min", y_data.min(0).values)
+        self.register_buffer("y_max", y_data.max(0).values)
 
         log.info(f"Action lower bounds across dataset:\n{self.lower_bound}")
         log.info(f"Action upper bounds across dataset:\n{self.upper_bound}")

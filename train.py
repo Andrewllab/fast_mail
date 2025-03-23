@@ -58,7 +58,8 @@ def main(cfg: DictConfig) -> None:
     param_count = sum(p.numel() for p in agent.parameters())
     log.info(f"Model parameter count: {param_count}")
 
-    trainer = Trainer(**cfg.trainer)
+    trainer_kwargs = hydra.utils.instantiate(cfg.trainer, _convert_="all")
+    trainer = Trainer(**trainer_kwargs)
 
     # unless disabled, create a simulation for validation during training
     val_dataloader = ()

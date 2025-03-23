@@ -1,5 +1,5 @@
 dataset:
-  _target_: environments.dataset.libero_dataset.LiberoDataset
+  _target_: environments.datasets.libero_dataset.LiberoDataset
   # BALAZS: refactor absolute path
   data_directory: /home/balazs/repos/external/LIBERO/libero/datasets/${task_suite}
   obs_dim: 9

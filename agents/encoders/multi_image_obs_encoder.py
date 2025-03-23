@@ -104,7 +104,7 @@ class MultiImageObsEncoder(nn.Module):
         """Number of tokens in the output embedding."""
         # the leading dim is the number of observed time steps
         # each camera produces one token
-        return sum(info.shape[0] for info in self.rgb_obs_space.values())
+        return sum(info["shape"][0] for info in self.rgb_obs_space.values())
 
     def forward(self, obs: dict) -> Tensor:
         if self.share_rgb_model:
@@ -113,8 +113,8 @@ class MultiImageObsEncoder(nn.Module):
             for key, info in self.rgb_obs_space:
                 img = obs[key]
 
-                leading_dims, img_shape = img[0].shape[:-3], img[0].shape[-3:]
-                assert img_shape == info["shape"]
+                assert tuple(img.shape[1:]) == info["shape"]
+                leading_dims, img_shape = img.shape[:-3], img.shape[-3:]
                 # [B,T,C,H,W] -> [B*T,C,H,W]
                 img = img.view(-1, *img_shape)
 
@@ -136,11 +136,11 @@ class MultiImageObsEncoder(nn.Module):
         else:
             # run each rgb obs to independent models
             features = []
-            for key, info in self.rgb_obs_space:
+            for key, info in self.rgb_obs_space.items():
                 img = obs[key]
 
-                leading_dims, img_shape = img[0].shape[:-3], img[0].shape[-3:]
-                assert img_shape == info["shape"]
+                assert tuple(img.shape[1:]) == info["shape"]
+                leading_dims, img_shape = img.shape[:-3], img.shape[-3:]
                 # [B,T,C,H,W] -> [B*T,C,H,W]
                 img = img.view(-1, *img_shape)
 
@@ -149,8 +149,9 @@ class MultiImageObsEncoder(nn.Module):
                 feature = self.models[key](img)
                 features.append(feature)
 
+            N = len(features)
             # [B*T,D] -> [B*T,N,D]
             features = torch.stack(features, dim=1)
             # [B*T,N,D] -> [B,T,N,D]
-            features = features.view(*leading_dims, -1)
+            features = features.view(*leading_dims, N, -1)
             return features
