@@ -1,5 +1,7 @@
-dataset:
-  _target_: environments.dataset.furniture_bench.FurnitureBenchDataset
+task_suite: furniture_bench
+
+training:
+  _target_: environments.datasets.furniture_bench.FurnitureBenchDataset
   root_dir: ${paths.data_dir}/furniture_bench/${..task}
   camera_names: [cam1, cam2, wristcam]
   obs_dim: 9
@@ -8,6 +10,10 @@ dataset:
   max_len_data: 260
   window_size: 10
   traj_per_task: 10
-dataloader:
-  train_batch_size: ${train_batch_size}
-  num_workers: ${num_workers}
+
+simulation:
+  _target_: environments.simulations.isaac.IsaacSim
+  scene: 
+  render: False
+  num_episode: 20
+  max_step_per_episode: 600

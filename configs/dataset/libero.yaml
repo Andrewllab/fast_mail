@@ -2,15 +2,9 @@ dataset:
   _target_: environments.dataset.libero_dataset.LiberoDataset
   # BALAZS: refactor absolute path
   data_directory: /home/balazs/repos/external/LIBERO/libero/datasets/${task_suite}
-  camera_names: [agentview, eye_in_hand]
   obs_dim: 9
   action_dim: 7
   state_dim: 110
   max_len_data: 260
   window_size: 10
   traj_per_task: 10
-dataloader:
-  train_batch_size: ${train_batch_size}
-  num_workers: ${num_workers}
-
-train_val_split_idx: 30

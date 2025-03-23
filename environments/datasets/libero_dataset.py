@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from agents.utils.sim_path import sim_framework_path
-from environments.dataset.base_dataset import TrajectoryDataset
+from environments.datasets.base_dataset import TrajectoryDataset
 
 log = logging.getLogger(__name__)
 
@@ -17,32 +17,27 @@ class LiberoDataset(TrajectoryDataset):
     def __init__(
         self,
         data_directory: os.PathLike,
-        camera_names: Sequence[str],
-        device="cpu",
-        obs_dim: int = 32,
-        action_dim: int = 7,
-        state_dim: int = 45,
-        max_len_data: int = 136,
-        window_size: int = 1,
-        start_idx: int = 0,
-        traj_per_task: int = 1,
+        obs_seq_len: int,
+        obs_dim: int,
+        action_seq_len: int,
+        action_dim: int,
+        state_dim: int,
+        max_len_data: int,
+        window_size: int,
+        start_idx: int,
+        traj_per_task: int,
     ):
-        super().__init__(
-            data_directory=data_directory,
-            camera_names=camera_names,
-            device=device,
-            obs_dim=obs_dim,
-            action_dim=action_dim,
-            max_len_data=max_len_data,
-            window_size=window_size,
-        )
+        self.data_directory = data_directory
+        self._obs_seq_len = obs_seq_len
+        self._obs_dim = obs_dim
+        self._action_seq_len = action_seq_len
+        self._action_dim = action_dim
+        self._state_dim = state_dim
+        self.max_len_data = max_len_data
+        self.window_size = window_size
 
         self.data_dir = sim_framework_path(self.data_directory)
         log.info("Loading dataset from {}".format(self.data_dir))
-
-        self.obs_dim = obs_dim
-        self.state_dim = state_dim
-        self.data_directory = data_directory
 
         task_suite = os.path.basename(data_directory)
         task_emb_dir = sim_framework_path("task_embeddings")
@@ -137,10 +132,7 @@ class LiberoDataset(TrajectoryDataset):
 
             f.close()
 
-        # self.states = torch.from_numpy(np.concatenate(states)).to(device).float()
-        self.actions = (
-            torch.from_numpy(np.concatenate(actions)).to(device).float()
-        )  # shape: B, T, D
+        self.actions = torch.from_numpy(np.concatenate(actions))  # shape: B, T, D
 
         self.agentview_rgb = agentview_rgb
         self.eye_in_hand_rgb = eye_in_hand_rgb
@@ -150,13 +142,40 @@ class LiberoDataset(TrajectoryDataset):
         self.data_embs = data_embs
         self.tasks = tasks
 
-        # self.rewards = torch.from_numpy(np.concatenate(rewards)).to(device).float()
-        # self.dones = torch.from_numpy(np.concatenate(dones)).to(device).float()
-        self.masks = torch.from_numpy(np.concatenate(masks)).to(device).float()
+        self.masks = torch.from_numpy(np.concatenate(masks))
 
         self.num_data = len(self.agentview_rgb)
 
         self.slices = self.get_slices()
+
+    @property
+    def obs_space(self) -> dict:
+        return {
+            "agentview_image": {
+                "shape": [1, 3, 128, 128],
+                "type": "rgb",
+            },
+            "eye_in_hand_image": {
+                "shape": [1, 3, 128, 128],
+                "type": "rgb",
+            },
+            "robot_state": {
+                "shape": [1, 9],
+                "type": "state",
+            },
+            "lang_emb": {
+                "shape": [1, 512],
+                "type": "goal",
+            },
+        }
+
+    @property
+    def action_shape(self) -> tuple[int, ...]:
+        return (10, 7)
+
+    @property
+    def goal_seq_len(self) -> int:
+        return 1
 
     def get_slices(self):  # Extract sample slices that meet certain conditions
         slices = []
@@ -219,19 +238,10 @@ class LiberoDataset(TrajectoryDataset):
 
         robot_states = self.all_states[i][start : start + 1]
 
-        task_emb = task_emb.to(self.device).float()
+        task_emb = task_emb
 
-        agentview_rgb = (
-            torch.from_numpy(agentview_rgb).to(self.device).float().permute(0, 3, 1, 2)
-            / 255.0
-        )
-        eye_in_hand_rgb = (
-            torch.from_numpy(eye_in_hand_rgb)
-            .to(self.device)
-            .float()
-            .permute(0, 3, 1, 2)
-            / 255.0
-        )
+        agentview_rgb = torch.from_numpy(agentview_rgb)
+        eye_in_hand_rgb = torch.from_numpy(eye_in_hand_rgb)
 
         act = self.actions[i, start:end]
         mask = self.masks[i, start:end]
@@ -240,6 +250,6 @@ class LiberoDataset(TrajectoryDataset):
         obs["eye_in_hand_image"] = eye_in_hand_rgb
         obs["lang_emb"] = task_emb
 
-        obs["robot_states"] = torch.from_numpy(robot_states).to(self.device).float()
+        obs["robot_states"] = torch.from_numpy(robot_states).float()
 
         return obs, act, mask

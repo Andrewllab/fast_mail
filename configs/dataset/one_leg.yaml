@@ -1,4 +1,5 @@
 defaults:
   - furniture_bench
+  - _self_
 
 task: one_leg

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from torch.nn import Module
 
     from agents.encoders.encoder import ObservationEncoder
-    from environments.dataset.base_dataset import TrajectoryDataset
+    from environments.datasets.base_dataset import TrajectoryDataset
 
 logger = logging.getLogger(__name__)
 
@@ -150,10 +150,10 @@ class DecoderOnlyNoise(nn.Module):
         # we use time to refer to the position in the sequence of tokens
         # this often corresponds to real time, but not always, e.g. with goal tokens
         if time_encoder is not None:
-            self.obs_time_encoder = time_encoder(obs_encoder.obs_seq_len, token_dim)
+            self.obs_time_encoder = time_encoder(obs_encoder.embed_seq_len, token_dim)
             self.action_time_encoder = time_encoder(dataset.action_seq_len, token_dim)
 
-            if self.dataset.goal_seq_len > 0:
+            if dataset.goal_seq_len > 0:
                 self.goal_time_encoder = time_encoder(dataset.goal_seq_len, token_dim)
         else:
             self.obs_time_encoder = time_encoder
@@ -198,19 +198,21 @@ class DecoderOnlyNoise(nn.Module):
         if goal is not None:
             goal_embed = self.goal_encoder(goal)
             if self.goal_time_encoder is not None:
-                indices = torch.arange(goal_embed.shape[-2], dtype=torch.long)
+                indices = torch.arange(goal_embed.shape[1], dtype=torch.long)
                 goal_embed += self.goal_time_encoder(indices)
             input_seq.append(self.drop(goal_embed))
 
-        state_embed = self.state_encoder(states)
+        # states: [B,T,N,D] -> [B,T*N,D]
+        # state_embed: [B,T*N,D]
+        state_embed = self.state_encoder(states.flatten(start_dim=1, end_dim=2))
         if self.obs_time_encoder is not None:
-            indices = torch.arange(state_embed.shape[-2], dtype=torch.long)
+            indices = torch.arange(state_embed.shape[1], dtype=torch.long)
             state_embed += self.obs_time_encoder(indices)
         input_seq.append(self.drop(state_embed))
 
         action_embed = self.action_encoder(actions)
         if self.action_time_encoder is not None:
-            indices = torch.arange(action_embed.shape[-2], dtype=torch.long)
+            indices = torch.arange(action_embed.shape[1], dtype=torch.long)
             action_embed += self.action_time_encoder(indices)
         input_seq.append(self.drop(action_embed))
 

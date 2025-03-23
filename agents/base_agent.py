@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from torch.optim.lr_scheduler import LRScheduler
 
     from agents.utils.scaler import Scaler
-    from environments.dataset.base_dataset import TrajectoryDataset
+    from environments.datasets.base_dataset import TrajectoryDataset
 
 
 log = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class BaseAgent(L.LightningModule):
         self._model = model(dataset, self._obs_encoder)
         self._optimizer_func = optimizer
         self._lr_scheduler_func = lr_scheduler
-        self.scaler = scaler(dataset.all_actions)
+        self.scaler = scaler(dataset.get_all_actions())
         self.language_encoder = language_encoder
         self.ema_decay = ema_decay
 

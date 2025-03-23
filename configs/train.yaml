@@ -42,8 +42,3 @@ trainer:
         every_n_epochs: 2,
         save_weights_only: True,
       }
-
-# Training
-train_batch_size: 256
-val_batch_size: 32
-num_workers: 4

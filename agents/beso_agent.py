@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from agents.edm_diffusion.gc_sampling import NoiseScheduleType, SamplerType
     from agents.edm_diffusion.noise_distributions import NoiseDistributionType
     from agents.utils.scaler import Scaler
-    from environments.dataset.base_dataset import TrajectoryDataset
+    from environments.datasets.base_dataset import TrajectoryDataset
 
 
 log = logging.getLogger(__name__)
@@ -62,8 +62,7 @@ class BesoAgent(BaseAgent):
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
 
-        self.action_dim = dataset.action_dim
-        self.act_seq_len = dataset.act_seq_len
+        self.action_shape = dataset.action_shape
 
     def training_step(self, batch, batch_idx) -> Tensor:
         """
@@ -99,9 +98,10 @@ class BesoAgent(BaseAgent):
 
         sigmas = self.noise_schedule(self.num_sampling_steps, device=self.device)
 
+        B = obs.shape[0]
         x = (
             torch.randn(
-                (obs.shape[0], self.act_seq_len, self.action_dim),
+                (B, *self.action_shape),
                 device=self.device,
             )
             * self.sigma_max

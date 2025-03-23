@@ -1,0 +1,7 @@
+# @package _global_
+
+defaults:
+  - override /dataset: libero
+  - override /agent/obs_encoder/tokenizer: resnet
+
+task_suite: libero_object

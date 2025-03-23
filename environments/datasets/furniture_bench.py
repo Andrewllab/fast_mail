@@ -4,7 +4,7 @@ from typing import Sequence
 
 import torch
 
-from environments.dataset.base_dataset import TrajectoryDataset
+from environments.datasets.base_dataset import TrajectoryDataset
 
 log = logging.getLogger(__name__)
 
@@ -14,7 +14,6 @@ class FurnitureBenchDataset(TrajectoryDataset):
         self,
         root_dir: os.PathLike,
         camera_names: Sequence[str],
-        device="cpu",
         obs_dim: int = 32,
         action_dim: int = 7,
         state_dim: int = 45,
@@ -26,7 +25,7 @@ class FurnitureBenchDataset(TrajectoryDataset):
         super().__init__(
             root_dir=root_dir,
             camera_names=camera_names,
-            device=device,
+            state_dim=state_dim,
             obs_dim=obs_dim,
             action_dim=action_dim,
             max_len_data=max_len_data,
