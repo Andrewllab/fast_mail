@@ -1,7 +1,11 @@
+task_suite: libero
+task: libero_object
+
 dataset:
   _target_: environments.datasets.libero_dataset.LiberoDataset
-  # BALAZS: refactor absolute path
-  data_directory: /home/balazs/repos/external/LIBERO/libero/datasets/${task_suite}
+  data_directory: ${paths.data_dir}/libero
+  embeddings_directory: ${paths.data_dir}/libero/task_embeddings
+  task: ${..task}
   obs_dim: 9
   action_dim: 7
   state_dim: 110

@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torchvision
 
-from agents.encoders.crop_randomizer import CropRandomizer
+from transforms.crop_randomizer import CropRandomizer
 
 if TYPE_CHECKING:
     from torch import Tensor

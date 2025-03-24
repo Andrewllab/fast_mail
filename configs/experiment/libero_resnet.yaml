@@ -4,4 +4,5 @@ defaults:
   - override /dataset: libero
   - override /agent/obs_encoder/tokenizer: resnet
 
-task_suite: libero_object
+# set task here
+dataset.task: libero_object

@@ -1,13 +1,11 @@
 import logging
 import os
 import pickle
-from typing import Sequence
 
 import h5py
 import numpy as np
 import torch
 
-from agents.utils.sim_path import sim_framework_path
 from environments.datasets.base_dataset import TrajectoryDataset
 
 log = logging.getLogger(__name__)
@@ -17,6 +15,8 @@ class LiberoDataset(TrajectoryDataset):
     def __init__(
         self,
         data_directory: os.PathLike,
+        embeddings_directory: os.PathLike,
+        task: str,
         obs_dim: int,
         action_dim: int,
         state_dim: int,
@@ -32,13 +32,11 @@ class LiberoDataset(TrajectoryDataset):
         self.max_len_data = max_len_data
         self.window_size = window_size
 
-        self.data_dir = sim_framework_path(self.data_directory)
+        self.data_dir = os.path.join(data_directory, task)
         log.info("Loading dataset from {}".format(self.data_dir))
 
-        task_suite = os.path.basename(data_directory)
-        task_emb_dir = sim_framework_path("task_embeddings")
-
-        with open(task_emb_dir + "/" + task_suite + ".pkl", "rb") as f:
+        embeddings_file = os.path.join(embeddings_directory, f"{task}.pkl")
+        with open(embeddings_file, "rb") as f:
             tasks = pickle.load(f)
 
         data_embs = []
