@@ -29,7 +29,7 @@ seed: null
 disable_validation: True
 
 dataloader:
-  batch_size: 256
+  batch_size: 512
   num_workers: 4
 
 sim_dataloader:
@@ -42,4 +42,6 @@ trainer:
   devices: auto
   default_root_dir: ${paths.output_dir}
   max_epochs: 100
+  log_every_n_steps: 10
   check_val_every_n_epoch: 1
+  enable_model_summary: False  # we print model summary manually with a callback

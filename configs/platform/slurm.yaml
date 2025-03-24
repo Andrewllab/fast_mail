@@ -4,5 +4,8 @@ slurm_job_id: ${oc.env:SLURM_ARRAY_JOB_ID,${oc.env:SLURM_JOB_ID}}
 # if part of an array job (i.e. a sweep), the id of this task
 slurm_array_task_id: ${oc.env:SLURM_ARRAY_TASK_ID,none}
 
+callbacks:
+  model_summary: null  # reduce clutter in the log
+
 trainer:
-  enable_progress_bar: False
+  enable_progress_bar: False  # reduce clutter in the log

@@ -85,7 +85,7 @@ class BesoAgent(BaseAgent):
         target = (action - c_skip * noised_input) / c_out
         loss = (model_output - target).pow(2).mean()
 
-        self.log_dict({"loss": loss}, on_epoch=True)
+        self.log_dict({"loss": loss}, on_epoch=True, prog_bar=True)
 
         return loss
 
