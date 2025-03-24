@@ -1,3 +1,3 @@
 wandb:
   _target_: lightning.pytorch.loggers.wandb.WandbLogger
-  log_model: True # upload lightning ckpts
+  log_model: all # all checkpoints are uploaded to wandb, even if only the last one is kept on disk

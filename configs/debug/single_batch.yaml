@@ -1,7 +1,6 @@
 # @package _global_
 
-# default debugging setup, runs 1 full epoch
-# other debugging configs can inherit from this one
+# runs 1 train, 1 validation and 1 test step
 
 # overwrite task name so debugging logs are stored in separate folder
 job_type: "debug"
@@ -16,8 +15,11 @@ hydra:
   verbose: True
 
 trainer:
+  max_epochs: 1
   accelerator: cpu # debuggers don't like gpus
   devices: 1 # debuggers don't like multiprocessing
+  detect_anomaly: true # raise exception if NaN or +/-inf is detected in any tensor
+  fast_dev_run: true
 
 # data:
 #   num_workers: 0 # debuggers don't like multiprocessing

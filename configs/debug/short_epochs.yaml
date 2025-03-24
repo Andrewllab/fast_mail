@@ -1,0 +1,11 @@
+# @package _global_
+
+# uses only 5% of the training data and 5% of validation/test data
+
+# overwrite task name so debugging logs are stored in separate folder
+job_type: "debug"
+
+trainer:
+  limit_train_batches: 0.05
+  limit_val_batches: 0.05
+  limit_test_batches: 0.05

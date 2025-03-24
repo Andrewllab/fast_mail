@@ -1,14 +1,9 @@
-LIBERO/*
-robocasa/*
+# Byte-compiled files
+__pycache__/
 
-logs/*
+# log folders
+/logs
+/wandb
 
-**/__pycache__/
-
-.idea/*
-.vscode/*
-
-*.egg-info
-slurm_jobs/output/
-
-utils/figures/*
+# training and validation data
+/datasets

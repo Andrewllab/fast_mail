@@ -1,6 +1,6 @@
 task_suite: furniture_bench
 
-training:
+dataset:
   _target_: environments.datasets.furniture_bench.FurnitureBenchDataset
   root_dir: ${paths.data_dir}/furniture_bench/${..task}
   camera_names: [cam1, cam2, wristcam]
