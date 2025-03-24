@@ -1,0 +1,7 @@
+# https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.ModelCheckpoint.html
+
+model_checkpoint:
+  _target_: lightning.pytorch.callbacks.ModelCheckpoint
+  verbose: True # verbosity mode
+  save_weights_only: True # if True, then only the model’s weights will be saved
+  every_n_epochs: 10 # number of epochs between checkpoints

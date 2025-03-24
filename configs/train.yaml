@@ -2,14 +2,23 @@ defaults:
   - dataset: one_leg
   - augmentation: null
   - agent: beso_agent
-  - logging: default
+  - callbacks:
+    - model_checkpoint
+    - model_summary
+  - logger: 
+    - wandb
+    - csv
+  - python_logging: default
   - paths: default
   - hydra: default
   - _self_
-  - optional local: default
-  - platform: default
   - experiment: null
+  - platform: default
+  - optional local: default
+  - debug: null
 
+# task name, determines output directory path
+task_name: train
 
 wandb:
   tags: null
@@ -29,16 +38,8 @@ sim_dataloader:
 
 trainer:
   deterministic: True
-  accelerator: auto
+  accelerator: gpu
   devices: auto
-  default_root_dir: ${hydra:runtime.output_dir}
+  default_root_dir: ${paths.output_dir}
   max_epochs: 100
   check_val_every_n_epoch: 1
-  # enable_checkpointing: False
-  # fast_dev_run: True
-  callbacks:
-    - {
-        _target_: lightning.pytorch.callbacks.ModelCheckpoint, 
-        every_n_epochs: 2,
-        save_weights_only: True,
-      }

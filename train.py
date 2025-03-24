@@ -4,20 +4,23 @@ import hydra
 import numpy as np
 import torch
 import wandb
-from lightning import Trainer, seed_everything
+from lightning import Callback, LightningModule, Trainer, seed_everything
+from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig, OmegaConf, open_dict
 from torch.utils.data import DataLoader
 
 from utils.conf import pop_names, setup_resolvers
+from utils.instantiators import instantiate_callbacks, instantiate_loggers
 from utils.logging import configure_logging
 from utils.seeding import get_rng, manual_seed
+from utils.torch_conf import configure_torch
 
 log = logging.getLogger(__name__)
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="train")
 def main(cfg: DictConfig) -> None:
-    configure_logging(cfg.logging)
+    configure_logging(cfg.python_logging)
 
     with open_dict(cfg):
         notes = cfg.wandb.pop("notes", None)
@@ -36,8 +39,8 @@ def main(cfg: DictConfig) -> None:
     # we want these to be saved to WandB but we don't want them for instantiation
     cfg = pop_names(cfg)
 
-    # BALAZS: do we need this?
-    torch.cuda.empty_cache()
+    # configure torch, e.g. set_float32_matmul_precision
+    configure_torch(cfg.get("torch", {}))
 
     # seeding
     if cfg.trainer.deterministic:
@@ -53,13 +56,20 @@ def main(cfg: DictConfig) -> None:
     )
 
     # instantiate agent
-    agent = hydra.utils.instantiate(cfg.agent, dataset=dataset)
+    agent: LightningModule = hydra.utils.instantiate(cfg.agent, dataset=dataset)
 
     param_count = sum(p.numel() for p in agent.parameters())
     log.info(f"Model parameter count: {param_count}")
 
-    trainer_kwargs = hydra.utils.instantiate(cfg.trainer, _convert_="all")
-    trainer = Trainer(**trainer_kwargs)
+    log.debug("Instantiating callbacks...")
+    callbacks: list[Callback] = instantiate_callbacks(cfg.get("callbacks"))
+
+    log.debug("Instantiating loggers...")
+    logger: list[Logger] = instantiate_loggers(cfg.get("logger"))
+
+    trainer: Trainer = hydra.utils.instantiate(
+        cfg.trainer, _target_=Trainer, callbacks=callbacks, logger=logger
+    )
 
     # unless disabled, create a simulation for validation during training
     val_dataloader = ()

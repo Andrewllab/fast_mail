@@ -10,7 +10,10 @@ if TYPE_CHECKING:
 
 
 def beso_resnet_encoder(
-    embed_dim: int, pretrained_weights: str | None, freeze_backbone: bool | None = None
+    embed_dim: int,
+    pretrained_weights: str | None,
+    freeze_backbone: bool | None = None,
+    **resnet_kwargs,
 ) -> ResNet:
 
     # by default, only freeze weights if we load a pretrained model
@@ -23,14 +26,13 @@ def beso_resnet_encoder(
     def make_group_norm(num_features: int):
         return nn.GroupNorm(num_groups=num_features // 16, num_channels=num_features)
 
-    resnet_kwargs = {}
     if pretrained_weights is None:
         # if we are loading pretrained weights, layer sizes must match the pretrained model
         # so we only set this if we are not using pretrained weights
         resnet_kwargs["num_classes"] = embed_dim
 
     model = torchvision.models.resnet18(
-        pretrained=pretrained_weights, norm_layer=make_group_norm, **resnet_kwargs
+        weights=pretrained_weights, norm_layer=make_group_norm, **resnet_kwargs
     )
 
     if freeze_backbone:
