@@ -3,17 +3,17 @@ import logging
 import hydra
 import numpy as np
 import torch
-import wandb
 from lightning import Callback, LightningModule, Trainer, seed_everything
 from lightning.pytorch.loggers import Logger
-from omegaconf import DictConfig, OmegaConf, open_dict
+from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
-from utils.conf import pop_names, setup_resolvers
+from utils.conf import delete_keys_recursively, setup_resolvers
 from utils.instantiators import instantiate_callbacks, instantiate_loggers
 from utils.logging import configure_logging
 from utils.seeding import get_rng, manual_seed
 from utils.torch_conf import configure_torch
+from utils.wandb import init_wandb
 
 log = logging.getLogger(__name__)
 
@@ -22,25 +22,15 @@ log = logging.getLogger(__name__)
 def main(cfg: DictConfig) -> None:
     configure_logging(cfg.python_logging)
 
-    with open_dict(cfg):
-        notes = cfg.wandb.pop("notes", None)
+    # init wandb first so we can log any info or errors from instantiating dataset and model
+    run = init_wandb(cfg)
 
-    run = wandb.init(
-        project="3d-sim2real",
-        config=OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True),  # type: ignore
-        sync_tensorboard=True,  # auto-upload any values logged to tensorboard
-        save_code=True,  # save script used to start training, git commit, and patch
-        reinit=True,  # required for hydra sweeps with default launcher
-        tags=cfg.wandb.get("tags"),
-        notes=notes,
-    )
-
-    # recursively pop any "name" fields in config dictionary
+    # recursively delete any "name" fields in config dictionary
     # we want these to be saved to WandB but we don't want them for instantiation
-    cfg = pop_names(cfg)
+    cfg = delete_keys_recursively(cfg, ["name"])
 
     # configure torch, e.g. set_float32_matmul_precision
-    configure_torch(cfg.get("torch", {}))
+    configure_torch(cfg.get("torch"))
 
     # seeding
     rng = get_rng(cfg)
@@ -56,9 +46,6 @@ def main(cfg: DictConfig) -> None:
 
     # instantiate agent
     agent: LightningModule = hydra.utils.instantiate(cfg.agent, dataset=dataset)
-
-    param_count = sum(p.numel() for p in agent.parameters())
-    log.info(f"Model parameter count: {param_count}")
 
     log.debug("Instantiating callbacks...")
     callbacks: list[Callback] = instantiate_callbacks(cfg.get("callbacks"))

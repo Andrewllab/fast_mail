@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import os.path as osp
+from typing import Sequence
 
 import numpy as np
 from omegaconf import DictConfig, OmegaConf, open_dict
@@ -37,12 +38,15 @@ def setup_resolvers(exclude: list[str] | None = None):
         OmegaConf.register_new_resolver("abspath", lambda s: osp.abspath(s))
 
 
-def pop_names(cfg: DictConfig) -> DictConfig:
+def delete_keys_recursively(
+    cfg: DictConfig, keys_to_delete: Sequence[str]
+) -> DictConfig:
     with open_dict(cfg):
-        cfg.pop("name", None)
+        for field in keys_to_delete:
+            cfg.pop(field, None)
 
     for key, value in cfg.items():
         if isinstance(value, DictConfig):
-            cfg[key] = pop_names(value)
+            cfg[key] = delete_keys_recursively(value, keys_to_delete)
 
     return cfg

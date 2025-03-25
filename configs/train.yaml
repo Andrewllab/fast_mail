@@ -20,10 +20,6 @@ defaults:
 # task name, determines output directory path
 job_type: train
 
-wandb:
-  tags: null
-  notes: null
-
 seed: null
 
 disable_validation: True

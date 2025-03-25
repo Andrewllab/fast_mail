@@ -1,3 +1,11 @@
 wandb:
   _target_: lightning.pytorch.loggers.wandb.WandbLogger
-  log_model: all # all checkpoints are uploaded to wandb, even if only the last one is kept on disk
+  project: "3d-sim2real"
+  log_model: all  # all checkpoints are uploaded to wandb, even if only the last one is kept on disk
+
+  # passed to wandb.init()
+  entity: null
+  notes: null
+  tags: null
+  reinit: True  # required for hydra sweeps with default launcher
+  save_code: True  # save script used to start training, git commit, and patch
