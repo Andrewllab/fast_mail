@@ -1,3 +1,6 @@
+defaults:
+  - /transforms@dataset.transforms: null
+
 task_suite: libero
 task: libero_object
 

@@ -1,0 +1,2 @@
+_target_: transforms.to_torchimage.ToTorchImage
+_partial_: True

@@ -5,6 +5,11 @@
 # overwrite task name so debugging logs are stored in separate folder
 job_type: "debug"
 
+# sets level of all command line loggers to 'DEBUG'
+# https://hydra.cc/docs/tutorials/basic/running_your_app/logging/
+hydra:
+  verbose: True
+
 trainer:
   limit_train_batches: 0.05
   limit_val_batches: 0.05

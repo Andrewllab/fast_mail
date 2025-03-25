@@ -43,11 +43,10 @@ def main(cfg: DictConfig) -> None:
     configure_torch(cfg.get("torch", {}))
 
     # seeding
-    if cfg.trainer.deterministic:
-        rng = get_rng(cfg)
-        seed = rng.integers(np.iinfo(np.uint32).max)
-        log.info(f"Seeding pytorch, numpy, random, and workers with seed {seed}")
-        seed_everything(seed, workers=True)
+    rng = get_rng(cfg)
+    seed = rng.integers(np.iinfo(np.uint32).max)
+    log.info(f"Seeding pytorch, numpy, random, and workers with seed {seed}")
+    seed_everything(seed, workers=True)
 
     # instantiate dataset
     dataset = hydra.utils.instantiate(cfg.dataset.dataset)
