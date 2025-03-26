@@ -1,3 +1,4 @@
+import functools
 import logging
 import os
 import pickle
@@ -5,8 +6,14 @@ import pickle
 import h5py
 import numpy as np
 import torch
+from omegaconf import DictConfig
+from tensordict import TensorDict
+from tensordict.nn import TensorDictSequential
 
 from environments.datasets.base_dataset import TrajectoryDataset
+from environments.specs import DataSpecs, Spec
+from transforms.base_transform import Transform, init_transform_sequence
+from utils.instantiators import instantiate_transforms
 
 log = logging.getLogger(__name__)
 
@@ -22,13 +29,14 @@ class LiberoDataset(TrajectoryDataset):
         state_dim: int,
         max_len_data: int,
         window_size: int,
+        transforms: DictConfig | None = None,
         start_idx: int = 0,
         traj_per_task: int = 1,
     ):
         self.data_directory = data_directory
-        self._obs_dim = obs_dim
-        self._action_dim = action_dim
-        self._state_dim = state_dim
+        self.obs_dim = obs_dim
+        self.action_dim = action_dim
+        self.state_dim = state_dim
         self.max_len_data = max_len_data
         self.window_size = window_size
 
@@ -142,34 +150,28 @@ class LiberoDataset(TrajectoryDataset):
 
         self.slices = self.get_slices()
 
-    @property
-    def obs_space(self) -> dict:
-        return {
-            "agentview_image": {
-                "shape": (1, 3, 128, 128),
-                "type": "rgb",
+        self._base_specs = self._specs = DataSpecs(
+            _obs={
+                "agentview_image": Spec(shape=(1, 128, 128, 3), type="rgb"),
+                "eye_in_hand_image": Spec(shape=(1, 128, 128, 3), type="rgb"),
+                "robot_state": Spec(shape=(1, 9), type="state"),
+                "goal_embed": Spec(shape=(1, 512), type="goal"),
             },
-            "eye_in_hand_image": {
-                "shape": (1, 3, 128, 128),
-                "type": "rgb",
-            },
-            "robot_state": {
-                "shape": (1, 9),
-                "type": "state",
-            },
-            "goal_embed": {
-                "shape": (1, 512),
-                "type": "goal",
-            },
-        }
+            action=Spec(shape=(10, 7), type="action"),
+        )
+
+        if transforms is not None:
+            transform_partials = instantiate_transforms(transforms)
+
+            self.transform, self._specs = init_transform_sequence(
+                transform_partials, self._specs
+            )
+        else:
+            self.transform = lambda x: x
 
     @property
-    def action_shape(self) -> tuple[int, ...]:
-        return (10, 7)
-
-    @property
-    def goal_seq_len(self) -> int:
-        return 1
+    def specs(self):
+        return self._specs
 
     def get_slices(self):  # Extract sample slices that meet certain conditions
         slices = []
@@ -219,7 +221,7 @@ class LiberoDataset(TrajectoryDataset):
     def __len__(self):
         return len(self.slices)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> TensorDict:
 
         i, start, end = self.slices[idx]
 
@@ -246,4 +248,10 @@ class LiberoDataset(TrajectoryDataset):
 
         obs["robot_state"] = torch.from_numpy(robot_states).float()
 
-        return obs, act, mask
+        item = TensorDict(
+            {"obs": obs, "action": act, "mask": mask}, batch_size=(), device="cpu"
+        )
+
+        item = self.transform(item)
+
+        return item

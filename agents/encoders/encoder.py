@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 from typing import TYPE_CHECKING, Callable
 
 import torch
 import torch.nn as nn
+from torch import Tensor
 
-if TYPE_CHECKING:
-    from torch import Tensor
-
-    from environments.datasets.base_dataset import TrajectoryDataset
+from environments.datasets.base_dataset import TrajectoryDataset
+from environments.specs import DataSpecs
 
 log = logging.getLogger(__name__)
 
@@ -17,58 +17,55 @@ log = logging.getLogger(__name__)
 class ObservationEncoder(nn.Module):
     def __init__(
         self,
-        depth: Callable[[TrajectoryDataset], nn.Module] | None,
-        pixels: Callable[[TrajectoryDataset], nn.Module] | None,
-        tokenizer: Callable[[TrajectoryDataset], nn.Module],
-        dataset: TrajectoryDataset,
+        specs: DataSpecs,
+        depth: Callable[[DataSpecs], nn.Module] | None,
+        pixels: Callable[[DataSpecs], nn.Module] | None,
+        tokenizer: Callable[[DataSpecs], nn.Module],
         embed_dim: int,
         robot_state_encoder: Callable[[int, int], nn.Module] | None = None,
     ):
         super().__init__()
 
-        self.depth = depth(dataset=dataset) if depth is not None else lambda x: x
-        self.pixels = pixels(dataset=dataset) if pixels is not None else lambda x: x
-        self.tokenizer = tokenizer(dataset=dataset)
+        # BALAZS: propagate specs through sequence
+        self.depth = depth(specs) if depth is not None else lambda x: x
+        self.pixels = pixels(specs) if pixels is not None else lambda x: x
+        self.tokenizer = tokenizer(specs)
 
-        self._embed_dim = embed_dim
-
-        self.obs_space = dataset.obs_space
-        self.rgb_obs_space = [
-            key for key, info in self.obs_space.items() if info["type"] == "rgb"
-        ]
-
-        self._embed_seq_len: int = self.tokenizer.embed_seq_len
+        specs = self.tokenizer.specs
+        obs_spec = specs.obs
 
         # if we encode the states, add additional tokens for each observed time step
         if robot_state_encoder is not None:
-            robot_state_shape = self.obs_space["robot_state"]["shape"]
+            robot_state_shape = specs.obs["robot_state"].shape
             state_seq_len, state_dim = robot_state_shape
             robot_state_encoder = robot_state_encoder(state_dim, embed_dim)
 
             # increase length of embedding sequence to account for state tokens
-            self._embed_seq_len += state_seq_len
+            obs_spec = dict(obs_spec)  # copy obs spec for local modification
+            spec = obs_spec["obs_embed"]
+            obs_spec["obs_embed"] = dataclasses.replace(
+                spec, shape=(spec.shape[0] + state_seq_len,) + spec.shape[1:]
+            )
+
         self.robot_state_encoder = robot_state_encoder
+        self._obs_spec = obs_spec
+        self._specs = DataSpecs(_obs=self._obs_spec, action=specs.action)
 
     @property
-    def embed_dim(self) -> int:
-        return self._embed_dim
-
-    @property
-    def embed_seq_len(self) -> int:
-        """Number of tokens in the output embedding."""
-        return self._embed_seq_len
+    def specs(self) -> DataSpecs:
+        return self._specs
 
     def forward(self, obs: dict) -> Tensor:
         # flatten batch and time dimensions of all camera images
-        for camera in self.rgb_obs_space:
-            # BALAZS: replace this with einops
+        # for camera in self.rgb_keys:
+        #     # BALAZS: replace this with einops
 
-            # should have shape [B, T, C, H, W]
-            assert obs[camera].ndim == 5
-            assert obs[camera].shape[1] == 1
+        #     # should have shape [B, T, C, H, W]
+        #     assert obs[camera].ndim == 5
+        #     assert obs[camera].shape[1] == 1
 
-            # BALAZS: move to dataset transform (on_after_batch_transfer)
-            obs[camera] = obs[camera].permute(0, 1, 4, 2, 3).float().div(255.0)
+        #     # BALAZS: move to dataset transform (on_after_batch_transfer)
+        #     obs[camera] = obs[camera].permute(0, 1, 4, 2, 3).float().div(255.0)
 
         obs = self.depth(obs)
         obs = self.pixels(obs)

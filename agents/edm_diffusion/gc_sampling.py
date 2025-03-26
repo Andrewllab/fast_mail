@@ -7,10 +7,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 import numpy as np
 import torch
 import torchsde
-from matplotlib import pyplot as plt
 from scipy import integrate
 from torch import nn
-from torchdiffeq import odeint
 from tqdm.auto import tqdm, trange
 
 from . import utils
@@ -586,47 +584,6 @@ def sample_lms(
         if scaler is not None:
             action = scaler.clip_output(action)
     return action
-
-
-@torch.no_grad()
-def log_likelihood(
-    model,
-    state,
-    action,
-    goal,
-    sigma_min,
-    sigma_max,
-    extra_args=None,
-    atol=1e-4,
-    rtol=1e-4,
-):
-    """
-    Computes the log-likelihood of actions
-    """
-    extra_args = {} if extra_args is None else extra_args
-    s_in = action.new_ones([action.shape[0]])
-    v = torch.randint_like(action, 2) * 2 - 1
-    fevals = 0
-
-    def ode_fn(sigma, action):
-        nonlocal fevals
-        with torch.enable_grad():
-            action = action[0].detach().requires_grad_()
-            denoised = model(state, action, goal, sigma * s_in, **extra_args)
-            d = to_d(action, sigma, denoised)
-            fevals += 1
-            grad = torch.autograd.grad((d * v).sum(), action)[0]
-            d_ll = (v * grad).flatten(1).sum(1)
-        return d.detach(), d_ll
-
-    action_min = action, action.new_zeros([action.shape[0]])
-    t = action.new_tensor([sigma_min, sigma_max])
-    sol = odeint(ode_fn, action_min, t, atol=atol, rtol=rtol, method="dopri5")
-    latent, delta_ll = sol[0][-1], sol[1][-1]
-    ll_prior = (
-        torch.distributions.Normal(0, sigma_max).log_prob(latent).flatten(1).sum(1)
-    )
-    return ll_prior + delta_ll, {"fevals": fevals}
 
 
 class PIDStepSizeController:
@@ -1330,15 +1287,3 @@ def sample_dpmpp_2s(
         if scaler is not None:
             action = scaler.clip_output(action)
     return action
-
-
-def make_sample_contour_plot(actions, n_steps, file_store_path):
-
-    store_path = os.path.join(file_store_path, "action_visualization.png")
-    rows = n_steps % 2
-    for idx, step in range(n_steps):
-        fig, axs = plt.subplots()
-        actions
-        store_path = os.path.join(
-            file_store_path, f"action_visualization_step_{idx}.png"
-        )

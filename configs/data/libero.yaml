@@ -6,6 +6,7 @@ task: libero_object
 
 dataset:
   _target_: environments.datasets.libero_dataset.LiberoDataset
+  _recursive_: False  # we need to instantiate transforms manually
   data_directory: ${paths.data_dir}/libero
   embeddings_directory: ${paths.data_dir}/libero/task_embeddings
   task: ${..task}

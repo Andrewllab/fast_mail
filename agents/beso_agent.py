@@ -11,13 +11,14 @@ from agents.edm_diffusion.utils import unsqueeze_to
 if TYPE_CHECKING:
     from torch import Tensor
     from torch.nn import Module
-    from torch.optim import Optimizer
     from torch.optim.lr_scheduler import LRScheduler
+    from torch.optim.optimizer import Optimizer
 
     from agents.edm_diffusion.gc_sampling import NoiseScheduleType, SamplerType
     from agents.edm_diffusion.noise_distributions import NoiseDistributionType
     from agents.utils.scaler import Scaler
     from environments.datasets.base_dataset import TrajectoryDataset
+    from environments.specs import DataSpecs
 
 
 log = logging.getLogger(__name__)
@@ -26,11 +27,11 @@ log = logging.getLogger(__name__)
 class BesoAgent(BaseAgent):
     def __init__(
         self,
-        noise_model: Callable[[TrajectoryDataset, Module], Module],
+        noise_model: Callable[[DataSpecs], Module],
         noise_distribution: NoiseDistributionType,
         noise_schedule: NoiseScheduleType,
         sampler: SamplerType,
-        obs_encoder: Callable[[TrajectoryDataset], Module],
+        obs_encoder: Callable[[DataSpecs], Module],
         optimizer: Callable[[Iterable[Tensor]], Optimizer],
         lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
         scaler: Type[Scaler],
@@ -62,16 +63,14 @@ class BesoAgent(BaseAgent):
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
 
-        self.action_shape = dataset.action_shape
+        self.action_shape = dataset.specs.action.shape
 
     def training_step(self, batch, batch_idx) -> Tensor:
         """
         Computes the score matching loss given the perceptual embedding, latent goal, and desired actions.
         """
-        obs_dict, action, mask = batch
-
-        obs = self.obs_encoder(obs_dict)
-        action = self.scaler.normalize(action)
+        batch = self.obs_encoder(batch)
+        batch["action"] = self.scaler.normalize(batch["action"])
         goal = self.encode_language(obs_dict)
 
         sigma = self.noise_distribution(shape=(len(action),), device=self.device)

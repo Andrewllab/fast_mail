@@ -15,4 +15,4 @@ resize_shape: null
 crop_shape: null
 random_crop: False
 share_rgb_model: False
-imagenet_norm: True
+imagenet_norm: False

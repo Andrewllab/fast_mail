@@ -12,11 +12,12 @@ if TYPE_CHECKING:
     from lightning.pytorch.core.optimizer import LightningOptimizer
     from torch import Tensor
     from torch.nn import Module
-    from torch.optim import Optimizer
     from torch.optim.lr_scheduler import LRScheduler
+    from torch.optim.optimizer import Optimizer
 
     from agents.utils.scaler import Scaler
     from environments.datasets.base_dataset import TrajectoryDataset
+    from environments.specs import DataSpecs
 
 
 log = logging.getLogger(__name__)
@@ -25,8 +26,8 @@ log = logging.getLogger(__name__)
 class BaseAgent(L.LightningModule):
     def __init__(
         self,
-        model: Callable[[TrajectoryDataset, Module], Module],
-        obs_encoder: Callable[[TrajectoryDataset], Module],
+        model: Callable[[DataSpecs], Module],
+        obs_encoder: Callable[[DataSpecs], Module],
         optimizer: Callable[[Iterable[Tensor]], Optimizer],
         lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
         scaler: Type[Scaler],
@@ -36,15 +37,16 @@ class BaseAgent(L.LightningModule):
     ):
         super().__init__()
 
-        self._obs_encoder = obs_encoder(dataset=dataset)
-        self._model = model(dataset=dataset, obs_encoder=self._obs_encoder)
+        self._obs_encoder = obs_encoder(dataset.specs)
+        self._model = model(self._obs_encoder.specs)
         self._optimizer_func = optimizer
         self._lr_scheduler_func = lr_scheduler
+        # BALAZS: refactor, since scalar is sort of transform
         self.scaler = scaler(dataset.get_all_actions())
         self.language_encoder = language_encoder
         self.ema_decay = ema_decay
 
-        if self.language_encoder is not None and dataset.goal_seq_len == 0:
+        if self.language_encoder is not None and dataset.specs.goal_seq_len == 0:
             log.warning(
                 f"A language encoder has been instantiated, but dataset does not provide any goals!"
             )

@@ -55,7 +55,7 @@ def instantiate_loggers(logger_cfg: DictConfig) -> list[Logger]:
     return logger
 
 
-def instantiate_transforms(transforms_cfg: DictConfig) -> list[Callable] | None:
+def instantiate_transforms(transforms_cfg: DictConfig) -> list[Callable]:
     """Instantiates transforms from config.
 
     :param transforms_cfg: A DictConfig object containing transform configurations.
@@ -65,8 +65,8 @@ def instantiate_transforms(transforms_cfg: DictConfig) -> list[Callable] | None:
     transforms: list[Callable] = []
 
     if not transforms_cfg:
-        log.info("No transform configs found! Skipping...")
-        return None
+        log.warning("No transform configs found! Skipping...")
+        return transforms
 
     if not isinstance(transforms_cfg, DictConfig):
         raise TypeError("Transforms config must be a DictConfig!")

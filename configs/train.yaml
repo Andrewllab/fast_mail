@@ -1,5 +1,5 @@
 defaults:
-  - dataset: one_leg
+  - data: one_leg
   - augmentation: null
   - agent: beso_agent
   - callbacks:

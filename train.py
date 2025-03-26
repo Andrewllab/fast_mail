@@ -39,9 +39,14 @@ def main(cfg: DictConfig) -> None:
     seed_everything(seed, workers=True)
 
     # instantiate dataset
-    dataset = hydra.utils.instantiate(cfg.dataset.dataset)
+    dataset = hydra.utils.instantiate(cfg.data.dataset)
     dataloader = DataLoader(
-        dataset, **cfg.dataloader, shuffle=True, pin_memory=True, drop_last=True
+        dataset,
+        **cfg.dataloader,
+        shuffle=True,
+        pin_memory=True,
+        drop_last=True,
+        collate_fn=dataset.collate_fn,
     )
 
     # instantiate agent
@@ -60,7 +65,7 @@ def main(cfg: DictConfig) -> None:
     # unless disabled, create a simulation for validation during training
     val_dataloader = ()
     if not cfg.disable_validation:
-        sim = hydra.utils.instantiate(cfg.dataset.simulation)
+        sim = hydra.utils.instantiate(cfg.data.simulation)
         sim_dataloader = DataLoader(sim, **cfg.sim_dataloader)
         val_dataloader += (sim_dataloader,)
 

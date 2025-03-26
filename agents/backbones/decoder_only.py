@@ -10,8 +10,7 @@ if TYPE_CHECKING:
     from torch import Tensor
     from torch.nn import Module
 
-    from agents.encoders.encoder import ObservationEncoder
-    from environments.datasets.base_dataset import TrajectoryDataset
+    from environments.specs import DataSpecs
 
 logger = logging.getLogger(__name__)
 
@@ -132,12 +131,11 @@ class Dec_only(nn.Module):
 class DecoderOnlyNoise(nn.Module):
     def __init__(
         self,
+        specs: DataSpecs,
         decoder: Module,
         time_encoder: Callable[[int, int], Module] | None,
         sigma_encoder: Callable[[int], Module],
         action_head: Callable[[int, int], Module],
-        dataset: TrajectoryDataset,
-        obs_encoder: ObservationEncoder,
         token_dim: int,
         dropout_prob: float,
     ):
@@ -145,37 +143,39 @@ class DecoderOnlyNoise(nn.Module):
 
         self.decoder = decoder
         self.sigma_encoder = sigma_encoder(token_dim)
-        self.action_head = action_head(token_dim, dataset.action_dim)
+        self.action_head = action_head(token_dim, specs.action_dim)
 
         # we use time to refer to the position in the sequence of tokens
         # this often corresponds to real time, but not always, e.g. with goal tokens
         if time_encoder is not None:
-            self.obs_time_encoder = time_encoder(obs_encoder.embed_seq_len, token_dim)
-            self.action_time_encoder = time_encoder(dataset.action_seq_len, token_dim)
+            self.obs_time_encoder = time_encoder(specs.embed_seq_len, token_dim)
+            self.action_time_encoder = time_encoder(specs.action_seq_len, token_dim)
 
-            if dataset.goal_seq_len > 0:
-                self.goal_time_encoder = time_encoder(dataset.goal_seq_len, token_dim)
+            if specs.goal_embed_seq_len > 0:
+                self.goal_time_encoder = time_encoder(
+                    specs.goal_embed_seq_len, token_dim
+                )
         else:
             self.obs_time_encoder = time_encoder
             self.action_time_encoder = time_encoder
             self.goal_time_encoder = time_encoder
 
         # linear embedding for the state
-        self.state_encoder = nn.Linear(obs_encoder.embed_dim, token_dim)
+        self.state_encoder = nn.Linear(specs.embed_dim, token_dim)
 
         # linear embedding for the action
-        self.action_encoder = nn.Linear(dataset.action_dim, token_dim)
+        self.action_encoder = nn.Linear(specs.action_dim, token_dim)
 
         # linear embedding for the goal
-        if dataset.goal_embed_dim > 0:
-            self.goal_encoder = nn.Linear(dataset.goal_embed_dim, token_dim)
+        if specs.goal_embed_dim > 0:
+            self.goal_encoder = nn.Linear(specs.goal_embed_dim, token_dim)
 
         if dropout_prob > 0:
             self.drop = nn.Dropout(dropout_prob)
         else:
             self.drop = lambda x: x
 
-        self.action_seq_len = dataset.action_seq_len
+        self.action_seq_len = specs.action_seq_len
 
         self.apply(self._init_weights)
 

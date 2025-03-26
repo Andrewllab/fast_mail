@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from torch.utils.data import Dataset
+
+from environments.specs import DataSpecs
 
 if TYPE_CHECKING:
     from torch import Tensor
 
 
-class TrajectoryDataset(Dataset):
+class TrajectoryDataset(Dataset, ABC):
     """
     A dataset containing trajectories.
     TrajectoryDataset[i] returns: (observations, actions, mask)
@@ -18,53 +21,15 @@ class TrajectoryDataset(Dataset):
     """
 
     @property
-    def obs_space(self) -> dict:
-        raise NotImplementedError
+    @abstractmethod
+    def specs(self) -> DataSpecs:
+        pass
 
     @property
-    def action_shape(self) -> tuple[int, ...]:
-        raise NotImplementedError
-
-    @property
-    def goal_embed_seq_len(self) -> int:
-        try:
-            goal_embed_space = self.obs_space["goal_embed"]
-        except KeyError:
-            return 0
-
-        return goal_embed_space["shape"][0]
-
-    @property
-    def goal_embed_dim(self) -> int:
-        try:
-            goal_embed_space = self.obs_space["goal_embed"]
-        except KeyError:
-            return 0
-
-        return goal_embed_space["shape"][-1]
-
-    @property
-    def state_dim(self) -> int:
-        try:
-            robot_state_space = self.obs_space["robot_state"]
-        except KeyError:
-            return 0
-
-        return robot_state_space["shape"][-1]
-
-    @property
-    def action_seq_len(self) -> int:
-        assert len(self.action_shape) == 2
-        return self.action_shape[0]
-
-    @property
-    def action_dim(self) -> int:
-        assert len(self.action_shape) == 2
-        return self.action_shape[1]
-
-    @property
-    def all_actions(self) -> Tensor:
-        raise NotImplementedError
+    def collate_fn(self):
+        # TensorDict can already handle batched indices, so there is no need for collation
+        # https://pytorch.org/tensordict/stable/tutorials/data_fashion.html#dataloaders
+        return lambda x: x
 
     def get_all_observations(self) -> Tensor:
         """
