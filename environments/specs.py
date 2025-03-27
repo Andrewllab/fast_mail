@@ -1,38 +1,52 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from types import MappingProxyType
 from typing import Mapping
 
 import numpy as np
+import torch
+from frozendict import frozendict
 
 
 @dataclass(frozen=True)
 class Spec:
     shape: tuple[int, ...]
     type: str
+
+
+@dataclass(frozen=True)
+class CameraSpec(Spec):
     camera_intrinsics: np.ndarray | None = None
     camera_extrinics: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
+class ActionSpec(Spec):
+    a_mean: torch.Tensor
+    a_std: torch.Tensor
+    a_min: torch.Tensor
+    a_max: torch.Tensor
+
+
+@dataclass(frozen=True)
 class DataSpecs:
-    _obs: dict[str, Spec]
-    action: Spec
+    obs: frozendict[str, Spec]
+    action: ActionSpec
+    goal: frozendict[str, Spec] | None = None
+    goal_embed: Spec | None = None
 
-    # def __init__(self, obs: Mapping[str, Spec], action: Spec):
-    #     # frozen dataclass does not allow setting attributes after creation
-    #     # wrap obs in MappingProxyType to make it immutable
-    #     object.__setattr__(self, "obs", MappingProxyType(obs))
-    #     object.__setattr__(self, "action", action)
-
-    def copy(self) -> "DataSpecs":
-        return DataSpecs(self.obs, self.action)
-
-    @property
-    def obs(self) -> dict[str, Spec]:
-        # ensure that the obs attribute is never passed around and modified by accident
-        return self._obs.copy()
+    def __init__(
+        self,
+        obs: Mapping[str, Spec],
+        action: ActionSpec,
+        goal: Mapping[str, Spec] | None = None,
+        goal_embed: Spec | None = None,
+    ):
+        # frozen dataclass does not allow setting attributes after creation
+        object.__setattr__(self, "obs", frozendict(obs))
+        object.__setattr__(self, "action", action)
+        object.__setattr__(self, "goal", frozendict(goal) if goal is not None else None)
+        object.__setattr__(self, "goal_embed", goal_embed)
 
     @property
     def state_dim(self) -> int:
@@ -54,7 +68,7 @@ class DataSpecs:
         return self.action.shape[1]
 
     @property
-    def embed_dim(self) -> int:
+    def obs_embed_dim(self) -> int:
         try:
             embed_space = self.obs["obs_embed"]
         except KeyError:
@@ -63,7 +77,7 @@ class DataSpecs:
         return embed_space.shape[-1]
 
     @property
-    def embed_seq_len(self) -> int:
+    def obs_embed_seq_len(self) -> int:
         try:
             embed_space = self.obs["obs_embed"]
         except KeyError:
@@ -72,38 +86,15 @@ class DataSpecs:
         return embed_space.shape[0]
 
     @property
-    def goal_seq_len(self) -> int:
-        try:
-            goal_space = self.obs["goal"]
-        except KeyError:
-            return 0
-
-        return goal_space.shape[0]
-
-    @property
-    def goal_dim(self) -> int:
-        # TODO: handle case where goal is not a vector
-        try:
-            goal_space = self.obs["goal"]
-        except KeyError:
-            return 0
-
-        return goal_space.shape[-1]
-
-    @property
     def goal_embed_seq_len(self) -> int:
-        try:
-            goal_embed_space = self.obs["goal_embed"]
-        except KeyError:
+        if self.goal_embed is None:
             return 0
 
-        return goal_embed_space.shape[0]
+        return self.goal_embed.shape[0]
 
     @property
     def goal_embed_dim(self) -> int:
-        try:
-            goal_embed_space = self.obs["goal_embed"]
-        except KeyError:
+        if self.goal_embed is None:
             return 0
 
-        return goal_embed_space.shape[-1]
+        return self.goal_embed.shape[-1]

@@ -35,8 +35,8 @@ class BesoAgent(BaseAgent):
         optimizer: Callable[[Iterable[Tensor]], Optimizer],
         lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
         scaler: Type[Scaler],
-        language_encoder: Module | None,
-        dataset: TrajectoryDataset,
+        goal_encoder: Callable[[DataSpecs], Module] | None,
+        specs: DataSpecs,
         num_sampling_steps: int,
         sigma_data: float,
         sigma_min: float,
@@ -49,8 +49,8 @@ class BesoAgent(BaseAgent):
             optimizer=optimizer,
             lr_scheduler=lr_scheduler,
             scaler=scaler,
-            language_encoder=language_encoder,
-            dataset=dataset,
+            goal_encoder=goal_encoder,
+            specs=specs,
             ema_decay=ema_decay,
         )
 
@@ -63,16 +63,18 @@ class BesoAgent(BaseAgent):
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
 
-        self.action_shape = dataset.specs.action.shape
+        self.action_shape = specs.action.shape
 
     def training_step(self, batch, batch_idx) -> Tensor:
         """
         Computes the score matching loss given the perceptual embedding, latent goal, and desired actions.
         """
+        batch = self.encode_goal(batch)
         batch = self.obs_encoder(batch)
-        batch["action"] = self.scaler.normalize(batch["action"])
-        goal = self.encode_language(obs_dict)
+        obs, goal = batch.get(("obs", "obs_embed")), batch.get("goal_embed", None)
 
+        action = batch["action"]
+        action = self.scaler.normalize(action)
         sigma = self.noise_distribution(shape=(len(action),), device=self.device)
         noise = torch.randn_like(action)
 
@@ -93,7 +95,7 @@ class BesoAgent(BaseAgent):
         obs_dict, action, mask = batch
 
         obs = self.obs_encoder(obs_dict)
-        goal = self.encode_language(obs_dict)
+        goal = self.encode_goal(obs_dict)
 
         sigmas = self.noise_schedule(self.num_sampling_steps, device=self.device)
 

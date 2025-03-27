@@ -9,15 +9,16 @@ from transforms.base_transform import KeyMapping, Transform
 class ToTorchImage(Transform):
     def __init__(self, specs: DataSpecs) -> None:
 
-        self._obs_spec = dict(specs.obs)  # copy obs spec for local modification
         self._rgb_keys = [key for key, spec in specs.obs.items() if spec.type == "rgb"]
+        obs_specs = dict(specs.obs)  # copy obs specs for local modification
         for key in self._rgb_keys:
-            spec = self._obs_spec[key]
+            rgb_spec = obs_specs[key]
             # move last channel dimension from the end to the -3 position
-            self._obs_spec[key] = dataclasses.replace(
-                spec, shape=spec.shape[:-3] + spec.shape[-1:] + spec.shape[-3:-1]
+            obs_specs[key] = dataclasses.replace(
+                rgb_spec,
+                shape=rgb_spec.shape[:-3] + rgb_spec.shape[-1:] + rgb_spec.shape[-3:-1],
             )
-        self._specs = DataSpecs(_obs=self._obs_spec, action=specs.action)
+        self._specs = dataclasses.replace(specs, obs=obs_specs)
 
     @property
     def key_mappings(self):

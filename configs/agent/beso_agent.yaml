@@ -4,7 +4,7 @@ defaults:
   - lr_scheduler: none
   - obs_encoder: default
   - scaler: minmax
-  - language_encoder: none
+  - goal_encoder: none
   - sampler: ddim
   - noise_distribution: loglogistic
   - noise_schedule: exponential

@@ -3,6 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+import torch
+from tensordict import TensorDict
 from torch.utils.data import Dataset
 
 from environments.specs import DataSpecs
@@ -25,12 +27,6 @@ class TrajectoryDataset(Dataset, ABC):
     def specs(self) -> DataSpecs:
         pass
 
-    @property
-    def collate_fn(self):
-        # TensorDict can already handle batched indices, so there is no need for collation
-        # https://pytorch.org/tensordict/stable/tutorials/data_fashion.html#dataloaders
-        return lambda x: x
-
     def get_all_observations(self) -> Tensor:
         """
         Returns all actions from all trajectories, concatenated on dim 0 (time).
@@ -39,3 +35,21 @@ class TrajectoryDataset(Dataset, ABC):
 
     def get_all_actions(self) -> Tensor:
         raise NotImplementedError
+
+
+def collate_tensor_dict(batch: list[TensorDict], *, collate_fn_map) -> TensorDict:
+    """Collate a list of TensorDicts into a single TensorDict."""
+    stacked: TensorDict = torch.stack(batch, dim=0)
+    # BALAZS: detect any NonTensorStack that contains a torch geometric Data
+    # and turn into a Batch object
+    return stacked
+
+
+def update_collate_fn_map():
+    """Add collate function for tensordict to the default collate function."""
+    from torch.utils.data._utils.collate import default_collate_fn_map
+
+    default_collate_fn_map.update({TensorDict: collate_tensor_dict})
+
+
+update_collate_fn_map()

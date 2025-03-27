@@ -1,4 +1,3 @@
-import functools
 import logging
 import os
 import pickle
@@ -8,11 +7,10 @@ import numpy as np
 import torch
 from omegaconf import DictConfig
 from tensordict import TensorDict
-from tensordict.nn import TensorDictSequential
 
 from environments.datasets.base_dataset import TrajectoryDataset
-from environments.specs import DataSpecs, Spec
-from transforms.base_transform import Transform, init_transform_sequence
+from environments.specs import ActionSpec, CameraSpec, DataSpecs, Spec
+from transforms.base_transform import init_transform_sequence
 from utils.instantiators import instantiate_transforms
 
 log = logging.getLogger(__name__)
@@ -150,15 +148,27 @@ class LiberoDataset(TrajectoryDataset):
 
         self.slices = self.get_slices()
 
+        all_actions = self.get_all_actions()
+
         self._base_specs = self._specs = DataSpecs(
-            _obs={
-                "agentview_image": Spec(shape=(1, 128, 128, 3), type="rgb"),
-                "eye_in_hand_image": Spec(shape=(1, 128, 128, 3), type="rgb"),
+            obs={
+                "agentview_image": CameraSpec(shape=(1, 128, 128, 3), type="rgb"),
+                "eye_in_hand_image": CameraSpec(shape=(1, 128, 128, 3), type="rgb"),
                 "robot_state": Spec(shape=(1, 9), type="state"),
-                "goal_embed": Spec(shape=(1, 512), type="goal"),
             },
-            action=Spec(shape=(10, 7), type="action"),
+            action=ActionSpec(
+                shape=(10, 7),
+                type="action",
+                a_mean=all_actions.mean(0),
+                a_std=all_actions.std(0),
+                a_min=all_actions.min(0).values,
+                a_max=all_actions.max(0).values,
+            ),
+            goal_embed=Spec(shape=(1, 512), type="embed"),
         )
+
+        log.info(f"Action lower bounds across dataset:\n{self.specs.action.a_min}")
+        log.info(f"Action upper bounds across dataset:\n{self.specs.action.a_max}")
 
         if transforms is not None:
             transform_partials = instantiate_transforms(transforms)
@@ -234,13 +244,15 @@ class LiberoDataset(TrajectoryDataset):
 
         robot_states = self.all_states[i][start : start + 1]
 
-        task_emb = task_emb
-
         agentview_rgb = torch.from_numpy(agentview_rgb)
         eye_in_hand_rgb = torch.from_numpy(eye_in_hand_rgb)
 
         act = self.actions[i, start:end]
         mask = self.masks[i, start:end]
+
+        if task_emb.dtype == torch.float16:
+            log.warning("Task embedding is float16, converting to float32")
+            task_emb = task_emb.to(torch.float32)
 
         obs["agentview_image"] = agentview_rgb
         obs["eye_in_hand_image"] = eye_in_hand_rgb

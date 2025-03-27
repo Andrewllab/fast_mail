@@ -9,6 +9,8 @@ import torch.nn as nn
 if TYPE_CHECKING:
     from torch import Tensor
 
+    from environments.specs import DataSpecs
+
 log = logging.getLogger(__name__)
 
 
@@ -33,10 +35,10 @@ class MinMaxScaler(Scaler):
     y_max: Tensor
     y_range: Tensor
 
-    def __init__(self, y_data: Tensor):
+    def __init__(self, specs: DataSpecs):
         super().__init__()
-        self.register_buffer("y_min", y_data.min(0).values)
-        self.register_buffer("y_max", y_data.max(0).values)
+        self.register_buffer("y_min", specs.action.a_min.clone())
+        self.register_buffer("y_max", specs.action.a_max.clone())
         self.register_buffer("y_range", self.y_max - self.y_min)
 
     @property
@@ -66,15 +68,12 @@ class NormalizingScaler(Scaler):
     y_min: Tensor
     y_max: Tensor
 
-    def __init__(self, y_data: Tensor):
+    def __init__(self, specs: DataSpecs):
         super().__init__()
-        self.register_buffer("y_mean", y_data.mean(0))
-        self.register_buffer("y_std", y_data.std(0))
-        self.register_buffer("y_min", y_data.min(0).values)
-        self.register_buffer("y_max", y_data.max(0).values)
-
-        log.info(f"Action lower bounds across dataset:\n{self.lower_bound}")
-        log.info(f"Action upper bounds across dataset:\n{self.upper_bound}")
+        self.register_buffer("y_mean", specs.action.a_mean.clone())
+        self.register_buffer("y_std", specs.action.a_std.clone())
+        self.register_buffer("y_min", specs.action.a_min.clone())
+        self.register_buffer("y_max", specs.action.a_max.clone())
 
     @property
     def lower_bound(self) -> Tensor:

@@ -26,7 +26,7 @@ disable_validation: True
 
 dataloader:
   batch_size: 512
-  num_workers: 4
+  num_workers: 16
 
 sim_dataloader:
   batch_size: 1

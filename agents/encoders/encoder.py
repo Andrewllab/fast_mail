@@ -6,10 +6,12 @@ from typing import TYPE_CHECKING, Callable
 
 import torch
 import torch.nn as nn
-from torch import Tensor
 
-from environments.datasets.base_dataset import TrajectoryDataset
-from environments.specs import DataSpecs
+if TYPE_CHECKING:
+    from tensordict import TensorDict
+    from torch.nn import Module
+
+    from environments.specs import DataSpecs
 
 log = logging.getLogger(__name__)
 
@@ -18,11 +20,11 @@ class ObservationEncoder(nn.Module):
     def __init__(
         self,
         specs: DataSpecs,
-        depth: Callable[[DataSpecs], nn.Module] | None,
-        pixels: Callable[[DataSpecs], nn.Module] | None,
-        tokenizer: Callable[[DataSpecs], nn.Module],
+        depth: Callable[[DataSpecs], Module] | None,
+        pixels: Callable[[DataSpecs], Module] | None,
+        tokenizer: Callable[[DataSpecs], Module],
         embed_dim: int,
-        robot_state_encoder: Callable[[int, int], nn.Module] | None = None,
+        robot_state_encoder: Callable[[int, int], Module] | None = None,
     ):
         super().__init__()
 
@@ -32,7 +34,7 @@ class ObservationEncoder(nn.Module):
         self.tokenizer = tokenizer(specs)
 
         specs = self.tokenizer.specs
-        obs_spec = specs.obs
+        obs_specs = specs.obs
 
         # if we encode the states, add additional tokens for each observed time step
         if robot_state_encoder is not None:
@@ -41,41 +43,30 @@ class ObservationEncoder(nn.Module):
             robot_state_encoder = robot_state_encoder(state_dim, embed_dim)
 
             # increase length of embedding sequence to account for state tokens
-            obs_spec = dict(obs_spec)  # copy obs spec for local modification
-            spec = obs_spec["obs_embed"]
-            obs_spec["obs_embed"] = dataclasses.replace(
-                spec, shape=(spec.shape[0] + state_seq_len,) + spec.shape[1:]
+            obs_specs = dict(obs_specs)  # copy obs specs for local modification
+            embed_spec = obs_specs["obs_embed"]
+            obs_specs["obs_embed"] = dataclasses.replace(
+                embed_spec,
+                shape=(embed_spec.shape[0] + state_seq_len,) + embed_spec.shape[1:],
             )
 
         self.robot_state_encoder = robot_state_encoder
-        self._obs_spec = obs_spec
-        self._specs = DataSpecs(_obs=self._obs_spec, action=specs.action)
+        self._specs = dataclasses.replace(specs, obs=obs_specs)
 
     @property
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def forward(self, obs: dict) -> Tensor:
-        # flatten batch and time dimensions of all camera images
-        # for camera in self.rgb_keys:
-        #     # BALAZS: replace this with einops
+    def forward(self, batch: TensorDict) -> TensorDict:
+        batch = self.depth(batch)
+        batch = self.pixels(batch)
 
-        #     # should have shape [B, T, C, H, W]
-        #     assert obs[camera].ndim == 5
-        #     assert obs[camera].shape[1] == 1
-
-        #     # BALAZS: move to dataset transform (on_after_batch_transfer)
-        #     obs[camera] = obs[camera].permute(0, 1, 4, 2, 3).float().div(255.0)
-
-        obs = self.depth(obs)
-        obs = self.pixels(obs)
-
-        # embedding: [B,T,N,D]
-        embedding = self.tokenizer(obs)
+        # batch["obs_embed"]: [B,T,N,D]
+        batch = self.tokenizer(batch)
 
         # maybe compute robot state embeddings
         if self.robot_state_encoder is not None:
-            robot_state = obs["robot_state"]
+            robot_state = batch["obs", "robot_state"]
             leading_dims, state_dim = robot_state.shape[:-1], robot_state.shape[-1]
             # [B,T,M] -> [B*T,M]
             robot_state = robot_state.view(-1, state_dim)
@@ -86,6 +77,7 @@ class ObservationEncoder(nn.Module):
             # [B*T,D] -> [B,T,1,D]
             state_emb = state_emb.view(*leading_dims, 1, -1)
             # concatenate along N dimension of embedding, keeping tokens from the same time step together
-            embedding = torch.cat([embedding, state_emb], dim=2)
+            embedding = batch["obs", "obs_embed"]
+            batch["obs", "obs_embed"] = torch.cat([embedding, state_emb], dim=2)
 
-        return embedding
+        return batch

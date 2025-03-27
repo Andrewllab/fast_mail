@@ -13,7 +13,7 @@ class NormalizeImage(Transform):
         self._specs = specs
 
     @property
-    def key_mappings(self):
+    def key_mappings(self) -> list[KeyMapping]:
         return [
             KeyMapping(in_keys=[("obs", key)], out_keys=[("obs", key)])
             for key in self._rgb_keys

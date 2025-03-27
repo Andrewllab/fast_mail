@@ -1,4 +1,5 @@
 import logging
+from typing import TYPE_CHECKING
 
 import hydra
 import numpy as np
@@ -14,6 +15,9 @@ from utils.logging import configure_logging
 from utils.seeding import get_rng, manual_seed
 from utils.torch_conf import configure_torch
 from utils.wandb import init_wandb
+
+if TYPE_CHECKING:
+    from environments.datasets.base_dataset import TrajectoryDataset
 
 log = logging.getLogger(__name__)
 
@@ -39,18 +43,17 @@ def main(cfg: DictConfig) -> None:
     seed_everything(seed, workers=True)
 
     # instantiate dataset
-    dataset = hydra.utils.instantiate(cfg.data.dataset)
+    dataset: TrajectoryDataset = hydra.utils.instantiate(cfg.data.dataset)
     dataloader = DataLoader(
-        dataset,
-        **cfg.dataloader,
-        shuffle=True,
-        pin_memory=True,
-        drop_last=True,
-        collate_fn=dataset.collate_fn,
+        dataset, **cfg.dataloader, shuffle=True, pin_memory=True, drop_last=True
     )
 
     # instantiate agent
-    agent: LightningModule = hydra.utils.instantiate(cfg.agent, dataset=dataset)
+    # use "object" conversion strategy to avoid converting specs, which are a
+    # dataclass, to a DictConfig
+    agent: LightningModule = hydra.utils.instantiate(
+        cfg.agent, specs=dataset.specs, _convert_="object"
+    )
 
     log.debug("Instantiating callbacks...")
     callbacks: list[Callback] = instantiate_callbacks(cfg.get("callbacks"))

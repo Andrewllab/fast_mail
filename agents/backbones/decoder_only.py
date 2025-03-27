@@ -148,7 +148,7 @@ class DecoderOnlyNoise(nn.Module):
         # we use time to refer to the position in the sequence of tokens
         # this often corresponds to real time, but not always, e.g. with goal tokens
         if time_encoder is not None:
-            self.obs_time_encoder = time_encoder(specs.embed_seq_len, token_dim)
+            self.obs_time_encoder = time_encoder(specs.obs_embed_seq_len, token_dim)
             self.action_time_encoder = time_encoder(specs.action_seq_len, token_dim)
 
             if specs.goal_embed_seq_len > 0:
@@ -161,7 +161,7 @@ class DecoderOnlyNoise(nn.Module):
             self.goal_time_encoder = time_encoder
 
         # linear embedding for the state
-        self.state_encoder = nn.Linear(specs.embed_dim, token_dim)
+        self.state_encoder = nn.Linear(specs.obs_embed_dim, token_dim)
 
         # linear embedding for the action
         self.action_encoder = nn.Linear(specs.action_dim, token_dim)
