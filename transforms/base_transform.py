@@ -4,15 +4,24 @@ import functools
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from tensordict.nn import TensorDictModule, TensorDictSequential
 
 from environments.specs import DataSpecs
 
-KeyType = str | tuple[str, ...]
+__all__ = [
+    "KeyMapping",
+    "Transform",
+    "TransformPartial",
+    "TransformPartialsDict",
+    "init_transforms",
+]
 
 log = logging.getLogger(__name__)
+
+
+KeyType = str | tuple[str, ...]
 
 
 @dataclass
@@ -42,46 +51,101 @@ class Transform(ABC):
         pass
 
 
-def create_tdmodules(transform: Transform) -> list[TensorDictModule]:
+TransformPartial = Callable[[DataSpecs], Transform]
+TransformPartialsDict = Mapping[str, TransformPartial]
+
+
+def _create_tdmodules(transform: Transform) -> list[TensorDictModule]:
     """Given a Transform, wrap it in one TensorDictModule for each mapping
     provided in its key_mappings property.
     """
-    log.debug(f"Wrapping {transform.__class__} with TensorDictModule")
-    return [
+    td_modules = [
         TensorDictModule(
             transform, in_keys=key_mapping.in_keys, out_keys=key_mapping.out_keys
         )
         for key_mapping in transform.key_mappings
     ]
+    log.debug(
+        f"Wrapped <{type(transform).__name__}> with {len(td_modules)} TensorDictModule(s)"
+    )
+    return td_modules
 
 
-def wrap_with_tdmodule(cls: type[Transform]) -> type[Transform]:
-    """This class decorator wraps a Transform class with one or more
-    TensorDictModules after it is instantiated.
+def _item_to_sort_key(item: tuple[str, Any]) -> float:
+    """Extracts a float from the first part of a key in a dictionary item."""
+    key, _ = item
+    # get the part before the first "_"
+    num = key.split("_")[0]
+    # convert e.g. 1-1 or 1,1 to 1.1, which can be converted to a float
+    # periods are not allowed in keys
+    num = num.replace("-", ".").replace(",", ".")
+    try:
+        return float(num)
+    except ValueError:
+        raise ValueError(
+            f"All transform keys must begin with a number separated by an underscore. Got {key}"
+        )
+
+
+def _init_transform(
+    transform: Callable[[DataSpecs], Transform], specs: DataSpecs
+) -> tuple[Callable, DataSpecs]:
+    assert isinstance(transform, functools.partial)
+    log.debug(f"Instantiating transform: <{transform.func.__name__}>")
+
+    # instantiate the transform
+    transform_instance = transform(specs)
+    assert isinstance(transform_instance, Transform)
+    # update the specs
+    specs = transform_instance.specs
+    # wrap the transform in TensorDictModule(s)
+    transform_modules = _create_tdmodules(transform_instance)
+    if len(transform_modules) == 1:
+        return transform_modules[0], specs
+    return TensorDictSequential(*transform_modules), specs
+
+
+def init_transforms(
+    transforms: TransformPartialsDict | TransformPartial | None, specs: DataSpecs
+) -> tuple[Callable, DataSpecs]:
+    """Instantiates a sequence of transforms from a dictionary of transform partials,
+    while propagating the specs through the sequence.
+
+    :param transforms: A mapping containing transforms, where the first part of the key
+    (before the "_") acts as the sort key.
+    :return: The instantiated transforms wrapped in a TensorDictSequential, and the final specs.
     """
-    # BALAZS: maybe switch to metaclass
+    if transforms is None:
+        return lambda x: x, specs
 
-    class TDModuleMeta(cls.__class__):  # Dynamically create a new metaclass
-        def __call__(self, *args, **kwargs) -> list[TensorDictModule]:
-            transform = super().__call__(*args, **kwargs)
-            return create_tdmodules(transform)
+    if callable(transforms):
+        return _init_transform(transforms, specs)
 
-    # Set the new metaclass for this class
-    cls.__class__ = TDModuleMeta
-    return cls
+    # filter out any Nones or other primitives types
+    transforms = {
+        k: v
+        for k, v in transforms.items()
+        if v is not None and not isinstance(v, (int, str, float))
+    }
 
+    # sort dictionary of transforms by the first part of the key, which should be a number
+    transforms = dict(sorted(transforms.items(), key=_item_to_sort_key))
 
-def init_transform_sequence(
-    transform_partials: list[Callable[[DataSpecs], Transform]], specs: DataSpecs
-) -> tuple[TensorDictSequential, DataSpecs]:
+    transform_modules = []
+    i = 1
+    for key, partial in transforms.items():
+        assert isinstance(partial, functools.partial)
 
-    transform_modules: list[TensorDictModule] = []
-    for transform_partial in transform_partials:
-        assert isinstance(transform_partial, functools.partial)
-        transform = transform_partial(specs)
+        name = key.split("_", maxsplit=1)[1]
+        log.debug(f"Instantiating transform #{i} '{name}': <{partial.func.__name__}>")
+        i += 1
+
+        # instantiate the transform
+        transform = partial(specs)
         assert isinstance(transform, Transform)
+        # update the specs
         specs = transform.specs
-        td_modules = create_tdmodules(transform)
-        transform_modules.extend(td_modules)
+        # wrap the transform in TensorDictModule(s)
+        transform_modules.extend(_create_tdmodules(transform))
 
     return TensorDictSequential(*transform_modules), specs

@@ -1,3 +1,0 @@
-name: linear
-_target_: torch.nn.Linear
-_partial_: True

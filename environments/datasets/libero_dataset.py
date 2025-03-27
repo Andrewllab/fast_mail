@@ -5,13 +5,11 @@ import pickle
 import h5py
 import numpy as np
 import torch
-from omegaconf import DictConfig
 from tensordict import TensorDict
 
 from environments.datasets.base_dataset import TrajectoryDataset
 from environments.specs import ActionSpec, CameraSpec, DataSpecs, Spec
-from transforms.base_transform import init_transform_sequence
-from utils.instantiators import instantiate_transforms
+from transforms.base_transform import TransformPartialsDict, init_transforms
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +25,7 @@ class LiberoDataset(TrajectoryDataset):
         state_dim: int,
         max_len_data: int,
         window_size: int,
-        transforms: DictConfig | None = None,
+        transforms: TransformPartialsDict | None = None,
         start_idx: int = 0,
         traj_per_task: int = 1,
     ):
@@ -173,11 +171,7 @@ class LiberoDataset(TrajectoryDataset):
         log.info(f"Action upper bounds across dataset:\n{self.specs.action.a_max}")
 
         if transforms is not None:
-            transform_partials = instantiate_transforms(transforms)
-
-            self.transform, self._specs = init_transform_sequence(
-                transform_partials, self._specs
-            )
+            self.transform, self._specs = init_transforms(transforms, self._specs)
         else:
             self.transform = lambda x: x
 

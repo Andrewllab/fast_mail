@@ -1,0 +1,9 @@
+name: linear_robot_state_encoder
+_target_: transforms.robot_state_encoder.RobotStateEncoder
+_partial_: True
+
+model:
+  _target_: torch.nn.Linear
+  _partial_: True
+
+embed_dim: ${..embed_dim}

@@ -7,28 +7,23 @@ import torch
 import torch.nn as nn
 
 from environments.specs import Spec
+from transforms.base_transform import KeyMapping, Transform
 
 if TYPE_CHECKING:
-    from tensordict import TensorDict
+    from torch import Tensor
     from torch.nn import Module
 
     from environments.specs import DataSpecs
 
 
-class MultiImageObsEncoder(nn.Module):
+class MultiRgbTokenizer(nn.Module, Transform):
     def __init__(
         self,
         specs: DataSpecs,
         rgb_model: Callable[[], Module],
         embed_dim: int,
-        resize_shape: tuple[int, int] | dict[str, tuple] | None = None,
-        crop_shape: tuple[int, int] | dict[str, tuple] | None = None,
-        random_crop: bool = True,
         # use single rgb model for all rgb inputs
         share_rgb_model: bool = False,
-        # renormalize rgb input with imagenet normalization
-        # assuming input in [0,1]
-        imagenet_norm: bool = False,
     ):
         super().__init__()
 
@@ -54,40 +49,40 @@ class MultiImageObsEncoder(nn.Module):
         self._specs = dataclasses.replace(specs, obs=obs_specs)
 
     @property
+    def key_mappings(self) -> list[KeyMapping]:
+        return [
+            KeyMapping(
+                in_keys=[("obs", key) for key in self.rgb_specs],
+                out_keys=[("obs", "embed")],
+            )
+        ]
+
+    @property
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def forward(self, batch: TensorDict) -> TensorDict:
+    def forward(self, *imgs: Tensor) -> Tensor:
         if self.share_rgb_model:
             # pass all rgb obs to rgb model
-            imgs = []
-            for key, spec in self.rgb_specs.items():
-                img = batch["obs", key]
-
-                assert tuple(img.shape[1:]) == spec.shape
-                leading_dims, img_shape = img.shape[:-3], img.shape[-3:]
-                # [B,T,C,H,W] -> [B*T,C,H,W]
-                img = img.view(-1, *img_shape)
-
-                imgs.append(img)
 
             # we stack and flatten rather than concatenate, to keep images from the same time step together
-            # [B*T,C,H,W] -> [B*T,N,C,H,W]
-            imgs = torch.stack(imgs, dim=1)
-            # [B*T,N,C,H,W] -> [B*T*N,C,H,W]
-            imgs = imgs.view(-1, *img_shape)
+            # [B,T,C,H,W] -> [B,T,N,C,H,W]
+            inputs = torch.stack(imgs, dim=-4)
+
+            leading_dims, N, img_shape = img.shape[:-4], img.shape[-4], img.shape[-3:]
+            # [B,T,N,C,H,W] -> [B*T*N,C,H,W]
+            inputs = inputs.view(-1, *img_shape)
 
             # [B*T*N,C,H,W] -> [B*T*N,D]
             features = self.model(imgs)
             # [B*T*N,D] -> [B,T,N,D]
             features = features.view(*leading_dims, -1)
+            return features
 
         else:
             # run each rgb obs to independent models
             features = []
-            for key, spec in self.rgb_specs.items():
-                img = batch["obs", key]
-
+            for img, (key, spec) in zip(imgs, self.rgb_specs.items()):
                 assert tuple(img.shape[1:]) == spec.shape
                 leading_dims, img_shape = img.shape[:-3], img.shape[-3:]
                 # [B,T,C,H,W] -> [B*T,C,H,W]
@@ -103,5 +98,4 @@ class MultiImageObsEncoder(nn.Module):
             # [B*T,N,D] -> [B,T,N,D]
             features = features.view(*leading_dims, N, -1)
 
-        batch["obs", "embed"] = features
-        return batch
+            return features

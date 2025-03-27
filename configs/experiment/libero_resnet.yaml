@@ -6,8 +6,10 @@ defaults:
   # apply ImageNet normalization
   - /transforms@data.dataset.transforms.2_norm: imagenet_norm
 
+  # tokenize the rgb images using a ResNet
+  - /transforms@agent.obs_encoder.3_resnets: multi_resnets_tokenizer
+
   - override /data: libero
-  - override /agent/obs_encoder/tokenizer: resnet
 
 data:
   # set task here

@@ -1,19 +1,22 @@
 defaults:
+  - _self_
   - noise_model: decoder_only
   - optimizer: adamw
   - lr_scheduler: none
-  - obs_encoder: default
+  - /transforms@obs_encoder.4_robot_state: linear_robot_state_encoder
   - scaler: minmax
   - goal_encoder: none
   - sampler: ddim
   - noise_distribution: loglogistic
   - noise_schedule: exponential
-  - _self_
 
 _target_: agents.beso_agent.BesoAgent
 
 # Arguments passed at runtime:
-# dataset: ???
+# specs: ???
+
+obs_encoder:
+  embed_dim: 256
 
 # diffusion params
 num_sampling_steps: 4

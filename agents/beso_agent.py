@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     from agents.edm_diffusion.gc_sampling import NoiseScheduleType, SamplerType
     from agents.edm_diffusion.noise_distributions import NoiseDistributionType
     from agents.utils.scaler import Scaler
-    from environments.datasets.base_dataset import TrajectoryDataset
     from environments.specs import DataSpecs
+    from transforms.base_transform import TransformPartial, TransformPartialsDict
 
 
 log = logging.getLogger(__name__)
@@ -31,11 +31,11 @@ class BesoAgent(BaseAgent):
         noise_distribution: NoiseDistributionType,
         noise_schedule: NoiseScheduleType,
         sampler: SamplerType,
-        obs_encoder: Callable[[DataSpecs], Module],
+        obs_encoder: TransformPartialsDict,
         optimizer: Callable[[Iterable[Tensor]], Optimizer],
         lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
         scaler: Type[Scaler],
-        goal_encoder: Callable[[DataSpecs], Module] | None,
+        goal_encoder: TransformPartial | None,
         specs: DataSpecs,
         num_sampling_steps: int,
         sigma_data: float,
@@ -69,11 +69,12 @@ class BesoAgent(BaseAgent):
         """
         Computes the score matching loss given the perceptual embedding, latent goal, and desired actions.
         """
-        batch = self.encode_goal(batch)
+        batch = self.goal_encoder(batch)
         batch = self.obs_encoder(batch)
-        obs, goal = batch.get(("obs", "embed")), batch.get(("goal", "embed"), None)
 
+        obs, goal = batch["obs", "embed"], batch.get(("goal", "embed"), None)
         action = batch["action"]
+
         action = self.scaler.normalize(action)
         sigma = self.noise_distribution(shape=(len(action),), device=self.device)
         noise = torch.randn_like(action)
@@ -92,9 +93,10 @@ class BesoAgent(BaseAgent):
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
         """Denoise the next sequence of actions"""
-        batch = self.encode_goal(batch)
+        batch = self.goal_encoder(batch)
         batch = self.obs_encoder(batch)
-        obs, goal = batch.get(("obs", "embed")), batch.get(("goal", "embed"), None)
+
+        obs, goal = batch["obs", "embed"], batch.get(("goal", "embed"), None)
 
         sigmas = self.noise_schedule(self.num_sampling_steps, device=self.device)
 

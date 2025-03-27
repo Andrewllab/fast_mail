@@ -1,5 +1,4 @@
 import logging
-from typing import Any, Callable
 
 import hydra
 from lightning import Callback
@@ -53,47 +52,3 @@ def instantiate_loggers(logger_cfg: DictConfig) -> list[Logger]:
             logger.append(hydra.utils.instantiate(lg_conf))
 
     return logger
-
-
-def instantiate_transforms(transforms_cfg: DictConfig) -> list[Callable]:
-    """Instantiates transforms from config.
-
-    :param transforms_cfg: A DictConfig object containing transform configurations.
-    :return: The instantiated transform, either as a single Callable or wrapped in
-    a Compose transform.
-    """
-    transforms: list[Callable] = []
-
-    if not transforms_cfg:
-        log.warning("No transform configs found! Skipping...")
-        return transforms
-
-    if not isinstance(transforms_cfg, DictConfig):
-        raise TypeError("Transforms config must be a DictConfig!")
-
-    # sort dictionary of transforms by the first part of the key, which should be a number
-    def item_to_sort_key(item: tuple[str, Any]) -> float:
-        key, _ = item
-        # get the part before the first "_"
-        num = key.split("_")[0]
-        # convert e.g. 1-1 or 1,1 to 1.1, which can be converted to a float
-        # periods are not allowed in keys
-        num = num.replace("-", ".").replace(",", ".")
-        try:
-            return float(num)
-        except ValueError:
-            raise ValueError(
-                f"All transform keys must begin with a number separated by an underscore. Got {key}"
-            )
-
-    transforms_cfg = dict(sorted(transforms_cfg.items(), key=item_to_sort_key))
-
-    i = 1
-    for key, t_conf in transforms_cfg.items():
-        if isinstance(t_conf, DictConfig) and "_target_" in t_conf:
-            name = key.split("_", maxsplit=1)[1]
-            log.debug(f"Instantiating transform #{i} '{name}': <{t_conf._target_}>")
-            i += 1
-            transforms.append(hydra.utils.instantiate(t_conf))
-
-    return transforms

@@ -4,9 +4,8 @@ import logging
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Type
 
 import lightning as L
-from tensordict import TensorDict
 
-from utils.logging import warn_once
+from transforms.base_transform import init_transforms
 
 if TYPE_CHECKING:
     from lightning.pytorch.core.optimizer import LightningOptimizer
@@ -17,6 +16,7 @@ if TYPE_CHECKING:
 
     from agents.utils.scaler import Scaler
     from environments.specs import DataSpecs
+    from transforms.base_transform import TransformPartial, TransformPartialsDict
 
 
 log = logging.getLogger(__name__)
@@ -26,28 +26,21 @@ class BaseAgent(L.LightningModule):
     def __init__(
         self,
         model: Callable[[DataSpecs], Module],
-        obs_encoder: Callable[[DataSpecs], Module],
+        obs_encoder: TransformPartialsDict,
         optimizer: Callable[[Iterable[Tensor]], Optimizer],
         lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
         scaler: Type[Scaler],
-        goal_encoder: Callable[[DataSpecs], Module] | None,
+        goal_encoder: TransformPartial | None,
         specs: DataSpecs,
         ema_decay: float = 0.0,
     ):
         super().__init__()
 
-        if goal_encoder is not None:
-            # BALAZS: remove this check, since then instantiation would probably fail
-            if specs.goal is None:
-                log.warning(
-                    f"Attempting to instantiate a goal encoder, but dataset does not provide any goals!"
-                )
-            goal_encoder = goal_encoder(specs)
-            specs = goal_encoder.specs
-        self.goal_encoder = goal_encoder
+        # maybe instantiate goal encoder (e.g. clip)
+        self.goal_encoder, specs = init_transforms(goal_encoder, specs)
 
-        self._obs_encoder = obs_encoder(specs)
-        specs = self._obs_encoder.specs
+        # instantiate observation encoder (chain of transforms)
+        self._obs_encoder, specs = init_transforms(obs_encoder, specs)
 
         self._model = model(specs)
 
@@ -112,18 +105,3 @@ class BaseAgent(L.LightningModule):
         if self.ema_decay > 0:
             self._ema_model.update_parameters(self._model)
             self._ema_obs_encoder.update_parameters(self._obs_encoder)
-
-    def encode_goal(self, batch: TensorDict) -> TensorDict:
-        # maybe compute language embeddings
-        # BALAZS: refactor as transform
-        if self.goal_encoder is not None:
-            goal = batch.get("goal", None)
-            if goal is not None:
-                batch[("goal", "embed")] = self.goal_encoder(goal)
-            else:
-                warn_once(
-                    log,
-                    "A language encoder has been instantiated, but the data does not contain a `goal` field!",
-                )
-
-        return batch
