@@ -71,7 +71,7 @@ class BesoAgent(BaseAgent):
         """
         batch = self.encode_goal(batch)
         batch = self.obs_encoder(batch)
-        obs, goal = batch.get(("obs", "obs_embed")), batch.get("goal_embed", None)
+        obs, goal = batch.get(("obs", "embed")), batch.get(("goal", "embed"), None)
 
         action = batch["action"]
         action = self.scaler.normalize(action)
@@ -92,10 +92,9 @@ class BesoAgent(BaseAgent):
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
         """Denoise the next sequence of actions"""
-        obs_dict, action, mask = batch
-
-        obs = self.obs_encoder(obs_dict)
-        goal = self.encode_goal(obs_dict)
+        batch = self.encode_goal(batch)
+        batch = self.obs_encoder(batch)
+        obs, goal = batch.get(("obs", "embed")), batch.get(("goal", "embed"), None)
 
         sigmas = self.noise_schedule(self.num_sampling_steps, device=self.device)
 

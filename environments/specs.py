@@ -33,20 +33,17 @@ class DataSpecs:
     obs: frozendict[str, Spec]
     action: ActionSpec
     goal: frozendict[str, Spec] | None = None
-    goal_embed: Spec | None = None
 
     def __init__(
         self,
         obs: Mapping[str, Spec],
         action: ActionSpec,
         goal: Mapping[str, Spec] | None = None,
-        goal_embed: Spec | None = None,
     ):
         # frozen dataclass does not allow setting attributes after creation
         object.__setattr__(self, "obs", frozendict(obs))
         object.__setattr__(self, "action", action)
         object.__setattr__(self, "goal", frozendict(goal) if goal is not None else None)
-        object.__setattr__(self, "goal_embed", goal_embed)
 
     @property
     def state_dim(self) -> int:
@@ -70,7 +67,7 @@ class DataSpecs:
     @property
     def obs_embed_dim(self) -> int:
         try:
-            embed_space = self.obs["obs_embed"]
+            embed_space = self.obs["embed"]
         except KeyError:
             return 0
 
@@ -79,7 +76,7 @@ class DataSpecs:
     @property
     def obs_embed_seq_len(self) -> int:
         try:
-            embed_space = self.obs["obs_embed"]
+            embed_space = self.obs["embed"]
         except KeyError:
             return 0
 
@@ -87,14 +84,20 @@ class DataSpecs:
 
     @property
     def goal_embed_seq_len(self) -> int:
-        if self.goal_embed is None:
+        if self.goal is None:
             return 0
 
-        return self.goal_embed.shape[0]
+        try:
+            return self.goal["embed"].shape[0]
+        except KeyError:
+            return 0
 
     @property
     def goal_embed_dim(self) -> int:
-        if self.goal_embed is None:
+        if self.goal is None:
             return 0
 
-        return self.goal_embed.shape[-1]
+        try:
+            return self.goal["embed"].shape[-1]
+        except KeyError:
+            return 0

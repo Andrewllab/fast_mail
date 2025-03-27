@@ -44,9 +44,7 @@ def main(cfg: DictConfig) -> None:
 
     # instantiate dataset
     dataset: TrajectoryDataset = hydra.utils.instantiate(cfg.data.dataset)
-    dataloader = DataLoader(
-        dataset, **cfg.dataloader, shuffle=True, pin_memory=True, drop_last=True
-    )
+    dataloader = DataLoader(dataset, **cfg.dataloader, shuffle=True, drop_last=True)
 
     # instantiate agent
     # use "object" conversion strategy to avoid converting specs, which are a

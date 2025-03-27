@@ -164,7 +164,9 @@ class LiberoDataset(TrajectoryDataset):
                 a_min=all_actions.min(0).values,
                 a_max=all_actions.max(0).values,
             ),
-            goal_embed=Spec(shape=(1, 512), type="embed"),
+            goal={
+                "embed": Spec(shape=(1, 512), type="embed"),
+            },
         )
 
         log.info(f"Action lower bounds across dataset:\n{self.specs.action.a_min}")
@@ -250,18 +252,15 @@ class LiberoDataset(TrajectoryDataset):
         act = self.actions[i, start:end]
         mask = self.masks[i, start:end]
 
-        if task_emb.dtype == torch.float16:
-            log.warning("Task embedding is float16, converting to float32")
-            task_emb = task_emb.to(torch.float32)
-
         obs["agentview_image"] = agentview_rgb
         obs["eye_in_hand_image"] = eye_in_hand_rgb
-        obs["goal_embed"] = task_emb
 
         obs["robot_state"] = torch.from_numpy(robot_states).float()
 
         item = TensorDict(
-            {"obs": obs, "action": act, "mask": mask}, batch_size=(), device="cpu"
+            {"obs": obs, "action": act, "goal": {"embed": task_emb}, "mask": mask},
+            batch_size=(),
+            device="cpu",
         )
 
         item = self.transform(item)

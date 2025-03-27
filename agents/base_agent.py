@@ -37,6 +37,7 @@ class BaseAgent(L.LightningModule):
         super().__init__()
 
         if goal_encoder is not None:
+            # BALAZS: remove this check, since then instantiation would probably fail
             if specs.goal is None:
                 log.warning(
                     f"Attempting to instantiate a goal encoder, but dataset does not provide any goals!"
@@ -116,10 +117,9 @@ class BaseAgent(L.LightningModule):
         # maybe compute language embeddings
         # BALAZS: refactor as transform
         if self.goal_encoder is not None:
-            if "goal" in batch.keys():
-                # put goal embedding back into batch in case another transform needs it
-
-                batch["goal_embed"] = self.goal_encoder(batch["goal"])
+            goal = batch.get("goal", None)
+            if goal is not None:
+                batch[("goal", "embed")] = self.goal_encoder(goal)
             else:
                 warn_once(
                     log,

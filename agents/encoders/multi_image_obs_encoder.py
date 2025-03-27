@@ -50,7 +50,7 @@ class MultiImageObsEncoder(nn.Module):
         # the leading dim is the number of observed time steps
         # each camera produces one token
         embed_seq_len = sum(spec.shape[0] for spec in self.rgb_specs.values())
-        obs_specs["obs_embed"] = Spec(shape=(embed_seq_len, embed_dim), type="embed")
+        obs_specs["embed"] = Spec(shape=(embed_seq_len, embed_dim), type="embed")
         self._specs = dataclasses.replace(specs, obs=obs_specs)
 
     @property
@@ -103,5 +103,5 @@ class MultiImageObsEncoder(nn.Module):
             # [B*T,N,D] -> [B,T,N,D]
             features = features.view(*leading_dims, N, -1)
 
-        batch["obs", "obs_embed"] = features
+        batch["obs", "embed"] = features
         return batch

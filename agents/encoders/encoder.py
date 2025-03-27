@@ -44,8 +44,8 @@ class ObservationEncoder(nn.Module):
 
             # increase length of embedding sequence to account for state tokens
             obs_specs = dict(obs_specs)  # copy obs specs for local modification
-            embed_spec = obs_specs["obs_embed"]
-            obs_specs["obs_embed"] = dataclasses.replace(
+            embed_spec = obs_specs["embed"]
+            obs_specs["embed"] = dataclasses.replace(
                 embed_spec,
                 shape=(embed_spec.shape[0] + state_seq_len,) + embed_spec.shape[1:],
             )
@@ -61,7 +61,7 @@ class ObservationEncoder(nn.Module):
         batch = self.depth(batch)
         batch = self.pixels(batch)
 
-        # batch["obs_embed"]: [B,T,N,D]
+        # batch["embed"]: [B,T,N,D]
         batch = self.tokenizer(batch)
 
         # maybe compute robot state embeddings
@@ -77,7 +77,7 @@ class ObservationEncoder(nn.Module):
             # [B*T,D] -> [B,T,1,D]
             state_emb = state_emb.view(*leading_dims, 1, -1)
             # concatenate along N dimension of embedding, keeping tokens from the same time step together
-            embedding = batch["obs", "obs_embed"]
-            batch["obs", "obs_embed"] = torch.cat([embedding, state_emb], dim=2)
+            embedding = batch["obs", "embed"]
+            batch["obs", "embed"] = torch.cat([embedding, state_emb], dim=2)
 
         return batch
