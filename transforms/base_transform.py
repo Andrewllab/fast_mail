@@ -39,7 +39,7 @@ class Transform(ABC):
     @property
     @abstractmethod
     def specs(self) -> DataSpecs:
-        raise NotImplementedError
+        pass
 
 
 def create_tdmodules(transform: Transform) -> list[TensorDictModule]:
