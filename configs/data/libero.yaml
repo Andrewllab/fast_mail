@@ -1,8 +1,5 @@
-defaults:
-  - /transforms@dataset.transforms: null
-
 task_suite: libero
-task: libero_object
+task: ???
 
 dataset:
   _target_: environments.datasets.libero_dataset.LiberoDataset

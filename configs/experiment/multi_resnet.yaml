@@ -9,8 +9,13 @@ defaults:
   # tokenize the rgb images using a ResNet
   - /transforms@agent.obs_encoder.3_resnets: multi_resnets_tokenizer
 
-  - override /data: libero
-
-data:
-  # set task here
-  task: libero_object
+agent:
+  obs_encoder:
+    embed_dim: 256
+    
+    3_resnets:
+      share_rgb_model: False
+    
+      rgb_model:
+        # resnet18
+        pretrained_weights: null  # null or "IMAGENET1K_V1"

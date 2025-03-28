@@ -1,0 +1,4 @@
+defaults:
+  - libero
+
+task: libero_object

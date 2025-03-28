@@ -18,6 +18,9 @@ class Spec:
 class CameraSpec(Spec):
     camera_intrinsics: np.ndarray | None = None
     camera_extrinics: np.ndarray | None = None
+    # the key describing the pose information that the camera_extrinsics are relative to
+    # e.g. a wrist camera would have extrinsics relative to the end effector pose
+    mount_point: str | tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)

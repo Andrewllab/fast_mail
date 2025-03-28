@@ -5,4 +5,14 @@ platform:
 
 torch:
   set_float32_matmul_precision: medium
+
+data:
+  batch_size: 512
+  num_workers: 16
+  pin_memory: False  # test if True is faster, but it might not be
+
+trainer:
+  deterministic: True
+  accelerator: gpu
+  devices: auto
   # precision: 16-true

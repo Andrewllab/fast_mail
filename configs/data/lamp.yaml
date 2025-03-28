@@ -1,4 +1,5 @@
 defaults:
   - furniture_bench
 
-task: one_leg
+task: lamp
+randomness: med

@@ -1,15 +1,13 @@
 task_suite: furniture_bench
+task: ???
+randomness: ???
 
 dataset:
   _target_: environments.datasets.furniture_bench.FurnitureBenchDataset
-  root_dir: ${paths.data_dir}/furniture_bench/${..task}
-  camera_names: [cam1, cam2, wristcam]
-  obs_dim: 9
-  action_dim: 7
-  state_dim: 110
-  max_len_data: 260
-  window_size: 10
-  traj_per_task: 10
+  _partial_: True  # requires transforms at runtime
+  root_dir: ${paths.data_dir}/furniture_bench/${..randomness}/${..task}
+  action_seq_len: 10
+  obs_seq_len: 1
 
 simulation:
   _target_: environments.simulations.isaac.IsaacSim
