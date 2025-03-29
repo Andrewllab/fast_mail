@@ -1,3 +1,6 @@
+defaults:
+  - default
+
 task_suite: furniture_bench
 task: ???
 randomness: ???
@@ -9,9 +12,9 @@ dataset:
   action_seq_len: 10
   obs_seq_len: 1
 
-simulation:
-  _target_: environments.simulations.isaac.IsaacSim
-  scene: 
-  render: False
-  num_episode: 20
-  max_step_per_episode: 600
+# simulation:
+#   _target_: environments.simulations.isaac.IsaacSim
+#   scene: 
+#   render: False
+#   num_episode: 20
+#   max_step_per_episode: 600

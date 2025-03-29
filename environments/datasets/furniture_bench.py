@@ -1,20 +1,20 @@
+from __future__ import annotations
+
 import logging
 import os
 import pickle
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import torch
 from tensordict import TensorDict
 from torch.utils.data._utils.collate import default_collate
 
-from environments.datasets.base_dataset import TrajectoryDataset, TrajectorySlices
+from environments.datasets.base_dataset import TrajectoryDataset
 from environments.specs import ActionSpec, CameraSpec, DataSpecs, Spec
 
 if TYPE_CHECKING:
-    from torch import Tensor
-
     from transforms.base_transform import TransformPartialsDict
 
 
@@ -27,33 +27,25 @@ class FurnitureBenchDataset(TrajectoryDataset):
         root_dir: os.PathLike,
         action_seq_len: int,
         obs_seq_len: int,
+        device: Literal["disk", "cpu", "cuda"] = "cpu",
         transforms: TransformPartialsDict | None = None,
     ):
-
-        self.action_seq_len = action_seq_len
-        self.obs_seq_len = obs_seq_len
-
-        # window size is the number of time steps in a sample from the beginning
-        # of the observation to the action of the actions
-        self.window_size = action_seq_len + obs_seq_len - 1
 
         root_dir = Path(root_dir)
         log.info("Loading FurnitureBench dataset from {}".format(root_dir))
 
         demo_files = list(sorted(root_dir.glob("*.pkl")))
 
-        self.trajectories: list[TensorDict] = []
+        self._trajectories: list[TensorDict] = []
         for demo_file in demo_files:
+            log.debug(f"Loading trajectory from file {demo_file}")
             with open(demo_file, "rb") as f:
                 data: dict[str, list[np.ndarray]] = pickle.load(f)
             traj = prepare_trajectory(data)
-            self.trajectories.append(traj)
-
-        trajectory_lengths = [int(traj.batch_size) for traj in self.trajectories]
-        self.slices = TrajectorySlices(trajectory_lengths, self.window_size)
+            self._trajectories.append(traj)
 
         # concatenate all actions together for collecting statistics
-        all_actions = torch.cat([data["action"] for data in self.trajectories], dim=0)
+        all_actions = torch.cat([data["action"] for data in self._trajectories], dim=0)
 
         self._base_specs = self._specs = DataSpecs(
             obs={
@@ -62,7 +54,7 @@ class FurnitureBenchDataset(TrajectoryDataset):
                 "robot_state": Spec(shape=(obs_seq_len, 7), type="state"),
             },
             action=ActionSpec(
-                shape=(action_seq_len, 7),
+                shape=(action_seq_len, 8),
                 type="action",
                 a_mean=all_actions.mean(0),
                 a_std=all_actions.std(0),
@@ -71,24 +63,12 @@ class FurnitureBenchDataset(TrajectoryDataset):
             ),
         )
 
-    @property
-    def specs(self) -> DataSpecs:
-        return self._specs
-
-    def __len__(self) -> int:
-        return len(self.slices)
-
-    def get(self, idx: int) -> TensorDict:
-        traj_idx, start, end = self.slices(idx)
-        trajectory = self.trajectories[traj_idx]
-
-        return TensorDict(
-            {
-                # index `obs_seq_len` many observations at the start of the window
-                "obs": trajectory["obs"][start : start + self.obs_seq_len],
-                # actions start at the last observation and stop at the end of the window
-                "action": trajectory["action"][start + self.obs_seq_len - 1 : end],
-            }
+        super().__init__(
+            root_dir=root_dir,
+            action_seq_len=action_seq_len,
+            obs_seq_len=obs_seq_len,
+            device=device,
+            transforms=transforms,
         )
 
 
@@ -115,13 +95,17 @@ def prepare_trajectory(data: dict[str, list[np.ndarray]]) -> TensorDict:
     for key, value in td_data["observations"].items():
         td_data["observations", key] = value[:-1]
 
-    # set batch_size
-    td_data.auto_batch_size_()
-
     # remap keys
     td_data["obs"] = td_data.pop("observations")
     td_data["obs", "wrist_cam"] = td_data.pop(("obs", "color_image1"))
     td_data["obs", "front_cam"] = td_data.pop(("obs", "color_image2"))
     td_data["action"] = td_data.pop("actions")
+
+    # convert doubles to floats
+    td_data["obs", "robot_state"] = td_data["obs", "robot_state"].float()
+    td_data["action"] = td_data["action"].float()
+
+    # set batch_size in TensorDict, otherwise it can't be indexed
+    td_data.auto_batch_size_()
 
     return td_data

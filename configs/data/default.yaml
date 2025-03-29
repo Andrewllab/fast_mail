@@ -1,4 +1,4 @@
-_target_: environments.data_module.TrajectoryDataModule
+_target_: environments.datamodule.TrajectoryDataModule
 task: 
 task_suite: 
 dataset: ???

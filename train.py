@@ -7,7 +7,6 @@ import torch
 from lightning import Callback, LightningModule, Trainer, seed_everything
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
-from torch.utils.data import DataLoader
 
 from utils.conf import delete_keys_recursively, setup_resolvers
 from utils.instantiators import instantiate_callbacks, instantiate_loggers
@@ -17,7 +16,7 @@ from utils.torch_conf import configure_torch
 from utils.wandb import init_wandb
 
 if TYPE_CHECKING:
-    from environments.datasets.base_dataset import TrajectoryDataset
+    from environments.datamodule import TrajectoryDataModule
 
 log = logging.getLogger(__name__)
 
@@ -43,14 +42,15 @@ def main(cfg: DictConfig) -> None:
     seed_everything(seed, workers=True)
 
     # instantiate dataset
-    dataset: TrajectoryDataset = hydra.utils.instantiate(cfg.data.dataset)
-    dataloader = DataLoader(dataset, **cfg.dataloader, shuffle=True, drop_last=True)
+    log.debug("Instantiating data module...")
+    datamodule: TrajectoryDataModule = hydra.utils.instantiate(cfg.data)
 
     # instantiate agent
     # use "object" conversion strategy to avoid converting specs, which are a
     # dataclass, to a DictConfig
+    log.debug("Instantiating agent...")
     agent: LightningModule = hydra.utils.instantiate(
-        cfg.agent, specs=dataset.specs, _convert_="object"
+        cfg.agent, specs=datamodule.specs, _convert_="object"
     )
 
     log.debug("Instantiating callbacks...")
@@ -59,18 +59,13 @@ def main(cfg: DictConfig) -> None:
     log.debug("Instantiating loggers...")
     logger: list[Logger] = instantiate_loggers(cfg.get("logger"))
 
+    log.debug("Instantiating trainer...")
     trainer: Trainer = hydra.utils.instantiate(
         cfg.trainer, _target_=Trainer, callbacks=callbacks, logger=logger
     )
 
-    # unless disabled, create a simulation for validation during training
-    val_dataloader = ()
-    if not cfg.disable_validation:
-        sim = hydra.utils.instantiate(cfg.data.simulation)
-        sim_dataloader = DataLoader(sim, **cfg.sim_dataloader)
-        val_dataloader += (sim_dataloader,)
-
-    trainer.fit(agent, dataloader, *val_dataloader)
+    log.info("Starting training")
+    trainer.fit(agent, datamodule=datamodule)
 
     log.info("Training done")
     run.finish()

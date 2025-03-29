@@ -1,3 +1,6 @@
+defaults:
+  - default
+
 task_suite: libero
 task: ???
 
