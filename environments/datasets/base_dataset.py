@@ -60,10 +60,6 @@ class TrajectoryDataset(Dataset, ABC):
         self.obs_seq_len = obs_seq_len
         self.load_subset = load_subset
 
-        # window size is the number of time steps in a sample from the beginning
-        # of the observation to the action of the actions
-        window_size = action_seq_len + obs_seq_len - 1
-
         if device == "gpu":
             device = "cuda"
         if device != "disk":
@@ -71,20 +67,29 @@ class TrajectoryDataset(Dataset, ABC):
         self.device = device
 
         if preprocess_transforms is not None:
+            if preprocessed_dir is None:
+                raise ValueError(
+                    "preprocessed_dir must be specified if preprocess_transforms is not None"
+                )
+            preprocessed_dir = Path(preprocessed_dir)
+
             self.handle_preprocessing(
-                preprocess_transforms, preprocessed_dir, overwrite_preprocessed
-            )
-
-        else:
-            # No preprocessing needed, so we can just use the raw data
-            raw_files = self._find_raw_files()
-            self._specs = self.get_specs()
-
-            log.info(
-                f"Loading {self.__class__.__name__} dataset with {len(raw_files)} trajectories from {self.root_dir}."
+                preprocess_transforms=preprocess_transforms,
+                preprocessed_dir=preprocessed_dir,
+                overwrite_preprocessed=overwrite_preprocessed,
             )
 
             if self.device != "disk":
+                self.trajectories = [load_tensordict(f) for f in self.processed_files]
+
+        else:
+            if self.device != "disk":
+                self._specs = self.get_specs()
+                raw_files = self._find_raw_files()
+
+                log.info(
+                    f"{self.__class__.__name__}: Loading dataset from {self.root_dir} into memory ({len(raw_files)} trajectories)."
+                )
                 # load all trajectories into memory
                 self.trajectories = [
                     self.load_raw_traj(filepath) for filepath in raw_files
@@ -106,25 +111,23 @@ class TrajectoryDataset(Dataset, ABC):
                 # cannot load all trajectories into memory, so we need to
                 # convert them one by one into a file format that can be loaded
                 # quickly from disk
+                # we do this by "preprocessing" with a no-op transform
                 preprocessed_dir = self.root_dir.parent / (
                     f"{self.root_dir.name}_preprocessed"
                 )
-                self.processed_files = [
-                    preprocessed_dir / f"{f.stem}" for f in raw_files
-                ]
-
-                for raw_file, processed_file in zip(raw_files, self.processed_files):
-                    traj = self.load_raw_traj(raw_file)
-
-                    self.specs.action.update_stats(traj["action"])
-                    self.specs.append_length(int(traj.batch_size[0]))
-
-                    save_tensordict(traj, processed_file)
+                self.handle_preprocessing(
+                    preprocess_transforms={},
+                    preprocessed_dir=preprocessed_dir,
+                    overwrite_preprocessed=True,
+                )
 
         log.debug(
             f"Dataset trajectories have the following lengths:\n{self._specs.lengths}"
         )
-        self.slices = TrajectorySlices(self._specs.lengths, window_size)
+        # window size is the number of time steps in a sample from the beginning
+        # of the observation to the action of the actions
+        window_size = action_seq_len + obs_seq_len - 1
+        self.slices = TrajectorySlices(self.specs.lengths, window_size)
         log.debug(f"Dataset contains {len(self.slices)} samples in total.")
 
         log.debug("Instantiating cpu transforms...")
@@ -134,6 +137,24 @@ class TrajectoryDataset(Dataset, ABC):
         if self.device != "disk":
             self.trajectories = [traj.to(device) for traj in self.trajectories]
 
+    @abstractmethod
+    def find_raw_files(self) -> list[Path]:
+        pass
+
+    @abstractmethod
+    def load_raw_traj(self, filepath: Path) -> TensorDict:
+        """Load a trajectory from a raw data file and return it as a TensorDict.
+        The TensorDict should have a single batch dimension corresponding to the
+        length of the trajectory. Data without a time dimension, such as goal
+        information, can be wrapped in a NonTensorData, in which case it is
+        ignored by `auto_batch_size()`.
+        """
+        pass
+
+    @abstractmethod
+    def get_specs(self) -> DataSpecs:
+        pass
+
     @property
     def specs(self) -> DataSpecs:
         return self._specs
@@ -141,22 +162,28 @@ class TrajectoryDataset(Dataset, ABC):
     def handle_preprocessing(
         self,
         preprocess_transforms: TransformPartialsDict,
-        preprocessed_dir: Path | os.PathLike | None,
+        preprocessed_dir: Path,
         overwrite_preprocessed: bool,
     ) -> None:
-        if preprocessed_dir is None:
-            raise ValueError(
-                "preprocessed_dir must be specified if preprocess_transforms is not None"
-            )
+        """Decide if preprocessing is needed and if so, do it. After this method
+        runs, either:
+        - preprocessing has been completed (potentially overwriting existing)
+        - an exception is raised because existing data is found but overwrite is False
+        - preprocessing is not needed and we can load the existing data
 
-        preprocessed_dir = Path(preprocessed_dir)
+        In all 3 cases, self.processed_files and self.specs have been set, but
+        self.trajectories has not.
+        """
         transforms_file = preprocessed_dir / TRANSFORMS_FILE
         specs_file = preprocessed_dir / SPECS_FILE
 
         # If these files don't exist, we assume that preprocessing has not been
         # done yet
         if not (transforms_file.exists() and specs_file.exists()):
-            log.info(f"Preprocessing training data and saving to {preprocessed_dir}")
+            log.info(
+                f"{self.__class__.__name__}: Preprocessing dataset from {self.root_dir} and saving to "
+                f"{preprocessed_dir}"
+            )
             self.preprocess(preprocess_transforms, preprocessed_dir)
             return
 
@@ -167,7 +194,8 @@ class TrajectoryDataset(Dataset, ABC):
         if old_transforms_cfg != transforms_cfg:
             if overwrite_preprocessed:
                 log.warning(
-                    "Preprocess transforms do not match saved version. Overwriting preprocessed data."
+                    f"{self.__class__.__name__}: Preprocess transforms do not match saved version in "
+                    f"{preprocessed_dir}. Overwriting preprocessed data."
                 )
                 log.debug(f"Saved:\n{old_transforms_cfg}\n\nNew:\n{transforms_cfg}")
                 self.preprocess(preprocess_transforms, preprocessed_dir)
@@ -178,29 +206,32 @@ class TrajectoryDataset(Dataset, ABC):
             )
 
         # preprocessed data matches, so we can load it
-        log.info(f"Loading preprocessed data from {preprocessed_dir}")
-        self.processed_files = self._find_processed_files(preprocessed_dir)
         self._specs = load_specs(specs_file)
-
-        if self.device != "disk":
-            self.trajectories = [load_tensordict(f) for f in self.processed_files]
+        self.processed_files = self._find_processed_files(preprocessed_dir)
+        log.info(
+            f"{self.__class__.__name__}: Loading preprocessed data from {preprocessed_dir} "
+            f"({len(self.processed_files)} trajectories)."
+        )
 
     def preprocess(
         self, preprocess_transforms: TransformPartialsDict, preprocessed_dir: Path
     ) -> None:
+        """Runs the preprocessing transforms on the raw data and saves the
+        resulting TensorDicts to disk. This method also sets self.specs and
+        self.processed_files.
+        """
         # delete the preprocessed directory if it exists and create a new one
         if preprocessed_dir.exists():
+            log.debug(f"Deleting preprocessed directory {preprocessed_dir}")
             shutil.rmtree(str(preprocessed_dir))
         preprocessed_dir.mkdir(parents=True)
 
         specs = self.get_specs()
-        transforms, self._specs = init_transforms(
-            preprocess_transforms, specs, wrap=False
-        )
+        transforms, specs = init_transforms(preprocess_transforms, specs, wrap=False)
 
         raw_files = self._find_raw_files()
-        self.processed_files = [preprocessed_dir / f"{f.stem}" for f in raw_files]
-        for raw_file, processed_file in zip(raw_files, self.processed_files):
+        processed_files = [preprocessed_dir / f"{f.stem}" for f in raw_files]
+        for raw_file, processed_file in zip(raw_files, processed_files):
             traj = self.load_raw_traj(raw_file)
 
             specs.action.update_stats(traj["action"])
@@ -217,7 +248,10 @@ class TrajectoryDataset(Dataset, ABC):
         transforms_file = preprocessed_dir / TRANSFORMS_FILE
         specs_file = preprocessed_dir / SPECS_FILE
         save_transforms_config(preprocess_transforms, transforms_file)
-        save_specs(self.specs, specs_file)
+        save_specs(specs, specs_file)
+
+        self._specs = specs
+        self.processed_files = processed_files
 
     def __len__(self) -> int:
         return len(self.slices)
@@ -256,24 +290,6 @@ class TrajectoryDataset(Dataset, ABC):
         data = self.transform(data)
         return data
 
-    @abstractmethod
-    def find_raw_files(self) -> list[Path]:
-        pass
-
-    @abstractmethod
-    def load_raw_traj(self, filepath: Path) -> TensorDict:
-        """Load a trajectory from a raw data file and return it as a TensorDict.
-        The TensorDict should have a single batch dimension corresponding to the
-        length of the trajectory. Data without a time dimension, such as goal
-        information, can be wrapped in a NonTensorData, in which case it is
-        ignored by `auto_batch_size()`.
-        """
-        pass
-
-    @abstractmethod
-    def get_specs(self) -> DataSpecs:
-        pass
-
     def _find_raw_files(self) -> list[Path]:
         files = self.find_raw_files()
 
@@ -289,7 +305,7 @@ class TrajectoryDataset(Dataset, ABC):
             if path.name not in (SPECS_FILE, TRANSFORMS_FILE)
         ]
 
-        return get_subset(files, self.load_subset)
+        return files
 
     def __iter__(self) -> Iterator[TensorDict]:
         for i in range(len(self)):
