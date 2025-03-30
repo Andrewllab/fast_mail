@@ -55,12 +55,7 @@ def main(cfg: DictConfig) -> None:
     # instantiate agent
     log.debug("Instantiating agent...")
     delete_keys_recursively(cfg.agent, ["name"])
-    # We cannot pass the dataspecs to hydra instantiate as a keyword
-    # argument because omegaconf converts it to a DictConfig. Therefore we
-    # create a partial and pass the specs afterwards
-    agent: LightningModule = hydra.utils.instantiate(cfg.agent, _partial_=True)(
-        specs=datamodule.specs
-    )
+    agent: LightningModule = hydra.utils.instantiate(cfg.agent, specs=datamodule.specs)
 
     log.debug("Instantiating callbacks...")
     callbacks: list[Callback] = instantiate_callbacks(cfg.get("callbacks"))

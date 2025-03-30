@@ -21,17 +21,17 @@ log = logging.getLogger(__name__)
 
 
 class FurnitureBenchDataset(TrajectoryDataset):
-    def find_filepaths(self) -> list[Path]:
+    def find_raw_files(self) -> list[Path]:
         files = list(sorted(self.root_dir.glob("*.pkl")))
         return files
 
-    def load_trajectory_from_file(self, filepath: Path) -> TensorDict:
+    def load_raw_traj(self, filepath: Path) -> TensorDict:
         log.debug(f"Loading trajectory from file {filepath}")
         with open(filepath, "rb") as f:
             data: dict[str, list[np.ndarray]] = pickle.load(f)
         return prepare_trajectory(data)
 
-    def get_specs(self, all_actions: Tensor | None = None) -> DataSpecs:
+    def get_specs(self) -> DataSpecs:
         return DataSpecs(
             obs={
                 "wrist_cam": CameraSpec(
@@ -42,9 +42,7 @@ class FurnitureBenchDataset(TrajectoryDataset):
                 ),
                 "robot_state": Spec(shape=(self.obs_seq_len, 7), type="state"),
             },
-            action=ActionSpec(
-                shape=(self.action_seq_len, 8), type="action", all_actions=all_actions
-            ),
+            action=ActionSpec(shape=(self.action_seq_len, 8), type="action"),
         )
 
 

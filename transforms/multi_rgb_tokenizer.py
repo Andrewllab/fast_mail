@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 from typing import TYPE_CHECKING, Callable
 
 import torch
@@ -46,7 +45,7 @@ class MultiRgbTokenizer(nn.Module, Transform):
         # each camera produces one token
         embed_seq_len = sum(spec.shape[0] for spec in self.rgb_specs.values())
         obs_specs["embed"] = Spec(shape=(embed_seq_len, embed_dim), type="embed")
-        self._specs = dataclasses.replace(specs, obs=obs_specs)
+        self._specs = specs.replace(obs=obs_specs)
 
     @property
     def key_mappings(self) -> list[KeyMapping]:

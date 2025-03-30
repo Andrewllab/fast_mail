@@ -36,7 +36,7 @@ class RobotStateEncoder(nn.Module, Transform):
             shape=(embed_spec.shape[0] + state_seq_len,) + embed_spec.shape[1:],
         )
 
-        self._specs = dataclasses.replace(specs, obs=obs_specs)
+        self._specs = specs.replace(obs=obs_specs)
 
     @property
     def specs(self) -> DataSpecs:

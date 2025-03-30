@@ -2,22 +2,23 @@ from __future__ import annotations
 
 import logging
 import os
-import pickle
-import re
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal, Sequence
+from typing import TYPE_CHECKING, Iterator, Literal, Sequence, TypeVar
 
 import numpy as np
 import torch
-from omegaconf import OmegaConf
 from tensordict import TensorDict
 from torch.utils.data import Dataset
-from torch_geometric.data import Dataset as GeomDataset
 
-from environments.data import update_collate_fn_map
-from transforms.base_transform import init_transforms, to_minimal_config
+from environments.specs import load_specs, save_specs
+from transforms.base_transform import (
+    get_transforms_config,
+    init_transforms,
+    load_transforms_config,
+    save_transforms_config,
+)
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -28,7 +29,12 @@ if TYPE_CHECKING:
     IndexType = slice | Tensor | Sequence
     DeviceType = Literal["disk", "gpu"] | str | torch.device
 
+    T = TypeVar("T")
+
 log = logging.getLogger(__name__)
+
+SPECS_FILE = "specs.pkl"
+TRANSFORMS_FILE = "transforms.yaml"
 
 
 class TrajectoryDataset(Dataset, ABC):
@@ -44,7 +50,7 @@ class TrajectoryDataset(Dataset, ABC):
         preprocessed_dir: Path | os.PathLike | None = None,
         overwrite_preprocessed: bool = False,
         # debug_preprocess: bool = False,
-        load_subset: float | None = None,
+        load_subset: int | float | None = None,
         # filter: Callable[[Any], bool] | None = None,
     ) -> None:
         super().__init__()
@@ -52,6 +58,11 @@ class TrajectoryDataset(Dataset, ABC):
         self.root_dir = Path(root_dir)
         self.action_seq_len = action_seq_len
         self.obs_seq_len = obs_seq_len
+        self.load_subset = load_subset
+
+        # window size is the number of time steps in a sample from the beginning
+        # of the observation to the action of the actions
+        window_size = action_seq_len + obs_seq_len - 1
 
         if device == "gpu":
             device = "cuda"
@@ -59,103 +70,24 @@ class TrajectoryDataset(Dataset, ABC):
             device = torch.device(device)
         self.device = device
 
-        # window size is the number of time steps in a sample from the beginning
-        # of the observation to the action of the actions
-        window_size = action_seq_len + obs_seq_len - 1
-
-        # Look for preprocessed data in `preprocessed_dir`
         if preprocess_transforms is not None:
-            if preprocessed_dir is None:
-                raise ValueError(
-                    "preprocessed_dir must be specified if preprocess_transforms is not None"
-                )
-
-            self.preprocessed_dir = Path(preprocessed_dir)
-            self.transforms_file = self.preprocessed_dir / "transforms.yaml"
-            self.specs_file = self.preprocessed_dir / "specs.pkl"
-
-            if not (self.transforms_file.exists() and self.specs_file.exists()):
-                # Preprocessed data not found, so we need to preprocess the data
-                log.info(
-                    f"Preprocessing training data and saving to {preprocessed_dir}"
-                )
-                self.preprocess()
-
-            else:
-                # Some preprocessed data found, so we need to check if it matches the current
-                # preprocess_transforms
-
-                with open(self.transforms_file, "r") as f:
-                    saved_preprocess_transforms = OmegaConf.load(f)
-
-                # Compare against the current preprocess_transforms
-                cfg_preprocess_transforms = to_minimal_config(preprocess_transforms)
-
-                if cfg_preprocess_transforms != saved_preprocess_transforms:
-                    if overwrite_preprocessed:
-                        log.warning(
-                            "Preprocess transforms do not match saved version. Overwriting preprocessed data."
-                        )
-                        log.debug(
-                            f"Saved:\n{saved_preprocess_transforms}\n\nNew:\n{cfg_preprocess_transforms}"
-                        )
-                        self.preprocess()
-
-                    else:
-                        raise ValueError(
-                            "Preprocess transforms do not match saved version. Set overwrite_preprocessed=True to overwrite."
-                        )
-                else:
-                    # preprocessed data matches, so we can load it
-                    log.info(f"Loading preprocessed data from {self.preprocessed_dir}")
-
-                    with open(self.specs_file, "rb") as f:
-                        self._specs = pickle.load(f)
-
-                    # the processed files are actually directories because memory-mapped tensordicts
-                    # are saved as directories
-                    self.processed_files = [
-                        p for p in sorted(self.preprocessed_dir.iterdir()) if p.is_dir()
-                    ]
-
-                    if self.device != "disk":
-                        # load all trajectories into memory
-                        self.trajectories = [
-                            self.load_trajectory_from_file(filepath)
-                            for filepath in self.processed_files
-                        ]
-
-                        all_actions = torch.cat(
-                            [traj["action"] for traj in self.trajectories], dim=0
-                        )
-                        trajectory_lengths = [
-                            int(traj.batch_size[0]) for traj in self.trajectories
-                        ]
+            self.handle_preprocessing(
+                preprocess_transforms, preprocessed_dir, overwrite_preprocessed
+            )
 
         else:
             # No preprocessing needed, so we can just use the raw data
-            self.preprocessed_dir = None
-
-            self.raw_files = self.find_filepaths()
-
-            if load_subset is not None:
-                # if load_subset is specified, we only load a subset of the
-                # trajectories
-                end = int(len(self.raw_files) * load_subset)
-                log.debug(
-                    f"Loading only {end} trajectories out of {len(self.raw_files)}"
-                )
-                self.raw_files = self.raw_files[:end]
+            raw_files = self._find_raw_files()
+            self._specs = self.get_specs()
 
             log.info(
-                f"Loading {self.__class__.__name__} dataset with {len(self.raw_files)} trajectories from {self.root_dir}."
+                f"Loading {self.__class__.__name__} dataset with {len(raw_files)} trajectories from {self.root_dir}."
             )
 
             if self.device != "disk":
                 # load all trajectories into memory
                 self.trajectories = [
-                    self.load_trajectory_from_file(filepath)
-                    for filepath in self.raw_files
+                    self.load_raw_traj(filepath) for filepath in raw_files
                 ]
 
                 # collect these statistics we need for TrajectorySlices and
@@ -163,55 +95,36 @@ class TrajectoryDataset(Dataset, ABC):
                 all_actions = torch.cat(
                     [traj["action"] for traj in self.trajectories], dim=0
                 )
+                self.specs.action.update_stats(all_actions)
+
                 trajectory_lengths = [
                     int(traj.batch_size[0]) for traj in self.trajectories
                 ]
+                self.specs.extend_lengths(trajectory_lengths)
 
             else:
-                # load files one by one, collecting statistics we need for
-                # TrajectorySlices and action spec
-                all_actions = []
-                trajectory_lengths = []
-                for filepath in self.raw_files:
-                    traj = self.load_trajectory_from_file(filepath)
-                    all_actions.append(traj["action"])
-                    trajectory_lengths.append(int(traj.batch_size[0]))
-                    del traj
-                all_actions = torch.cat(all_actions, dim=0)
+                # cannot load all trajectories into memory, so we need to
+                # convert them one by one into a file format that can be loaded
+                # quickly from disk
+                preprocessed_dir = self.root_dir.parent / (
+                    f"{self.root_dir.name}_preprocessed"
+                )
+                self.processed_files = [
+                    preprocessed_dir / f"{f.stem}" for f in raw_files
+                ]
 
-            # get specs from subclass
-            self._specs = self.get_specs(all_actions)
+                for raw_file, processed_file in zip(raw_files, self.processed_files):
+                    traj = self.load_raw_traj(raw_file)
 
-        # If found, serialize preprocess_transforms and compare against saved version in preprocessed_dir
+                    self.specs.action.update_stats(traj["action"])
+                    self.specs.append_length(int(traj.batch_size[0]))
 
-        # If they match, load specs from file and skip to end
-
-        # If not, check `overwrite_preprocessed`. If False, throw exception
-
-        # If true, load raw data (by asking subclass), then instantiate preprocess transforms, then run preprocessing, then save results back to disk
-        # (if device is disk, instantiate transforms first using specs without action stats, then process trajectories sequentially)
-
-        # end: instantiate transforms using specs
-
-        # after init, we need:
-        # - specs
-        # - transforms initialized
-        # - either raw_files or processed_files or trajectories
-
-        """
-        
-        
-
-        
-
-
-        
-        """
+                    save_tensordict(traj, processed_file)
 
         log.debug(
-            f"Dataset has {len(trajectory_lengths)} trajectories with the following lengths:\n{trajectory_lengths}"
+            f"Dataset trajectories have the following lengths:\n{self._specs.lengths}"
         )
-        self.slices = TrajectorySlices(trajectory_lengths, window_size)
+        self.slices = TrajectorySlices(self._specs.lengths, window_size)
         log.debug(f"Dataset contains {len(self.slices)} samples in total.")
 
         log.debug("Instantiating cpu transforms...")
@@ -225,47 +138,113 @@ class TrajectoryDataset(Dataset, ABC):
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def preprocess(self) -> None:
-        # do the preprocessing
-        assert self.preprocessed_dir is not None
-        if self.preprocessed_dir.exists():
-            shutil.rmtree(str(self.preprocessed_dir))
-        self.preprocessed_dir.mkdir(parents=True)
+    def handle_preprocessing(
+        self,
+        preprocess_transforms: TransformPartialsDict,
+        preprocessed_dir: Path | os.PathLike | None,
+        overwrite_preprocessed: bool,
+    ) -> None:
+        if preprocessed_dir is None:
+            raise ValueError(
+                "preprocessed_dir must be specified if preprocess_transforms is not None"
+            )
 
-        # Save the transform configuration to a YAML file
-        cfg_preprocess_transforms = to_minimal_config(preprocess_transforms)
-        with open(self.transforms_file, "w") as f:
-            OmegaConf.save(cfg_preprocess_transforms, f)
+        preprocessed_dir = Path(preprocessed_dir)
+        transforms_file = preprocessed_dir / TRANSFORMS_FILE
+        specs_file = preprocessed_dir / SPECS_FILE
 
-        # Save the specs to a pickle file
-        with open(self.specs_file, "wb") as f:
-            pickle.dump(self.specs, f)
+        # If these files don't exist, we assume that preprocessing has not been
+        # done yet
+        if not (transforms_file.exists() and specs_file.exists()):
+            log.info(f"Preprocessing training data and saving to {preprocessed_dir}")
+            self.preprocess(preprocess_transforms, preprocessed_dir)
+            return
+
+        # Some preprocessed data found, so we need to check if it matches the current
+        # preprocess_transforms
+        old_transforms_cfg = load_transforms_config(transforms_file)
+        transforms_cfg = get_transforms_config(preprocess_transforms)
+        if old_transforms_cfg != transforms_cfg:
+            if overwrite_preprocessed:
+                log.warning(
+                    "Preprocess transforms do not match saved version. Overwriting preprocessed data."
+                )
+                log.debug(f"Saved:\n{old_transforms_cfg}\n\nNew:\n{transforms_cfg}")
+                self.preprocess(preprocess_transforms, preprocessed_dir)
+                return
+
+            raise ValueError(
+                "Preprocess transforms do not match saved version. Set overwrite_preprocessed=True to overwrite."
+            )
+
+        # preprocessed data matches, so we can load it
+        log.info(f"Loading preprocessed data from {preprocessed_dir}")
+        self.processed_files = self._find_processed_files(preprocessed_dir)
+        self._specs = load_specs(specs_file)
+
+        if self.device != "disk":
+            self.trajectories = [load_tensordict(f) for f in self.processed_files]
+
+    def preprocess(
+        self, preprocess_transforms: TransformPartialsDict, preprocessed_dir: Path
+    ) -> None:
+        # delete the preprocessed directory if it exists and create a new one
+        if preprocessed_dir.exists():
+            shutil.rmtree(str(preprocessed_dir))
+        preprocessed_dir.mkdir(parents=True)
+
+        specs = self.get_specs()
+        transforms, self._specs = init_transforms(
+            preprocess_transforms, specs, wrap=False
+        )
+
+        raw_files = self._find_raw_files()
+        self.processed_files = [preprocessed_dir / f"{f.stem}" for f in raw_files]
+        for raw_file, processed_file in zip(raw_files, self.processed_files):
+            traj = self.load_raw_traj(raw_file)
+
+            specs.action.update_stats(traj["action"])
+            specs.append_length(int(traj.batch_size[0]))
+
+            # TODO: handle the case where multiple trajectories are created
+            for transform in transforms:
+                traj = transform(traj)
+
+            save_tensordict(traj, processed_file)
+
+        # save the specs and transforms to the preprocessed directory to
+        # to indicate that preprocessing completed successfully
+        transforms_file = preprocessed_dir / TRANSFORMS_FILE
+        specs_file = preprocessed_dir / SPECS_FILE
+        save_transforms_config(preprocess_transforms, transforms_file)
+        save_specs(self.specs, specs_file)
 
     def __len__(self) -> int:
         return len(self.slices)
 
-    def __getitem__(self, idx: int | IndexType) -> Dataset | TensorDict:
+    def __getitem__(self, idx: int) -> Dataset | TensorDict:
         traj_idx, start, end = self.slices(idx)
 
         if self.device != "disk":
             # if dataset fits into memory, we can just index a list
             trajectory = self.trajectories[traj_idx]
-        elif self.preprocessed_dir is not None:
-            # if dataset does not fit into main memory but we have a
-            # preprocessed version, we can load it from disk
-            trajectory = TensorDict.load_memmap(self.processed_files[traj_idx])
-        else:
-            # if dataset does not fit into main memory and there is no
-            # preprocessed version, we have to ask the subclass to access the raw data
-            raw_file = self.raw_files[traj_idx]
-            trajectory = self.load_trajectory_from_file(raw_file)
 
-        # create new TensorDict because we cannot inherit batch_size from trajectory
+        else:
+            # if dataset does not fit into memory, then we have a preprocessed
+            # version that we can load from disk
+            trajectory = load_tensordict(self.processed_files[traj_idx], start, end)
+            # since we have already sliced the tensordict, adjust start and end
+            start, end = 0, None
+
+        # create new TensorDict because we cannot inherit batch_size from
+        # trajectory, as obs and action have different leading dims
         data = TensorDict(
             {
-                # index `obs_seq_len` many observations at the start of the window
+                # index `obs_seq_len` many observations at the start of the
+                # window
                 "obs": trajectory["obs"][start : start + self.obs_seq_len],
-                # actions start at the last observation and stop at the end of the window
+                # actions start at the last observation and stop at the end
+                # of the window
                 "action": trajectory["action"][start + self.obs_seq_len - 1 : end],
             }
         )
@@ -278,11 +257,11 @@ class TrajectoryDataset(Dataset, ABC):
         return data
 
     @abstractmethod
-    def find_filepaths(self) -> list[Path]:
+    def find_raw_files(self) -> list[Path]:
         pass
 
     @abstractmethod
-    def load_trajectory_from_file(self, filepath: Path) -> TensorDict:
+    def load_raw_traj(self, filepath: Path) -> TensorDict:
         """Load a trajectory from a raw data file and return it as a TensorDict.
         The TensorDict should have a single batch dimension corresponding to the
         length of the trajectory. Data without a time dimension, such as goal
@@ -292,8 +271,25 @@ class TrajectoryDataset(Dataset, ABC):
         pass
 
     @abstractmethod
-    def get_specs(self, all_actions: Tensor | None = None) -> DataSpecs:
+    def get_specs(self) -> DataSpecs:
         pass
+
+    def _find_raw_files(self) -> list[Path]:
+        files = self.find_raw_files()
+
+        return get_subset(files, self.load_subset)
+
+    def _find_processed_files(self, preprocessed_dir: Path) -> list[Path]:
+        """Find all processed files in the preprocessed directory."""
+        # this handles the case where the processed files are actually
+        # directories because memory-mapped tensordicts are saved as directories
+        files = [
+            path
+            for path in sorted(preprocessed_dir.iterdir())
+            if path.name not in (SPECS_FILE, TRANSFORMS_FILE)
+        ]
+
+        return get_subset(files, self.load_subset)
 
     def __iter__(self) -> Iterator[TensorDict]:
         for i in range(len(self)):
@@ -354,4 +350,56 @@ class TrajectorySlices:
         return traj_idx, start, end
 
 
-update_collate_fn_map()
+def load_tensordict(
+    file: Path,
+    start: int | None = None,
+    stop: int | None = None,
+    backend: str = "memmap",
+) -> TensorDict:
+    """Load a tensordict from a file. If the file is a directory, it is
+    assumed to be a memory-mapped tensordict and the start and stop
+    indices are used to slice it.
+
+    Args:
+        file (Path): The file to load.
+        start (int | None): The start index to slice the tensordict.
+        stop (int | None): The stop index to slice the tensordict.
+
+    Returns:
+        TensorDict: The loaded tensordict.
+    """
+    assert file.is_dir()
+    # this is a memory-mapped tensordict
+    trajectory = TensorDict.load(file)
+
+    if start is not None or stop is not None:
+        # slice the tensordict
+        trajectory = trajectory[start:stop]
+
+    return trajectory
+
+
+def save_tensordict(tensordict: TensorDict, file: Path, backend: str = "memmap"):
+    """Save a tensordict to a file. If the file is a directory, it is
+    assumed to be a memory-mapped tensordict and the tensordict is saved
+    to the directory.
+
+    Args:
+        tensordict (TensorDict): The tensordict to save.
+        file (Path): The file to save to.
+    """
+    tensordict.save(str(file))
+
+
+def get_subset(files: Sequence[T], subset: int | float | None) -> Sequence[T]:
+    """Get a subset of files based on the specified subset percentage."""
+    if subset is None:
+        return files
+
+    if subset < 1:
+        # if subset is a percentage, convert it to an integer
+        end = int(len(files) * subset)
+    else:
+        end = subset
+    log.debug(f"Loading only {end} files out of {len(files)} total files found.")
+    return files[:end]

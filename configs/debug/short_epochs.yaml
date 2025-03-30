@@ -1,9 +1,13 @@
 # @package _global_
 
-# uses only 5% of the training data and 5% of validation/test data
+# uses only 5% of the training data
 
 # overwrite task name so debugging logs are stored in separate folder
 job_type: "debug"
+
+# disable wandb logging
+logger:
+  wandb: null
 
 # sets level of all command line loggers to 'DEBUG'
 # https://hydra.cc/docs/tutorials/basic/running_your_app/logging/
@@ -11,11 +15,8 @@ hydra:
   verbose: True
 
 trainer:
-  limit_train_batches: 0.05
-  limit_val_batches: 0.05
-  limit_test_batches: 0.05
   log_every_n_steps: 1  # since epochs are short, we need to log after every batch
 
 data:
   dataset:
-    load_subset: 0.1  # load only 10% of the training data
+    load_subset: 0.05  # load only 5% of the training data

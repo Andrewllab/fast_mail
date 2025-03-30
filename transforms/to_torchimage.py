@@ -18,7 +18,7 @@ class ToTorchImage(Transform):
                 rgb_spec,
                 shape=rgb_spec.shape[:-3] + rgb_spec.shape[-1:] + rgb_spec.shape[-3:-1],
             )
-        self._specs = dataclasses.replace(specs, obs=obs_specs)
+        self._specs = specs.replace(obs=obs_specs)
 
     @property
     def key_mappings(self):

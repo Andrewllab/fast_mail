@@ -7,6 +7,7 @@ import lightning as L
 import torch
 from torch.utils.data import DataLoader
 
+from environments.data import update_collate_fn_map
 from transforms.base_transform import init_transforms
 
 if TYPE_CHECKING:
@@ -53,28 +54,41 @@ class TrajectoryDataModule(L.LightningDataModule):
         self.num_workers = num_workers
         self.pin_memory = pin_memory
 
+        self.dataset = None
+        self._specs = None
+
     def setup(self, stage: str) -> None:
 
-        log.debug("Instantiating dataset...")
-        self.dataset: TrajectoryDataset = self._dataset(
-            device=self._device,
-            transforms=self._cpu_transforms,
-            preprocess_transforms=self._preprocess_transforms,
-        )
-        specs = self.dataset.specs
+        if self.dataset is None:
+            log.debug("Instantiating dataset...")
+            self.dataset: TrajectoryDataset = self._dataset(
+                device=self._device,
+                transforms=self._cpu_transforms,
+                preprocess_transforms=self._preprocess_transforms,
+            )
+            specs = self.dataset.specs
 
-        log.debug("Instantiating cpu batch transforms...")
-        self.cpu_batch_transform, specs = init_transforms(
-            self._cpu_batch_transforms, specs
-        )
-        log.debug("Instantiating gpu batch transforms...")
-        self.gpu_batch_transform, specs = init_transforms(
-            self._gpu_batch_transforms, specs
-        )
-        self._specs = specs
+            log.debug("Instantiating cpu batch transforms...")
+            self.cpu_batch_transform, specs = init_transforms(
+                self._cpu_batch_transforms, specs
+            )
+            log.debug("Instantiating gpu batch transforms...")
+            self.gpu_batch_transform, specs = init_transforms(
+                self._gpu_batch_transforms, specs
+            )
+            self._specs = specs
+
+            # add support for collating TensorDicts and torch geometric data in
+            # torch DataLoader
+            # do this here to ensure it is run on every node
+            update_collate_fn_map()
 
     @property
     def specs(self) -> DataSpecs:
+        if self._specs is None:
+            raise ValueError(
+                "Specs are not available until the datamodule has been set up."
+            )
         return self._specs
 
     def train_dataloader(self) -> Any:
