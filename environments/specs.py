@@ -82,12 +82,13 @@ class ActionSpec(Spec):
         assert all(v is not None for v in (mean, var, min, max))
 
         new_mean = actions.mean(0)
-        new_var = actions.var(0)
+        new_var = actions.var(0, correction=0)
 
         total_n = n + m
-        total_mean = (n * mean + m * new_mean) / total_n
+        delta_mean = new_mean - mean
+        total_mean = mean + m * delta_mean / total_n
         total_var = (
-            (n * var + m * new_var) + (n * m / total_n) * (mean - new_mean) ** 2
+            n * var + m * new_var + (n * m / total_n) * delta_mean**2
         ) / total_n
 
         new_min, new_max = actions.min(0).values, actions.max(0).values

@@ -1,0 +1,7 @@
+# @package _global_
+
+# runs normal training but without model checkpoints (to save on storage)
+
+# disable model checkpoints
+callbacks:
+  model_checkpoint: null
