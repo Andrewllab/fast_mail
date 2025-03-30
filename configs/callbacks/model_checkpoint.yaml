@@ -2,8 +2,13 @@
 
 model_checkpoint:
   _target_: lightning.pytorch.callbacks.ModelCheckpoint
-  dirpath: ${paths.output_dir}/checkpoints # directory to save the model file
-  verbose: True # verbosity mode
-  save_weights_only: True # if True, then only the model’s weights will be saved
-  every_n_epochs: 10 # number of epochs between checkpoints
-  save_top_k: -1 # keep all checkpoints on disk, not just the last one
+  dirpath: ${paths.output_dir}/checkpoints  # directory to save the model file
+  verbose: True  # verbosity mode
+  save_weights_only: True  # if True, then only the model’s weights will be saved
+  every_n_epochs: 10  # number of epochs between checkpoints
+  # If save_on_train_epoch_end is False (default), checkpoints will only be saved at epochs that are
+  # evenly divisible by both check_val_every_n_epoch the the Trainer's check_val_every_n_epoch.
+  # see docs: https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.ModelCheckpoint.html
+  # However, in reality this is not always the case, maybe due to a bug.
+  save_on_train_epoch_end: True  # don't wait until validation, in case there is none
+  save_top_k: -1  # keep all checkpoints on disk, not just the last one
