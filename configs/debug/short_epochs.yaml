@@ -15,3 +15,7 @@ trainer:
   limit_val_batches: 0.05
   limit_test_batches: 0.05
   log_every_n_steps: 1  # since epochs are short, we need to log after every batch
+
+data:
+  dataset:
+    load_subset: 0.1  # load only 10% of the training data

@@ -25,10 +25,25 @@ class CameraSpec(Spec):
 
 @dataclass(frozen=True)
 class ActionSpec(Spec):
-    a_mean: torch.Tensor
-    a_std: torch.Tensor
-    a_min: torch.Tensor
-    a_max: torch.Tensor
+    a_mean: torch.Tensor | None
+    a_std: torch.Tensor | None
+    a_min: torch.Tensor | None
+    a_max: torch.Tensor | None
+
+    def __init__(
+        self, shape: tuple[int, ...], type: str, all_actions: torch.Tensor | None = None
+    ):
+        super().__init__(shape, type)
+
+        # frozen dataclass does not allow setting attributes after creation
+        mean = all_actions.mean(0) if all_actions is not None else None
+        std = all_actions.std(0) if all_actions is not None else None
+        min = all_actions.min(0).values if all_actions is not None else None
+        max = all_actions.max(0).values if all_actions is not None else None
+        object.__setattr__(self, "a_mean", mean)
+        object.__setattr__(self, "a_std", std)
+        object.__setattr__(self, "a_min", min)
+        object.__setattr__(self, "a_max", max)
 
 
 @dataclass(frozen=True)

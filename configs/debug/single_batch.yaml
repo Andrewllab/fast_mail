@@ -24,3 +24,5 @@ trainer:
 data:
   num_workers: 0  # debuggers don't like multiprocessing
   pin_memory: False  # disable gpu memory pin
+  dataset:
+    load_subset: 0.1  # load only 10% of the training data

@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from lightning import Callback, LightningModule, Trainer, seed_everything
 from lightning.pytorch.loggers import Logger
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from utils.conf import delete_keys_recursively, setup_resolvers
 from utils.instantiators import instantiate_callbacks, instantiate_loggers
@@ -28,9 +28,9 @@ def main(cfg: DictConfig) -> None:
     # init wandb first so we can log any info or errors from instantiating dataset and model
     run = init_wandb(cfg)
 
-    # recursively delete any "name" fields in config dictionary
-    # we want these to be saved to WandB but we don't want them for instantiation
-    cfg = delete_keys_recursively(cfg, ["name"])
+    # resolve all interpolated values, so we can remove them if needed
+    # this also catches any errors in the config early
+    OmegaConf.resolve(cfg)
 
     # configure torch, e.g. set_float32_matmul_precision
     configure_torch(cfg.get("torch"))
@@ -42,15 +42,24 @@ def main(cfg: DictConfig) -> None:
     seed_everything(seed, workers=True)
 
     # instantiate dataset
-    log.debug("Instantiating data module...")
+    # recursively delete these fields in config dictionary
+    # we want these to be saved to WandB but we don't want them for instantiation
+    delete_keys_recursively(cfg.data, ["name", "task", "task_suite", "randomness"])
     datamodule: TrajectoryDataModule = hydra.utils.instantiate(cfg.data)
 
+    # manually run prepare data and setup so we can use dataset specs for model creation
+    log.debug("Loading training data...")
+    datamodule.prepare_data()
+    datamodule.setup(stage="fit")
+
     # instantiate agent
-    # use "object" conversion strategy to avoid converting specs, which are a
-    # dataclass, to a DictConfig
     log.debug("Instantiating agent...")
-    agent: LightningModule = hydra.utils.instantiate(
-        cfg.agent, specs=datamodule.specs, _convert_="object"
+    delete_keys_recursively(cfg.agent, ["name"])
+    # We cannot pass the dataspecs to hydra instantiate as a keyword
+    # argument because omegaconf converts it to a DictConfig. Therefore we
+    # create a partial and pass the specs afterwards
+    agent: LightningModule = hydra.utils.instantiate(cfg.agent, _partial_=True)(
+        specs=datamodule.specs
     )
 
     log.debug("Instantiating callbacks...")

@@ -15,7 +15,7 @@ defaults:
   - experiment: multi_resnet
   - platform: default
   - optional local: default
-  - debug: null
+  - debug: single_batch
 
 # task name, determines output directory path
 job_type: train
@@ -30,4 +30,5 @@ trainer:
   max_epochs: 100
   log_every_n_steps: 10
   check_val_every_n_epoch: 10
+  limit_val_batches: 0  # disable validation, e.g. if we don't want to initialize a simulation
   enable_model_summary: False  # we print model summary manually with a callback

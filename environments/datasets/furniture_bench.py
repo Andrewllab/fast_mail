@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import logging
-import os
 import pickle
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -15,64 +14,43 @@ from environments.datasets.base_dataset import TrajectoryDataset
 from environments.specs import ActionSpec, CameraSpec, DataSpecs, Spec
 
 if TYPE_CHECKING:
-    from transforms.base_transform import TransformPartialsDict
+    from torch import Tensor
 
 
 log = logging.getLogger(__name__)
 
 
 class FurnitureBenchDataset(TrajectoryDataset):
-    def __init__(
-        self,
-        root_dir: os.PathLike,
-        action_seq_len: int,
-        obs_seq_len: int,
-        device: Literal["disk", "cpu", "cuda"] = "cpu",
-        transforms: TransformPartialsDict | None = None,
-    ):
+    def find_filepaths(self) -> list[Path]:
+        files = list(sorted(self.root_dir.glob("*.pkl")))
+        return files
 
-        root_dir = Path(root_dir)
-        log.info("Loading FurnitureBench dataset from {}".format(root_dir))
+    def load_trajectory_from_file(self, filepath: Path) -> TensorDict:
+        log.debug(f"Loading trajectory from file {filepath}")
+        with open(filepath, "rb") as f:
+            data: dict[str, list[np.ndarray]] = pickle.load(f)
+        return prepare_trajectory(data)
 
-        demo_files = list(sorted(root_dir.glob("*.pkl")))
-
-        self._trajectories: list[TensorDict] = []
-        for demo_file in demo_files:
-            log.debug(f"Loading trajectory from file {demo_file}")
-            with open(demo_file, "rb") as f:
-                data: dict[str, list[np.ndarray]] = pickle.load(f)
-            traj = prepare_trajectory(data)
-            self._trajectories.append(traj)
-
-        # concatenate all actions together for collecting statistics
-        all_actions = torch.cat([data["action"] for data in self._trajectories], dim=0)
-
-        self._base_specs = self._specs = DataSpecs(
+    def get_specs(self, all_actions: Tensor | None = None) -> DataSpecs:
+        return DataSpecs(
             obs={
-                "wrist_cam": CameraSpec(shape=(obs_seq_len, 224, 224, 3), type="rgb"),
-                "front_cam": CameraSpec(shape=(obs_seq_len, 224, 224, 3), type="rgb"),
-                "robot_state": Spec(shape=(obs_seq_len, 7), type="state"),
+                "wrist_cam": CameraSpec(
+                    shape=(self.obs_seq_len, 224, 224, 3), type="rgb"
+                ),
+                "front_cam": CameraSpec(
+                    shape=(self.obs_seq_len, 224, 224, 3), type="rgb"
+                ),
+                "robot_state": Spec(shape=(self.obs_seq_len, 7), type="state"),
             },
             action=ActionSpec(
-                shape=(action_seq_len, 8),
-                type="action",
-                a_mean=all_actions.mean(0),
-                a_std=all_actions.std(0),
-                a_min=all_actions.min(0).values,
-                a_max=all_actions.max(0).values,
+                shape=(self.action_seq_len, 8), type="action", all_actions=all_actions
             ),
-        )
-
-        super().__init__(
-            root_dir=root_dir,
-            action_seq_len=action_seq_len,
-            obs_seq_len=obs_seq_len,
-            device=device,
-            transforms=transforms,
         )
 
 
 def prepare_trajectory(data: dict[str, list[np.ndarray]]) -> TensorDict:
+    # TODO: verify shapes according to specs
+    # TODO: simplify this function
 
     # remove all keys except observations and actions (furniture, rewards, skills)
     data = {key: data[key] for key in ("observations", "actions")}

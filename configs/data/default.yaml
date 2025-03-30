@@ -3,10 +3,10 @@ task:
 task_suite: 
 dataset: ???
 validation: null  # "sim" to validate in simulation or a float to validate on subset of data
-# preprocess_transforms: null
-# cpu_transforms: null
-# cpu_batch_transforms: null
-# gpu_batch_transforms: null
+preprocess_transforms: null
+cpu_transforms: null
+cpu_batch_transforms: null
+gpu_batch_transforms: null
 batch_size: ???
 num_workers: ???
 pin_memory: False

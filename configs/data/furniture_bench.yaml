@@ -18,3 +18,5 @@ dataset:
 #   render: False
 #   num_episode: 20
 #   max_step_per_episode: 600
+
+device: cpu

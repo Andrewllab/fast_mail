@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
+from omegaconf import DictConfig, OmegaConf
 from tensordict.nn import TensorDictModule, TensorDictSequential
 
 from environments.specs import DataSpecs
@@ -121,11 +122,9 @@ def init_transforms(
     if callable(transforms):
         return _init_transform(transforms, specs)
 
-    # filter out any Nones or other primitives types
+    # filter out any values that are not partials
     transforms = {
-        k: v
-        for k, v in transforms.items()
-        if v is not None and not isinstance(v, (int, str, float))
+        k: v for k, v in transforms.items() if isinstance(v, functools.partial)
     }
 
     # sort dictionary of transforms by the first part of the key, which should be a number
@@ -134,7 +133,6 @@ def init_transforms(
     transform_modules = []
     i = 1
     for key, partial in transforms.items():
-        assert isinstance(partial, functools.partial)
 
         name = key.split("_", maxsplit=1)[1]
         log.debug(f"Instantiating transform #{i} '{name}': <{partial.func.__name__}>")
@@ -149,3 +147,25 @@ def init_transforms(
         transform_modules.extend(_create_tdmodules(transform))
 
     return TensorDictSequential(*transform_modules), specs
+
+
+def to_minimal_config(transforms: TransformPartialsDict) -> DictConfig:
+    """Converts a dictionary of transform partials to a config dictionary."""
+
+    # sort dictionary of transforms by the first part of the key, which should be a number
+    transforms = dict(sorted(transforms.items(), key=_item_to_sort_key))
+
+    cfg = {}
+    for key, partial in transforms.items():
+        if not isinstance(partial, functools.partial):
+            # filter out any Nones or other primitives types
+            continue
+        cfg[key] = {
+            "name": partial.func.__name__,
+            "args": partial.args,
+            "kwargs": partial.keywords,
+        }
+
+    # convert to omegaconf DictConfig
+    cfg = OmegaConf.create(cfg)
+    return cfg
