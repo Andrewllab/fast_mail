@@ -30,7 +30,7 @@ class LiberoDataset(TrajectoryDataset):
         super().__init__(*args, **kwargs)
 
     def find_raw_files(self) -> list[Path]:
-        return list(sorted(self.root_dir.glob("*.hdf5")))
+        return list(self.root_dir.glob("*.hdf5"))
 
     def load_from_raw_file(self, filepath: Path) -> TensorDict | list[TensorDict]:
         log.debug(f"Loading trajectories from file {filepath}")
@@ -62,14 +62,14 @@ class LiberoDataset(TrajectoryDataset):
             traj = all_trajs["data"][key]
 
             robot_state = torch.cat(
-                (traj["obs"]["joint_states"], traj["obs"]["gripper_states"]), dim=-1
+                (traj["obs", "joint_states"], traj["obs", "gripper_states"]), dim=-1
             )
 
             traj = TensorDict(
                 {
                     "obs": {
-                        "agentview": traj["obs"]["agentview_rgb"],
-                        "eye_in_hand": traj["obs"]["eye_in_hand_rgb"],
+                        "agentview": traj["obs", "agentview_rgb"],
+                        "eye_in_hand": traj["obs", "eye_in_hand_rgb"],
                         "robot_state": robot_state.float(),
                     },
                     "action": traj["actions"].float(),

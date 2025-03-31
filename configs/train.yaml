@@ -1,5 +1,5 @@
 defaults:
-  - data: lamp
+  - data: one_leg_alr
   - augmentation: null
   - agent: beso_agent
   - callbacks:
