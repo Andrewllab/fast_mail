@@ -12,7 +12,16 @@ logger: null
 # sets level of all command line loggers to 'DEBUG'
 # https://hydra.cc/docs/tutorials/basic/running_your_app/logging/
 hydra:
-  verbose: True
+  job_logging:
+    root:
+      level: DEBUG
+
+  # use this to also set hydra loggers to 'DEBUG'
+  # verbose: True
+
+python_logging:
+  always_log_debug_to_file: True  # if True, debug messages are always logged to file
+  always_suppress_debug_from: null  # use this to disable logging from specific modules
 
 trainer:
   max_epochs: 1
