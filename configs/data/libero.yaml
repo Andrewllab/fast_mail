@@ -6,12 +6,12 @@ task: ???
 
 dataset:
   _target_: environments.datasets.libero_dataset.LiberoDataset
-  data_directory: ${paths.data_dir}/libero
-  embeddings_directory: ${paths.data_dir}/libero/task_embeddings
-  task: ${..task}
-  obs_dim: 9
-  action_dim: 7
-  state_dim: 110
-  max_len_data: 260
-  window_size: 10
-  traj_per_task: 10
+  _partial_: True  # requires transforms at runtime
+  root_dir: ${paths.data_dir}/libero/${..task}
+  embeddings_file: ${paths.data_dir}/libero/task_embeddings/${..task}.pkl
+  action_seq_len: 10
+  obs_seq_len: 1
+
+device: cpu
+
+simulation: null

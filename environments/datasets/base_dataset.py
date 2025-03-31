@@ -38,10 +38,9 @@ TRANSFORMS_FILE = "transforms.yaml"
 
 
 class TrajectoryDataset(Dataset, ABC):
-
     def __init__(
         self,
-        root_dir: Path | os.PathLike,
+        root_dir: os.PathLike,
         action_seq_len: int,
         obs_seq_len: int,
         device: DeviceType = "disk",
@@ -91,9 +90,14 @@ class TrajectoryDataset(Dataset, ABC):
                     f"{self.__class__.__name__}: Loading dataset from {self.root_dir} into memory ({len(raw_files)} trajectories)."
                 )
                 # load all trajectories into memory
-                self.trajectories = [
-                    self.load_raw_traj(filepath) for filepath in raw_files
+                trajectories = [
+                    self.load_from_raw_file(filepath) for filepath in raw_files
                 ]
+                if isinstance(trajectories[0], list):
+                    trajectories = [
+                        traj for sublist in trajectories for traj in sublist
+                    ]
+                self.trajectories = trajectories
 
                 # collect these statistics we need for TrajectorySlices and
                 # action spec
@@ -113,7 +117,7 @@ class TrajectoryDataset(Dataset, ABC):
                 # quickly from disk
                 # we do this by "preprocessing" with a no-op transform
                 preprocessed_dir = self.root_dir.parent / (
-                    f"{self.root_dir.name}_preprocessed"
+                    f"{self.root_dir.name}_memmap"
                 )
                 self.handle_preprocessing(
                     preprocess_transforms={},
@@ -142,7 +146,7 @@ class TrajectoryDataset(Dataset, ABC):
         pass
 
     @abstractmethod
-    def load_raw_traj(self, filepath: Path) -> TensorDict:
+    def load_from_raw_file(self, filepath: Path) -> TensorDict | list[TensorDict]:
         """Load a trajectory from a raw data file and return it as a TensorDict.
         The TensorDict should have a single batch dimension corresponding to the
         length of the trajectory. Data without a time dimension, such as goal
@@ -230,18 +234,28 @@ class TrajectoryDataset(Dataset, ABC):
         transforms, specs = init_transforms(preprocess_transforms, specs, wrap=False)
 
         raw_files = self._find_raw_files()
-        processed_files = [preprocessed_dir / f"{f.stem}" for f in raw_files]
-        for raw_file, processed_file in zip(raw_files, processed_files):
-            traj = self.load_raw_traj(raw_file)
+        processed_files = []
+        for raw_file in raw_files:
+            trajs = self.load_from_raw_file(raw_file)
+            if isinstance(trajs, list):
+                filenames = [
+                    preprocessed_dir / f"{raw_file.stem}_{i:03d}"
+                    for i in range(len(trajs))
+                ]
+            else:
+                trajs = [trajs]
+                filenames = [preprocessed_dir / f"{raw_file.stem}"]
 
-            specs.action.update_stats(traj["action"])
-            specs.append_length(int(traj.batch_size[0]))
+            for traj, filename in zip(trajs, filenames):
+                specs.action.update_stats(traj["action"])
+                specs.append_length(int(traj.batch_size[0]))
 
-            # TODO: handle the case where multiple trajectories are created
-            for transform in transforms:
-                traj = transform(traj)
+                # TODO: handle the case where multiple trajectories are created
+                for transform in transforms:
+                    traj = transform(traj)
 
-            save_tensordict(traj, processed_file)
+                save_tensordict(traj, filename)
+                processed_files.append(filename)
 
         # save the specs and transforms to the preprocessed directory to
         # to indicate that preprocessing completed successfully
@@ -412,10 +426,12 @@ def get_subset(files: Sequence[T], subset: int | float | None) -> Sequence[T]:
     if subset is None:
         return files
 
-    if subset < 1:
+    if isinstance(subset, float):
         # if subset is a percentage, convert it to an integer
-        end = int(len(files) * subset)
-    else:
-        end = subset
-    log.debug(f"Loading only {end} files out of {len(files)} total files found.")
-    return files[:end]
+        subset = int(len(files) * subset)
+
+    # do not index load than 1 file
+    subset = max(1, subset)
+
+    log.debug(f"Loading only {subset} files out of {len(files)} total files found.")
+    return files[:subset]
