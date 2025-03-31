@@ -19,3 +19,7 @@ agent:
       rgb_model:
         # resnet18
         pretrained_weights: null  # null or "IMAGENET1K_V1"
+
+logger:
+  wandb:
+    tags: ["rgb", "rgb_multi_resnet"]

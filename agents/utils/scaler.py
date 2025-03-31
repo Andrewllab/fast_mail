@@ -41,6 +41,11 @@ class MinMaxScaler(Scaler):
         self.register_buffer("y_max", specs.action.a_max.clone())
         self.register_buffer("y_range", self.y_max - self.y_min)
 
+        if (self.y_range == 0.0).any():
+            log.warning(
+                "Some dimensions of the action space have a range of zero. This will cause NaN values after action normalization."
+            )
+
     @property
     def lower_bound(self) -> Tensor:
         return -1 * torch.ones_like(self.y_range)
@@ -74,6 +79,11 @@ class NormalizingScaler(Scaler):
         self.register_buffer("y_std", specs.action.a_std.clone())
         self.register_buffer("y_min", specs.action.a_min.clone())
         self.register_buffer("y_max", specs.action.a_max.clone())
+
+        if (self.y_std == 0.0).any():
+            log.warning(
+                "Some dimensions of the action space have a variance of zero. This will cause very large values after action normalization."
+            )
 
     @property
     def lower_bound(self) -> Tensor:
