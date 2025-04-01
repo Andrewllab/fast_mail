@@ -15,7 +15,8 @@ class FoundationStereo(Transform):
     def __init__(
             self,
             specs: DataSpecs,
-            engine_path: str = "/tensorRT.engine"
+            engine_path: str = "/tensorRT.engine",
+            remove_invisible: bool = True,
         ) -> None:
 
         self._ir_specs = [key for key, spec in specs.obs.items() if spec.type == "ir"] # TODO: Handle IR stereo obs correctly: { "ir": { "left": img1, "right": img2 } } ?
@@ -26,6 +27,8 @@ class FoundationStereo(Transform):
         self.context = self.engine.create_execution_context()
 
         self.engine_path = engine_path
+
+        self.remove_invisible = remove_invisible
         # INPUT_NAME_0 = "left" # TODO: check if still necessary!
         # INPUT_NAME_1 = "right" # TODO: check if still necessary!
         # DTYPE = trt.float32 # TODO: check if still necessary!
@@ -65,11 +68,11 @@ class FoundationStereo(Transform):
         disp = padder.unpad(disp.float())
         disp = disp.data.cpu().numpy().reshape(H,W) # TODO: get rid of the cpu() calls? (possible through lightning?)
 
-        # if args.remove_invisible:
-        yy,xx = np.meshgrid(np.arange(disp.shape[0]), np.arange(disp.shape[1]), indexing='ij')
-        us_right = xx-disp
-        invalid = us_right<0
-        disp[invalid] = np.inf
+        if self.remove_invisible:
+            yy,xx = np.meshgrid(np.arange(disp.shape[0]), np.arange(disp.shape[1]), indexing='ij')
+            us_right = xx-disp
+            invalid = us_right<0
+            disp[invalid] = np.inf
 
         return disp
 
