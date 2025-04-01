@@ -1,6 +1,7 @@
 import torch
 import tensorrt as trt
 from collections import namedtuple, OrderedDict
+import numpy as np
 
 from environments.specs import DataSpecs
 from transforms.base_transform import KeyMapping, Transform
@@ -11,7 +12,11 @@ Binding = namedtuple('Binding', ('name', 'dtype', 'shape', 'data', 'ptr'))
 
 class FoundationStereo(Transform):
     """ Pads images such that dimensions are divisible by 8 """
-    def __init__(self, specs: DataSpecs) -> None:
+    def __init__(
+            self,
+            specs: DataSpecs,
+            engine_path: str = "/tensorRT.engine"
+        ) -> None:
 
         self._ir_specs = [key for key, spec in specs.obs.items() if spec.type == "ir"] # TODO: Handle IR stereo obs correctly: { "ir": { "left": img1, "right": img2 } } ?
         self._specs = specs
@@ -20,10 +25,10 @@ class FoundationStereo(Transform):
 
         self.context = self.engine.create_execution_context()
 
-        self.ENGINE_PATH = "foundation_stereo_files/pretrained_models/foundation_stereo.engine" # TODO: make this configurable
-        INPUT_NAME_0 = "left" # TODO: check if still necessary!
-        INPUT_NAME_1 = "right" # TODO: check if still necessary!
-        DTYPE = trt.float32 # TODO: check if still necessary!
+        self.engine_path = engine_path
+        # INPUT_NAME_0 = "left" # TODO: check if still necessary!
+        # INPUT_NAME_1 = "right" # TODO: check if still necessary!
+        # DTYPE = trt.float32 # TODO: check if still necessary!
 
         # Load tensorRT engine
         self.engine = load_engine(self.ENGINE_PATH.ENGINE_PATH)
@@ -41,7 +46,7 @@ class FoundationStereo(Transform):
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def forward(self, ir_obs):
+    def __call__(self, ir_obs):
 
         H,W = ir_obs["left"].shape[:2]
         for side in ir_obs:
@@ -59,6 +64,13 @@ class FoundationStereo(Transform):
 
         disp = padder.unpad(disp.float())
         disp = disp.data.cpu().numpy().reshape(H,W) # TODO: get rid of the cpu() calls? (possible through lightning?)
+
+        # if args.remove_invisible:
+        yy,xx = np.meshgrid(np.arange(disp.shape[0]), np.arange(disp.shape[1]), indexing='ij')
+        us_right = xx-disp
+        invalid = us_right<0
+        disp[invalid] = np.inf
+
         return disp
 
 
