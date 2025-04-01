@@ -2,14 +2,17 @@ import dataclasses
 
 import torch
 
-from environments.specs import DataSpecs
+from environments.specs import CameraSpec, DataSpecs
 from transforms.base_transform import KeyMapping, Transform
 
 
 class ToTorchImage(Transform):
     def __init__(self, specs: DataSpecs) -> None:
 
-        self._rgb_keys = [key for key, spec in specs.obs.items() if spec.type == "rgb"]
+        # we use type equality to avoid matching DepthCameraSpec
+        self._rgb_keys = [
+            key for key, spec in specs.obs.items() if type(spec) == CameraSpec
+        ]
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         for key in self._rgb_keys:
             rgb_spec = obs_specs[key]
@@ -21,7 +24,7 @@ class ToTorchImage(Transform):
         self._specs = specs.replace(obs=obs_specs)
 
     @property
-    def key_mappings(self):
+    def key_mappings(self) -> list[KeyMapping]:
         return [
             KeyMapping(in_keys=[("obs", key)], out_keys=[("obs", key)])
             for key in self._rgb_keys

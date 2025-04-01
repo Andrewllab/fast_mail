@@ -57,6 +57,20 @@ class PinholeCameraIntrinsic:
     def inverse_matrix(self) -> torch.Tensor:
         return self._inverse_matrix
 
+    def resize(self, new_shape: tuple[int, int]) -> PinholeCameraIntrinsic:
+        new_width, new_height = new_shape
+        scale_x = new_width / self.width
+        scale_y = new_height / self.height
+
+        return PinholeCameraIntrinsic(
+            width=new_width,
+            height=new_height,
+            fx=self.fx * scale_x,
+            fy=self.fy * scale_y,
+            cx=self.cx * scale_x,
+            cy=self.cy * scale_y,
+        )
+
 
 @dataclass(frozen=True)
 class CameraSpec(Spec):

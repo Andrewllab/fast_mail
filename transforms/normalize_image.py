@@ -1,6 +1,6 @@
 import torchvision.transforms.functional as F
 
-from environments.specs import DataSpecs
+from environments.specs import CameraSpec, DataSpecs
 from transforms.base_transform import KeyMapping, Transform
 
 
@@ -9,7 +9,9 @@ class NormalizeImage(Transform):
 
         self.mean = mean
         self.std = std
-        self._rgb_keys = [key for key, spec in specs.obs.items() if spec.type == "rgb"]
+        self._rgb_keys = [
+            key for key, spec in specs.obs.items() if type(spec) == CameraSpec
+        ]
         self._specs = specs
 
     @property

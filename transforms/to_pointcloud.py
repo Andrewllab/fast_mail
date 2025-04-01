@@ -25,7 +25,7 @@ class ToPointCloud(Transform):
         self.color = color
         self.max_depth = max_depth
 
-        self.cam_cfgs = []
+        self.cam_cfgs = {}
         in_keys = []
 
         depth_specs = {
@@ -51,8 +51,8 @@ class ToPointCloud(Transform):
             # add the depth image to the list of inputs
             in_keys.append(("obs", key))
 
-            # add the dynamic pose to the list of inputs
             if spec.dynamic_pose_obs_key is not None:
+                # add the dynamic pose to the list of inputs
                 pose_obs_key = spec.dynamic_pose_obs_key
                 if isinstance(pose_obs_key, str):
                     pose_obs_key = (pose_obs_key,)
@@ -86,7 +86,7 @@ class ToPointCloud(Transform):
                         f"RGB image in obs.{spec.rgb_obs_key} must have either HWC or CHW channel order. Got spec with shape {rgb_shape}"
                     )
 
-            self.cam_cfgs.append(cam_cfg)
+            self.cam_cfgs[key] = cam_cfg
 
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         obs_specs["pcd"] = PointCloudSpec(shape=(6 if color else 3,))
@@ -108,7 +108,7 @@ class ToPointCloud(Transform):
         if self.color:
             all_rgb = []
 
-        for cam_cfg in self.cam_cfgs:
+        for cam_cfg in self.cam_cfgs.values():
             # since we can't know in advance how many arguments we will have,
             # (and it varies by camera), we have to unpack each argument as we go
             depth, args = args[0], args[1:]

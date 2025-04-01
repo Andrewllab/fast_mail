@@ -66,11 +66,11 @@ class MultiRgbTokenizer(nn.Module, Transform):
 
             # we stack and flatten rather than concatenate, to keep images from the same time step together
             # [B,T,C,H,W] -> [B,T,N,C,H,W]
-            inputs = torch.stack(imgs, dim=-4)
+            img = torch.stack(imgs, dim=-4)
 
-            leading_dims, N, img_shape = img.shape[:-4], img.shape[-4], img.shape[-3:]
+            leading_dims, N, img_shape = (img.shape[:-4], img.shape[-4], img.shape[-3:])
             # [B,T,N,C,H,W] -> [B*T*N,C,H,W]
-            inputs = inputs.view(-1, *img_shape)
+            img = img.view(-1, *img_shape)
 
             # [B*T*N,C,H,W] -> [B*T*N,D]
             features = self.model(imgs)
