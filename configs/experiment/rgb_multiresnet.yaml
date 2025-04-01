@@ -22,4 +22,4 @@ agent:
 
 logger:
   wandb:
-    tags: ["rgb", "rgb_multi_resnet"]
+    tags: ["rgb", "rgb_multiresnet"]

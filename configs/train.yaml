@@ -12,7 +12,7 @@ defaults:
   - paths: default
   - hydra: default
   - _self_
-  - experiment: multi_resnet
+  - experiment: rgb_multiresnet
   - platform: default
   - optional local: default
   - debug: single_batch

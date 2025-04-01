@@ -6,9 +6,10 @@ import pickle
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-import numpy as np
 import torch
 from frozendict import frozendict
+
+from utils.math import invert_intrinsics
 
 log = logging.getLogger(__name__)
 
@@ -19,13 +20,66 @@ class Spec:
     type: str
 
 
+@dataclass
+class PinholeCameraIntrinsic:
+    width: int
+    height: int
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+
+    def __init__(
+        self, width: int, height: int, fx: float, fy: float, cx: float, cy: float
+    ):
+        self.width = width
+        self.height = height
+        self.fx = fx
+        self.fy = fy
+        self.cx = cx
+        self.cy = cy
+
+        self._intrinsic_matrix = torch.tensor(
+            [
+                [fx, 0, cx],
+                [0, fy, cy],
+                [0, 0, 1],
+            ]
+        )
+
+        self._inverse_matrix = invert_intrinsics(self._intrinsic_matrix)
+
+    @property
+    def intrinsic_matrix(self) -> torch.Tensor:
+        return self._intrinsic_matrix
+
+    @property
+    def inverse_matrix(self) -> torch.Tensor:
+        return self._inverse_matrix
+
+
 @dataclass(frozen=True)
 class CameraSpec(Spec):
-    camera_intrinsics: np.ndarray | None = None
-    camera_extrinics: np.ndarray | None = None
-    # the key describing the pose information that the camera_extrinsics are relative to
+    intrinsics: PinholeCameraIntrinsic | None = None
+    extrinsics: torch.Tensor | None = None
+    # the key (within the obs dict) with the dynamic pose information for the camera
     # e.g. a wrist camera would have extrinsics relative to the end effector pose
-    mount_point: str | tuple[str, ...] | None = None
+    dynamic_pose_obs_key: str | tuple[str, ...] | None = None
+    type: str = "rgb"
+
+
+@dataclass(frozen=True)
+class DepthCameraSpec(CameraSpec):
+    # the key (within the obs dict) where the corresponding rgb image is
+    rgb_obs_key: str | tuple[str, ...] | None = None
+    # orthogonal or perspective depth measurement
+    orthogonal: bool = True
+    type: str = "depth"
+
+
+@dataclass(frozen=True)
+class PointCloudSpec(Spec):
+    type: str = "pointcloud"
 
 
 @dataclass(frozen=True)

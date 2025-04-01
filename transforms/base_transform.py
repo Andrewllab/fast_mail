@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
-from omegaconf import DictConfig, ListConfig, OmegaConf
+from omegaconf import ListConfig, OmegaConf
 from tensordict.nn import TensorDictModule, TensorDictSequential
 
 from environments.specs import DataSpecs
@@ -28,8 +28,8 @@ KeyType = str | tuple[str, ...]
 
 @dataclass
 class KeyMapping:
-    in_keys: list[KeyType]
-    out_keys: list[KeyType]
+    in_keys: KeyType | list[KeyType] | dict[KeyType, str]
+    out_keys: KeyType | list[KeyType]
 
 
 class Transform(ABC):
