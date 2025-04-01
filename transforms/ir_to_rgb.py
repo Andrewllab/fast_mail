@@ -5,7 +5,7 @@ from environments.specs import DataSpecs
 from transforms.base_transform import KeyMapping, Transform
 
 
-class ResizeImage(Transform):
+class IRToRGB(Transform):
     def __init__(self, specs: DataSpecs) -> None:
 
         self._ir_keys = [key for key, spec in specs.obs.items() if spec.type == "ir"] # TODO: Handle IR stereo obs correctly: { "ir": { "left": img1, "right": img2 } } ?

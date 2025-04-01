@@ -5,7 +5,7 @@ from environments.specs import DataSpecs
 from transforms.base_transform import KeyMapping, Transform
 
 
-class ResizeImage(Transform):
+class ResizeImageAndIntrinsic(Transform):
     def __init__(self, specs: DataSpecs, target_height, target_width) -> None:
 
         self.target_height = target_height # e.g. 480
