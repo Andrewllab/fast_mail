@@ -25,10 +25,8 @@ class PadImage(Transform):
         return self._specs
 
     def __call__(self, ir_obs):
-        left = ir_obs["left"]
-        right = ir_obs["right"]
-        left = torch.as_tensor(left).cuda().float()[None].permute(0,3,1,2)
-        img1 = torch.as_tensor(img1).cuda().float()[None].permute(0,3,1,2)
-        padder = InputPadder(left.shape, divis_by=32, force_square=False)
-        left, right = padder.pad(left, right)
-        return left, right # TODO: Handle left and right correclty! Dict?
+        for side in ir_obs:
+            ir_obs[side] = torch.as_tensor(ir_obs[side]).cuda().float()[None].permute(0,3,1,2)
+        padder = InputPadder(ir_obs["left"].shape, divis_by=32, force_square=False)
+        ir_obs["left"], ir_obs["right"] = padder.pad(ir_obs["left"], ir_obs["right"])
+        return ir_obs

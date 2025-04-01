@@ -31,8 +31,12 @@ class ResizeImageAndIntrinsic(Transform):
     # def intrinsic_specs(self) -> CameraSpec:
     #     return self._specs
 
-    def __call__(self, image):
-        return resize_cover_and_crop_center(image, self.intrinsic, self.target_height, self.target_width) # TODO: how to handle intrinsics correctly?
+    def __call__(self, ir_obs):
+        #for side in image:
+        ir_obs['left'], intrinsic = resize_cover_and_crop_center(ir_obs['left'], self.intrinsic, self.target_height, self.target_width)
+        ir_obs['right'], _ = resize_cover_and_crop_center(ir_obs['right'], self.intrinsic, self.target_height, self.target_width)
+
+        return ir_obs, intrinsic # TODO: how to handle intrinsic updates here correctly?
 
 
 def resize_cover_and_crop_center(img, K, target_h=480, target_w=640):

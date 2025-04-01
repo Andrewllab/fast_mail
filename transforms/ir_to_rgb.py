@@ -8,7 +8,7 @@ from transforms.base_transform import KeyMapping, Transform
 class IRToRGB(Transform):
     def __init__(self, specs: DataSpecs) -> None:
 
-        self._ir_keys = [key for key, spec in specs.obs.items() if spec.type == "ir"] # TODO: Handle IR stereo obs correctly: { "ir": { "left": img1, "right": img2 } } ?
+        self._ir_keys = [key for key, spec in specs.obs.items() if spec.type == "ir"] # TODO: Assume that the data is stored like: { "ir": { "left": img1, "right": img2 } } ?
         self._specs = specs
 
     @property
@@ -24,5 +24,7 @@ class IRToRGB(Transform):
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def __call__(self, image):
-        return np.stack([image] * 3, axis=-1)
+    def __call__(self, ir_obs):
+        for side in ir_obs:
+            ir_obs[side] = np.stack(ir_obs[side] * 3, axis=-1)
+        return ir_obs
