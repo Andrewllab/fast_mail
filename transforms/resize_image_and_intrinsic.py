@@ -18,8 +18,8 @@ class ResizeImageAndIntrinsic(Transform):
     def key_mappings(self) -> list[KeyMapping]:
         return [
             KeyMapping(
-                in_keys=[("ir", key)],
-                out_keys=[("ir", key)])
+                in_keys=[("obs", key)],
+                out_keys=[("obs", key), ("obs", "intrinsic")]) # TODO: add intrinsic here? correct this!
             for key in self._ir_keys
         ]
 
