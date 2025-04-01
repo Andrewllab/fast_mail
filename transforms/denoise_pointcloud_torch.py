@@ -12,11 +12,13 @@ class DenoisePointCloud(Transform):
             self,
             specs: DataSpecs,
             nb_points: int = 30,
-            radius: float = 0.03
+            radius: float = 0.03,
+            workers: int = 1
             ) -> None:
 
         self.nb_points = nb_points
         self.radius = radius
+        self.num_workers = workers
         self._specs = specs
 
     @property
@@ -33,7 +35,7 @@ class DenoisePointCloud(Transform):
 
     def __call__(self, pc: Data) -> Data:
 
-        radius_graph = RadiusGraph(r=self.radius, max_num_neighbors=self.nb_points, loop=False) 
+        radius_graph = RadiusGraph(r=self.radius, max_num_neighbors=self.nb_points, loop=False, num_workers=self.num_workers) 
         pc = radius_graph(pc)
 
         row, col = pc.edge_index
