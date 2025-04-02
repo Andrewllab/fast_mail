@@ -51,7 +51,7 @@ class CropPointCloud(Transform):
 
         data = {"pos": pc.pos[mask]}
 
-        if hasattr(pc, "x") and pc.x is not None and pc.x.size(0) == pc.pos.size(0): # TODO: Do i handle color information correclty? @balazsgyenes stores it in pc.x, right?
+        if hasattr(pc, "x") and pc.x is not None and pc.x.size(0) == pc.pos.size(0):
             data["x"] = pc.x[mask]
         
         return Data(**data)
