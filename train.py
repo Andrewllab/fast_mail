@@ -3,10 +3,14 @@ from typing import TYPE_CHECKING
 
 import hydra
 import numpy as np
+import rootutils
 import torch
 from lightning import Callback, LightningModule, Trainer, seed_everything
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig, OmegaConf
+
+# enables importing local modules regardless of where the script is run
+rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
 
 from utils.conf import delete_keys_recursively, setup_resolvers
 from utils.instantiators import instantiate_callbacks, instantiate_loggers
