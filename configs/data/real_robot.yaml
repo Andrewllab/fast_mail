@@ -1,0 +1,20 @@
+defaults:
+  - env
+
+env_dataset:
+  env:
+    _target_: environments.real_robot.real_robot_env.RealRobotEnv
+    _partial_: True
+    robot_arm:
+      _target_: environments.real_robot.hardware.hardware_franka.FrankaArm
+      name: p4 arm
+      ip_address: 141.3.53.154
+      port: 50053
+    robot_hand:
+      _target_: environments.real_robot.hardware.hardware_frankahand.FrankaHand
+      name: p4 gripper
+      ip_address: 141.3.53.154
+      port: 50053
+    discrete_devices:
+      _target_: environments.real_robot.hardware.hardware_realsense.RealSense.get_devices
+      amount: 2

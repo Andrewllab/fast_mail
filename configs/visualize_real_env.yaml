@@ -1,5 +1,5 @@
 defaults:
-  - data: dummy
+  - data: real_robot
   - agent: null_agent
   - callbacks:
   - logger: 
