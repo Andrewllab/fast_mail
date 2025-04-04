@@ -7,8 +7,17 @@ defaults:
 
 platform:
   name: horeka
+  num_workers: 36  # horeka node has 152 cores = 38 cores per GPU
+
+data:
+  eval_mode: null  # we don't want to run IsaacSim on Horeka
+
 paths:
   data_dir: ${oc.env:TMPDIR}/datasets
+
+trainer:
+  enable_progress_bar: False  # don't clutter up the logs
+
 hydra:
   mode: MULTIRUN
   launcher:

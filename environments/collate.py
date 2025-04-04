@@ -12,12 +12,12 @@ def collate_tensor_dict(batch: list[TensorDict], *, collate_fn_map) -> TensorDic
     """Collate a list of TensorDicts into a single TensorDict."""
     # tensordict.lazy_stack always produces a NonTensorStack when stacking
     # NonTensorData, and may be more performant
-    # BALAZS: is this really better than torch.stack?
+    # TODO: is this really better than torch.stack?
     stacked: TensorDict = tensordict.lazy_stack(batch, dim=0).contiguous()
 
     for key, value in stacked.items(include_nested=True, leaves_only=True):
         # when NonTensorStack is accessed, it returns its contents in a list
-        # BALAZS: maybe call default_collate here instead?
+        # TODO: maybe call default_collate here instead?
         if isinstance(value, list) and isinstance(value[0], GeomData):
             torch_geom_batch = collate_torch_geom(value)
             stacked[key] = torch_geom_batch

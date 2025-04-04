@@ -4,7 +4,7 @@ from pathlib import Path
 import torch
 from tensordict import TensorDict
 
-from environments.datasets.base_dataset import TrajectoryDataset
+from environments.base_dataset import TrajectoryDataset
 from environments.specs import ActionSpec, CameraSpec, DataSpecs, Spec
 
 log = logging.getLogger(__name__)

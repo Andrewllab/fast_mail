@@ -13,5 +13,3 @@ dataset:
   obs_seq_len: 1
 
 device: cpu
-
-simulation: null

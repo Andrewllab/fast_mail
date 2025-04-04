@@ -101,6 +101,6 @@ def configure_logging(logging_cfg: DictConfig) -> None:
 
 @lru_cache(maxsize=None)
 def warn_once(logger: logging.Logger, msg: str, *args, **kwargs):
-    # BALAZS: replace with logging.captureWarnings, set up via config
+    # TODO: replace with logging.captureWarnings, set up via config
     # https://docs.python.org/3/library/logging.html#logging.captureWarnings
     logger.warning(msg, *args, stacklevel=2, **kwargs)

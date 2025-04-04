@@ -44,9 +44,10 @@ class BaseAgent(L.LightningModule):
 
         self._model = model(specs)
 
-        # BALAZS: refactor, since scalar is sort of transform
+        # TODO: scaler should return modified specs like transforms
         self.scaler = scaler(specs)
 
+        self._specs = specs
         self._optimizer_func = optimizer
         self._lr_scheduler_func = lr_scheduler
         self.ema_decay = ema_decay
@@ -62,6 +63,11 @@ class BaseAgent(L.LightningModule):
         if self.ema_decay > 0 and not self.training:
             return self._ema_obs_encoder
         return self._obs_encoder
+
+    @property
+    def specs(self) -> DataSpecs:
+        """Make the specs available to the agent for acton sampling."""
+        return self._specs
 
     def configure_optimizers(self):
         optimizer = self._optimizer_func(self.parameters())

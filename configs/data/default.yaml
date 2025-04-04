@@ -4,8 +4,8 @@ task_suite:
 dataset: ???
 batch_size: ???
 device: disk  # by default, assume it dataset doesn't fit in memory
-simulation: ???
-validation: null  # "sim" to validate in simulation or a float to validate on subset of data
+env_dataset: null
+eval_mode: null  # "sim" to validate in simulation or a float to validate on subset of data
 preprocess_transforms: null
 cpu_transforms: null
 cpu_batch_transforms: null

@@ -1,0 +1,30 @@
+defaults:
+  - data: dummy
+  - agent: null_agent
+  - callbacks:
+  - logger: 
+  - python_logging: default
+  - paths: default
+  - hydra: default
+  - _self_
+  - optional local: default
+  - debug: verbose
+
+agent:
+  obs_encoder:
+    1_render_cameras:
+      _target_: transforms.render_cameras.RenderCameras
+      _partial_: True
+
+# task name, determines output directory path
+job_type: debug
+
+trainer:
+  accelerator: gpu
+  devices: auto
+  # precision: 16-true
+  default_root_dir: ${paths.output_dir}
+  enable_progress_bar: False
+
+torch:
+  set_float32_matmul_precision: medium

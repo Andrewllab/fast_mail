@@ -7,9 +7,9 @@ from pathlib import Path
 import numpy as np
 import torch
 from tensordict import TensorDict
-from torch.utils.data._utils.collate import default_collate
+from torch.utils.data import default_collate
 
-from environments.datasets.base_dataset import TrajectoryDataset
+from environments.base_dataset import TrajectoryDataset
 from environments.specs import ActionSpec, CameraSpec, DataSpecs, Spec
 
 log = logging.getLogger(__name__)

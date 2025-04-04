@@ -1,6 +1,5 @@
 defaults:
   - data: one_leg_alr
-  - augmentation: null
   - agent: beso_agent
   - callbacks:
     - model_checkpoint
@@ -23,7 +22,7 @@ job_type: train
 seed: null
 
 data:
-  validation: null  # "sim" to validate in simulation or a float to validate on subset of data
+  eval_mode: null  # "env" to validate in simulation or a float to validate on subset of data
 
 trainer:
   default_root_dir: ${paths.output_dir}

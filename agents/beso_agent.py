@@ -63,7 +63,7 @@ class BesoAgent(BaseAgent):
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
 
-        self.action_shape = specs.action.shape
+        self.action_shape = self.specs.action.shape
 
     def training_step(self, batch, batch_idx) -> Tensor:
         """

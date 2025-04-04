@@ -129,6 +129,7 @@ class ActionSpec(Spec):
         return self.a_var.sqrt() if self.a_var is not None else None
 
     def update_stats(self, actions: torch.Tensor) -> None:
+        # TODO: replace with gymnasium.wrappers.utils.RunningMeanStd
         m = len(actions)
         if m == 0:
             return  # No update needed if the batch is empty
@@ -191,6 +192,17 @@ class DataSpecs:
             self._lengths,
         )
         return "DataSpecs(obs={}, action={}, goal={}, lengths={})".format(*args)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DataSpecs):
+            return False
+
+        return (
+            self._obs == other._obs
+            and self._action == other._action
+            and self._goal == other._goal
+            and self._lengths == other._lengths
+        )
 
     def replace(self, **kwargs) -> DataSpecs:
         default_kwargs = {

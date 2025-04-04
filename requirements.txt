@@ -19,6 +19,7 @@ torch_spline_conv
 
 open3d  # for point cloud visualization
 gymnasium  # for gym environments
+pygame  # for rendering a stream of images
 einops
 frozendict  # for immutable dictionaries in DataSpecs obs and goal properties
 hydra-core==1.3.2

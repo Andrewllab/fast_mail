@@ -270,7 +270,7 @@ class TrajectoryDataset(Dataset, ABC):
     def __len__(self) -> int:
         return len(self.slices)
 
-    def __getitem__(self, idx: int) -> Dataset | TensorDict:
+    def __getitem__(self, idx: int) -> TensorDict:
         traj_idx, start, end = self.slices(idx)
 
         if self.device != "disk":

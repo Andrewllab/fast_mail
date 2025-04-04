@@ -5,7 +5,7 @@ import hydra
 import numpy as np
 import rootutils
 import torch
-from lightning import Callback, LightningModule, Trainer, seed_everything
+from lightning import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig, OmegaConf
 
@@ -15,9 +15,7 @@ rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
 from utils.conf import delete_keys_recursively, setup_resolvers
 from utils.instantiators import instantiate_callbacks, instantiate_loggers
 from utils.logging import configure_logging
-from utils.seeding import get_rng
 from utils.torch_conf import configure_torch
-from utils.wandb import init_wandb
 
 if TYPE_CHECKING:
     from environments.datamodule import TrajectoryDataModule
@@ -25,12 +23,11 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-@hydra.main(version_base=None, config_path="configs", config_name="train")
+@hydra.main(
+    version_base=None, config_path="../configs", config_name="visualize_real_env"
+)
 def main(cfg: DictConfig) -> None:
     configure_logging(cfg.python_logging)
-
-    # init wandb first so we can log any info or errors from instantiating dataset and model
-    run = init_wandb(cfg)
 
     # resolve all interpolated values, so we can remove them if needed
     # this also catches any errors in the config early
@@ -39,12 +36,6 @@ def main(cfg: DictConfig) -> None:
     # configure torch, e.g. set_float32_matmul_precision
     configure_torch(cfg.get("torch"))
 
-    # seeding
-    rng = get_rng(cfg)
-    seed = rng.integers(np.iinfo(np.uint32).max)
-    log.info(f"Seeding pytorch, numpy, random, and workers with seed {seed}")
-    seed_everything(seed, workers=True)
-
     # instantiate dataset
     # recursively delete these fields in config dictionary
     # we want these to be saved to WandB but we don't want them for instantiation
@@ -52,9 +43,9 @@ def main(cfg: DictConfig) -> None:
     datamodule: TrajectoryDataModule = hydra.utils.instantiate(cfg.data)
 
     # manually run prepare data and setup so we can use dataset specs for model creation
-    log.debug("Loading training data...")
+    log.debug("Instantiating real robot environment...")
     datamodule.prepare_data()
-    datamodule.setup(stage="fit")
+    datamodule.setup(stage="predict")
 
     # instantiate agent
     log.debug("Instantiating agent...")
@@ -63,6 +54,7 @@ def main(cfg: DictConfig) -> None:
 
     log.debug("Instantiating callbacks...")
     callbacks: list[Callback] = instantiate_callbacks(cfg.get("callbacks"))
+    callbacks += datamodule.get_callbacks()
 
     log.debug("Instantiating loggers...")
     logger: list[Logger] = instantiate_loggers(cfg.get("logger"))
@@ -72,11 +64,8 @@ def main(cfg: DictConfig) -> None:
         cfg.trainer, _target_=Trainer, callbacks=callbacks, logger=logger
     )
 
-    log.info("Starting training")
-    trainer.fit(agent, datamodule=datamodule)
-
-    log.info("Training done")
-    run.finish()
+    log.info("Starting prediction loop")
+    trainer.predict(agent, datamodule=datamodule)
 
 
 if __name__ == "__main__":

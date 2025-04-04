@@ -1,0 +1,2 @@
+_target_: agents.null_agent.NullAgent
+obs_encoder: null

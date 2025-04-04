@@ -2,13 +2,14 @@
 
 platform:
   name: workstation
+  num_workers: 16  # make available for any config to use
 
 torch:
   set_float32_matmul_precision: medium
 
 data:
   batch_size: 256
-  num_workers: 16
+  num_workers: ${platform.num_workers}  # allow overriding num_workers only in dataloader
   pin_memory: False  # test if True is faster, but it might not be
 
 trainer:
