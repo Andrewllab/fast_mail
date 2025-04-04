@@ -2,6 +2,9 @@
 
 # runs 1 train, 1 validation and 1 test step
 
+defaults:
+  - verbose
+
 # overwrite task name so debugging logs are stored in separate folder
 job_type: "debug"
 
@@ -9,15 +12,9 @@ job_type: "debug"
 callbacks: null
 logger: null
 
-# sets level of all command line loggers to 'DEBUG'
-# https://hydra.cc/docs/tutorials/basic/running_your_app/logging/
-hydra:
-  job_logging:
-    root:
-      level: DEBUG
-
-  # use this to also set hydra loggers to 'DEBUG'
-  # verbose: True
+# # use this to also set hydra loggers to 'DEBUG'
+# hydra:
+#   verbose: True
 
 python_logging:
   always_log_debug_to_file: True  # if True, debug messages are always logged to file

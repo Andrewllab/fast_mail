@@ -2,13 +2,9 @@
 
 # runs normal training but with verbosity and with wandb disabled
 
+defaults:
+  - verbose
+
 # disable wandb logging
 logger:
   wandb: null
-
-# sets level of all command line loggers to 'DEBUG'
-# https://hydra.cc/docs/tutorials/basic/running_your_app/logging/
-hydra:
-  job_logging:
-    root:
-      level: DEBUG
