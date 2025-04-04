@@ -152,4 +152,9 @@ class BesoAgent(BaseAgent):
         c_skip, c_out, c_in = [
             unsqueeze_to(c, action) for c in self.get_scalings(sigma)
         ]
+        if self.ema_decay > 0:
+            from torch.optim.swa_utils import AveragedModel
+
+            assert isinstance(self.model, AveragedModel)
+
         return self.model(obs, action * c_in, goal, sigma) * c_out + action * c_skip
