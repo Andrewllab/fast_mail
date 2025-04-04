@@ -160,40 +160,12 @@ def spaces_to_specs(obs_space: Space, action_space: Space) -> DataSpecs:
 
 
 def monkey_patch_data_fetcher():
-    from lightning.pytorch.loops.fetchers import (
-        _DataFetcher,
-        _DataLoaderIterDataFetcher,
-        _PrefetchDataFetcher,
-    )
-    from lightning.pytorch.trainer.states import RunningStage
-    from lightning.pytorch.utilities.rank_zero import rank_zero_warn
-    from lightning.pytorch.utilities.signature_utils import is_param_in_hook_signature
+    from lightning.pytorch.loops.fetchers import _PrefetchDataFetcher
 
-    def _select_data_fetcher(
-        trainer: "pl.Trainer", stage: RunningStage
-    ) -> _DataFetcher:
-        lightning_module = trainer.lightning_module
-        if stage == RunningStage.TESTING:
-            step_fx_name = "test_step"
-        elif stage == RunningStage.TRAINING:
-            step_fx_name = "training_step"
-        elif stage in (RunningStage.VALIDATING, RunningStage.SANITY_CHECKING):
-            step_fx_name = "validation_step"
-        elif stage == RunningStage.PREDICTING:
-            step_fx_name = "predict_step"
-        else:
-            raise RuntimeError(f"DataFetcher is unsupported for {trainer.state.stage}")
-        step_fx = getattr(lightning_module, step_fx_name)
-        if is_param_in_hook_signature(step_fx, "dataloader_iter", explicit=True):
-            rank_zero_warn(
-                f"Found `dataloader_iter` argument in the `{step_fx_name}`. Note that the support for "
-                "this signature is experimental and the behavior is subject to change."
-            )
-            return _DataLoaderIterDataFetcher()
-        return _PrefetchDataFetcher(prefetch_batches=0)
+    class _NoPrefetchDataFetcher(_PrefetchDataFetcher):
+        def __init__(self, prefetch_batches: int = 0) -> None:
+            super().__init__(prefetch_batches=prefetch_batches)
 
-    import lightning.pytorch.loops.evaluation_loop as evaluation_loop
-    import lightning.pytorch.loops.prediction_loop as prediction_loop
+    import lightning.pytorch.loops.utilities as utilities
 
-    prediction_loop._select_data_fetcher = _select_data_fetcher
-    evaluation_loop._select_data_fetcher = _select_data_fetcher
+    utilities._PrefetchDataFetcher = _NoPrefetchDataFetcher
