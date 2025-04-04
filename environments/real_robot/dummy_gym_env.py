@@ -16,11 +16,11 @@ log = logging.getLogger(__name__)
 class DummyGymEnv(gym.Env):
     def __init__(
         self,
-        action_seq_len: int,
         video_filepath: os.PathLike,
         fps: float = 30,
         trim_to: float | None = None,
         loop: bool = False,
+        action_seq_len: int = 1,
     ):
         self.video_filepath = Path(video_filepath)
         self.fps = fps
