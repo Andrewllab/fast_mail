@@ -1,3 +1,4 @@
+import functools
 import logging
 from typing import Callable
 
@@ -23,6 +24,11 @@ class GymEnvDataset(IterableDataset):
         obs_seq_len: int = 1,
         action_horizon: int | None = None,
     ):
+        if not isinstance(env, functools.partial):
+            raise ValueError(
+                "GymEnvDataset requires a callable that returns a gym.Env instance. Set _partial_ to True in the env config."
+            )
+
         # we need to disable automatic resets, since the agent predicts action
         # sequences
         self.env = SyncVectorEnv(

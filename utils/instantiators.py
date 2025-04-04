@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import logging
 
 import hydra
 from lightning import Callback
 from lightning.pytorch.loggers import Logger
-from omegaconf import DictConfig
+from omegaconf import DictConfig, open_dict
 
 log = logging.getLogger(__name__)
 
@@ -52,3 +54,30 @@ def instantiate_loggers(logger_cfg: DictConfig) -> list[Logger]:
             logger.append(hydra.utils.instantiate(lg_conf))
 
     return logger
+
+
+def instantiate_datamodule(datamodule_cfg: DictConfig) -> "TrajectoryDataModule":
+    """Instantiates a data module from config.
+
+    :param datamodule_cfg: A DictConfig object containing data module configurations.
+    :return: An instantiated data module.
+    """
+    from environments.datamodule import TrajectoryDataModule
+
+    if not isinstance(datamodule_cfg, DictConfig):
+        raise TypeError("Data module config must be a DictConfig!")
+
+    log.debug("Instantiating <TrajectoryDataModule>")
+
+    # do not instantiate env_dataset recursively, as it may import simulation
+    # modules that are not available in the current environment
+    with open_dict(datamodule_cfg):
+        env_cfg = datamodule_cfg.pop("env_dataset", None)
+        datamodule_cfg = hydra.utils.instantiate(datamodule_cfg)
+        datamodule_cfg["env_dataset"] = env_cfg
+
+    datamodule: TrajectoryDataModule = hydra.utils.instantiate(
+        datamodule_cfg, _target_=TrajectoryDataModule, _recursive_=False
+    )
+
+    return datamodule

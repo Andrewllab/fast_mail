@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
+import hydra
 import lightning as L
+from omegaconf import DictConfig
 from torch.utils.data import DataLoader, random_split
 
 from callbacks.action_writer import ActionWriter
@@ -32,7 +34,7 @@ class TrajectoryDataModule(L.LightningDataModule):
         num_workers: int = 0,
         pin_memory: bool = False,
         eval_mode: Literal["env", "dataset"] | float | None = None,
-        env_dataset: Callable | None = None,
+        env_dataset: DictConfig | None = None,
         env_cpu_batch_transforms: TransformPartialsDict | None = None,
         env_gpu_batch_transforms: TransformPartialsDict | None = None,
     ):
@@ -145,7 +147,10 @@ class TrajectoryDataModule(L.LightningDataModule):
                     "Evaluation environment is not specified. Please provide an environment dataset."
                 )
             log.debug("Instantiating environment...")
-            self.env: GymEnvDataset = self._env()
+            # padding DictConfig avoids importing simulation modules until they are needed
+            self.env: GymEnvDataset = hydra.utils.instantiate(
+                self._env, _partial_=False
+            )
             specs = self.env.specs
 
             log.debug("Instantiating cpu batch transforms for environment...")

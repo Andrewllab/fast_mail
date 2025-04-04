@@ -13,7 +13,11 @@ from omegaconf import DictConfig, OmegaConf
 rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
 
 from utils.conf import delete_keys_recursively, setup_resolvers
-from utils.instantiators import instantiate_callbacks, instantiate_loggers
+from utils.instantiators import (
+    instantiate_callbacks,
+    instantiate_datamodule,
+    instantiate_loggers,
+)
 from utils.logging import configure_logging
 from utils.torch_conf import configure_torch
 
@@ -40,7 +44,7 @@ def main(cfg: DictConfig) -> None:
     # recursively delete these fields in config dictionary
     # we want these to be saved to WandB but we don't want them for instantiation
     delete_keys_recursively(cfg.data, ["name", "task", "task_suite", "randomness"])
-    datamodule: TrajectoryDataModule = hydra.utils.instantiate(cfg.data)
+    datamodule: TrajectoryDataModule = instantiate_datamodule(cfg.data)
 
     # manually run prepare data and setup so we can use dataset specs for model creation
     log.debug("Instantiating real robot environment...")
