@@ -4,7 +4,7 @@ import logging
 import os
 import pickle
 from dataclasses import dataclass
-from typing import Mapping, Sequence
+from typing import Literal, Mapping, Sequence
 
 import torch
 from frozendict import frozendict
@@ -79,7 +79,17 @@ class CameraSpec(Spec):
     # the key (within the obs dict) with the dynamic pose information for the camera
     # e.g. a wrist camera would have extrinsics relative to the end effector pose
     dynamic_pose_obs_key: str | tuple[str, ...] | None = None
+    channel_order: Literal["HWC", "CHW"] | None = None
     type: str = "rgb"
+
+
+@dataclass(frozen=True)
+class StereoCameraSpec(CameraSpec):
+    """This key should be a TensorDict with the keys "left" and "right" for
+    the left and right cameras.
+    """
+
+    pass
 
 
 @dataclass(frozen=True)

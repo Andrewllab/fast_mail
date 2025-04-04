@@ -1,46 +1,94 @@
-from torch_geometric.data import Data
-from torch_geometric.nn import max_pool, voxel_grid
-from torch_geometric.transforms import T
+import re
+from typing import Sequence
 
+import torch
+from torch import Tensor
+from torch_geometric.data import Data
+from torch_geometric.nn import voxel_grid
+from torch_geometric.nn.pool.consecutive import consecutive_cluster
+from torch_geometric.utils import one_hot, scatter
 
 from environments.specs import DataSpecs
 from transforms.base_transform import KeyMapping, Transform
 
 
-class DownsampleVoxelPointCloud(Transform):
-    def __init__(
-            self,
-            specs: DataSpecs,
-            voxel_size: float = 0.1, # TODO: what is a suitable default value?
-            start: int = None,
-            end: int = None,
-            ) -> None:
+class GridSamplePointCloud(Transform):
+    """Clusters points into fixed-sized voxels
+    (functional name: :obj:`grid_sampling`).
+    Each cluster returned is a new point based on the mean of all points
+    inside the given cluster.
 
-        self.voxel_size = voxel_size
+    Args:
+        specs (DataSpecs): The data specifications.
+        size (float or [float] or Tensor): Size of a voxel (in each dimension).
+        start (float or [float] or Tensor, optional): Start coordinates of the
+            grid (in each dimension). If set to :obj:`None`, will be set to the
+            minimum coordinates found in :obj:`data.pos`.
+            (default: :obj:`None`)
+        end (float or [float] or Tensor, optional): End coordinates of the grid
+            (in each dimension). If set to :obj:`None`, will be set to the
+            maximum coordinates found in :obj:`data.pos`.
+            (default: :obj:`None`)
+        pcd_keys (str | Sequence[str]): The keys of the point cloud data to downsample.
+
+    Modified from: https://pytorch-geometric.readthedocs.io/en/latest/_modules/torch_geometric/transforms/grid_sampling.html
+    """
+
+    def __init__(
+        self,
+        specs: DataSpecs,
+        size: float,
+        start: float | Tensor | None = None,
+        end: float | Tensor | None = None,
+        pcd_keys: str | Sequence[str] = "pcd",
+    ) -> None:
+
+        self.size = size
         self.start = start
         self.end = end
+
         self._specs = specs
-        self.transform = T.Cartesian(cat=False)
+        if isinstance(pcd_keys, str):
+            pcd_keys = [pcd_keys]
+        else:
+            pcd_keys = list(pcd_keys)
+        self._pcd_keys = pcd_keys
 
     @property
     def key_mappings(self) -> list[KeyMapping]:
         return [
-            KeyMapping(
-                in_keys=[("obs", "pcd")],
-                out_keys=[("obs", "pcd")]
-                )]
+            KeyMapping(in_keys=[("obs", key)], out_keys=[("obs", key)])
+            for key in self._pcd_keys
+        ]
 
     @property
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def __call__(self, pc: Data) -> Data:
-        # https://pytorch-geometric.readthedocs.io/en/stable/generated/torch_geometric.nn.pool.voxel_grid.html?highlight=voxel#torch_geometric.nn.pool.voxel_grid
-        # https://github.com/pyg-team/pytorch_geometric/blob/master/examples/mnist_voxel_grid.py
-        
-        cluster = voxel_grid(pc.pos, batch=pc.batch, size=self.voxel_size, start=self.start, end=self.end) # TODO: do we need the batch handling??
+    def __call__(self, data: Data) -> Data:
+        num_nodes = data.num_nodes
 
-        pc.edge_attr = None # edge attributes are not relevant here
-        pc = max_pool(cluster, pc, transform = self.transform)
+        assert data.pos is not None
+        c = voxel_grid(data.pos, self.size, data.batch, self.start, self.end)
+        c, perm = consecutive_cluster(c)
 
-        return pc
+        for key, item in data.items():
+            if bool(re.search("edge", key)):
+                raise ValueError(
+                    f"'{self.__class__.__name__}' does not "
+                    f"support coarsening of edges"
+                )
+
+            if torch.is_tensor(item) and item.size(0) == num_nodes:
+                if key == "y":
+                    item = scatter(one_hot(item), c, dim=0, reduce="sum")
+                    data[key] = item.argmax(dim=-1)
+                elif key == "batch":
+                    data[key] = item[perm]
+                else:
+                    data[key] = scatter(item, c, dim=0, reduce="mean")
+
+        return data
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(size={self.size})"
