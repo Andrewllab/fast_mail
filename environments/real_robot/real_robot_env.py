@@ -1,5 +1,8 @@
 import gymnasium as gym
 
+import torch
+from tensordict import TensorDict
+
 from environments.real_robot.hardware.hardware_devices import (
     ContinuousDevice,
     DiscreteDevice,
@@ -78,15 +81,38 @@ class RealRobotEnv(gym.Env):
     def _get_obs(self):
         obs_dict = {}
 
-        # TODO: return robot ee_pose as xyz + quaternion
-        obs_dict["robot_arm"] = self.robot_arm.get_state()
-        obs_dict["robot_hand"] = self.robot_hand.get_sensors()
+        robot_state = torch.cat(
+            (
+                self.robot_arm.get_state().joint_pos, # TODO: Update the input # shape: (T, 9) if 9, 0,1,7 is not important!
+                self.robot_hand.get_sensors(),  # TODO: check get_sensors output and compare it with dataset
+            ),
+            dim=-1,
+        )
 
         # TODO: will probably need to pop the timestamp from the obs
         for device in self.discrete_devices:
-            obs_dict[device.name] = device.get_sensors()
+            obs_dict[device.name] = device.get_sensors() # TODO: Pass everything or just the necessary things? {"time": timestamp, "rgb": rgb, "d": d, "ir1": ir1, "ir2": ir2}
 
-        return obs_dict
+        action = torch.zeros(11) # TODO: Necessary?
+
+        traj = TensorDict(
+            {
+                "obs": {
+                    "front_left_cam": obs_dict["RealSense_X"], # TODO Get serial number
+                    "front_right_cam": obs_dict["RealSense_Y"], # TODO Get serial number
+                    "gripper_cam": obs_dict["RealSense_22xx"], # TODO Get serial number
+                    "robot_state": robot_state,
+                },
+                "action": action, # TODO
+            },  # type: ignore
+        )
+
+        # not necessary because we don't have batches in inference
+        #traj.auto_batch_size_()
+
+        return traj
+
+
 
     def _get_info(self):
         return {}
