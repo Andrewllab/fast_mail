@@ -41,7 +41,7 @@ def main(cfg: DictConfig) -> None:
     # instantiate dataset
     # recursively delete these fields in config dictionary
     # we want these to be saved to WandB but we don't want them for instantiation
-    delete_keys_recursively(cfg.data, ["name", "task", "task_suite", "randomness"])
+    # delete_keys_recursively(cfg.data, ["name", "task", "task_suite", "randomness"])
     datamodule: TrajectoryDataModule = instantiate_datamodule(cfg.data)
 
     # manually run prepare data and setup so we can use dataset specs for model creation

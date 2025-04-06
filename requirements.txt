@@ -3,9 +3,9 @@ scipy  # for numerical integration in linear multistep sampler
 
 --find-links https://download.pytorch.org/whl/cu124
 # torch geometric doesn't support torch 2.6.* yet
-torch==2.5.1  # --index-url https://download.pytorch.org/whl/cu124
-torchvision==0.20.1  # --index-url https://download.pytorch.org/whl/cu124
-torch_geometric
+# torch==2.5.1  # --index-url https://download.pytorch.org/whl/cu124
+# torchvision==0.20.1  # --index-url https://download.pytorch.org/whl/cu124
+# torch_geometric
 lightning
 tensordict
 torchsde  # for BrownianTreeNoiseSampler in stochastic DPM-Solver++

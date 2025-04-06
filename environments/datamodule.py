@@ -37,6 +37,7 @@ class TrajectoryDataModule(L.LightningDataModule):
         env_dataset: DictConfig | None = None,
         env_cpu_batch_transforms: TransformPartialsDict | None = None,
         env_gpu_batch_transforms: TransformPartialsDict | None = None,
+        **kwargs,
     ):
         super().__init__()
         self._dataset = dataset
