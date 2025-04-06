@@ -12,6 +12,7 @@ from typing import Dict, NamedTuple
 import numpy as np
 import torch
 import torchcontrol as toco
+from torchcontrol.utils import to_tensor
 from polymetis import RobotInterface
 
 from environments.real_robot.hardware.hardware_robot import ArmState, RobotArm
@@ -367,6 +368,30 @@ class FrankaArm(RobotArm):
         except Exception as e:
             print("1> Failed to udpate policy with exception", e)
             self.reconnect()
+
+    def apply_ee(
+            self,
+            position: torch.Tensor,
+            orientation: torch.Tensor = None,
+            time_to_go: float = None,
+            delta: bool = True,
+            Kx: torch.Tensor = None,
+            Kxd: torch.Tensor = None,
+            op_space_interp: bool = True,
+            **kwargs,
+            ):
+        
+        self.robot.move_to_ee_pose(
+            position,
+            orientation,
+            time_to_go,
+            delta,
+            Kx,
+            Kxd,
+            op_space_interp,
+            **kwargs,
+        )
+        
 
     def generate_waypoints_within_limits(
         self, start, goal, hz, max_vel_norm=float("inf")

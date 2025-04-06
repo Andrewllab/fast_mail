@@ -28,7 +28,7 @@ class RealRobotEnv(gym.Env):
         discrete_devices: list[DiscreteDevice] | None = None,
         continuous_devices: list[ContinuousDevice] | None = None,
     ):
-        self.robot_arm = robot_arm(control_type=ControlType.CARTESIAN_IMPEDANCE_CONTROL)
+        self.robot_arm = robot_arm
         self.robot_hand = robot_hand
         self.discrete_devices = discrete_devices or []
         self.continuous_devices = continuous_devices or []
@@ -118,9 +118,18 @@ class RealRobotEnv(gym.Env):
     def step(self, action: np.ndarray):
         euler = action[3:6]
         wxyz = euler_xyz_to_quaternion(*torch.from_numpy(euler))
-        poly_action = np.concat((action[:3], wxyz[1:], wxyz[:1]))
+        #poly_action = np.concat((action[:3], wxyz[1:], wxyz[:1]))
 
-        self.robot_arm.go_to_within_limits(poly_action)
+        self.robot_arm.apply_ee(
+            position = action[:3],
+            #orientation = wxyz,
+            time_to_go = 4, # TODO: add to hydra configs
+            delta = True, # TODO: add to hydra config
+            Kx = None, # TODO: add to hydra config
+            Kxd = None, # TODO: add to hydra config
+            op_space_interp = True, # TODO: add to hydra config
+        )
+
         self.robot_hand.apply_commands(action[-1])
 
         obs = self._get_obs()

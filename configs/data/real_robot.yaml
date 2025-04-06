@@ -7,7 +7,7 @@ env_dataset:
     _partial_: True
     robot_arm:
       _target_: environments.real_robot.hardware.hardware_franka.FrankaArm
-      _partial_: True
+      # _partial_: True
       name: p4 arm
       ip_address: 141.3.53.154
       port: 50053

@@ -48,6 +48,10 @@ class RobotArm(ABC):
     @abstractmethod
     def apply_commands(self, *args, **kwargs):
         pass
+
+    @abstractmethod
+    def apply_ee(self, *args, **kwargs):
+        pass
     
     @abstractmethod
     def go_to_within_limits(self, *args, **kwargs):
