@@ -6,14 +6,14 @@ This is an open-source project that aims to provide a set of imitation learning 
 ## Installation
 
 To begin, clone this repository locally
-```
+```bash
 git clone --recursive git@github.com:balazsgyenes/fast_mail.git
 ```
 
 ### Dependencies
 
 Create a new virtual environment and install requirements:
-```
+```bash
 conda create -p .env python=3.11
 conda activate ./.env
 
@@ -38,6 +38,16 @@ By default, the training data should be located in a subfolder called `datasets`
 paths:
   data_dir: ${oc.env:HOME}/datasets
 
+```
+
+## Usage
+
+### Useful Commands
+
+Open loop replay (using dataset OPTION):
+
+```bash
+python predict.py -cn=open_loop_replay [data@agent.replay_data=OPTION]
 ```
 
 

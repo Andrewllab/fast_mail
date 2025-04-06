@@ -8,7 +8,7 @@ import pygame
 import torch
 from moviepy import VideoFileClip
 
-from environments.specs import ActionSpec, CameraSpec, DataSpecs
+from environments.specs import ActionSpec, DataSpecs, RGBCameraSpec
 
 log = logging.getLogger(__name__)
 
@@ -34,12 +34,13 @@ class DummyGymEnv(gym.Env):
 
         width, height = self.clip.size
         self.frames_it = self.clip.iter_frames(fps=self.fps, dtype="uint8")
+        self.done = False
 
         # limit fps of program loop
         self.clock = pygame.time.Clock()
 
         self._specs = DataSpecs(
-            obs={self.obs_key: CameraSpec(shape=(1, height, width, 3))},
+            obs={self.obs_key: RGBCameraSpec(shape=(1, height, width, 3))},
             action=ActionSpec(shape=(action_seq_len, 1), type="action"),
         )
 
@@ -64,6 +65,7 @@ class DummyGymEnv(gym.Env):
                 log.debug("Reached end of video, looping")
                 self.frames_it = self.clip.iter_frames(fps=self.fps, dtype="uint8")
                 frame = next(self.frames_it)
+                self.done = True  # the next step after this should return done
             else:
                 log.info("Reached end of video, interrupting program...")
                 raise KeyboardInterrupt
@@ -76,7 +78,8 @@ class DummyGymEnv(gym.Env):
         return self.get_obs(), {}
 
     def step(self, action):
-        return self.get_obs(), 0.0, False, False, {}
+        done, self.done = self.done, False
+        return self.get_obs(), 0.0, done, False, {}
 
     @property
     def specs(self) -> DataSpecs:

@@ -29,7 +29,7 @@ class BaseAgent(L.LightningModule):
         obs_encoder: TransformPartialsDict,
         optimizer: Callable[[Iterable[Tensor]], Optimizer],
         lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
-        scaler: Type[Scaler],
+        scaler: Callable[[DataSpecs], Callable],
         goal_encoder: TransformPartial | None,
         specs: DataSpecs,
         ema_decay: float = 0.0,

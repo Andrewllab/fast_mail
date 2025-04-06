@@ -63,9 +63,14 @@ def instantiate_datamodule(datamodule_cfg: DictConfig) -> "TrajectoryDataModule"
     :return: An instantiated data module.
     """
     from environments.datamodule import TrajectoryDataModule
+    from utils.conf import delete_keys_recursively
 
     if not isinstance(datamodule_cfg, DictConfig):
         raise TypeError("Data module config must be a DictConfig!")
+
+    delete_keys_recursively(
+        datamodule_cfg, ["name", "task", "task_suite", "randomness"]
+    )
 
     log.debug("Instantiating <TrajectoryDataModule>")
 

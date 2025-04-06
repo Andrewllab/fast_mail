@@ -1,23 +1,24 @@
 defaults:
   - data: real_robot
+  - data@agent.replay_data: one_leg_alr
   - agent: null_agent
   - callbacks:
-  - logger: 
+  - logger:
   - python_logging: default
   - paths: default
   - hydra: default
   - _self_
+  - platform: default
   - optional local: default
   - debug: verbose
 
 agent:
-  obs_encoder:
-    1_render_cameras:
-      _target_: transforms.render_cameras.RenderCameras
-      _partial_: True
+  replay_data:
+    dataset:
+      action_seq_len: 1  # action chunking unnecessary for open-loop replay
 
 # task name, determines output directory path
-job_type: debug
+job_type: open_loop_replay
 
 trainer:
   accelerator: gpu

@@ -27,9 +27,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-@hydra.main(
-    version_base=None, config_path="../configs", config_name="visualize_real_env"
-)
+@hydra.main(version_base=None, config_path="configs")
 def main(cfg: DictConfig) -> None:
     configure_logging(cfg.python_logging)
 
@@ -47,7 +45,7 @@ def main(cfg: DictConfig) -> None:
     datamodule: TrajectoryDataModule = instantiate_datamodule(cfg.data)
 
     # manually run prepare data and setup so we can use dataset specs for model creation
-    log.debug("Instantiating real robot environment...")
+    log.debug("Instantiating datamodule...")
     datamodule.prepare_data()
     datamodule.setup(stage="predict")
 
@@ -70,6 +68,8 @@ def main(cfg: DictConfig) -> None:
 
     log.info("Starting prediction loop")
     trainer.predict(agent, datamodule=datamodule)
+
+    log.info("Dataset exhausted, prediction loop completed")
 
 
 if __name__ == "__main__":

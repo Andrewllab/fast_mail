@@ -14,12 +14,6 @@ from utils.math import invert_intrinsics
 log = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class Spec:
-    shape: tuple[int, ...]
-    type: str
-
-
 @dataclass
 class PinholeCameraIntrinsic:
     width: int
@@ -49,6 +43,17 @@ class PinholeCameraIntrinsic:
 
         self._inverse_matrix = invert_intrinsics(self._intrinsic_matrix)
 
+    @classmethod
+    def from_intrinsic_matrix(
+        cls, intrinsic_matrix: torch.Tensor, width: int, height: int
+    ) -> PinholeCameraIntrinsic:
+        fx = intrinsic_matrix[0, 0]
+        fy = intrinsic_matrix[1, 1]
+        cx = intrinsic_matrix[0, 2]
+        cy = intrinsic_matrix[1, 2]
+
+        return cls(width=width, height=height, fx=fx, fy=fy, cx=cx, cy=cy)
+
     @property
     def intrinsic_matrix(self) -> torch.Tensor:
         return self._intrinsic_matrix
@@ -73,36 +78,75 @@ class PinholeCameraIntrinsic:
 
 
 @dataclass(frozen=True)
-class CameraSpec(Spec):
+class Spec:
+    shape: tuple[int, ...]
+    type: str
+
+
+@dataclass(frozen=True)
+class IntensityCameraSpec(Spec):
+    """The simplest possible camera spec. The image should have no channel
+    dimension.
+    """
+
     intrinsics: PinholeCameraIntrinsic | None = None
     extrinsics: torch.Tensor | None = None
     # the key (within the obs dict) with the dynamic pose information for the camera
     # e.g. a wrist camera would have extrinsics relative to the end effector pose
     dynamic_pose_obs_key: str | tuple[str, ...] | None = None
-    channel_order: Literal["HWC", "CHW"] | None = None
+
+
+@dataclass(frozen=True)
+class RGBCameraSpec(IntensityCameraSpec):
+    channel_order: Literal["HWC", "CHW"] = "HWC"
     type: str = "rgb"
 
 
 @dataclass(frozen=True)
-class StereoCameraSpec(CameraSpec):
-    """This key should be a TensorDict with the keys "left" and "right" for
-    the left and right cameras.
-    """
-
-    pass
-
-
-@dataclass(frozen=True)
-class DepthCameraSpec(CameraSpec):
-    # the key (within the obs dict) where the corresponding rgb image is
-    rgb_obs_key: str | tuple[str, ...] | None = None
+class DepthCameraSpec(IntensityCameraSpec):
     # orthogonal or perspective depth measurement
     orthogonal: bool = True
     type: str = "depth"
 
 
 @dataclass(frozen=True)
+class RGBDCameraSpec(RGBCameraSpec, DepthCameraSpec):
+    """The obs dict should contain nested keys here for "rgb" and "depth".
+    The image shape describes the shape of the RGB image, and the depth image
+    should have the same shape but no channel dimension.
+    """
+
+    type: str = "rgbd"
+
+
+@dataclass(frozen=True)
+class StereoIRCameraSpec(IntensityCameraSpec):
+    """The observation TensorDict should contain a nested TensorDict at this
+    key with the keys "left" and "right" for the left and right cameras.
+    Intrinsics are relative to the left camera.
+    The image shape should have no channel dimension.
+    """
+
+    type: str = "stereo_ir"
+
+
+@dataclass(frozen=True)
+class StereoRGBCameraSpec(RGBCameraSpec):
+    """The observation TensorDict should contain a nested TensorDict at this
+    key with the keys "left" and "right" for the left and right cameras.
+    Intrinsics are relative to the left camera.
+    The image shape should have no channel dimension.
+    """
+
+    type: str = "stereo_rgb"
+
+
+@dataclass(frozen=True)
 class PointCloudSpec(Spec):
+    """The shape should be (*leading_dims) + (3 or 6,), depending on whether
+    the point cloud has color or not."""
+
+    color: bool = False
     type: str = "pointcloud"
 
 

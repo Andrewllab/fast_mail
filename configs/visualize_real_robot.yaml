@@ -1,0 +1,26 @@
+defaults:
+  - data: real_robot
+  - agent: null_agent
+  - callbacks:
+  - logger:
+  - python_logging: default
+  - paths: default
+  - hydra: default
+  - _self_
+  - experiment: render
+  - platform: default
+  - optional local: default
+  - debug: verbose
+
+# task name, determines output directory path
+job_type: visualize_real_robot
+
+trainer:
+  accelerator: gpu
+  devices: auto
+  # precision: 16-true
+  default_root_dir: ${paths.output_dir}
+  enable_progress_bar: False
+
+torch:
+  set_float32_matmul_precision: medium

@@ -82,9 +82,9 @@ class GymEnvDataset(IterableDataset):
 
             actions = actions.transpose(0, 1)[: self.action_horizon]
             actions_np = actions.cpu().numpy()
-            for action in actions[:, : self.action_horizon].unbind(dim=1):
+            for action in actions_np:
                 obs, step_reward, step_terminated, step_truncated, step_info = (
-                    self.env.step(action.cpu().numpy())
+                    self.env.step(action)
                 )
 
                 # accumulate the return values over time

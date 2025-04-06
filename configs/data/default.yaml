@@ -1,7 +1,7 @@
 task: 
 task_suite: 
 dataset: ???
-batch_size: ???
+batch_size: ${platform.batch_size}
 device: disk  # by default, assume it dataset doesn't fit in memory
 env_dataset: null
 eval_mode: null  # "sim" to validate in simulation or a float to validate on subset of data
@@ -9,5 +9,5 @@ preprocess_transforms: null
 cpu_transforms: null
 cpu_batch_transforms: null
 gpu_batch_transforms: null
-num_workers: ???
-pin_memory: False
+num_workers: ${platform.num_workers}
+pin_memory: ${platform.pin_memory}
