@@ -2,19 +2,19 @@ import numpy as np
 import pygame
 import torch
 
-from environments.specs import CameraSpec, DataSpecs
+from environments.specs import DataSpecs, IntensityCameraSpec
 from transforms.base_transform import KeyMapping, Transform
 
 
 class RenderCameras(Transform):
     def __init__(self, specs: DataSpecs) -> None:
-        self._specs = specs
-
         # TODO: add support for multiple cameras
         # TODO: check for channel ordering
 
         rgb_specs = {
-            key: spec for key, spec in specs.obs.items() if type(spec) is CameraSpec
+            key: spec
+            for key, spec in specs.obs.items()
+            if isinstance(spec, IntensityCameraSpec)
         }
 
         self.rgb_key = list(rgb_specs.keys())[0]
@@ -26,13 +26,15 @@ class RenderCameras(Transform):
         pygame.display.set_caption(f"obs.{self.rgb_key}")
         self.screen.fill((0, 0, 0))  # Clear the screen
 
+        self._output_specs = specs
+
     @property
     def key_mappings(self) -> list[KeyMapping]:
         return [KeyMapping(in_keys=[("obs", self.rgb_key)], out_keys=["_"])]
 
     @property
     def specs(self) -> DataSpecs:
-        return self._specs
+        return self._output_specs
 
     def __call__(self, image: torch.Tensor) -> None:
         for event in pygame.event.get():

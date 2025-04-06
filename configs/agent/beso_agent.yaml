@@ -3,7 +3,6 @@ defaults:
   - noise_model: decoder_only
   - optimizer: adamw
   - lr_scheduler: none
-  - /transforms@obs_encoder.4_robot_state: linear_robot_state_encoder
   - scaler: minmax
   - goal_encoder: none
   - sampler: ddim

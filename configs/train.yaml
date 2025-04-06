@@ -1,5 +1,5 @@
 defaults:
-  - data: one_leg_alr
+  - data: one_leg_alr_metaquest
   - agent: beso_agent
   - callbacks:
     - model_checkpoint

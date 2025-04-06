@@ -1,6 +1,6 @@
 defaults:
   - data: real_robot
-  - data@agent.replay_data: one_leg_alr
+  - data@agent.replay_data: one_leg_alr_metaquest
   - agent: null_agent
   - callbacks:
   - logger:

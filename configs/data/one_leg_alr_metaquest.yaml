@@ -3,18 +3,17 @@ defaults:
 
 task_suite: furniture_bench
 task: one_leg
-name: 2025-03-30_demo
+name: 2025-04-05_metaquest3
 
 dataset:
-  _target_: environments.datasets.furniture_bench_alr.AlrFurnitureBenchDataset
+  _target_: environments.datasets.furniture_bench_alr_v2.AlrFurnitureBenchDataset
   _partial_: True  # requires transforms at runtime
-  root_dir: ${paths.data_dir}/furniture_bench_alr/one_leg
+  root_dir: ${paths.data_dir}/insert_one_leg_alr/meta_quest3
   action_seq_len: 10
   obs_seq_len: 1
 
-device: cpu
+device: cpu  # this dataset is small enough to fit in memory
 
-eval_mode: null
 # env_dataset:
 #   _target_: environments.simulations.isaac.IsaacSim
 #   scene: 

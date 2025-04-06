@@ -83,7 +83,6 @@ class TrajectoryDataset(Dataset, ABC):
 
         else:
             if self.device != "disk":
-                self._specs = self.get_specs()
                 raw_files = self._find_raw_files()
 
                 log.info(
@@ -98,6 +97,8 @@ class TrajectoryDataset(Dataset, ABC):
                         traj for sublist in trajectories for traj in sublist
                     ]
                 self.trajectories = trajectories
+
+                self._specs = self.get_specs()
 
                 # collect these statistics we need for TrajectorySlices and
                 # action spec
@@ -230,10 +231,11 @@ class TrajectoryDataset(Dataset, ABC):
             shutil.rmtree(str(preprocessed_dir))
         preprocessed_dir.mkdir(parents=True)
 
+        raw_files = self._find_raw_files()
+
         specs = self.get_specs()
         transforms, specs = init_transforms(preprocess_transforms, specs, wrap=False)
 
-        raw_files = self._find_raw_files()
         processed_files = []
         for raw_file in raw_files:
             trajs = self.load_from_raw_file(raw_file)
