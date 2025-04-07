@@ -94,6 +94,8 @@ class IntensityCameraSpec(Spec):
     # the key (within the obs dict) with the dynamic pose information for the camera
     # e.g. a wrist camera would have extrinsics relative to the end effector pose
     dynamic_pose_obs_key: str | tuple[str, ...] | None = None
+    # allows subclasses to specify the subkeys of nested tensordicts
+    subkeys: tuple[str | None, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -113,24 +115,26 @@ class DepthCameraSpec(IntensityCameraSpec):
 @dataclass(frozen=True)
 class RGBDCameraSpec(RGBCameraSpec, DepthCameraSpec):
     """
-    Subkeys: "rgb" for RGB camera and "depth" for depth information.
     The RGB and depth images must have the same shape, but the depth image should
     not have a channel dimension.
     """
 
     type: str = "rgbd"
+    # "rgb" for RGB camera and "depth" for depth information
+    subkeys: tuple[str | None, ...] = ("rgb", "depth")
     rgb_subkeys: tuple[str | None, ...] = ("rgb",)
 
 
 @dataclass(frozen=True)
 class StereoIRCameraSpec(IntensityCameraSpec):
     """
-    Subkeys: "left" and "right" for stereo IR cameras.
     Intrinsics are relative to the left camera.
     The image shape should have no channel dimension.
     """
 
     type: str = "stereo_ir"
+    # "left" and "right" for stereo IR cameras
+    subkeys: tuple[str | None, ...] = ("left", "right")
 
 
 @dataclass(frozen=True)
@@ -141,6 +145,7 @@ class StereoRGBCameraSpec(RGBCameraSpec):
     """
 
     type: str = "stereo_rgb"
+    subkeys: tuple[str | None, ...] = ("left", "right")
     rgb_subkeys: tuple[str | None, ...] = ("left", "right")
 
 
@@ -153,6 +158,7 @@ class RealSenseSpec(RGBCameraSpec, StereoIRCameraSpec):
     """
 
     type: str = "realsense"
+    subkeys: tuple[str | None, ...] = ("left", "right", "rgb")
     rgb_subkeys: tuple[str | None, ...] = ("rgb",)
 
 

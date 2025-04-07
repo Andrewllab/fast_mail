@@ -32,6 +32,7 @@ KeyType = str | tuple[str, ...]
 class KeyMapping:
     in_keys: KeyType | list[KeyType]
     out_keys: KeyType | list[KeyType]
+    args: tuple[Any, ...] = ()
 
 
 class TransformModuleMeta(ABCMeta):
@@ -82,7 +83,7 @@ class Transform(ABC, metaclass=TransformModuleMeta):
                 # we get the inputs with a default value of None, allowing
                 # support for missing keys
                 inputs = (tensordict.get(key, None) for key in in_keys)
-                outputs = self._call_one(*inputs)
+                outputs = self._call_one(*inputs, *key_mapping.args)
 
                 out_keys = key_mapping.out_keys
                 if out_keys == "_":

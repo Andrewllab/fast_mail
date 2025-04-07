@@ -25,18 +25,19 @@ class NormalizeImage(Transform):
         self._output_specs = specs  # no changes to specs
 
         # create a list of key mappings for the forward call
-        nested_keys = []
+        key_mappings = []
         for key, spec in input_specs.items():
             for subkey in spec.rgb_subkeys:
                 if subkey is not None:
-                    nested_keys.append(("obs", key, subkey))
+                    nested_key = ("obs", key, subkey)
                 else:
-                    nested_keys.append(("obs", key))
-        self._nested_keys = nested_keys
+                    nested_key = ("obs", key)
+                key_mappings.append(KeyMapping(in_keys=nested_key, out_keys=nested_key))
+        self._key_mappings = key_mappings
 
     @property
     def key_mappings(self) -> list[KeyMapping]:
-        return [KeyMapping(in_keys=keys, out_keys=keys) for keys in self._nested_keys]
+        return self._key_mappings
 
     @property
     def specs(self) -> DataSpecs:

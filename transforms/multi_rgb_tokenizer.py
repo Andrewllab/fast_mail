@@ -71,16 +71,16 @@ class MultiRgbTokenizer(Transform, nn.Module):
                 nested_keys.append(("obs", key, subkey))
             else:
                 nested_keys.append(("obs", key))
-        self._nested_keys = nested_keys
-
-    @property
-    def key_mappings(self) -> list[KeyMapping]:
-        return [
+        self._key_mappings = [
             KeyMapping(
-                in_keys=list(self._nested_keys),
+                in_keys=list(nested_keys),
                 out_keys=[("obs", "embed")],
             )
         ]
+
+    @property
+    def key_mappings(self) -> list[KeyMapping]:
+        return self._key_mappings
 
     @property
     def specs(self) -> DataSpecs:

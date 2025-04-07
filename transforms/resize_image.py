@@ -6,7 +6,7 @@ import torch
 import torchvision.transforms.functional as F
 from torchvision.transforms import InterpolationMode
 
-from environments.specs import CameraSpec, DataSpecs
+from environments.specs import DataSpecs, IntensityCameraSpec, RGBCameraSpec
 from transforms.base_transform import KeyMapping, Transform
 
 
@@ -16,9 +16,8 @@ class ResizeImage(Transform):
         specs: DataSpecs,
         factor: float | None = None,
         shape: int | tuple[int, int] | None = None,
-        scale_depth_images: bool = False,
-        interpolation: InterpolationMode | None = InterpolationMode.BILINEAR,
-        depth_interpolation: InterpolationMode | None = InterpolationMode.NEAREST_EXACT,
+        interpolation: InterpolationMode | str | None = None,
+        depth_interpolation: InterpolationMode | str | None = None,
         antialias: bool = True,
     ) -> None:
 
@@ -27,44 +26,47 @@ class ResizeImage(Transform):
         elif factor is not None and shape is not None:
             raise ValueError("Only one of factor or shape may be provided.")
 
-        interpolation = (
-            interpolation if interpolation is not None else InterpolationMode.BILINEAR
-        )
-        depth_interpolation = (
-            depth_interpolation
-            if depth_interpolation is not None
-            else InterpolationMode.NEAREST_EXACT
-        )
+        if interpolation is None:
+            interpolation = InterpolationMode.BILINEAR
+        elif isinstance(interpolation, str):
+            interpolation = InterpolationMode(interpolation)
+
+        if depth_interpolation is None:
+            depth_interpolation = InterpolationMode.NEAREST_EXACT
+        elif isinstance(depth_interpolation, str):
+            depth_interpolation = InterpolationMode(depth_interpolation)
+
         self.antialias = antialias
 
-        # do we resize all images, or only rgb images?
-        predicate = lambda spec: (
-            isinstance(spec, CameraSpec)
-            if scale_depth_images
-            else lambda spec: type(spec) is CameraSpec
-        )
-        camera_specs = {key: spec for key, spec in specs.obs.items() if predicate(spec)}
+        # find the specs that this transform acts on
+        input_specs = {
+            key: spec
+            for key, spec in specs.obs.items()
+            if isinstance(spec, IntensityCameraSpec)
+        }
 
-        # we will create a dictionary of kwargs for resize() for each camera image
-        self.cam_kwargs = {}
+        # create a dictionary of kwargs for resize() for each camera image, and
+        # create a modified specs object for the output
+        cam_kwargs = []
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
-
-        for key, spec in camera_specs.items():
-            assert isinstance(spec, CameraSpec)
-
-            # compute shape of the resized image
-            if factor is not None:
-                new_shape = (
-                    int(factor * spec.shape[-2]),
-                    int(factor * spec.shape[-1]),
+        for key, spec in input_specs.items():
+            if isinstance(spec, RGBCameraSpec) and spec.channel_order != "CHW":
+                raise ValueError(
+                    f"Input spec {spec} must be in CHW format for normalization."
                 )
+
+            H, W = spec.shape[-2:]
+
+            # compute new shape of image
+            if factor is not None:
+                new_shape = (int(factor * H), int(factor * W))
             elif isinstance(shape, int):
                 # if shape is an int, it is the new size for the shortest side,
                 # and the longest side is scaled to maintain the aspect ratio
-                shortest_side = min(spec.shape[-2:])
+                shortest_side = min(H, W)
                 new_shape = (
-                    int(shape * spec.shape[-2] / shortest_side),
-                    int(shape * spec.shape[-1] / shortest_side),
+                    int(shape * H / shortest_side),
+                    int(shape * W / shortest_side),
                 )
             elif isinstance(shape, tuple):
                 # if shape is a tuple, it is the new shape
@@ -73,14 +75,16 @@ class ResizeImage(Transform):
                 raise ValueError("Shape must be an int or a tuple of ints, or None.")
 
             # save the kwargs for resize()
-            self.cam_kwargs[key] = {
-                "size": new_shape,
-                "interpolation": (
-                    depth_interpolation
-                    if type(spec) is not CameraSpec
-                    else interpolation
-                ),
-            }
+            cam_kwargs.append(
+                {
+                    "size": new_shape,
+                    "interpolation": (
+                        interpolation
+                        if isinstance(spec, RGBCameraSpec)
+                        else depth_interpolation
+                    ),
+                }
+            )
 
             # update specs with resized shape and modified camera intrinsics
             spec = dataclasses.replace(
@@ -93,29 +97,45 @@ class ResizeImage(Transform):
                     intrinsics=spec.intrinsics.resize(new_shape),
                 )
             obs_specs[key] = spec
+        # self.cam_kwargs = cam_kwargs
+        self._output_specs = specs.replace(obs=obs_specs)
 
-        self._specs = specs.replace(obs=obs_specs)
+        # create a list of key mappings for the forward call
+        key_mappings = []
+        for (key, spec), kwargs in zip(input_specs.items(), cam_kwargs):
+            for subkey in spec.subkeys:
+                if subkey is not None:
+                    nested_key = ("obs", key, subkey)
+                else:
+                    nested_key = ("obs", key)
+                key_mappings.append(
+                    KeyMapping(
+                        in_keys=nested_key,
+                        out_keys=nested_key,
+                        args=(kwargs, spec),
+                    )
+                )
+        self._key_mappings = key_mappings
 
     @property
     def key_mappings(self) -> list[KeyMapping]:
-        # we take all images at once and write them back to their sources
-        # we cannot process the images one by one, because then we don't know
-        # what kind of image we are dealing with, e.g. rgb or depth
-        return [
-            KeyMapping(
-                in_keys=[("obs", key) for key in self.cam_kwargs],
-                out_keys=[("obs", key) for key in self.cam_kwargs],
-            )
-        ]
+        return self._key_mappings
 
     @property
     def specs(self) -> DataSpecs:
-        return self._specs
+        return self._output_specs
 
-    def __call__(self, *imgs: torch.Tensor) -> tuple[torch.Tensor]:
+    def _call_one(
+        self, image: torch.Tensor, kwargs: dict, input_spec: IntensityCameraSpec
+    ) -> torch.Tensor:
+        if isinstance(input_spec, RGBCameraSpec):
+            n_image_dim = 3
+        else:
+            n_image_dim = 2
 
-        resized_imgs = []
-        for img, cam_cfg in zip(imgs, self.cam_kwargs.values()):
-            resized_imgs.append(F.resize(img, **cam_cfg, antialias=self.antialias))
+        leading_dims = image.shape[:-n_image_dim]
+        image = torch.flatten(image, end_dim=-n_image_dim - 1)
+        image = F.resize(image, **kwargs, antialias=self.antialias)
+        image = torch.unflatten(image, dim=0, sizes=leading_dims)
 
-        return tuple(resized_imgs)
+        return image

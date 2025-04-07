@@ -31,29 +31,31 @@ class ToTorchImage(Transform):
         self._output_specs = specs.replace(obs=obs_specs)
 
         # create a list of key mappings for the forward call
-        nested_keys = []
+        key_mappings = []
         for key, spec in input_specs.items():
-            for subkey in spec.rgb_subkeys:
+            for subkey in spec.subkeys:
                 if subkey is not None:
-                    nested_keys.append(("obs", key, subkey))
+                    nested_key = ("obs", key, subkey)
                 else:
-                    nested_keys.append(("obs", key))
-        self._nested_keys = nested_keys
-
-        # store the input specs so we can use them in the call method
-        self._input_specs = list(input_specs.values())
+                    nested_key = ("obs", key)
+                key_mappings.append(
+                    KeyMapping(
+                        in_keys=nested_key,
+                        out_keys=nested_key,
+                        args=(spec,),
+                    )
+                )
+        self._key_mappings = key_mappings
 
     @property
     def key_mappings(self) -> list[KeyMapping]:
-        return [KeyMapping(in_keys=keys, out_keys=keys) for keys in self._nested_keys]
+        return self._key_mappings
 
     @property
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def _call_one(self, image):
-        input_spec = self._input_specs[self.mapping_idx]
-
+    def _call_one(self, image: torch.Tensor, input_spec: RGBCameraSpec) -> torch.Tensor:
         default_float_dtype = torch.get_default_dtype()
 
         if input_spec.channel_order == "HWC":
