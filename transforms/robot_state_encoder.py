@@ -15,19 +15,23 @@ if TYPE_CHECKING:
     from environments.specs import DataSpecs
 
 
-class RobotStateEncoder(nn.Module, Transform):
+class RobotStateEncoder(Transform, nn.Module):
     def __init__(
         self,
         specs: DataSpecs,
         model: Callable[[int, int], Module],
         embed_dim: int,
+        obs_key: str = "robot_state",
     ):
         super().__init__()
 
-        robot_state_shape = specs.obs["robot_state"].shape
+        robot_state_shape = specs.obs[obs_key].shape
+        if len(robot_state_shape) != 2:
+            raise ValueError(f"Robot state at key {obs_key} must be of shape [T,M]")
         state_seq_len, state_dim = robot_state_shape
         self.model = model(state_dim, embed_dim)
 
+        # create a modified specs object for the output
         # increase length of embedding sequence to account for state tokens
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         embed_spec = obs_specs["embed"]
@@ -35,23 +39,24 @@ class RobotStateEncoder(nn.Module, Transform):
             embed_spec,
             shape=(embed_spec.shape[0] + state_seq_len,) + embed_spec.shape[1:],
         )
+        self._output_specs = specs.replace(obs=obs_specs)
 
-        self._specs = specs.replace(obs=obs_specs)
+        self._obs_key = obs_key
 
     @property
     def specs(self) -> DataSpecs:
-        return self._specs
+        return self._output_specs
 
     @property
     def key_mappings(self) -> list[KeyMapping]:
         return [
             KeyMapping(
-                in_keys=[("obs", "robot_state"), ("obs", "embed")],
+                in_keys=[("obs", self._obs_key), ("obs", "embed")],
                 out_keys=[("obs", "embed")],
             )
         ]
 
-    def forward(self, robot_state: Tensor, obs_embed: Tensor) -> Tensor:
+    def _call_one(self, robot_state: Tensor, obs_embed: Tensor) -> Tensor:
         leading_dims, state_dim = robot_state.shape[:-1], robot_state.shape[-1]
         # [B,T,M] -> [B*T,M]
         robot_state = robot_state.view(-1, state_dim)

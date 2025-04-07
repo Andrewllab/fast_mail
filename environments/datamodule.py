@@ -264,7 +264,7 @@ class TrajectoryDataModule(L.LightningDataModule):
             raise ValueError(f"Invalid evaluation mode: {self.eval_mode}")
 
     def teardown(self, stage: str) -> None:
-        log.info(f"Called teardown in stage {stage}")
+        log.debug(f"Called teardown in stage {stage}")
         # TODO: prevent this from being called after each validation stage
         if self.env is not None:
             self.env.close()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import torch.nn as nn
@@ -7,6 +8,9 @@ import torchvision
 
 if TYPE_CHECKING:
     from torchvision.models import ResNet
+
+
+log = logging.getLogger(__name__)
 
 
 def beso_resnet_encoder(
@@ -30,6 +34,11 @@ def beso_resnet_encoder(
         # if we are loading pretrained weights, layer sizes must match the pretrained model
         # so we only set this if we are not using pretrained weights
         resnet_kwargs["num_classes"] = embed_dim
+    else:
+        log.error(
+            f"Pretrained weights {pretrained_weights} with GroupNorm are not yet supported."
+        )
+        raise NotImplementedError
 
     model = torchvision.models.resnet18(
         weights=pretrained_weights, norm_layer=make_group_norm, **resnet_kwargs

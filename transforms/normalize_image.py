@@ -1,11 +1,6 @@
 import torchvision.transforms.functional as F
 
-from environments.specs import (
-    DataSpecs,
-    RGBCameraSpec,
-    RGBDCameraSpec,
-    StereoRGBCameraSpec,
-)
+from environments.specs import DataSpecs, RGBCameraSpec
 from transforms.base_transform import KeyMapping, Transform
 
 
@@ -14,22 +9,29 @@ class NormalizeImage(Transform):
 
         self.mean = mean
         self.std = std
-        self._input_specs = {
+
+        # find the specs that this transform acts on
+        input_specs = {
             key: spec
             for key, spec in specs.obs.items()
             if isinstance(spec, RGBCameraSpec)
         }
+        for spec in input_specs.values():
+            if spec.channel_order != "CHW":
+                raise ValueError(
+                    f"Input spec {spec} must be in CHW format for normalization."
+                )
+
         self._output_specs = specs  # no changes to specs
 
+        # create a list of key mappings for the forward call
         nested_keys = []
-        for key, spec in self._input_specs.items():
-            if isinstance(spec, RGBDCameraSpec):
-                nested_keys.append(("obs", key, "rgb"))
-            elif isinstance(spec, StereoRGBCameraSpec):
-                nested_keys.extend([("obs", key, "left"), ("obs", key, "right")])
-            else:
-                nested_keys.append(("obs", key))
-
+        for key, spec in input_specs.items():
+            for subkey in spec.rgb_subkeys:
+                if subkey is not None:
+                    nested_keys.append(("obs", key, subkey))
+                else:
+                    nested_keys.append(("obs", key))
         self._nested_keys = nested_keys
 
     @property
@@ -40,5 +42,5 @@ class NormalizeImage(Transform):
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def __call__(self, image):
+    def _call_one(self, image):
         return F.normalize(image, self.mean, self.std, inplace=True)

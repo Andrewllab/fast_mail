@@ -85,8 +85,8 @@ class Spec:
 
 @dataclass(frozen=True)
 class IntensityCameraSpec(Spec):
-    """The simplest possible camera spec. The image should have no channel
-    dimension.
+    """The simplest possible camera spec.
+    The image should have no channel dimension.
     """
 
     intrinsics: PinholeCameraIntrinsic | None = None
@@ -100,6 +100,7 @@ class IntensityCameraSpec(Spec):
 class RGBCameraSpec(IntensityCameraSpec):
     channel_order: Literal["HWC", "CHW"] = "HWC"
     type: str = "rgb"
+    rgb_subkeys: tuple[str | None, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -111,18 +112,20 @@ class DepthCameraSpec(IntensityCameraSpec):
 
 @dataclass(frozen=True)
 class RGBDCameraSpec(RGBCameraSpec, DepthCameraSpec):
-    """The obs dict should contain nested keys here for "rgb" and "depth".
-    The image shape describes the shape of the RGB image, and the depth image
-    should have the same shape but no channel dimension.
+    """
+    Subkeys: "rgb" for RGB camera and "depth" for depth information.
+    The RGB and depth images must have the same shape, but the depth image should
+    not have a channel dimension.
     """
 
     type: str = "rgbd"
+    rgb_subkeys: tuple[str | None, ...] = ("rgb",)
 
 
 @dataclass(frozen=True)
 class StereoIRCameraSpec(IntensityCameraSpec):
-    """The observation TensorDict should contain a nested TensorDict at this
-    key with the keys "left" and "right" for the left and right cameras.
+    """
+    Subkeys: "left" and "right" for stereo IR cameras.
     Intrinsics are relative to the left camera.
     The image shape should have no channel dimension.
     """
@@ -132,13 +135,25 @@ class StereoIRCameraSpec(IntensityCameraSpec):
 
 @dataclass(frozen=True)
 class StereoRGBCameraSpec(RGBCameraSpec):
-    """The observation TensorDict should contain a nested TensorDict at this
-    key with the keys "left" and "right" for the left and right cameras.
+    """
+    Subkeys: "left" and "right" for stereo RGB cameras.
+    Intrinsics are relative to the left camera.
+    """
+
+    type: str = "stereo_rgb"
+    rgb_subkeys: tuple[str | None, ...] = ("left", "right")
+
+
+@dataclass(frozen=True)
+class RealSenseSpec(RGBCameraSpec, StereoIRCameraSpec):
+    """
+    Subkeys: "left" and "right" for stereo IR cameras, "rgb" for RGB camera.
     Intrinsics are relative to the left camera.
     The image shape should have no channel dimension.
     """
 
-    type: str = "stereo_rgb"
+    type: str = "realsense"
+    rgb_subkeys: tuple[str | None, ...] = ("rgb",)
 
 
 @dataclass(frozen=True)

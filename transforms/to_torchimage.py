@@ -2,28 +2,23 @@ import dataclasses
 
 import torch
 
-from environments.specs import (
-    DataSpecs,
-    RGBCameraSpec,
-    RGBDCameraSpec,
-    StereoRGBCameraSpec,
-)
+from environments.specs import DataSpecs, RGBCameraSpec
 from transforms.base_transform import KeyMapping, Transform
 
 
 class ToTorchImage(Transform):
     def __init__(self, specs: DataSpecs) -> None:
 
-        self._input_specs = {
+        # find the specs that this transform acts on
+        input_specs = {
             key: spec
             for key, spec in specs.obs.items()
             if isinstance(spec, RGBCameraSpec)
         }
 
+        # create a modified specs object for the output
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
-        for key in self._input_specs:
-            rgb_spec = obs_specs[key]
-            assert isinstance(rgb_spec, RGBCameraSpec)
+        for key, rgb_spec in input_specs.items():
             if rgb_spec.channel_order == "HWC":
                 # move last channel dimension from the end to the -3 position
                 obs_specs[key] = dataclasses.replace(
@@ -31,19 +26,22 @@ class ToTorchImage(Transform):
                     shape=rgb_spec.shape[:-3]
                     + rgb_spec.shape[-1:]
                     + rgb_spec.shape[-3:-1],
+                    channel_order="CHW",
                 )
         self._output_specs = specs.replace(obs=obs_specs)
 
+        # create a list of key mappings for the forward call
         nested_keys = []
-        for key, spec in self._input_specs.items():
-            if isinstance(spec, RGBDCameraSpec):
-                nested_keys.append(("obs", key, "rgb"))
-            elif isinstance(spec, StereoRGBCameraSpec):
-                nested_keys.extend([("obs", key, "left"), ("obs", key, "right")])
-            else:
-                nested_keys.append(("obs", key))
-
+        for key, spec in input_specs.items():
+            for subkey in spec.rgb_subkeys:
+                if subkey is not None:
+                    nested_keys.append(("obs", key, subkey))
+                else:
+                    nested_keys.append(("obs", key))
         self._nested_keys = nested_keys
+
+        # store the input specs so we can use them in the call method
+        self._input_specs = list(input_specs.values())
 
     @property
     def key_mappings(self) -> list[KeyMapping]:
@@ -53,10 +51,8 @@ class ToTorchImage(Transform):
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def __call__(self, image):
-        in_key = get_in_keys()[0]
-        key_idx = self._nested_keys.index(in_key)
-        input_spec = list(self._input_specs.values())[key_idx]
+    def _call_one(self, image):
+        input_spec = self._input_specs[self.mapping_idx]
 
         default_float_dtype = torch.get_default_dtype()
 
@@ -67,15 +63,3 @@ class ToTorchImage(Transform):
 
         # convert to (some sort of) float and rescale to [0, 1]
         return image.to(dtype=default_float_dtype).div(255)
-
-
-import inspect
-
-from transforms.base_transform import KeyType
-
-
-def get_in_keys() -> KeyType:
-    this_frame = inspect.currentframe()
-    td_frame = this_frame.f_back.f_back
-    td_module: TensorDictModule = td_frame.f_locals["self"]
-    return td_module.in_keys
