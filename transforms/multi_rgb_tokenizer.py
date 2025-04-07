@@ -5,7 +5,13 @@ from typing import TYPE_CHECKING, Callable
 import torch
 import torch.nn as nn
 
-from environments.specs import Spec
+from environments.specs import (
+    DataSpecs,
+    RGBCameraSpec,
+    RGBDCameraSpec,
+    Spec,
+    StereoRGBCameraSpec,
+)
 from transforms.base_transform import KeyMapping, Transform
 
 if TYPE_CHECKING:
@@ -26,8 +32,10 @@ class MultiRgbTokenizer(nn.Module, Transform):
     ):
         super().__init__()
 
-        self.rgb_specs = {
-            key: spec for key, spec in specs.obs.items() if spec.type == "rgb"
+        self._input_specs = {
+            key: spec
+            for key, spec in specs.obs.items()
+            if isinstance(spec, RGBCameraSpec)
         }
 
         # handle sharing vision backbone
@@ -35,7 +43,7 @@ class MultiRgbTokenizer(nn.Module, Transform):
             self.model = rgb_model()
         else:
             self.models = nn.ModuleDict()
-            for key in self.rgb_specs:
+            for key in self._input_specs:
                 self.models[key] = rgb_model()
 
         self.share_rgb_model = share_rgb_model
@@ -43,15 +51,26 @@ class MultiRgbTokenizer(nn.Module, Transform):
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         # the leading dim is the number of observed time steps
         # each camera produces one token
-        embed_seq_len = sum(spec.shape[0] for spec in self.rgb_specs.values())
+        embed_seq_len = sum(spec.shape[0] for spec in self._input_specs.values())
         obs_specs["embed"] = Spec(shape=(embed_seq_len, embed_dim), type="embed")
         self._specs = specs.replace(obs=obs_specs)
+
+        nested_keys = []
+        for key, spec in self._input_specs.items():
+            if isinstance(spec, RGBDCameraSpec):
+                nested_keys.append(("obs", key, "rgb"))
+            elif isinstance(spec, StereoRGBCameraSpec):
+                nested_keys.extend([("obs", key, "left"), ("obs", key, "right")])
+            else:
+                nested_keys.append(("obs", key))
+
+        self._nested_keys = nested_keys
 
     @property
     def key_mappings(self) -> list[KeyMapping]:
         return [
             KeyMapping(
-                in_keys=[("obs", key) for key in self.rgb_specs],
+                in_keys=list(self._nested_keys),
                 out_keys=[("obs", "embed")],
             )
         ]
@@ -81,7 +100,7 @@ class MultiRgbTokenizer(nn.Module, Transform):
         else:
             # run each rgb obs to independent models
             features = []
-            for img, (key, spec) in zip(imgs, self.rgb_specs.items()):
+            for img, (key, spec) in zip(imgs, self._input_specs.items()):
                 assert tuple(img.shape[1:]) == spec.shape
                 leading_dims, img_shape = img.shape[:-3], img.shape[-3:]
                 # [B,T,C,H,W] -> [B*T,C,H,W]
