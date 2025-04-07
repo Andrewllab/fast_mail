@@ -20,7 +20,9 @@ agent:
     
       rgb_model:
         # resnet18
-        pretrained_weights: null  # null or "IMAGENET1K_V1"
+        pretrained_weights: IMAGENET1K_V1  # null or "IMAGENET1K_V1"
+        freeze_backbone: False
+        use_group_norm: True
 
 logger:
   wandb:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, TypeVar
 
 import torch.nn as nn
 import torchvision
@@ -15,44 +15,72 @@ log = logging.getLogger(__name__)
 
 def beso_resnet_encoder(
     embed_dim: int,
-    pretrained_weights: str | None,
-    freeze_backbone: bool | None = None,
+    pretrained_weights: str | None = None,
+    freeze_backbone: bool = False,
+    use_group_norm: bool = True,
     **resnet_kwargs,
 ) -> ResNet:
-
-    # by default, only freeze weights if we load a pretrained model
-    if freeze_backbone is None:
-        freeze_backbone = pretrained_weights is not None
-
-    # ResNet supports other norm layers besides the default BatchNorm2d, but
-    # instantiates them with a single argument `num_features`. Therefore we
-    # have to adapt the constructor for GroupNorm.
-    def make_group_norm(num_features: int):
-        return nn.GroupNorm(num_groups=num_features // 16, num_channels=num_features)
 
     if pretrained_weights is None:
         # if we are loading pretrained weights, layer sizes must match the pretrained model
         # so we only set this if we are not using pretrained weights
         resnet_kwargs["num_classes"] = embed_dim
-    else:
-        log.error(
-            f"Pretrained weights {pretrained_weights} with GroupNorm are not yet supported."
+
+    model = torchvision.models.resnet18(weights=pretrained_weights, **resnet_kwargs)
+
+    if use_group_norm:
+
+        def make_group_norm(bn: nn.Module) -> nn.GroupNorm:
+            assert isinstance(bn, nn.BatchNorm2d)
+            gn = nn.GroupNorm(
+                num_groups=bn.num_features // 16, num_channels=bn.num_features
+            )
+
+            # copy the parameters from the batch norm layer
+            gn.weight.data = bn.weight.data.clone()
+            gn.bias.data = bn.bias.data.clone()
+            return gn
+
+        model = replace(
+            model,
+            filter=lambda m: isinstance(m, nn.BatchNorm2d),
+            fn=make_group_norm,
         )
-        raise NotImplementedError
 
-    model = torchvision.models.resnet18(
-        weights=pretrained_weights, norm_layer=make_group_norm, **resnet_kwargs
-    )
-
-    if freeze_backbone:
-        model.requires_grad_(False)
-
-    if model.fc.out_features != embed_dim:
+    if pretrained_weights is not None:
         # have to replace the output layer if it has the wrong dimensionality
         # (e.g. if pretrained weights were loaded)
-        model.fc = nn.Linear(model.fc.in_features, model.fc.out_features)
-    elif freeze_backbone:
-        # output layer has the right dimensionality, but we have to unfreeze it
+        model.fc = nn.Linear(model.fc.in_features, embed_dim)
+
+    if freeze_backbone:
+        # freeze all layers except the last one
+        model.requires_grad_(False)
         model.fc.requires_grad_(True)
 
     return model
+
+
+T = TypeVar("T", bound=nn.Module)
+
+
+def replace(
+    module: T,
+    filter: Callable[[nn.Module], bool],
+    fn: Callable[[nn.Module], nn.Module],
+) -> T:
+    """Recursively replace modules in a PyTorch module.
+
+    Args:
+        module (nn.Module): The module to modify.
+        filter (Callable[[nn.Module], bool]): A function that returns True for modules to be replaced.
+        fn (Callable[[nn.Module], nn.Module]): A function that takes a module and returns a modified module.
+
+    Returns:
+        nn.Module: The modified module.
+    """
+    for name, child in module.named_children():
+        if filter(child):
+            setattr(module, name, fn(child))
+        else:
+            replace(child, filter, fn)
+    return module
