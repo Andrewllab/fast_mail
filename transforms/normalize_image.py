@@ -28,10 +28,9 @@ class NormalizeImage(Transform):
         key_mappings = []
         for key, spec in input_specs.items():
             for subkey in spec.rgb_subkeys:
+                nested_key = ("obs", key)
                 if subkey is not None:
-                    nested_key = ("obs", key, subkey)
-                else:
-                    nested_key = ("obs", key)
+                    nested_key += (subkey,)
                 key_mappings.append(KeyMapping(in_keys=nested_key, out_keys=nested_key))
         self._key_mappings = key_mappings
 

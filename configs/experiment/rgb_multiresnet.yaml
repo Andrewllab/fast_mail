@@ -6,17 +6,12 @@ defaults:
   # scale images down by a factor of 2
   - /transforms@data.gpu_batch_transforms.2_resize: resize_image
   # apply ImageNet normalization
-  - /transforms@data.gpu_batch_transforms.3_norm: imagenet_norm
+  - /transforms@data.gpu_batch_transforms.4_norm: imagenet_norm
 
   # tokenize the rgb images using a ResNet
   - /transforms@agent.obs_encoder.4_resnets: multi_resnets_tokenizer
   # add tokens for the robot state
   - /transforms@agent.obs_encoder.5_robot_state: linear_robot_state_encoder
-
-data:
-  gpu_batch_transforms:
-    2_resize:
-      factor: 0.5
 
 agent:
   obs_encoder:

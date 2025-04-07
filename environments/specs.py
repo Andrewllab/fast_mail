@@ -80,11 +80,11 @@ class PinholeCameraIntrinsic:
 @dataclass(frozen=True)
 class Spec:
     shape: tuple[int, ...]
-    type: str
+    type: str | None = None
 
 
 @dataclass(frozen=True)
-class BaseCameraSpec(Spec):
+class CameraSpec(Spec):
     """Base class for camera specifications.
     The image should have no channel dimension.
     """
@@ -94,21 +94,14 @@ class BaseCameraSpec(Spec):
     # the key (within the obs dict) with the dynamic pose information for the camera
     # e.g. a wrist camera would have extrinsics relative to the end effector pose
     dynamic_pose_obs_key: str | tuple[str, ...] | None = None
-    # allows subclasses to specify the subkeys of nested tensordicts
-    subkeys: tuple[str | None, ...] = ()
+    # subkey fields exclusively list the data subfields of this camera
+    # e.g. a stereo camera would have "left" and "right" as subkeys
+    # intensity subkeys are for images with no channel dimension
+    intensity_subkeys: tuple[str | None, ...] = ()
 
 
 @dataclass(frozen=True)
-class IntensityCameraSpec(BaseCameraSpec):
-    """An intensity camera produces images without a channel dimension. They are
-    fundamentally different from depth cameras.
-    """
-
-    image_subkeys: tuple[str | None, ...] = ()
-
-
-@dataclass(frozen=True)
-class DepthCameraSpec(BaseCameraSpec):
+class DepthCameraSpec(CameraSpec):
     """A depth image is fundamentally different from an intensity image, since
     its values measure distance and not intensity. For example, a depth image
     should not be interpolated the same way as an intensity image.
@@ -116,13 +109,16 @@ class DepthCameraSpec(BaseCameraSpec):
 
     # orthogonal or perspective depth measurement
     orthogonal: bool = True
-    type: str = "depth"
+    # depth subkeys are for depth information with no channel dimension
+    # depth is fundamentally different from intensity, because it must be
+    # interpolated differently
+    depth_subkeys: tuple[str | None, ...] = ()
 
 
 @dataclass(frozen=True)
-class RGBCameraSpec(IntensityCameraSpec):
+class RGBCameraSpec(CameraSpec):
     channel_order: Literal["HWC", "CHW"] = "HWC"
-    type: str = "rgb"
+    # rgb subkeys are for images with a channel dimension
     rgb_subkeys: tuple[str | None, ...] = ()
 
 
@@ -133,48 +129,18 @@ class RGBDCameraSpec(RGBCameraSpec, DepthCameraSpec):
     not have a channel dimension.
     """
 
-    type: str = "rgbd"
-    # "rgb" for RGB camera and "depth" for depth information
-    subkeys: tuple[str | None, ...] = ("rgb", "depth")
-    image_subkeys: tuple[str | None, ...] = ("rgb",)
     rgb_subkeys: tuple[str | None, ...] = ("rgb",)
+    depth_subkeys: tuple[str | None, ...] = ("depth",)
 
 
 @dataclass(frozen=True)
-class StereoIRCameraSpec(IntensityCameraSpec):
+class RealSenseSpec(RGBCameraSpec):
     """
     Intrinsics are relative to the left camera.
     The image shape should have no channel dimension.
     """
 
-    type: str = "stereo_ir"
-    # "left" and "right" for stereo IR cameras
-    subkeys: tuple[str | None, ...] = ("left", "right")
-    image_subkeys: tuple[str | None, ...] = ("left", "right")
-
-
-@dataclass(frozen=True)
-class StereoRGBCameraSpec(RGBCameraSpec):
-    """
-    Intrinsics are relative to the left camera.
-    """
-
-    type: str = "stereo_rgb"
-    subkeys: tuple[str | None, ...] = ("left", "right")
-    image_subkeys: tuple[str | None, ...] = ("left", "right")
-    rgb_subkeys: tuple[str | None, ...] = ("left", "right")
-
-
-@dataclass(frozen=True)
-class RealSenseSpec(RGBCameraSpec, StereoIRCameraSpec):
-    """
-    Intrinsics are relative to the left camera.
-    The image shape should have no channel dimension.
-    """
-
-    type: str = "realsense"
-    subkeys: tuple[str | None, ...] = ("left", "right", "rgb")
-    image_subkeys: tuple[str | None, ...] = ("left", "right", "rgb")
+    intensity_subkeys: tuple[str | None, ...] = ("left", "right")
     rgb_subkeys: tuple[str | None, ...] = ("rgb",)
 
 
@@ -184,7 +150,6 @@ class PointCloudSpec(Spec):
     the point cloud has color or not."""
 
     color: bool = False
-    type: str = "pointcloud"
 
 
 @dataclass(frozen=True)

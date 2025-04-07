@@ -1,9 +1,10 @@
 import dataclasses
 
 import torch
+from tensordict import TensorDict
 
-from environments.specs import DataSpecs, IntensityCameraSpec, RGBCameraSpec
-from transforms.base_transform import KeyMapping, Transform
+from environments.specs import CameraSpec, DataSpecs, RGBCameraSpec
+from transforms.base_transform import Transform
 
 
 class ToTorchImage(Transform):
@@ -11,10 +12,9 @@ class ToTorchImage(Transform):
 
         # find the specs that this transform acts on
         input_specs = {
-            key: spec
-            for key, spec in specs.obs.items()
-            if isinstance(spec, IntensityCameraSpec)
+            key: spec for key, spec in specs.obs.items() if isinstance(spec, CameraSpec)
         }
+        self._input_specs = input_specs
 
         # create a modified specs object for the output
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
@@ -28,40 +28,36 @@ class ToTorchImage(Transform):
                 )
         self._output_specs = specs.replace(obs=obs_specs)
 
-        # create a list of key mappings for the forward call
-        key_mappings = []
-        for key, spec in input_specs.items():
-            for subkey in spec.image_subkeys:
-                if subkey is not None:
-                    nested_key = ("obs", key, subkey)
-                else:
-                    nested_key = ("obs", key)
-                key_mappings.append(
-                    KeyMapping(
-                        in_keys=nested_key,
-                        out_keys=nested_key,
-                        args=(spec,),
-                    )
-                )
-        self._key_mappings = key_mappings
-
-    @property
-    def key_mappings(self) -> list[KeyMapping]:
-        return self._key_mappings
-
     @property
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def _call_one(
-        self, image: torch.Tensor, input_spec: IntensityCameraSpec
-    ) -> torch.Tensor:
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
         default_float_dtype = torch.get_default_dtype()
 
-        if isinstance(input_spec, RGBCameraSpec) and input_spec.channel_order == "HWC":
-            # if the input is in HWC format, we need to move the last channel dimension
-            # to the -3 position
-            image = torch.movedim(image, -1, -3)
+        for key, spec in self._input_specs.items():
+            for subkey in spec.intensity_subkeys:
+                nested_key = ("obs", key)
+                if subkey is not None:
+                    nested_key += (subkey,)
+                image = tensordict[nested_key]
 
-        # convert to (some sort of) float and rescale to [0, 1]
-        return image.to(dtype=default_float_dtype).div(255)
+                image = image.to(dtype=default_float_dtype).div(255)
+
+                tensordict[nested_key] = image
+
+            if isinstance(spec, RGBCameraSpec):
+                for subkey in spec.rgb_subkeys:
+                    nested_key = ("obs", key)
+                    if subkey is not None:
+                        nested_key += (subkey,)
+                    image = tensordict[nested_key]
+
+                    if spec.channel_order == "HWC":
+                        image = torch.movedim(image, -1, -3)
+
+                    image = image.to(dtype=default_float_dtype).div(255)
+
+                    tensordict[nested_key] = image
+
+        return tensordict

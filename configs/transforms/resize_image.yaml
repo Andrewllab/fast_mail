@@ -1,2 +1,3 @@
 _target_: transforms.resize_image.ResizeImage
 _partial_: True
+shape: 256

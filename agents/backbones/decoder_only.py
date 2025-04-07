@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
     from environments.specs import DataSpecs
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 # Non-diffusion based decoder-only model
@@ -144,6 +144,10 @@ class DecoderOnlyNoise(nn.Module):
         self.decoder = decoder
         self.sigma_encoder = sigma_encoder(token_dim)
         self.action_head = action_head(token_dim, specs.action_dim)
+
+        log.debug(
+            f"Noise model expects to receive {specs.obs_embed_seq_len} observation tokens."
+        )
 
         # we use time to refer to the position in the sequence of tokens
         # this often corresponds to real time, but not always, e.g. with goal tokens
