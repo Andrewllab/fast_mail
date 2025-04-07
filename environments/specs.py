@@ -84,8 +84,8 @@ class Spec:
 
 
 @dataclass(frozen=True)
-class IntensityCameraSpec(Spec):
-    """The simplest possible camera spec.
+class BaseCameraSpec(Spec):
+    """Base class for camera specifications.
     The image should have no channel dimension.
     """
 
@@ -99,17 +99,31 @@ class IntensityCameraSpec(Spec):
 
 
 @dataclass(frozen=True)
+class IntensityCameraSpec(BaseCameraSpec):
+    """An intensity camera produces images without a channel dimension. They are
+    fundamentally different from depth cameras.
+    """
+
+    image_subkeys: tuple[str | None, ...] = ()
+
+
+@dataclass(frozen=True)
+class DepthCameraSpec(BaseCameraSpec):
+    """A depth image is fundamentally different from an intensity image, since
+    its values measure distance and not intensity. For example, a depth image
+    should not be interpolated the same way as an intensity image.
+    """
+
+    # orthogonal or perspective depth measurement
+    orthogonal: bool = True
+    type: str = "depth"
+
+
+@dataclass(frozen=True)
 class RGBCameraSpec(IntensityCameraSpec):
     channel_order: Literal["HWC", "CHW"] = "HWC"
     type: str = "rgb"
     rgb_subkeys: tuple[str | None, ...] = ()
-
-
-@dataclass(frozen=True)
-class DepthCameraSpec(IntensityCameraSpec):
-    # orthogonal or perspective depth measurement
-    orthogonal: bool = True
-    type: str = "depth"
 
 
 @dataclass(frozen=True)
@@ -122,6 +136,7 @@ class RGBDCameraSpec(RGBCameraSpec, DepthCameraSpec):
     type: str = "rgbd"
     # "rgb" for RGB camera and "depth" for depth information
     subkeys: tuple[str | None, ...] = ("rgb", "depth")
+    image_subkeys: tuple[str | None, ...] = ("rgb",)
     rgb_subkeys: tuple[str | None, ...] = ("rgb",)
 
 
@@ -135,30 +150,31 @@ class StereoIRCameraSpec(IntensityCameraSpec):
     type: str = "stereo_ir"
     # "left" and "right" for stereo IR cameras
     subkeys: tuple[str | None, ...] = ("left", "right")
+    image_subkeys: tuple[str | None, ...] = ("left", "right")
 
 
 @dataclass(frozen=True)
 class StereoRGBCameraSpec(RGBCameraSpec):
     """
-    Subkeys: "left" and "right" for stereo RGB cameras.
     Intrinsics are relative to the left camera.
     """
 
     type: str = "stereo_rgb"
     subkeys: tuple[str | None, ...] = ("left", "right")
+    image_subkeys: tuple[str | None, ...] = ("left", "right")
     rgb_subkeys: tuple[str | None, ...] = ("left", "right")
 
 
 @dataclass(frozen=True)
 class RealSenseSpec(RGBCameraSpec, StereoIRCameraSpec):
     """
-    Subkeys: "left" and "right" for stereo IR cameras, "rgb" for RGB camera.
     Intrinsics are relative to the left camera.
     The image shape should have no channel dimension.
     """
 
     type: str = "realsense"
     subkeys: tuple[str | None, ...] = ("left", "right", "rgb")
+    image_subkeys: tuple[str | None, ...] = ("left", "right", "rgb")
     rgb_subkeys: tuple[str | None, ...] = ("rgb",)
 
 

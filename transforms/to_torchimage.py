@@ -2,7 +2,7 @@ import dataclasses
 
 import torch
 
-from environments.specs import DataSpecs, RGBCameraSpec
+from environments.specs import DataSpecs, IntensityCameraSpec, RGBCameraSpec
 from transforms.base_transform import KeyMapping, Transform
 
 
@@ -13,19 +13,17 @@ class ToTorchImage(Transform):
         input_specs = {
             key: spec
             for key, spec in specs.obs.items()
-            if isinstance(spec, RGBCameraSpec)
+            if isinstance(spec, IntensityCameraSpec)
         }
 
         # create a modified specs object for the output
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
-        for key, rgb_spec in input_specs.items():
-            if rgb_spec.channel_order == "HWC":
+        for key, spec in input_specs.items():
+            if isinstance(spec, RGBCameraSpec) and spec.channel_order == "HWC":
                 # move last channel dimension from the end to the -3 position
                 obs_specs[key] = dataclasses.replace(
-                    rgb_spec,
-                    shape=rgb_spec.shape[:-3]
-                    + rgb_spec.shape[-1:]
-                    + rgb_spec.shape[-3:-1],
+                    spec,
+                    shape=spec.shape[:-3] + spec.shape[-1:] + spec.shape[-3:-1],
                     channel_order="CHW",
                 )
         self._output_specs = specs.replace(obs=obs_specs)
@@ -33,7 +31,7 @@ class ToTorchImage(Transform):
         # create a list of key mappings for the forward call
         key_mappings = []
         for key, spec in input_specs.items():
-            for subkey in spec.subkeys:
+            for subkey in spec.image_subkeys:
                 if subkey is not None:
                     nested_key = ("obs", key, subkey)
                 else:
@@ -55,10 +53,12 @@ class ToTorchImage(Transform):
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def _call_one(self, image: torch.Tensor, input_spec: RGBCameraSpec) -> torch.Tensor:
+    def _call_one(
+        self, image: torch.Tensor, input_spec: IntensityCameraSpec
+    ) -> torch.Tensor:
         default_float_dtype = torch.get_default_dtype()
 
-        if input_spec.channel_order == "HWC":
+        if isinstance(input_spec, RGBCameraSpec) and input_spec.channel_order == "HWC":
             # if the input is in HWC format, we need to move the last channel dimension
             # to the -3 position
             image = torch.movedim(image, -1, -3)
