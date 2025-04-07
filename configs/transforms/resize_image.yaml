@@ -1,3 +1,5 @@
 _target_: transforms.resize_image.ResizeImage
 _partial_: True
 shape: 256
+interpolation: BILINEAR
+depth_interpolation: NEAREST_EXACT

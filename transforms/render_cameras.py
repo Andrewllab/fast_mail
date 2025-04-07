@@ -1,52 +1,230 @@
+from __future__ import annotations
+
+import itertools
+from typing import Literal, Sequence
+
+import matplotlib.cm as cm
 import numpy as np
 import pygame
 import torch
+from tensordict import TensorDict
 
-from environments.specs import DataSpecs, IntensityCameraSpec
-from transforms.base_transform import KeyMapping, Transform
+from environments.specs import CameraSpec, DataSpecs, DepthCameraSpec, RGBCameraSpec
+from transforms.base_transform import Transform
 
 
 class RenderCameras(Transform):
-    def __init__(self, specs: DataSpecs) -> None:
-        # TODO: add support for multiple cameras
-        # TODO: check for channel ordering
-
-        rgb_specs = {
-            key: spec
-            for key, spec in specs.obs.items()
-            if isinstance(spec, IntensityCameraSpec)
+    def __init__(self, specs: DataSpecs, fps: float | None) -> None:
+        input_specs = {
+            key: spec for key, spec in specs.obs.items() if isinstance(spec, CameraSpec)
         }
 
-        self.rgb_key = list(rgb_specs.keys())[0]
-        self.rgb_spec = rgb_specs[self.rgb_key]
-        self.rgb_shape = self.rgb_spec.shape
-        height, width = self.rgb_shape[-3:-1]
+        first_spec = next(iter(input_specs.values()))
+        if isinstance(first_spec, RGBCameraSpec) and first_spec.channel_order == "HWC":
+            H, W = first_spec.shape[-3:-1]
+        else:
+            H, W = first_spec.shape[-2:]
 
-        self.screen = pygame.display.set_mode((width, height))
-        pygame.display.set_caption(f"obs.{self.rgb_key}")
+        n_images = 0
+        for key, spec in input_specs.items():
+            n_images += len(spec.intensity_subkeys)
+            if isinstance(spec, RGBCameraSpec):
+                n_images += len(spec.rgb_subkeys)
+            if isinstance(spec, DepthCameraSpec):
+                n_images += len(spec.depth_subkeys)
+
+            if isinstance(spec, RGBCameraSpec) and spec.channel_order == "HWC":
+                assert (H, W) == spec.shape[-3:-1]
+            else:
+                assert (H, W) == spec.shape[-2:]
+
+        self.tiled_height, self.tiled_width = find_tiling(n_images)
+
+        self.screen = pygame.display.set_mode(
+            (W * self.tiled_width, H * self.tiled_height)
+        )
+        # pygame.display.set_caption(f"obs.{key}")
         self.screen.fill((0, 0, 0))  # Clear the screen
 
-        self._output_specs = specs
+        if fps is not None:
+            self.clock = pygame.time.Clock()
+            self.fps = fps
+        else:
+            self.clock = None
+            self.fps = None
 
-    @property
-    def key_mappings(self) -> list[KeyMapping]:
-        return [KeyMapping(in_keys=[("obs", self.rgb_key)], out_keys=["_"])]
+        self._key, self._spec = key, spec
+        self._input_specs = input_specs
+        self._specs = specs
 
     @property
     def specs(self) -> DataSpecs:
-        return self._output_specs
+        return self._specs
 
-    def __call__(self, image: torch.Tensor) -> None:
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        if self.clock is not None:
+            self.clock.tick(self.fps)  # type: ignore
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 raise KeyboardInterrupt("Pygame quit")
 
-        image = image.squeeze(0).squeeze(0)  # remove batch and time dimensions
-        surface = pygame.surfarray.make_surface(np.rot90(image.cpu().numpy()))
+        images = []
+        for key, spec in self._input_specs.items():
+            if isinstance(spec, RGBCameraSpec):
+                for subkey in spec.rgb_subkeys:
+                    nested_key = ("obs", key)
+                    if subkey is not None:
+                        nested_key += (subkey,)
+                    image = tensordict[nested_key]
+                    image = image[0, -1]  # remove batch and time dimensions
+                    image = rgb_tensor_to_np(image, spec.channel_order)
+                    images.append(image)
+
+            for subkey in spec.intensity_subkeys:
+                nested_key = ("obs", key)
+                if subkey is not None:
+                    nested_key += (subkey,)
+                image = tensordict[nested_key]
+                image = image[0, -1]  # remove batch and time dimensions
+                image = intensity_tensor_to_np(image)
+                images.append(image)
+
+            if isinstance(spec, DepthCameraSpec):
+                for subkey in spec.depth_subkeys:
+                    nested_key = ("obs", key)
+                    if subkey is not None:
+                        nested_key += (subkey,)
+                    image = tensordict[nested_key]
+                    image = image[0, -1]  # remove batch and time dimensions
+                    image = depth_tensor_to_np(image)
+                    images.append(image)
+
+        image = tile_images(images, self.tiled_height, self.tiled_width, vertical=True)
+
+        surface = pygame.surfarray.make_surface(image.transpose(1, 0, 2))
         self.screen.blit(surface, (0, 0))
 
         pygame.display.flip()  # Update display
 
+        return tensordict
+
     def close(self) -> None:
         pygame.quit()
+
+
+def find_tiling(n_images: int) -> tuple[int, int]:
+    """Find a tiling to represent `n_images` images in one big PxQ tiling.
+    P and Q are chosen to be factors of n_images, as long as this is possible
+    with an aspect ratio between 1:1 and 2:1. Otherwise P and Q are chosen to
+    be as close to each other as possible.
+    """
+    # first, try to factorize n_images with an aspect ratio between 1:1
+    # and 2:1
+    max_tiled_height = int(np.floor(np.sqrt(n_images)))
+    min_tiled_height = int(np.ceil(np.sqrt(n_images / 2)))
+    try:
+        tiled_height = next(
+            i
+            for i in range(max_tiled_height, min_tiled_height - 1, -1)
+            if n_images % i == 0
+        )
+        tiled_width = n_images // tiled_height
+        return (tiled_height, tiled_width)
+
+    except StopIteration:
+        pass
+
+    # if such factors do not exist, construct a grid that is roughly
+    # square. Additional tiles will be filled in with black
+    tiled_height = int(np.ceil(np.sqrt(n_images)))
+    tiled_width = int(np.ceil(float(n_images) / tiled_height))
+    return (tiled_height, tiled_width)
+
+
+def rgb_tensor_to_np(
+    image: torch.Tensor, channel_order: Literal["HWC", "CHW"]
+) -> np.ndarray:
+    """Convert a torch tensor to a numpy array.
+    The tensor is assumed to be in the format (C, H, W) or (H, W, C).
+    """
+    if channel_order == "CHW":
+        image = torch.movedim(image, 0, -1)  # move channel to last dimension
+
+    # convert back to uint8 if needed
+    if image.dtype != torch.uint8:
+        image = image * 255.0
+        image = image.clamp(0, 255).to(torch.uint8)
+
+    return image.cpu().numpy()
+
+
+def intensity_tensor_to_np(image: torch.Tensor) -> np.ndarray:
+    raise NotImplementedError
+
+
+def depth_tensor_to_np(depth: torch.Tensor, colormap_name="magma") -> np.ndarray:
+    """
+    Convert a torch tensor to a numpy array.
+    The tensor is assumed to be in the format (H, W).
+    """
+    # handle invalid values
+    depth = torch.nan_to_num(depth, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # Normalize to [0, 1]
+    depth_min = depth.min()
+    depth_max = depth.max()
+    depth_range = depth_max - depth_min + 1e-6  # avoid division by zero
+    depth = (depth - depth_min) / depth_range
+
+    depth_np = depth.cpu().numpy()
+
+    # Apply colormap
+    cmap = cm.get_cmap(colormap_name)
+    colored = cmap(depth_np)[:, :, :3]  # Drop alpha channel → shape (H, W, 3)
+
+    # Convert to 8-bit RGB
+    rgb = (colored * 255).clip(min=0, max=255).astype(np.uint8)
+
+    return rgb
+
+
+def tile_images(
+    images: Sequence[np.ndarray],
+    tiled_height: int,
+    tiled_width: int,
+    vertical: bool = False,
+) -> np.ndarray:
+    n_images = len(images)
+    height, width, n_channels = images[0].shape
+
+    tiled_frame_HhWwN = np.zeros(
+        (tiled_height * height, tiled_width * width, n_channels), dtype=np.uint8
+    )
+
+    # this array shares memory with the original array, but is more intuitive
+    # for writing to
+    tiled_frame_HWhwN = tiled_frame_HhWwN.reshape(
+        (tiled_height, height, tiled_width, width, n_channels)
+    ).transpose(0, 2, 1, 3, 4)
+
+    n = 0
+    if vertical:
+        # tile images top to bottom, left to right
+        iterators = (range(tiled_width), range(tiled_height))
+    else:
+        # tile images left to right, top to bottom
+        iterators = (range(tiled_height), range(tiled_width))
+
+    for i, j in itertools.product(*iterators):
+        if n >= n_images:
+            return tiled_frame_HhWwN
+
+        if vertical:
+            i, j = j, i
+
+        tiled_frame_HWhwN[i, j] = images[n]
+        n += 1
+
+    return tiled_frame_HhWwN

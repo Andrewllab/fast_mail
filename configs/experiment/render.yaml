@@ -2,9 +2,10 @@
 
 agent:
   obs_encoder:
-    9_render_cameras:
+    9-1_render_cameras:
       _target_: transforms.render_cameras.RenderCameras
       _partial_: True
-    # 9-1_render_pointcloud:
+      fps: 30
+    # 9-2_render_pointcloud:
     #   _target_: transforms.render_pointcloud.RenderPointCloud
     #   _partial_: True

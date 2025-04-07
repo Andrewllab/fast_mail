@@ -30,13 +30,13 @@ class ResizeImage(Transform):
         if interpolation is None:
             interpolation = InterpolationMode.BILINEAR
         elif isinstance(interpolation, str):
-            interpolation = InterpolationMode(interpolation)
+            interpolation = InterpolationMode[interpolation]
         self.interpolation = interpolation
 
         if depth_interpolation is None:
             depth_interpolation = InterpolationMode.NEAREST_EXACT
         elif isinstance(depth_interpolation, str):
-            depth_interpolation = InterpolationMode(depth_interpolation)
+            depth_interpolation = InterpolationMode[depth_interpolation]
         self.depth_interpolation = depth_interpolation
 
         self.antialias = antialias

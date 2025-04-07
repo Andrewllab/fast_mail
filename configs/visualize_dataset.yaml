@@ -1,19 +1,29 @@
 defaults:
-  - data: real_robot
+  - data: one_leg_alr_metaquest
   - agent: null_agent
-  - callbacks:
-  - logger:
+  - callbacks: null
+  - logger: null
   - python_logging: default
   - paths: default
   - hydra: default
+  - experiment:
+    - rgb_multiresnet
+    - render
   - _self_
-  - experiment: render
   - platform: default
   - optional local: default
   - debug: verbose
 
 # task name, determines output directory path
-job_type: visualize_real_robot
+job_type: visualize_dataset
+
+data:
+  batch_size: 1
+  eval_mode: dataset
+  dataset:
+    load_subset: 0.05
+  gpu_batch_transforms:
+    4_norm: null  # do not normalize when rendering
 
 trainer:
   accelerator: gpu
