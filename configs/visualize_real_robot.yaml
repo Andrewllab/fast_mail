@@ -7,7 +7,9 @@ defaults:
   - paths: default
   - hydra: default
   - _self_
-  - experiment: render
+  - experiment:
+    - render_cameras
+    # - render_pointcloud
   - platform: default
   - optional local: default
   - debug: verbose

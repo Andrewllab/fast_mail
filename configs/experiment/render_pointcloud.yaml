@@ -1,0 +1,8 @@
+# @package _global_
+
+agent:
+  obs_encoder:
+    9_render_pointcloud:
+      _target_: transforms.render_pointcloud.RenderPointCloud
+      _partial_: True
+      fps: 15
