@@ -115,7 +115,7 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
                 intrinsics, width=shape[2], height=shape[1]
             ),
             extrinsics=extrinsics,
-            orthogonal=False,
+            orthogonal=True,
             channel_order="HWC",
         )
 
@@ -135,7 +135,7 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
                 intrinsics, width=shape[2], height=shape[1]
             ),
             extrinsics=extrinsics,
-            orthogonal=False,
+            orthogonal=True,
             channel_order="HWC",
         )
 
@@ -153,7 +153,7 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             ),
             dynamic_pose_obs_key="gripper_cam_transform",
             extrinsics=None,  # gripper_cam_transform provides complete transform
-            orthogonal=False,
+            orthogonal=True,
             channel_order="HWC",
         )
 

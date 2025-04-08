@@ -88,8 +88,15 @@ class ToPointCloud(Transform):
 
             # remove points that are beyond the max depth
             if self.max_depth is not None:
+                # get mask of points that are within max depth
+                # mask: (leading_dims, H*W)
                 mask = (depth < self.max_depth).flatten(start_dim=-2)
                 points = points[mask]
+
+                # restore leading dimensions after masking
+                leading_dims = depth.shape[:-2]
+                points = points.view(*leading_dims, -1, 3)
+
             else:
                 mask = Ellipsis
 
@@ -114,6 +121,9 @@ class ToPointCloud(Transform):
 
                 # remove points that are beyond the max depth
                 rgb = rgb[mask]
+                # restore leading dimensions after masking
+                rgb = rgb.view(*leading_dims, -1, 3)
+
                 all_rgb.append(rgb)
 
         # stack points from all cameras together

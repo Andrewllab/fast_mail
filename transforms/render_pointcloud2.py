@@ -1,12 +1,19 @@
+import logging
 import time
 
 import open3d as o3d
+import open3d.core as o3c
 import open3d.visualization as o3dvis
+import open3d.visualization.rendering as rendering
+from open3d.visualization import gui
 from tensordict import NonTensorData
 from torch_geometric.data import Data
 
 from environments.specs import DataSpecs, PointCloudSpec
 from transforms.base_transform import KeyMapping, Transform
+from utils.o3d import torch_to_o3d
+
+log = logging.getLogger(__name__)
 
 
 class RenderPointCloud(Transform):
@@ -32,18 +39,31 @@ class RenderPointCloud(Transform):
 
         self._input_key, self._input_spec = next(iter(input_specs.items()))
 
-        vis = o3dvis.Visualizer()
-        vis.create_window(f"obs.{self._input_key}", width, height)
-        self.vis = vis
+        # must initialize app singleton before creating any windows
+        self.app = gui.Application.instance
+        self.app.initialize()
 
-        mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
-            size=0.2, origin=[0, 0, 0]
+        vis = o3dvis.O3DVisualizer(f"obs.{self._input_key}", width, height)
+        vis.show_axes = True
+        vis.show_settings = True
+        vis.show_skybox(False)
+        vis.reset_camera_to_default()
+        self.vis = vis
+        self.app.add_window(vis)
+
+        mesh_frame = o3d.t.geometry.TriangleMesh.create_coordinate_frame(
+            size=0.1, origin=[0, 0, 0]
         )
-        self.vis.add_geometry(mesh_frame)
+        self.vis.add_geometry("origin", mesh_frame)
         self.static_geometries = [mesh_frame]
 
         # store the point cloud here and update it in-place
         self.pcd = None
+
+        # render flags are required to tell the visualizer what to update
+        self._render_flags = rendering.Scene.UPDATE_POINTS_FLAG
+        if self._input_spec.color:
+            self._render_flags |= rendering.Scene.UPDATE_COLORS_FLAG
 
         self.fps = fps
 
@@ -59,36 +79,36 @@ class RenderPointCloud(Transform):
 
     def _call_one(self, data: NonTensorData) -> None:
         data = data.data  # unpack NonTensorData wrapper around pyg Data object
-        points, color = data_to_o3d(data)
+        points, color = data_to_o3dtensor(data)
 
         if self.pcd is None:
-            pcd = o3d.geometry.PointCloud(points)
+            pcd = o3d.t.geometry.PointCloud(points)
             if color is not None:
                 pcd.point.colors = color
 
-            self.vis.add_geometry(pcd)
+            self.vis.add_geometry("pcd", pcd)
             self.pcd = pcd
 
         else:
-            self.pcd.points = points
-            if color is not None:
-                self.pcd.colors = color
+            self.pcd.point.positions = points
+            if color:
+                self.pcd.point.colors = color
 
-            self.vis.update_geometry(self.pcd)
+            self.vis.update_geometry("pcd", self.pcd, self._render_flags)
 
-        self.vis.poll_events()
-        self.vis.update_renderer()
+        running = self.app.run_one_tick()
+        if not running:
+            log.info("Open3D app quit")
+            raise KeyboardInterrupt
 
         if self.fps is not None:
             time.sleep(1 / self.fps)
 
     def close(self) -> None:
-        self.vis.destroy_window()
+        self.app.quit()
 
 
-def data_to_o3d(
-    data: Data,
-) -> tuple[o3d.utility.Vector3dVector, o3d.utility.Vector3dVector | None]:
+def data_to_o3dtensor(data: Data) -> tuple[o3c.Tensor, o3c.Tensor | None]:
     """
     Convert a Data object to an Open3D PointCloud.
     """
@@ -98,13 +118,13 @@ def data_to_o3d(
     assert points is not None
     # remove the batch dimension and index the last element in the sequence
     points = points[0, -1]
-    points = o3d.utility.Vector3dVector(points.numpy())
+    points = torch_to_o3d(points)
 
     if data.x is not None:
         # TODO: ensure color is in [0, 1]
         color = data.x
         color = color[0, -1]
-        color = o3d.utility.Vector3dVector(color.numpy())
+        color = torch_to_o3d(color)
     else:
         color = None
 

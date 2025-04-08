@@ -14,7 +14,7 @@ from transforms.base_transform import Transform
 
 
 class RenderCameras(Transform):
-    def __init__(self, specs: DataSpecs, fps: float | None) -> None:
+    def __init__(self, specs: DataSpecs, fps: float | None = None) -> None:
         input_specs = {
             key: spec for key, spec in specs.obs.items() if isinstance(spec, CameraSpec)
         }
@@ -46,12 +46,9 @@ class RenderCameras(Transform):
         # pygame.display.set_caption(f"obs.{key}")
         self.screen.fill((0, 0, 0))  # Clear the screen
 
+        self.fps = fps
         if fps is not None:
             self.clock = pygame.time.Clock()
-            self.fps = fps
-        else:
-            self.clock = None
-            self.fps = None
 
         self._key, self._spec = key, spec
         self._input_specs = input_specs
@@ -62,9 +59,6 @@ class RenderCameras(Transform):
         return self._specs
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
-        if self.clock is not None:
-            self.clock.tick(self.fps)  # type: ignore
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -107,6 +101,9 @@ class RenderCameras(Transform):
         self.screen.blit(surface, (0, 0))
 
         pygame.display.flip()  # Update display
+
+        if self.fps is not None:
+            self.clock.tick(self.fps)
 
         return tensordict
 

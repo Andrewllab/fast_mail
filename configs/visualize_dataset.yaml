@@ -7,7 +7,7 @@ defaults:
   - paths: default
   - hydra: default
   - experiment:
-    - rgb_multiresnet
+    - pointpatch_colorless
     - render
   - _self_
   - platform: default
