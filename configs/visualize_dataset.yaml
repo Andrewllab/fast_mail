@@ -8,6 +8,7 @@ defaults:
   - hydra: default
   - experiment:
     - pointpatch_colorless
+    # - render_cameras
     - render_pointcloud
   - _self_
   - platform: default

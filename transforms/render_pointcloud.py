@@ -2,10 +2,10 @@ import time
 
 import open3d as o3d
 import open3d.visualization as o3dvis
-from tensordict import NonTensorData
+from tensordict import TensorDict
 from torch_geometric.data import Data
 
-from environments.specs import DataSpecs, PointCloudSpec
+from environments.specs import CameraSpec, DataSpecs, PointCloudSpec
 from transforms.base_transform import KeyMapping, Transform
 
 
@@ -16,6 +16,7 @@ class RenderPointCloud(Transform):
         width: int = 1024,
         height: int = 768,
         fps: float | None = None,
+        render_coordinate_frames: bool = False,
     ) -> None:
         input_specs = {
             key: spec
@@ -36,14 +37,34 @@ class RenderPointCloud(Transform):
         vis.create_window(f"obs.{self._input_key}", width, height)
         self.vis = vis
 
-        mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
-            size=0.2, origin=[0, 0, 0]
-        )
-        self.vis.add_geometry(mesh_frame)
-        self.static_geometries = [mesh_frame]
+        self.geometries = {}
 
-        # store the point cloud here and update it in-place
-        self.pcd = None
+        origin = o3d.geometry.TriangleMesh.create_coordinate_frame(
+            size=0.3, origin=[0, 0, 0]
+        )
+        self.vis.add_geometry(origin)
+        self.geometries["origin"] = origin
+
+        if render_coordinate_frames:
+            # add coordinate frames for cameras
+            for key, spec in specs.obs.items():
+                if not isinstance(spec, CameraSpec) or spec.extrinsics is None:
+                    continue
+
+                key = f"{key}_origin"
+                extrinsics = spec.extrinsics
+                rotation = extrinsics[:3, :3]
+                translation = extrinsics[:3, 3]
+
+                camera = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                    size=0.1,
+                    origin=translation,
+                )
+                camera.rotate(rotation, center=translation)
+
+                self.vis.add_geometry(camera)
+                self.geometries[key] = camera
+        self._render_coordinate_frames = render_coordinate_frames
 
         self.fps = fps
 
@@ -57,30 +78,35 @@ class RenderPointCloud(Transform):
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def _call_one(self, data: NonTensorData) -> None:
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        data = tensordict["obs"].get(self._input_key)
+
         data = data.data  # unpack NonTensorData wrapper around pyg Data object
         points, color = data_to_o3d(data)
 
-        if self.pcd is None:
+        if "pcd" not in self.geometries:
             pcd = o3d.geometry.PointCloud(points)
             if color is not None:
                 pcd.point.colors = color
 
             self.vis.add_geometry(pcd)
-            self.pcd = pcd
+            self.geometries["pcd"] = pcd
 
         else:
-            self.pcd.points = points
+            pcd = self.geometries["pcd"]
+            pcd.points = points
             if color is not None:
-                self.pcd.colors = color
+                pcd.colors = color
 
-            self.vis.update_geometry(self.pcd)
+            self.vis.update_geometry(pcd)
 
         self.vis.poll_events()
         self.vis.update_renderer()
 
         if self.fps is not None:
             time.sleep(1 / self.fps)
+
+        return tensordict
 
     def close(self) -> None:
         self.vis.destroy_window()

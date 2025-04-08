@@ -6,3 +6,4 @@ agent:
       _target_: transforms.render_pointcloud.RenderPointCloud
       _partial_: True
       fps: 15
+      render_coordinate_frames: True
