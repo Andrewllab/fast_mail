@@ -1097,93 +1097,40 @@ def orthogonalize_perspective_depth(
     The function assumes that the width and height are both greater than 1.
 
     Args:
-        depth: The perspective depth images. Shape is (H, W) or or (H, W, 1) or (N, H, W) or (N, H, W, 1).
-        intrinsics: The camera's calibration matrix. If a single matrix is provided, the same
-            calibration matrix is used across all the depth images in the batch.
-            Shape is (3, 3) or (N, 3, 3).
+        depth: The perspective depth images. Shape is (..., H, W), with any number of batch dimensions.
+        intrinsics: The camera's calibration matrix. Shape is (..., 3, 3). Leading dimensions must
+            broadcast with leading dimensions of the depth images. If a single matrix is provided,
+            the same calibration matrix is used across all the depth images in the batch.
 
     Returns:
         The orthogonal depth images. Shape matches the input shape of depth images.
-
-    Raises:
-        ValueError: When depth is not of shape (H, W) or (H, W, 1) or (N, H, W) or (N, H, W, 1).
-        ValueError: When intrinsics is not of shape (3, 3) or (N, 3, 3).
     """
-    # Clone inputs to avoid in-place modifications
-    perspective_depth_batch = depth.clone()
-    intrinsics_batch = intrinsics.clone()
-
-    # Check if inputs are batched
-    is_batched = perspective_depth_batch.dim() == 4 or (
-        perspective_depth_batch.dim() == 3 and perspective_depth_batch.shape[-1] != 1
-    )
-
-    # Track whether the last dimension was singleton
-    add_last_dim = False
-    if perspective_depth_batch.dim() == 4 and perspective_depth_batch.shape[-1] == 1:
-        add_last_dim = True
-        perspective_depth_batch = perspective_depth_batch.squeeze(
-            dim=3
-        )  # (N, H, W, 1) -> (N, H, W)
-    if perspective_depth_batch.dim() == 3 and perspective_depth_batch.shape[-1] == 1:
-        add_last_dim = True
-        perspective_depth_batch = perspective_depth_batch.squeeze(
-            dim=2
-        )  # (H, W, 1) -> (H, W)
-
-    if perspective_depth_batch.dim() == 2:
-        perspective_depth_batch = perspective_depth_batch[None]  # (H, W) -> (1, H, W)
-
-    if intrinsics_batch.dim() == 2:
-        intrinsics_batch = intrinsics_batch[None]  # (3, 3) -> (1, 3, 3)
-
-    if is_batched and intrinsics_batch.shape[0] == 1:
-        intrinsics_batch = intrinsics_batch.expand(
-            perspective_depth_batch.shape[0], -1, -1
-        )  # (1, 3, 3) -> (N, 3, 3)
-
-    # Validate input shapes
-    if perspective_depth_batch.dim() != 3:
-        raise ValueError(
-            f"Expected depth images to have 2, 3, or 4 dimensions; got {depth.shape}."
-        )
-    if intrinsics_batch.dim() != 3:
-        raise ValueError(
-            f"Expected intrinsics to have shape (3, 3) or (N, 3, 3); got {intrinsics.shape}."
-        )
-
-    # Image dimensions
-    im_height, im_width = perspective_depth_batch.shape[1:]
+    # get image height and width
+    im_height, im_width = depth.shape[-2:]
 
     # Get the intrinsics parameters
-    fx = intrinsics_batch[:, 0, 0].view(-1, 1, 1)
-    fy = intrinsics_batch[:, 1, 1].view(-1, 1, 1)
-    cx = intrinsics_batch[:, 0, 2].view(-1, 1, 1)
-    cy = intrinsics_batch[:, 1, 2].view(-1, 1, 1)
+    # Each parameter is of shape (..., 1, 1) for broadcasting
+    fx = intrinsics[..., 0, 0].unsqueeze(-1).unsqueeze(-1)
+    fy = intrinsics[..., 1, 1].unsqueeze(-1).unsqueeze(-1)
+    cx = intrinsics[..., 0, 2].unsqueeze(-1).unsqueeze(-1)
+    cy = intrinsics[..., 1, 2].unsqueeze(-1).unsqueeze(-1)
 
     # Create meshgrid of pixel coordinates
-    u_grid = torch.arange(im_width, device=depth.device, dtype=depth.dtype)
-    v_grid = torch.arange(im_height, device=depth.device, dtype=depth.dtype)
-    u_grid, v_grid = torch.meshgrid(u_grid, v_grid, indexing="xy")
-
-    # Expand the grids for batch processing
-    u_grid = u_grid.unsqueeze(0).expand(perspective_depth_batch.shape[0], -1, -1)
-    v_grid = v_grid.unsqueeze(0).expand(perspective_depth_batch.shape[0], -1, -1)
+    xs = torch.arange(im_width, device=depth.device, dtype=depth.dtype)
+    ys = torch.arange(im_height, device=depth.device, dtype=depth.dtype)
+    # use xy indexing so that the x coordinate iterates faster than the y
+    # coordinate (i.e., row-major order)
+    # this is the same order as flattening the depth image
+    x_grid, y_grid = torch.meshgrid(xs, ys, indexing="xy")
 
     # Compute the squared terms for efficiency
-    x_term = ((u_grid - cx) / fx) ** 2
-    y_term = ((v_grid - cy) / fy) ** 2
+    # grids of shape (H, W) broadcast with parameters of shape (..., 1, 1)
+    x_term = ((x_grid - cx) / fx) ** 2
+    y_term = ((y_grid - cy) / fy) ** 2
 
     # Calculate the orthogonal (normal) depth
-    orthogonal_depth = perspective_depth_batch / torch.sqrt(1 + x_term + y_term)
-
-    # Restore the last dimension if it was present in the input
-    if add_last_dim:
-        orthogonal_depth = orthogonal_depth.unsqueeze(-1)
-
-    # Return to original shape if input was not batched
-    if not is_batched:
-        orthogonal_depth = orthogonal_depth.squeeze(0)
+    # depth of shape (..., H, W) matches the squared terms of shape (..., H, W)
+    orthogonal_depth = depth / torch.sqrt(1 + x_term + y_term)
 
     return orthogonal_depth
 
@@ -1259,9 +1206,11 @@ def unproject_depth(
     # start by creating a grid of pixel coordinates
     xs = torch.arange(im_width, device=depth.device, dtype=depth.dtype)
     ys = torch.arange(im_height, device=depth.device, dtype=depth.dtype)
-    y_grid, x_grid = torch.meshgrid(ys, xs, indexing="ij")
-    # we need to reverse the order of the coordinates returned by torch.meshgrid
-    # so that the order of the points corresponds to flatting the depth image
+    # use xy indexing so that the x coordinate iterates faster than the y
+    # coordinate (i.e., row-major order)
+    # this is the same order as flattening the depth image
+    x_grid, y_grid = torch.meshgrid(xs, ys, indexing="xy")
+
     pixel_coords = torch.stack((x_grid, y_grid), dim=-1).reshape(-1, 2)  # (H x W, 2)
     # add homogeneous coordinate -> (H x W, 3)
     pixel_coords = F.pad(pixel_coords, (0, 1), mode="constant", value=1.0)
