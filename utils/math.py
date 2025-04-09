@@ -1068,6 +1068,17 @@ def apply_homogeneous_transform(
     return points
 
 
+@torch.jit.script
+def invert_homogeneous_transform(transform: torch.Tensor) -> torch.Tensor:
+    inv_transform = torch.zeros_like(transform)
+    inv_transform[..., :3, :3] = transform[..., :3, :3].transpose(-1, -2)
+    inv_transform[..., :3, 3] = -torch.matmul(
+        inv_transform[..., :3, :3], transform[..., :3, 3].unsqueeze(-1)
+    ).squeeze(-1)
+    inv_transform[..., 3, 3] = 1.0
+    return inv_transform
+
+
 """
 Projection operations.
 """

@@ -100,6 +100,43 @@ class RenderPointCloud(Transform):
 
             self.vis.update_geometry(pcd)
 
+        if self._render_coordinate_frames:
+            for key, spec in self._output_specs.obs.items():
+                if (
+                    not isinstance(spec, CameraSpec)
+                    or spec.dynamic_pose_obs_key is None
+                ):
+                    continue
+
+                key = f"{key}_origin"
+                pose_key = spec.dynamic_pose_obs_key
+                if not isinstance(pose_key, tuple):
+                    pose_key = (pose_key,)
+                dynamic_extrinsics = tensordict[("obs",) + pose_key]
+                # remove the batch dimension and index the last element in the sequence
+                dynamic_extrinsics = dynamic_extrinsics[0, -1].cpu()
+
+                # chain the dynamic extrinsics with the static extrinsics
+                assert spec.extrinsics is not None
+                extrinsics = dynamic_extrinsics @ spec.extrinsics
+                extrinsics = extrinsics.numpy()
+                rotation = extrinsics[:3, :3]
+                translation = extrinsics[:3, 3]
+
+                # since we can't set an absolute pose, remove the old coordinate
+                # frame and add a new one with the correct pose
+                camera = self.geometries[key]
+                self.vis.remove_geometry(camera, reset_bounding_box=False)
+
+                camera = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                    size=0.1,
+                    origin=translation,
+                )
+                camera.rotate(rotation, center=translation)
+
+                self.vis.add_geometry(camera, reset_bounding_box=False)
+                self.geometries[key] = camera
+
         self.vis.poll_events()
         self.vis.update_renderer()
 

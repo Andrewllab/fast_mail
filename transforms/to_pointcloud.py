@@ -62,16 +62,11 @@ class ToPointCloud(Transform):
                 )
 
         # correct extrinsics by adding conversion from ROS to WORLD camera convention
-        has_extrinsics = [
-            spec.extrinsics is not None or spec.dynamic_pose_obs_key is not None
-            for spec in depth_specs.values()
-        ]
+        has_extrinsics = [spec.extrinsics is not None for spec in depth_specs.values()]
         if all(has_extrinsics):
             for key, spec in depth_specs.items():
                 extrinsics = spec.extrinsics
-                if extrinsics is None:
-                    extrinsics = torch.eye(4)
-
+                assert extrinsics is not None
                 # we right-multiply, since we first need to transform the points
                 # into the WORLD convention, and then apply the extrinsics
                 extrinsics[:3, :3] = extrinsics[:3, :3] @ torch.tensor(
@@ -82,6 +77,12 @@ class ToPointCloud(Transform):
         elif any(has_extrinsics):
             raise ValueError(
                 "All depth cameras must have extrinsics or none of them must have extrinsics."
+            )
+        elif any(
+            spec.dynamic_pose_obs_key is not None for spec in depth_specs.values()
+        ):
+            raise ValueError(
+                "Dynamic pose obs key is not supported for depth cameras without extrinsics."
             )
 
         self._input_specs = depth_specs

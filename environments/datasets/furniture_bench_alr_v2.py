@@ -152,7 +152,8 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
                 intrinsics, width=shape[2], height=shape[1]
             ),
             dynamic_pose_obs_key="gripper_cam_transform",
-            extrinsics=None,  # gripper_cam_transform provides complete transform
+            # gripper_cam_transform provides complete transform to camera
+            extrinsics=torch.eye(4),
             orthogonal=True,
             channel_order="HWC",
         )
