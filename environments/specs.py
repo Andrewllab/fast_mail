@@ -76,6 +76,20 @@ class PinholeCameraIntrinsic:
             cy=self.cy * scale_y,
         )
 
+    def center_crop(self, new_shape: tuple[int, int]) -> PinholeCameraIntrinsic:
+        new_width, new_height = new_shape
+        crop_x = (self.width - new_width) / 2
+        crop_y = (self.height - new_height) / 2
+
+        return PinholeCameraIntrinsic(
+            width=new_width,
+            height=new_height,
+            fx=self.fx,
+            fy=self.fy,
+            cx=self.cx - crop_x,
+            cy=self.cy - crop_y,
+        )
+
 
 @dataclass(frozen=True)
 class Spec:

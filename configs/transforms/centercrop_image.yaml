@@ -1,0 +1,3 @@
+_target_: transforms.centercrop_image.CenterCropImage
+_partial_: True
+shape: 224
