@@ -88,7 +88,7 @@ def instantiate_datamodule(datamodule_cfg: DictConfig) -> "TrajectoryDataModule"
     # modules that are not available in the current environment
     with open_dict(datamodule_cfg):
         env_cfg = datamodule_cfg.pop("env_dataset", None)
-        datamodule_cfg = hydra.utils.instantiate(datamodule_cfg)
+        datamodule_cfg = hydra.utils.instantiate(datamodule_cfg, _convert_="all")
         datamodule_cfg["env_dataset"] = env_cfg
 
     datamodule: TrajectoryDataModule = hydra.utils.instantiate(

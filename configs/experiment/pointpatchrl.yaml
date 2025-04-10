@@ -1,0 +1,33 @@
+# @package _global_
+
+defaults:
+  - /transforms@data.gpu_batch_transforms.1-1_to_CHW: to_torchimage
+
+  # downsample the RGBD images to avoid excessive memory usage
+  - /transforms@data.gpu_batch_transforms.1-2_resize: image_resize
+
+  - /transforms@data.gpu_batch_transforms.1-3_to_pcd: to_pointcloud
+  
+  # - /transforms@data.gpu_batch_transforms.2-1_crop: pointcloud_crop
+
+  # - /transforms@data.gpu_batch_transforms.2-2_remove_table: pointcloud_remove_plane
+
+  # - /transforms@data.gpu_batch_transforms.2-3_voxel_downsample: pointcloud_voxel_downsample
+
+  # patch the pointcloud and tokenize the patches
+  - /transforms@agent.obs_encoder.5_tokenizer: pointpatchrl_tokenizer
+  # add tokens for the robot state
+  - /transforms@agent.obs_encoder.6_robot_state: linear_robot_state_encoder
+
+agent:
+  obs_encoder:
+    embed_dim: 256
+data:
+  batch_size: 4  # TODO: set as factor of platform.batch_size
+  gpu_batch_transforms:
+    1-2_resize:
+      shape: 64
+
+logger:
+  wandb:
+    tags: ["pointcloud", "pointpatchrl"]

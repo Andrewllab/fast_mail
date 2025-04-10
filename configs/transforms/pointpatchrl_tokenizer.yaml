@@ -1,0 +1,20 @@
+name: pointpatch_tokenizer
+_target_: transforms.pointpatchrl_tokenizer.PointPatchTokenizer
+_partial_: True
+
+embed_dim: ${..embed_dim}
+mlp_1:
+  _target_: agents.backbones.mlp.MlpModel
+  _partial_: True  # requires in_features
+  hidden_sizes: [128]
+  out_features: 256
+  nonlinearity: ReLU
+mlp_2:
+  _target_: agents.backbones.mlp.MlpModel
+  _partial_: True  # requires out_features
+  _args_: ["${prod:2,${...mlp_1.out_features}}"]  # in_features must be 2 * out_features of mlp_1
+  hidden_sizes: [512]
+  nonlinearity: ReLU
+patch_size: 32
+oversampling_ratio: 4.0
+fps_random_start: True

@@ -57,15 +57,11 @@ class RobotStateEncoder(Transform, nn.Module):
         ]
 
     def _call_one(self, robot_state: Tensor, obs_embed: Tensor) -> Tensor:
-        leading_dims, state_dim = robot_state.shape[:-1], robot_state.shape[-1]
-        # [B,T,M] -> [B*T,M]
-        robot_state = robot_state.view(-1, state_dim)
-
-        # [B*T,M] -> [B*T,D]
+        # (B, T, M) -> (B, T, D)
         state_emb = self.model(robot_state)
 
-        # [B*T,D] -> [B,T,1,D]
-        state_emb = state_emb.view(*leading_dims, 1, -1)
+        # (B, T, D) -> (B, T, N, D)
+        state_emb = state_emb.unsqueeze(-2)
         # concatenate along N dimension of embedding, keeping tokens from the same time step together
-        obs_embed = torch.cat([obs_embed, state_emb], dim=2)
+        obs_embed = torch.cat([obs_embed, state_emb], dim=-2)
         return obs_embed

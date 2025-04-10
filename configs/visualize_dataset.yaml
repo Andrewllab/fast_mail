@@ -7,7 +7,7 @@ defaults:
   - paths: default
   - hydra: default
   - experiment:
-    - pointpatch_colorless
+    - pointpatchrl
     # - render_cameras
     - render_pointcloud
   - _self_
@@ -17,6 +17,10 @@ defaults:
 
 # task name, determines output directory path
 job_type: visualize_dataset
+
+agent:
+  obs_encoder:
+    5_tokenizer: null
 
 data:
   batch_size: 1

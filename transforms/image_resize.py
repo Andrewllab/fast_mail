@@ -69,9 +69,9 @@ class ResizeImage(Transform):
                     int(shape * H / shortest_side),
                     int(shape * W / shortest_side),
                 )
-            elif isinstance(shape, tuple):
+            elif isinstance(shape, (tuple, list)):
                 # if shape is a tuple, it is the new shape
-                new_shape = shape
+                new_shape = tuple(shape)
             else:
                 raise ValueError("Shape must be an int or a tuple of ints, or None.")
 

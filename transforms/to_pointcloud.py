@@ -157,8 +157,8 @@ class ToPointCloud(Transform):
                     # convert to HWC order
                     rgb = torch.movedim(rgb, -3, -1)
 
-                # convert to float in range [0, 1]
-                rgb = rgb.to(dtype=default_float_dtype).div(255)
+                # # convert to float in range [0, 1]
+                # rgb = rgb.to(dtype=default_float_dtype).div(255)
 
                 # rgb and depth must have the same resolution
                 # rgb: (..., H, W, 3)
