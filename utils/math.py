@@ -1055,28 +1055,35 @@ def transform_points(
 
 
 @torch.jit.script
-def apply_homogeneous_transform(
-    points: torch.Tensor, transform: torch.Tensor
-) -> torch.Tensor:
+def transform_pointcloud(points: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
     # -- rotation
+    rot = transform[..., :3, :3]
     # batched matrix-vector product
-    # (..., 3, 3) @ (..., N, 3) -> (..., N, 3)
-    points = torch.matmul(transform[..., :3, :3], points.unsqueeze(-1)).squeeze(-1)
+    #    (..., 3, 3) @ (..., N, 3)
+    # -> (..., 1, 3, 3) @ (..., N, 3, 1)
+    # -> (..., N, 3, 1)
+    # -> (..., N, 3)
+    points = torch.matmul(rot.unsqueeze(-3), points.unsqueeze(-1)).squeeze(-1)
     # -- translation
-    # (..., N, 3) + (..., 1, 3) -> (..., N, 3)
-    points = points + transform[..., :3, 3].unsqueeze(-2)
+    translation = transform[..., :3, 3]
+    #    (..., N, 3) + (..., 3)
+    # -> (..., N, 3) + (..., 1, 3)
+    # -> (..., N, 3)
+    points = points + translation.unsqueeze(-2)
     return points
 
 
 @torch.jit.script
-def invert_homogeneous_transform(transform: torch.Tensor) -> torch.Tensor:
-    inv_transform = torch.zeros_like(transform)
-    inv_transform[..., :3, :3] = transform[..., :3, :3].transpose(-1, -2)
-    inv_transform[..., :3, 3] = -torch.matmul(
-        inv_transform[..., :3, :3], transform[..., :3, 3].unsqueeze(-1)
-    ).squeeze(-1)
-    inv_transform[..., 3, 3] = 1.0
-    return inv_transform
+def transform_pointmap(points: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
+    H, W = points.shape[-3:-1]
+    # (..., H, W, 3) -> (..., N, 3)
+    pointcloud = points.flatten(start_dim=-3, end_dim=-2)
+
+    pointcloud = transform_pointcloud(pointcloud, transform)
+
+    # (..., N, 3) -> (..., H, W, 3)
+    pointcloud = pointcloud.unflatten(dim=-2, sizes=(H, W))
+    return pointcloud
 
 
 """
@@ -1097,7 +1104,8 @@ def orthogonalize_perspective_depth(
     The function assumes that the width and height are both greater than 1.
 
     Args:
-        depth: The perspective depth images. Shape is (..., H, W), with any number of batch dimensions.
+        depth: The depth measurement. Shape is (..., H, W) or or (..., H, W, 1), with any nchmber of
+            batch dimensions.
         intrinsics: The camera's calibration matrix. Shape is (..., 3, 3). Leading dimensions must
             broadcast with leading dimensions of the depth images. If a single matrix is provided,
             the same calibration matrix is used across all the depth images in the batch.
@@ -1105,6 +1113,10 @@ def orthogonalize_perspective_depth(
     Returns:
         The orthogonal depth images. Shape matches the input shape of depth images.
     """
+    if depth.shape[-1] == 1:
+        # remove singleton "channel"
+        depth = depth.squeeze(dim=-1)  # (..., H, W, 1) -> (..., H, W)
+
     # get image height and width
     im_height, im_width = depth.shape[-2:]
 
@@ -1152,7 +1164,7 @@ def invert_intrinsics(intrinsics: torch.Tensor) -> torch.Tensor:
 def unproject_depth(
     depth: torch.Tensor, intrinsics: torch.Tensor, is_ortho: bool = True
 ) -> torch.Tensor:
-    r"""Un-project depth image into a pointcloud.
+    r"""Un-project depth image into a point map.
 
     This function converts orthogonal or perspective depth images into points given the calibration matrix
     of the camera. It uses the following transformation based on camera geometry:
@@ -1175,29 +1187,26 @@ def unproject_depth(
     not just one.
 
     Args:
-        depth: The depth measurement. Shape is (H, W) or or (H, W, 1) or (N, H, W) or (N, H, W, 1).
-        intrinsics: The camera's calibration matrix. If a single matrix is provided, the same
-            calibration matrix is used across all the depth images in the batch.
-            Shape is (3, 3) or (N, 3, 3).
+        depth: The depth measurement. Shape is (..., H, W) or or (..., H, W, 1), with any number of
+            batch dimensions.
+        intrinsics: The camera's calibration matrix. Shape is (..., 3, 3). Leading dimensions must
+            broadcast with leading dimensions of the depth images. If a single matrix is provided,
+            the same calibration matrix is used across all the depth images in the batch.
         is_ortho: Whether the input depth image is orthogonal or perspective depth image. If True, the input
             depth image is considered as the *orthogonal* type, where the measurements are from the camera's
             image plane. If False, the depth image is considered as the *perspective* type, where the
             measurements are from the camera's optical center. Defaults to True.
 
     Returns:
-        The 3D coordinates of points. Shape is (P, 3) or (N, P, 3).
-
-    Raises:
-        ValueError: When depth is not of shape (H, W) or (H, W, 1) or (N, H, W) or (N, H, W, 1).
-        ValueError: When intrinsics is not of shape (3, 3) or (N, 3, 3).
+        The 3D points as a point map. Shape is (..., H, W, 3).
     """
-    # convert depth image to orthogonal if needed
-    if not is_ortho:
-        depth = orthogonalize_perspective_depth(depth, intrinsics)
-
     if depth.shape[-1] == 1:
         # remove singleton "channel"
         depth = depth.squeeze(dim=-1)  # (..., H, W, 1) -> (..., H, W)
+
+    # convert depth image to orthogonal if needed
+    if not is_ortho:
+        depth = orthogonalize_perspective_depth(depth, intrinsics)
 
     # get image height and width
     im_height, im_width = depth.shape[-2:]
@@ -1211,15 +1220,19 @@ def unproject_depth(
     # this is the same order as flattening the depth image
     x_grid, y_grid = torch.meshgrid(xs, ys, indexing="xy")
 
-    pixel_coords = torch.stack((x_grid, y_grid), dim=-1).reshape(-1, 2)  # (H x W, 2)
-    # add homogeneous coordinate -> (H x W, 3)
+    pixel_coords = torch.stack((x_grid, y_grid), dim=-1)  # (H, W, 2)
+    # add homogeneous coordinate -> (H, W, 3)
     pixel_coords = F.pad(pixel_coords, (0, 1), mode="constant", value=1.0)
 
     # unproject points into 3D space
     inv_intrinsics = invert_intrinsics(intrinsics)
     # use singleton trailing dimension in pixel_coords to achieve batched
     # matrix multiplication
-    # (..., 3, 3) @ (..., H x W, 3) -> (..., H x W, 3)
+    #    (..., 3, 3) @ (H, W, 3)
+    # -> (..., 1, 1, 3, 3) @ (H, W, 3, 1)
+    # -> (..., H, W, 3, 1)
+    # -> (..., H, W, 3)
+    inv_intrinsics = inv_intrinsics.unsqueeze(-3).unsqueeze(-3)
     points = torch.matmul(inv_intrinsics, pixel_coords.unsqueeze(-1)).squeeze(-1)
 
     # original code normalizes points by the last coordinate
@@ -1229,7 +1242,7 @@ def unproject_depth(
     ), "Homogenous coordinate of points is no longer 1.0!."
 
     # scale points by depth
-    depth = depth.flatten(start_dim=-2)
+    # (..., H, W, 3) * (..., H, W, 1) -> (..., H, W, 3)
     points = points * depth.unsqueeze(-1)  # (..., H x W, 3)
 
     return points
@@ -1672,6 +1685,7 @@ def unmake_pose(pose):
     return pose[..., :3, 3], pose[..., :3, :3]
 
 
+@torch.jit.script
 def pose_inv(pose):
     """
     Computes the inverse of homogeneous pose matrices.
@@ -1695,9 +1709,9 @@ def pose_inv(pose):
     inv_pose[..., :3, :3] = pose[..., :3, :3].transpose(-1, -2)
 
     # note: PyTorch matmul wants shapes [..., 3, 3] x [..., 3, 1] -> [..., 3, 1] so we add a dimension and take it away after
-    inv_pose[..., :3, 3] = torch.matmul(-inv_pose[..., :3, :3], pose[..., :3, 3:4])[
-        ..., 0
-    ]
+    inv_pose[..., :3, 3] = torch.matmul(
+        -inv_pose[..., :3, :3], pose[..., :3, 3].unsqueeze(-1)
+    ).squeeze(-1)
     inv_pose[..., 3, 3] = 1.0
     return inv_pose
 

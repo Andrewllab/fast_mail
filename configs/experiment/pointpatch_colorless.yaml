@@ -7,7 +7,9 @@ defaults:
 agent:
   obs_encoder:
     embed_dim: 256
-    
+data:
+  batch_size: 16  # TODO: set as factor of platform.batch_size
+
 logger:
   wandb:
     tags: ["pointcloud", "pointpatch_grayscale"]

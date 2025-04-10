@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import time
 
 import open3d as o3d
 import open3d.visualization as o3dvis
-from tensordict import TensorDict
+import torch
+from tensordict import NonTensorData, TensorDict
 from torch_geometric.data import Data
 
 from environments.specs import CameraSpec, DataSpecs, PointCloudSpec
@@ -17,21 +20,20 @@ class RenderPointCloud(Transform):
         height: int = 768,
         fps: float | None = None,
         render_coordinate_frames: bool = False,
+        pcd_key: str = "pcd",
     ) -> None:
-        input_specs = {
-            key: spec
-            for key, spec in specs.obs.items()
-            if isinstance(spec, PointCloudSpec)
-        }
 
-        if len(input_specs) == 0:
-            raise ValueError("No point clouds found in specs")
-        elif len(input_specs) > 1:
+        self._input_key = pcd_key
+        try:
+            self._input_spec = specs.obs[pcd_key]
+        except KeyError:
             raise ValueError(
-                "RenderPointCloud only supports one point cloud key at a time"
+                f"Key {pcd_key} not found in specs. Available keys: {list(specs.obs.keys())}"
             )
-
-        self._input_key, self._input_spec = next(iter(input_specs.items()))
+        if not isinstance(self._input_spec, PointCloudSpec):
+            raise ValueError(
+                f"Key {pcd_key} is not a point cloud spec. Found {self._input_spec.type}"
+            )
 
         vis = o3dvis.Visualizer()
         vis.create_window(f"obs.{self._input_key}", width, height)
@@ -79,15 +81,15 @@ class RenderPointCloud(Transform):
         return self._output_specs
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
-        data = tensordict["obs"].get(self._input_key)
+        nt_data: NonTensorData = tensordict["obs"].get(self._input_key)
 
-        data = data.data  # unpack NonTensorData wrapper around pyg Data object
+        data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
         points, color = data_to_o3d(data)
 
         if "pcd" not in self.geometries:
             pcd = o3d.geometry.PointCloud(points)
             if color is not None:
-                pcd.point.colors = color
+                pcd.colors = color
 
             self.vis.add_geometry(pcd)
             self.geometries["pcd"] = pcd
@@ -159,14 +161,12 @@ def data_to_o3d(
 
     points = data.pos
     assert points is not None
-    # remove the batch dimension and index the last element in the sequence
-    points = points[0, -1]
     points = o3d.utility.Vector3dVector(points.numpy())
 
     if data.x is not None:
-        # TODO: ensure color is in [0, 1]
         color = data.x
-        color = color[0, -1]
+        if color.dtype == torch.uint8:
+            color = color.float() / 255.0
         color = o3d.utility.Vector3dVector(color.numpy())
     else:
         color = None
