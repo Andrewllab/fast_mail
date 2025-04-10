@@ -98,6 +98,7 @@ class ToPointCloud(Transform):
         return self._output_specs
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
+        default_float_dtype = torch.get_default_dtype()
 
         # collect points, masks, and rgb from all cameras
         all_points = []
@@ -155,6 +156,9 @@ class ToPointCloud(Transform):
                 if spec.channel_order == "CHW":
                     # convert to HWC order
                     rgb = torch.movedim(rgb, -3, -1)
+
+                # convert to float in range [0, 1]
+                rgb = rgb.to(dtype=default_float_dtype).div(255)
 
                 # rgb and depth must have the same resolution
                 # rgb: (..., H, W, 3)
