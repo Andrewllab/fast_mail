@@ -47,7 +47,6 @@ class PointPatchTokenizer(Transform, nn.Module):
             )
 
         self.point_dim = 6 if self._input_spec.color else 3
-        T = self._input_spec.shape[0]
         self.mlp_1 = mlp_1(self.point_dim)
         self.mlp_2 = mlp_2(embed_dim)
 
@@ -71,11 +70,13 @@ class PointPatchTokenizer(Transform, nn.Module):
             embed_spec = obs_specs["embed"]
             assert isinstance(embed_spec, EmbedSpec)
             assert len(embed_spec.shape) == 3
-            assert embed_spec.shape[0] == T
+            # point clouds are always 1 time step
+            assert embed_spec.shape[0] == 1
 
+            # the shape includes a none to indicate the jagged dimension
             obs_specs["embed"] = dataclasses.replace(
                 embed_spec,
-                shape=(T, None, embed_spec.shape[2]),
+                shape=(1, None, embed_spec.shape[2]),
                 fixed_shape=False,
             )
             log.debug(
@@ -83,7 +84,7 @@ class PointPatchTokenizer(Transform, nn.Module):
             )
         else:
             obs_specs["embed"] = EmbedSpec(
-                shape=(T, None, embed_dim), fixed_shape=False
+                shape=(1, None, embed_dim), fixed_shape=False
             )
             log.debug(
                 f"Created obs embedding spec with a variable number of tokens per time step",
@@ -144,7 +145,9 @@ class PointPatchTokenizer(Transform, nn.Module):
 
         if color is not None:
             # concatenate color as an additional feature to the position
-            patch_pos = torch.cat([patch_pos, color], dim=1)
+            color = color[patch_idxs]  # color -> (B*C*G, 3)
+            color = color.view(-1, self.patch_size, 3)  # color -> (B*C, G, 3)
+            patch_pos = torch.cat([patch_pos, color], dim=-1)
 
         features = self.mlp_1(patch_pos)  # features: (B*C, G, D)
 

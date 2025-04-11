@@ -359,7 +359,11 @@ class DataSpecs:
         except KeyError:
             return 0
 
-        return np.prod(embed_space.shape[:2]).item()
+        assert isinstance(embed_space, EmbedSpec)
+        if embed_space.fixed_shape:
+            return np.prod(embed_space.shape[:2]).item()
+        else:
+            return None
 
     @property
     def goal_embed_seq_len(self) -> int:

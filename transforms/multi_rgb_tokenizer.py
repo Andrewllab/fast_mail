@@ -53,9 +53,9 @@ class MultiRgbTokenizer(Transform, nn.Module):
         self.share_rgb_model = share_rgb_model
 
         # the leading dim is the number of observed time steps
-        first_spec = next(iter(input_specs.values()))
-        T = first_spec.shape[0]
-        assert all(spec.shape[0] == T for spec in input_specs.values())
+        Ts = [spec.shape[0] for spec in input_specs.values()]
+        T = Ts[0]
+        assert all(t == T for t in Ts)
         # each camera produces one token
         # if we have stereo rgb, we just take the left camera
         n_embed_tokens = len(input_specs)

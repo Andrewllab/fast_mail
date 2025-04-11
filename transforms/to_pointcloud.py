@@ -90,7 +90,7 @@ class ToPointCloud(Transform):
         self._input_specs = depth_specs
 
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
-        obs_specs["pcd"] = PointCloudSpec(shape=(6 if color else 3,))
+        obs_specs["pcd"] = PointCloudSpec(shape=(6 if color else 3,), color=color)
         self._output_specs = specs.replace(obs=obs_specs)
 
     @property
