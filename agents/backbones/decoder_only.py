@@ -146,7 +146,7 @@ class DecoderOnlyNoise(nn.Module):
         self.action_head = action_head(token_dim, specs.action_dim)
 
         log.debug(
-            f"Noise model expects to receive {specs.obs_embed_seq_len} observation tokens."
+            f"Noise model expects to receive {specs.obs_embed_seq_len} obs embedding tokens across all time steps."
         )
 
         # we use time to refer to the position in the sequence of tokens

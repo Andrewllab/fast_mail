@@ -168,6 +168,13 @@ class PointCloudSpec(Spec):
 
 
 @dataclass(frozen=True)
+class EmbedSpec(Spec):
+    shape: tuple[int | None, ...]
+    fixed_shape: bool = True
+    type: str | None = "embed"
+
+
+@dataclass(frozen=True)
 class ActionSpec(Spec):
     a_mean: torch.Tensor | None = None
     a_var: torch.Tensor | None = None
@@ -352,7 +359,7 @@ class DataSpecs:
         except KeyError:
             return 0
 
-        return embed_space.shape[0]
+        return np.prod(embed_space.shape[:2]).item()
 
     @property
     def goal_embed_seq_len(self) -> int:

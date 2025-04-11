@@ -1,25 +1,24 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+import dataclasses
+import logging
+from typing import Callable
 
 import torch
 import torch.nn as nn
+from torch import Tensor
 
-from environments.specs import DataSpecs, RGBCameraSpec, Spec
+from environments.specs import DataSpecs, EmbedSpec, RGBCameraSpec
 from transforms.base_transform import KeyMapping, Transform
 
-if TYPE_CHECKING:
-    from torch import Tensor
-    from torch.nn import Module
-
-    from environments.specs import DataSpecs
+log = logging.getLogger(__name__)
 
 
 class MultiRgbTokenizer(Transform, nn.Module):
     def __init__(
         self,
         specs: DataSpecs,
-        rgb_model: Callable[[], Module],
+        rgb_model: Callable[[], nn.Module],
         embed_dim: int,
         # use single rgb model for all rgb inputs
         share_rgb_model: bool = False,
@@ -53,13 +52,42 @@ class MultiRgbTokenizer(Transform, nn.Module):
 
         self.share_rgb_model = share_rgb_model
 
-        # create a modified specs object for the output
-        obs_specs = dict(specs.obs)  # copy obs specs for local modification
         # the leading dim is the number of observed time steps
+        first_spec = next(iter(input_specs.values()))
+        T = first_spec.shape[0]
+        assert all(spec.shape[0] == T for spec in input_specs.values())
         # each camera produces one token
         # if we have stereo rgb, we just take the left camera
-        embed_seq_len = sum(spec.shape[0] for spec in input_specs.values())
-        obs_specs["embed"] = Spec(shape=(embed_seq_len, embed_dim), type="embed")
+        n_embed_tokens = len(input_specs)
+
+        # create a modified specs object for the output
+        obs_specs = dict(specs.obs)  # copy obs specs for local modification
+        if "embed" in obs_specs:
+            # if embedding sequence has fixed length, increase length to account for new embedding tokens
+            embed_spec = obs_specs["embed"]
+            assert isinstance(embed_spec, EmbedSpec)
+            assert len(embed_spec.shape) == 3
+            assert embed_spec.shape[0] == T
+
+            if embed_spec.fixed_shape:
+                assert embed_spec.shape[1] is not None
+                obs_specs["embed"] = dataclasses.replace(
+                    embed_spec,
+                    shape=(
+                        T,
+                        embed_spec.shape[1] + n_embed_tokens,
+                        embed_spec.shape[2],
+                    ),
+                )
+                log.debug(
+                    f"Extended obs embedding spec to {n_embed_tokens} tokens per time step",
+                )
+        else:
+            # create new embedding spec
+            obs_specs["embed"] = EmbedSpec(shape=(T, n_embed_tokens, embed_dim))
+            log.debug(
+                f"Created obs embedding spec with {n_embed_tokens} tokens per time step",
+            )
         self._output_specs = specs.replace(obs=obs_specs)
 
         # create a list of key mappings for the forward call
@@ -73,7 +101,7 @@ class MultiRgbTokenizer(Transform, nn.Module):
                 nested_keys.append(("obs", key))
         self._key_mappings = [
             KeyMapping(
-                in_keys=list(nested_keys),
+                in_keys=[("obs", "embed")] + list(nested_keys),
                 out_keys=[("obs", "embed")],
             )
         ]
@@ -86,7 +114,7 @@ class MultiRgbTokenizer(Transform, nn.Module):
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def _call_one(self, *imgs: Tensor) -> Tensor:
+    def _call_one(self, obs_embed, *imgs: Tensor) -> Tensor:
         default_float_dtype = torch.get_default_dtype()
 
         if self.share_rgb_model:
@@ -109,7 +137,6 @@ class MultiRgbTokenizer(Transform, nn.Module):
             features = self.model(img)
             # [B*T*N,D] -> [B,T,N,D]
             features = features.view(*leading_dims, N, -1)
-            return features
 
         else:
             # run each rgb obs to independent models
@@ -136,4 +163,10 @@ class MultiRgbTokenizer(Transform, nn.Module):
             # [B*T,N,D] -> [B,T,N,D]
             features = features.view(*leading_dims, N, -1)
 
+        if obs_embed is not None:
+            # concatenate along N dimension of embedding, keeping tokens from the same time step together
+            # obs_embed: (B, T, N, D)
+            obs_embed = torch.cat([obs_embed, features], dim=2)
+            return obs_embed
+        else:
             return features

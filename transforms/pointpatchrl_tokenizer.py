@@ -13,7 +13,7 @@ from torch_geometric.data import Batch, Data
 from torch_geometric.nn import fps, knn
 from torch_geometric.utils import unbatch
 
-from environments.specs import DataSpecs, PointCloudSpec, Spec
+from environments.specs import DataSpecs, EmbedSpec, PointCloudSpec
 from transforms.base_transform import KeyMapping, Transform
 
 log = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ class PointPatchTokenizer(Transform, nn.Module):
             )
 
         self.point_dim = 6 if self._input_spec.color else 3
+        T = self._input_spec.shape[0]
         self.mlp_1 = mlp_1(self.point_dim)
         self.mlp_2 = mlp_2(embed_dim)
 
@@ -64,18 +65,29 @@ class PointPatchTokenizer(Transform, nn.Module):
         self.fps_random_start = fps_random_start
         self.padding_value = padding_value
 
-        embed_seq_len = 42  # TODO: fix me
-
         # create a modified specs object for the output
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         if "embed" in obs_specs:
             embed_spec = obs_specs["embed"]
+            assert isinstance(embed_spec, EmbedSpec)
+            assert len(embed_spec.shape) == 3
+            assert embed_spec.shape[0] == T
+
             obs_specs["embed"] = dataclasses.replace(
                 embed_spec,
-                shape=((embed_spec.shape[0] + embed_seq_len,), embed_spec.shape[1:]),
+                shape=(T, None, embed_spec.shape[2]),
+                fixed_shape=False,
+            )
+            log.debug(
+                "Extended obs embedding spec with a variable number of tokens per time step",
             )
         else:
-            obs_specs["embed"] = Spec(shape=(embed_seq_len, embed_dim), type="embed")
+            obs_specs["embed"] = EmbedSpec(
+                shape=(T, None, embed_dim), fixed_shape=False
+            )
+            log.debug(
+                f"Created obs embedding spec with a variable number of tokens per time step",
+            )
         self._output_specs = specs.replace(obs=obs_specs)
 
     @property
@@ -102,29 +114,29 @@ class PointPatchTokenizer(Transform, nn.Module):
         # pos: (B*N, 3)
         # center_idxs: (B*C)
         center_idxs = fps(
-            data.pos,
+            pos,
             data.batch,
             ratio=self.fps_sampling_ratio,
             random_start=self.fps_random_start,
             batch_size=data.batch_size,
         )
 
-        center_points = data.pos[center_idxs]  # center_points: (B*C, 3)
-        center_batches = data.batch[center_idxs]  # center_batches: (B*C, 3)
+        center_points = pos[center_idxs]  # center_points: (B*C, 3)
+        center_batches = batch[center_idxs]  # center_batches: (B*C, 3)
 
         # find the nearest k points to each center point. these groups of k
         # points become the patches
         # patch_idxs: (B*C*G)
         _, patch_idxs = knn(
-            x=data.pos,
+            x=pos,
             y=center_points,
             k=self.patch_size,  # G
-            batch_x=data.batch,
+            batch_x=batch,
             batch_y=center_batches,
             batch_size=data.batch_size,
         )
 
-        patch_pos = data.pos[patch_idxs]  # patch_pos: (B*C*G, 3)
+        patch_pos = pos[patch_idxs]  # patch_pos: (B*C*G, 3)
         patch_pos = patch_pos.view(-1, self.patch_size, 3)  # patch_pos -> (B*C, G, 3)
 
         # normalize patches around the center points
@@ -208,6 +220,7 @@ class _PointPatchTokenizer(Transform, MessagePassing):
             )
 
         self.point_dim = 6 if self._input_spec.color else 3
+        T = self._input_spec.shape[0]
         self.mlp_1 = mlp_1(self.point_dim)
         self.mlp_2 = mlp_2(embed_dim)
 
@@ -225,18 +238,29 @@ class _PointPatchTokenizer(Transform, MessagePassing):
         self.fps_random_start = fps_random_start
         self.padding_value = padding_value
 
-        embed_seq_len = 42  # TODO: fix me
-
         # create a modified specs object for the output
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         if "embed" in obs_specs:
             embed_spec = obs_specs["embed"]
+            assert isinstance(embed_spec, EmbedSpec)
+            assert len(embed_spec.shape) == 3
+            assert embed_spec.shape[0] == T
+
             obs_specs["embed"] = dataclasses.replace(
                 embed_spec,
-                shape=((embed_spec.shape[0] + embed_seq_len,), embed_spec.shape[1:]),
+                shape=(T, None, embed_spec.shape[2]),
+                fixed_shape=False,
+            )
+            log.debug(
+                "Extended obs embedding spec with a variable number of tokens per time step",
             )
         else:
-            obs_specs["embed"] = Spec(shape=(embed_seq_len, embed_dim), type="embed")
+            obs_specs["embed"] = EmbedSpec(
+                shape=(T, None, embed_dim), fixed_shape=False
+            )
+            log.debug(
+                f"Created obs embedding spec with a variable number of tokens per time step",
+            )
         self._output_specs = specs.replace(obs=obs_specs)
 
     def reset_parameters(self):
