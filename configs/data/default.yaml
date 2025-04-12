@@ -11,3 +11,4 @@ cpu_batch_transforms: null
 gpu_batch_transforms: null
 num_workers: ${platform.num_workers}
 pin_memory: ${platform.pin_memory}
+prefetch_factor: ${platform.prefetch_factor}

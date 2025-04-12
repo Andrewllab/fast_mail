@@ -116,8 +116,8 @@ python predict.py -cn=open_loop_replay data@agent.replay_data=DATA
 Visualize dataset DATA (optional), after applying transforms for experiment EXP. You must also choose whether to render RGB images with render_cameras or pointcloud with render_pointcloud. Simultaneously rendering both is not possible.
 
 ```bash
-python predict.py -cn=visualize_dataset "experiment=[EXP,render_cameras]" data=DATA
-python predict.py -cn=visualize_dataset "experiment=[EXP,render_pointcloud]" data=DATA
+python predict.py -cn visualize_dataset "experiment=[EXP,render_cameras]" data=DATA
+python predict.py -cn visualize_dataset "experiment=[EXP,render_pointcloud]" data=DATA
 ```
 
 

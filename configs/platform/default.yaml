@@ -2,9 +2,10 @@
 
 platform:
   name: workstation
-  num_workers: 16  # make available for any config to use
+  num_workers: 4  # make available for any config to use
   batch_size: 256  # make available e.g. for experiment configs to modify
   pin_memory: False  # test if True is faster, but it might not be
+  prefetch_factor: 1  # reduce memory usage for on-disk datasets
 
 torch:
   set_float32_matmul_precision: medium

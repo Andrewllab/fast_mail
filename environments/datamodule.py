@@ -33,6 +33,7 @@ class TrajectoryDataModule(L.LightningDataModule):
         gpu_batch_transforms: TransformPartialsDict | None = None,
         num_workers: int = 0,
         pin_memory: bool = False,
+        prefetch_factor: int | None = None,
         eval_mode: Literal["env", "dataset"] | float | None = None,
         env_dataset: DictConfig | None = None,
         env_cpu_batch_transforms: TransformPartialsDict | None = None,
@@ -49,6 +50,7 @@ class TrajectoryDataModule(L.LightningDataModule):
         self._gpu_batch_transforms = gpu_batch_transforms
         self.num_workers = num_workers
         self.pin_memory = pin_memory
+        self.prefetch_factor = prefetch_factor
         self.eval_mode = eval_mode
         self._env = env_dataset
         self._env_cpu_batch_transforms = env_cpu_batch_transforms
@@ -187,14 +189,17 @@ class TrajectoryDataModule(L.LightningDataModule):
             return []
 
     def train_dataloader(self) -> Any:
+        log.debug("Creating new training dataloader...")
         assert self.dataset is not None, "Dataset is not set."
         return DataLoader(
             self.dataset,
             batch_size=self.batch_size,
+            shuffle=True,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
-            shuffle=True,
             drop_last=True,
+            prefetch_factor=self.prefetch_factor if self.num_workers > 0 else None,
+            persistent_workers=self.num_workers > 0,
         )
 
     def val_dataloader(self) -> Any:

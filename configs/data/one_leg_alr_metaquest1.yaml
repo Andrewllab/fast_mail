@@ -1,3 +1,5 @@
+# recorded with rate limit 30fps, sim_dt = 0.01, decimation = 5
+
 defaults:
   - default
 
