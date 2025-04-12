@@ -8,7 +8,7 @@ name: 2025-04-05_metaquest3
 dataset:
   _target_: environments.datasets.furniture_bench_alr_v2.AlrFurnitureBenchDataset
   _partial_: True  # requires transforms at runtime
-  root_dir: ${paths.data_dir}/insert_one_leg_alr/meta_quest3
+  root_dir: ${paths.data_dir}/insert_one_leg_alr/meta_quest3/dataset_06.04.25
   action_seq_len: 10
   obs_seq_len: 1
 

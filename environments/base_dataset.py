@@ -65,12 +65,14 @@ class TrajectoryDataset(Dataset, ABC):
             device = torch.device(device)
         self.device = device
 
+        if preprocessed_dir is not None:
+            preprocessed_dir = Path(preprocessed_dir)
+
         if preprocess_transforms is not None:
             if preprocessed_dir is None:
                 raise ValueError(
                     "preprocessed_dir must be specified if preprocess_transforms is not None"
                 )
-            preprocessed_dir = Path(preprocessed_dir)
 
             self.handle_preprocessing(
                 preprocess_transforms=preprocess_transforms,
@@ -117,9 +119,10 @@ class TrajectoryDataset(Dataset, ABC):
                 # convert them one by one into a file format that can be loaded
                 # quickly from disk
                 # we do this by "preprocessing" with a no-op transform
-                preprocessed_dir = self.root_dir.parent / (
-                    f"{self.root_dir.name}_memmap"
-                )
+                if preprocessed_dir is None:
+                    preprocessed_dir = self.root_dir.parent / (
+                        f"{self.root_dir.name}_memmap"
+                    )
                 self.handle_preprocessing(
                     preprocess_transforms={},
                     preprocessed_dir=preprocessed_dir,
@@ -239,6 +242,7 @@ class TrajectoryDataset(Dataset, ABC):
         processed_files = []
         for raw_file in raw_files:
             trajs = self.load_from_raw_file(raw_file)
+            log.debug(f"Preprocessing trajectories from file {raw_file}")
             if isinstance(trajs, list):
                 filenames = [
                     preprocessed_dir / f"{raw_file.stem}_{i:03d}"
