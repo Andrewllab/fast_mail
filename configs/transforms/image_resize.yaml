@@ -1,4 +1,4 @@
-_target_: transforms.resize_image.ResizeImage
+_target_: transforms.image_resize.ResizeImage
 _partial_: True
 shape: 256
 interpolation: BILINEAR

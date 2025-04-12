@@ -309,7 +309,7 @@ def init_transforms(
         transform_instances[name] = transform
 
     if not wrap:
-        return list(transforms.values()), specs
+        return list(transform_instances.values()), specs
 
     cls = (
         Sequential

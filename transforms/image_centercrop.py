@@ -26,8 +26,10 @@ class CenterCropImage(Transform):
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         for key, spec in input_specs.items():
             if isinstance(spec, RGBCameraSpec) and spec.channel_order != "CHW":
-                raise ValueError(
-                    f"Input spec {spec} must be in CHW format for normalization."
+                spec = dataclasses.replace(
+                    spec,
+                    shape=spec.shape[:-3] + spec.shape[-1:] + spec.shape[-3:-1],
+                    channel_order="CHW",
                 )
 
             # compute new shape of image
@@ -49,7 +51,6 @@ class CenterCropImage(Transform):
                     spec,
                     intrinsics=spec.intrinsics.center_crop(new_shape),
                 )
-                pass
             obs_specs[key] = spec
         self._output_specs = specs.replace(obs=obs_specs)
 
@@ -63,45 +64,32 @@ class CenterCropImage(Transform):
             if not isinstance(spec, CameraSpec):
                 continue
 
-            for subkey in spec.intensity_subkeys:
+            images = [(subkey, CameraSpec) for subkey in spec.intensity_subkeys]
+            if isinstance(spec, RGBCameraSpec):
+                images += [(subkey, RGBCameraSpec) for subkey in spec.rgb_subkeys]
+            if isinstance(spec, DepthCameraSpec):
+                images += [(subkey, DepthCameraSpec) for subkey in spec.depth_subkeys]
+
+            for subkey, image_type in images:
                 nested_key = ("obs", key)
                 if subkey is not None:
                     nested_key += (subkey,)
                 image = tensordict[nested_key]
 
-                leading_dims = image.shape[:-2]
-                image = torch.flatten(image, end_dim=-3)
+                if image_type is RGBCameraSpec:
+                    assert isinstance(spec, RGBCameraSpec)
+                    if spec.channel_order == "HWC":
+                        image = torch.movedim(image, -1, -3)
+
+                    leading_dims = image.shape[:-3]
+                    image = torch.flatten(image, end_dim=-4)
+                else:
+                    leading_dims = image.shape[:-2]
+                    image = torch.flatten(image, end_dim=-3)
+
                 image = F.center_crop(image, spec.shape[-2:])
                 image = torch.unflatten(image, dim=0, sizes=leading_dims)
 
                 tensordict[nested_key] = image
-
-            if isinstance(spec, DepthCameraSpec):
-                for subkey in spec.depth_subkeys:
-                    nested_key = ("obs", key)
-                    if subkey is not None:
-                        nested_key += (subkey,)
-                    image = tensordict[nested_key]
-
-                    leading_dims = image.shape[:-2]
-                    image = torch.flatten(image, end_dim=-3)
-                    image = F.center_crop(image, spec.shape[-2:])
-                    image = torch.unflatten(image, dim=0, sizes=leading_dims)
-
-                    tensordict[nested_key] = image
-
-            if isinstance(spec, RGBCameraSpec):
-                for subkey in spec.rgb_subkeys:
-                    nested_key = ("obs", key)
-                    if subkey is not None:
-                        nested_key += (subkey,)
-                    image = tensordict[nested_key]
-
-                    leading_dims = image.shape[:-3]
-                    image = torch.flatten(image, end_dim=-4)
-                    image = F.center_crop(image, spec.shape[-2:])
-                    image = torch.unflatten(image, dim=0, sizes=leading_dims)
-
-                    tensordict[nested_key] = image
 
         return tensordict

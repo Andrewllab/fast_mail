@@ -45,22 +45,25 @@ class ResizeImage(Transform):
         input_specs = {
             key: spec for key, spec in specs.obs.items() if isinstance(spec, CameraSpec)
         }
+        self._input_specs = input_specs
 
         # create a modified specs object for the output
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         for key, spec in input_specs.items():
             if isinstance(spec, RGBCameraSpec) and spec.channel_order != "CHW":
-                raise ValueError(
-                    f"Input spec {spec} must be in CHW format for normalization."
+                spec = dataclasses.replace(
+                    spec,
+                    shape=spec.shape[:-3] + spec.shape[-1:] + spec.shape[-3:-1],
+                    channel_order="CHW",
                 )
 
             # compute new shape of image
+            H, W = spec.shape[-2:]
             if factor is not None:
                 new_shape = (int(factor * H), int(factor * W))
             elif isinstance(shape, int):
                 # if shape is an int, it is the new size for the shortest side,
                 # and the longest side is scaled to maintain the aspect ratio
-                H, W = spec.shape[-2:]
                 shortest_side = min(H, W)
                 new_shape = (
                     int(shape * H / shortest_side),
@@ -75,7 +78,7 @@ class ResizeImage(Transform):
             # update specs with resized shape and modified camera intrinsics
             spec = dataclasses.replace(
                 spec,
-                shape=(spec.shape[:-2] + new_shape),
+                shape=((spec.shape[:-2]) + new_shape),
             )
             if spec.intrinsics is not None:
                 spec = dataclasses.replace(
@@ -90,65 +93,51 @@ class ResizeImage(Transform):
         return self._output_specs
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
+        default_float_dtype = torch.get_default_dtype()
 
-        for key, spec in self._output_specs.obs.items():
-            if not isinstance(spec, CameraSpec):
-                continue
+        for key, spec in self._input_specs.items():
+            images = [(subkey, CameraSpec) for subkey in spec.intensity_subkeys]
+            if isinstance(spec, RGBCameraSpec):
+                images += [(subkey, RGBCameraSpec) for subkey in spec.rgb_subkeys]
+            if isinstance(spec, DepthCameraSpec):
+                images += [(subkey, DepthCameraSpec) for subkey in spec.depth_subkeys]
 
-            for subkey in spec.intensity_subkeys:
+            for subkey, image_type in images:
                 nested_key = ("obs", key)
                 if subkey is not None:
                     nested_key += (subkey,)
                 image = tensordict[nested_key]
 
-                leading_dims = image.shape[:-2]
-                image = torch.flatten(image, end_dim=-3)
+                if image_type is RGBCameraSpec:
+                    assert isinstance(spec, RGBCameraSpec)
+                    if spec.channel_order == "HWC":
+                        image = torch.movedim(image, -1, -3)
+
+                    leading_dims = image.shape[:-3]
+                    image = torch.flatten(image, end_dim=-4)
+                else:
+                    leading_dims = image.shape[:-2]
+                    image = torch.flatten(image, end_dim=-3)
+
+                if image.dtype != default_float_dtype:
+                    image = image.to(dtype=default_float_dtype).div(255)
+
+                interpolation = (
+                    self.depth_interpolation
+                    if image_type is DepthCameraSpec
+                    else self.interpolation
+                )
+
+                output_shape = self._output_specs.obs[key].shape[-2:]
+
                 image = F.resize(
                     image,
-                    size=spec.shape[-2:],  # type: ignore
-                    interpolation=self.interpolation,
+                    size=output_shape,  # type: ignore
+                    interpolation=interpolation,
                     antialias=self.antialias,
                 )
                 image = torch.unflatten(image, dim=0, sizes=leading_dims)
 
                 tensordict[nested_key] = image
-
-            if isinstance(spec, DepthCameraSpec):
-                for subkey in spec.depth_subkeys:
-                    nested_key = ("obs", key)
-                    if subkey is not None:
-                        nested_key += (subkey,)
-                    image = tensordict[nested_key]
-
-                    leading_dims = image.shape[:-2]
-                    image = torch.flatten(image, end_dim=-3)
-                    image = F.resize(
-                        image,
-                        size=spec.shape[-2:],  # type: ignore
-                        interpolation=self.depth_interpolation,
-                        antialias=self.antialias,
-                    )
-                    image = torch.unflatten(image, dim=0, sizes=leading_dims)
-
-                    tensordict[nested_key] = image
-
-            if isinstance(spec, RGBCameraSpec):
-                for subkey in spec.rgb_subkeys:
-                    nested_key = ("obs", key)
-                    if subkey is not None:
-                        nested_key += (subkey,)
-                    image = tensordict[nested_key]
-
-                    leading_dims = image.shape[:-3]
-                    image = torch.flatten(image, end_dim=-4)
-                    image = F.resize(
-                        image,
-                        size=spec.shape[-2:],  # type: ignore
-                        interpolation=self.interpolation,
-                        antialias=self.antialias,
-                    )
-                    image = torch.unflatten(image, dim=0, sizes=leading_dims)
-
-                    tensordict[nested_key] = image
 
         return tensordict

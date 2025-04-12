@@ -1,3 +1,6 @@
+import dataclasses
+
+import torch
 import torchvision.transforms.functional as F
 
 from environments.specs import DataSpecs, RGBCameraSpec
@@ -16,13 +19,18 @@ class NormalizeImage(Transform):
             for key, spec in specs.obs.items()
             if isinstance(spec, RGBCameraSpec)
         }
-        for spec in input_specs.values():
-            if spec.channel_order != "CHW":
-                raise ValueError(
-                    f"Input spec {spec} must be in CHW format for normalization."
-                )
 
-        self._output_specs = specs  # no changes to specs
+        # create a modified specs object for the output
+        obs_specs = dict(specs.obs)  # copy obs specs for local modification
+        for key, spec in input_specs.items():
+            if spec.channel_order != "CHW":
+                spec = dataclasses.replace(
+                    spec,
+                    shape=spec.shape[:-3] + spec.shape[-1:] + spec.shape[-3:-1],
+                    channel_order="CHW",
+                )
+            obs_specs[key] = spec
+        self._output_specs = specs.replace(obs=obs_specs)
 
         # create a list of key mappings for the forward call
         key_mappings = []
@@ -42,5 +50,12 @@ class NormalizeImage(Transform):
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def _call_one(self, image):
+    def _call_one(self, image: torch.Tensor) -> torch.Tensor:
+        default_float_dtype = torch.get_default_dtype()
+
+        if image.shape[-1] == 3:
+            image = torch.movedim(image, -1, -3)
+        if image.dtype != default_float_dtype:
+            image = image.to(dtype=default_float_dtype).div(255)
+
         return F.normalize(image, self.mean, self.std, inplace=True)

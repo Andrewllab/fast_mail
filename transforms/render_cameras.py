@@ -151,8 +151,7 @@ def rgb_tensor_to_np(
 
     # convert back to uint8 if needed
     if image.dtype != torch.uint8:
-        image = image * 255.0
-        image = image.clamp(0, 255).to(torch.uint8)
+        image = image.mul(255).clamp(0, 255).to(torch.uint8)
 
     return image.cpu().numpy()
 

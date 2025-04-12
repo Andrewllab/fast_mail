@@ -1,4 +1,4 @@
-_target_: transforms.normalize_image.NormalizeImage
+_target_: transforms.image_normalize.NormalizeImage
 _partial_: True
 mean: [0.485, 0.456, 0.406]
 std: [0.229, 0.224, 0.225]

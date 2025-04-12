@@ -1,12 +1,14 @@
 # @package _global_
 
 defaults:
-  # convert HWC to CHW, convert to float, and rescale
-  - /transforms@data.gpu_batch_transforms.1_toimage: to_torchimage
+  # pretrained resnet18 expects images resized to 256x256...
+  - /transforms@data.preprocess_transforms.1_resize: image_resize
 
-  # - /transforms@data.gpu_batch_transforms.2_resize: image_resize
+  # ...and then cropped to 224x224
+  - /transforms@data.preprocess_transforms.2_crop: image_centercrop
   
-  - /transforms@data.gpu_batch_transforms.3_crop: image_centercrop
+  # - /transforms@data.preprocess_transforms.3_subsample: time_subsample
+
   # apply ImageNet normalization
   - /transforms@data.gpu_batch_transforms.4_norm: imagenet_norm
 
@@ -27,6 +29,10 @@ agent:
         pretrained_weights: IMAGENET1K_V1  # null or "IMAGENET1K_V1"
         freeze_backbone: False
         use_group_norm: True
+
+data:
+  dataset:
+    preprocessed_dir: ${paths.preprocessed_dir}/dataset_11.04.25/rgb_multiresnet
 
 logger:
   wandb:

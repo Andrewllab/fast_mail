@@ -5,31 +5,26 @@ import os
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Literal, Sequence, TypeVar
+from typing import Iterator, Literal, Sequence, TypeVar
 
 import numpy as np
 import torch
 from tensordict import TensorDict
+from torch import Tensor
 from torch.utils.data import Dataset
 
-from environments.specs import load_specs, save_specs
+from environments.specs import DataSpecs, RGBCameraSpec, load_specs, save_specs
 from transforms.base_transform import (
+    TransformPartialsDict,
     get_transforms_config,
     init_transforms,
     load_transforms_config,
     save_transforms_config,
 )
 
-if TYPE_CHECKING:
-    from torch import Tensor
-
-    from environments.specs import DataSpecs
-    from transforms.base_transform import TransformPartialsDict
-
-    IndexType = slice | Tensor | Sequence
-    DeviceType = Literal["disk", "gpu"] | str | torch.device
-
-    T = TypeVar("T")
+IndexType = slice | Tensor | Sequence
+DeviceType = Literal["disk", "gpu"] | str | torch.device
+T = TypeVar("T")
 
 log = logging.getLogger(__name__)
 
@@ -257,9 +252,11 @@ class TrajectoryDataset(Dataset, ABC):
                 specs.append_length(int(traj.batch_size[0]))
 
                 # TODO: handle the case where multiple trajectories are created
+                # TODO: implement batching here
                 for transform in transforms:
                     traj = transform(traj)
 
+                traj = compress_rgb_images(traj, specs)
                 save_tensordict(traj, filename)
                 processed_files.append(filename)
 
@@ -413,6 +410,23 @@ def load_tensordict(
         trajectory = trajectory[start:stop]
 
     return trajectory
+
+
+def compress_rgb_images(tensordict: TensorDict, specs: DataSpecs) -> TensorDict:
+    for key, spec in specs.obs.items():
+        if not isinstance(spec, RGBCameraSpec):
+            continue
+
+        for subkey in spec.rgb_subkeys:
+            nested_key = ("obs", key)
+            if subkey is not None:
+                nested_key += (subkey,)
+            image = tensordict[nested_key]
+
+            if image.dtype != torch.uint8:
+                image = image.mul(255).clamp(0, 255).to(torch.uint8)
+            tensordict[nested_key] = image
+    return tensordict
 
 
 def save_tensordict(tensordict: TensorDict, file: Path, backend: str = "memmap"):
