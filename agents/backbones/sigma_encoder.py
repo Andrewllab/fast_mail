@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import einops
 import torch.nn as nn
 
-from .pos_encoder import SinusoidalPosEncoder
+from models.pos_encoder import SinusoidalPosEncoder
 
 if TYPE_CHECKING:
     from torch import Tensor

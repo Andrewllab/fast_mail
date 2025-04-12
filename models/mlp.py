@@ -1,29 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Sequence, Type
+from typing import Sequence
 
 import torch.nn as nn
-
-if TYPE_CHECKING:
-    from torch import Tensor
-
-
-def linear_action_prediction(embed_dim: int, action_dim: int) -> nn.Module:
-    return MlpModel(in_features=embed_dim, hidden_sizes=None, out_features=action_dim)
-
-
-def mlp_action_prediction(
-    embed_dim: int,
-    action_dim: int,
-    hidden_sizes: int | Sequence[int],
-    non_linearity: Type[nn.Module],
-) -> nn.Module:
-    return MlpModel(
-        in_features=embed_dim,
-        out_features=action_dim,
-        hidden_sizes=hidden_sizes,
-        nonlinearity=non_linearity,
-    )
+from torch import Tensor
 
 
 class MlpModel(nn.Module):

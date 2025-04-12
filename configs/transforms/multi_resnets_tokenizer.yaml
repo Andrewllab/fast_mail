@@ -3,7 +3,7 @@ _target_: transforms.multi_rgb_tokenizer.MultiRgbTokenizer
 _partial_: True
 
 rgb_model:
-  _target_: agents.encoders.resnet.beso_resnet_encoder
+  _target_: models.resnet.beso_resnet_encoder
   _partial_: True
   embed_dim: ${..embed_dim}
   pretrained_weights: null

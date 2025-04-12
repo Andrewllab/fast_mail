@@ -4,13 +4,13 @@ _partial_: True
 
 embed_dim: ${..embed_dim}
 mlp_1:
-  _target_: agents.backbones.mlp.MlpModel
+  _target_: models.mlp.MlpModel
   _partial_: True  # requires in_features
   hidden_sizes: [128]
   out_features: 256
   nonlinearity: ReLU
 mlp_2:
-  _target_: agents.backbones.mlp.MlpModel
+  _target_: models.mlp.MlpModel
   _partial_: True  # requires out_features
   _args_: ["${prod:2,${...mlp_1.out_features}}"]  # in_features must be 2 * out_features of mlp_1
   hidden_sizes: [512]

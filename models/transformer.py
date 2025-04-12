@@ -4,9 +4,14 @@ import torch.nn as nn
 
 # SwishGLU -- A Gated Linear Unit (GLU) with the Swish activation; always better than GELU MLP!
 class SwishGLU(nn.Module):
-    def __init__(self, in_dim: int, out_dim: int) -> None:
+    def __init__(
+        self, in_dim: int, out_dim: int, bias: bool = True, device=None, dtype=None
+    ) -> None:
         super().__init__()
-        self.act, self.project = nn.SiLU(), nn.Linear(in_dim, 2 * out_dim)
+        self.act = nn.SiLU()
+        self.project = nn.Linear(
+            in_dim, 2 * out_dim, bias=bias, device=device, dtype=dtype
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         projected, gate = self.project(x).tensor_split(2, dim=-1)
