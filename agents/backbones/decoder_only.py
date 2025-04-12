@@ -146,13 +146,17 @@ class DecoderOnlyNoise(nn.Module):
         self.action_head = action_head(token_dim, specs.action_dim)
 
         log.debug(
-            f"Noise model expects to receive {specs.obs_embed_seq_len} obs embedding tokens across all time steps."
+            f"Noise model expects to receive {specs.obs_embed_seq_len if specs.obs_embed_seq_len is not None else 'a variable number of'} obs embedding tokens across all time steps."
         )
 
         # we use time to refer to the position in the sequence of tokens
         # this often corresponds to real time, but not always, e.g. with goal tokens
         if time_encoder is not None:
-            self.obs_time_encoder = time_encoder(specs.obs_embed_seq_len, token_dim)
+            if specs.obs_embed_seq_len is not None:
+                self.obs_time_encoder = time_encoder(specs.obs_embed_seq_len, token_dim)
+            else:
+                self.obs_time_encoder = None
+
             self.action_time_encoder = time_encoder(specs.action_seq_len, token_dim)
 
             if specs.goal_embed_seq_len > 0:
