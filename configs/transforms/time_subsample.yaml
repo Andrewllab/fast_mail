@@ -1,0 +1,3 @@
+_target_: transforms.time_subsample.SubsampleTime
+_partial_: True
+factor: 3

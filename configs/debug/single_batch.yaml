@@ -32,3 +32,4 @@ data:
   pin_memory: False  # disable gpu memory pin
   dataset:
     load_subset: 0.05  # load only 5% of the training data
+    # debug_preprocess: True  # prepend preprocess transforms to cpu transforms

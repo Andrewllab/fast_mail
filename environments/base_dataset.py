@@ -43,7 +43,7 @@ class TrajectoryDataset(Dataset, ABC):
         preprocess_transforms: TransformPartialsDict | None = None,
         preprocessed_dir: Path | os.PathLike | None = None,
         overwrite_preprocessed: bool = False,
-        # debug_preprocess: bool = False,
+        debug_preprocess: bool = False,
         load_subset: int | float | None = None,
         # filter: Callable[[Any], bool] | None = None,
     ) -> None:
@@ -53,6 +53,16 @@ class TrajectoryDataset(Dataset, ABC):
         self.action_seq_len = action_seq_len
         self.obs_seq_len = obs_seq_len
         self.load_subset = load_subset
+
+        if debug_preprocess and preprocess_transforms is not None:
+            log.debug(
+                "`debug_preprocess` activated. Prepending preprocess transforms to cpu transforms."
+            )
+            if transforms is not None:
+                transforms = {**preprocess_transforms, **transforms}
+            else:
+                transforms = preprocess_transforms
+            preprocess_transforms = None
 
         if device == "gpu":
             device = "cuda"

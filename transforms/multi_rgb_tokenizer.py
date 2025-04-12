@@ -87,12 +87,19 @@ class MultiRgbTokenizer(Transform, nn.Module):
         return self._output_specs
 
     def _call_one(self, *imgs: Tensor) -> Tensor:
+        default_float_dtype = torch.get_default_dtype()
+
         if self.share_rgb_model:
             # pass all rgb obs to rgb model
 
             # we stack and flatten rather than concatenate, to keep images from the same time step together
             # [B,T,C,H,W] -> [B,T,N,C,H,W]
             img = torch.stack(imgs, dim=-4)
+
+            if img.shape[-1] == 3:
+                img = torch.movedim(img, -1, -3)
+            if img.dtype != default_float_dtype:
+                img = img.to(dtype=default_float_dtype).div(255)
 
             leading_dims, N, img_shape = (img.shape[:-4], img.shape[-4], img.shape[-3:])
             # [B,T,N,C,H,W] -> [B*T*N,C,H,W]
@@ -108,6 +115,12 @@ class MultiRgbTokenizer(Transform, nn.Module):
             # run each rgb obs to independent models
             img = imgs[0]
             leading_dims, img_shape = img.shape[:-3], img.shape[-3:]
+
+            if img.shape[-1] == 3:
+                imgs = tuple(torch.movedim(im, -1, -3) for im in imgs)
+            if img.dtype != default_float_dtype:
+                imgs = tuple(im.to(dtype=default_float_dtype).div(255) for im in imgs)
+
             features = []
             for img, key in zip(imgs, self._rgb_keys):
                 # [B,T,C,H,W] -> [B*T,C,H,W]

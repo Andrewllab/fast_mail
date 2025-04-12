@@ -833,7 +833,7 @@ def combine_frame_transforms(
     return t02, q02
 
 
-# @torch.jit.script
+@torch.jit.script
 def subtract_frame_transforms(
     t01: torch.Tensor,
     q01: torch.Tensor,
@@ -941,7 +941,7 @@ def apply_delta_pose(
 
     Args:
         source_pos: Position of source frame. Shape is (N, 3).
-        source_rot: Quaternion orientation of source frame in (w, x, y, z). Shape is (N, 4)..
+        source_rot: Quaternion orientation of source frame in (w, x, y, z). Shape is (N, 4).
         delta_pose: Position and orientation displacements. Shape is (N, 6).
         eps: The tolerance to consider orientation displacement as zero. Defaults to 1.0e-6.
 
@@ -968,7 +968,7 @@ def apply_delta_pose(
         quat_from_angle_axis(angle, axis),
         identity_quat,
     )
-    # TODO: Check if this is the correct order for this multiplication.
+    # quaternions chain rotation **right to left**
     target_rot = quat_mul(rot_delta_quat, source_rot)
 
     return target_pos, target_rot

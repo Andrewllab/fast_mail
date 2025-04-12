@@ -12,6 +12,7 @@ from environments.specs import (
     RGBDCameraSpec,
     Spec,
 )
+from utils.math import euler_xyz_to_quaternion
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +54,24 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             dim=-1,
         )
 
+        # rotation actions are stored as delta euler angles, so we convert to
+        # quaternion
+        euler_xyz = traj["actions"][..., 3:6]
+        quat = euler_xyz_to_quaternion(*euler_xyz.T)
+        actions = torch.cat(
+            (traj["actions"][..., :3], quat, traj["actions"][..., -1:]), dim=-1
+        )
+
+        # we also sneakily add the ee pose to the observation, e.g. for
+        # computing absolute desired ee poses
+        ee_pose = torch.cat(
+            (
+                traj["obs", "proprioception", "eef_pos"],  # shape: (T, 3)
+                traj["obs", "proprioception", "eef_quat"],  # shape: (T, 4)
+            ),
+            dim=-1,
+        )
+
         traj = TensorDict(
             {
                 "obs": {
@@ -80,8 +99,9 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
                         "dynamic",
                         "gripper_camera",
                     ].view(-1, 4, 4),
+                    "ee_pose": ee_pose,
                 },
-                "action": traj["actions"],
+                "action": actions,
             },  # type: ignore
         )
 
@@ -179,9 +199,9 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         # actions
         assert data["actions"].ndim == 2
         assert data["actions"].shape[-1] == 7
-        action = ActionSpec(
-            shape=(self.action_seq_len, data["actions"].shape[-1]), type="action"
-        )
+        # we convert euler xyz angles to quaternions, resulting in 8-D actions
+        # instead of 7-D
+        action = ActionSpec(shape=(self.action_seq_len, 8), type="action")
 
         self._specs = DataSpecs(
             obs={
