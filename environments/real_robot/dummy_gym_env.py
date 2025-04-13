@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 
 import gymnasium as gym
-import pygame
 import torch
 from moviepy import VideoFileClip
 
@@ -34,9 +33,6 @@ class DummyGymEnv(gym.Env):
         self.frames_it = self.clip.iter_frames(fps=self.fps, dtype="uint8")
         self.done = False
 
-        # limit fps of program loop
-        self.clock = pygame.time.Clock()
-
         self._specs = DataSpecs(
             obs={self.obs_key: RGBCameraSpec(shape=(height, width, 3))},
             action=ActionSpec(shape=(1,), type="action"),
@@ -45,7 +41,6 @@ class DummyGymEnv(gym.Env):
         self.observation_space, self.action_space = specs_to_spaces(self._specs)
 
     def get_obs(self) -> dict:
-        self.clock.tick(self.fps)
         try:
             frame = next(self.frames_it)
         except StopIteration:

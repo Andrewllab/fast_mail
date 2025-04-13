@@ -5,6 +5,7 @@ from typing import Callable
 
 import gymnasium as gym
 import numpy as np
+import pygame
 import torch
 from gymnasium.vector import AutoresetMode, SyncVectorEnv
 from tensordict import TensorDict
@@ -23,6 +24,7 @@ class GymEnvDataset(IterableDataset):
         num_episodes: int | None = 10,
         obs_seq_len: int = 1,
         action_horizon: int | None = None,
+        fps: float | None = None,
     ):
         if not isinstance(env, functools.partial):
             raise ValueError(
@@ -45,7 +47,7 @@ class GymEnvDataset(IterableDataset):
 
         obs = dict(one_step_specs.obs)  # copy obs specs for local modification
         for key, spec in obs.items():
-            obs[key] = dataclasses.replace(spec, shape=(action_horizon, *spec.shape))
+            obs[key] = dataclasses.replace(spec, shape=(obs_seq_len, *spec.shape))
         action = dataclasses.replace(
             one_step_specs.action,
             shape=(action_horizon, *one_step_specs.action.shape),
@@ -60,6 +62,9 @@ class GymEnvDataset(IterableDataset):
         self.action_horizon = action_horizon
         # TODO: implement obs_seq_len using FrameStackObservation. This must be
         # applied within the vec env, since each env is reset independently.
+
+        self.clock = pygame.time.Clock()
+        self.fps = fps
 
         self._next_action = None
 
@@ -99,6 +104,9 @@ class GymEnvDataset(IterableDataset):
             actions = actions.transpose(0, 1)[: self.action_horizon]
             actions_np = actions.cpu().numpy()
             for action in actions_np:
+                if self.fps is not None:
+                    self.clock.tick(self.fps)
+
                 obs, step_reward, step_terminated, step_truncated, step_info = (
                     self.env.step(action)
                 )

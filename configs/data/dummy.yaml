@@ -6,6 +6,7 @@ env_dataset:
     _target_: environments.real_robot.dummy_gym_env.DummyGymEnv
     _partial_: True
     video_filepath: ${paths.root_dir}/never_gonna_give_you_up.mp4
-    fps: 30
     trim_to: 3
     loop: True
+
+  fps: 30
