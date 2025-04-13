@@ -6,6 +6,7 @@ import pickle
 from dataclasses import dataclass
 from typing import Literal, Mapping, Sequence
 
+import numpy as np
 import torch
 from frozendict import frozendict
 
@@ -133,7 +134,7 @@ class DepthCameraSpec(CameraSpec):
 class RGBCameraSpec(CameraSpec):
     channel_order: Literal["HWC", "CHW"] = "HWC"
     # rgb subkeys are for images with a channel dimension
-    rgb_subkeys: tuple[str | None, ...] = ()
+    rgb_subkeys: tuple[str | None, ...] = (None,)
 
 
 @dataclass(frozen=True)
@@ -175,15 +176,23 @@ class ActionSpec(Spec):
     n_actions: int = 0
 
     def __init__(
-        self, shape: tuple[int, ...], type: str, actions: torch.Tensor | None = None
+        self,
+        shape: tuple[int, ...],
+        type: str,
+        a_mean: torch.Tensor | None = None,
+        a_var: torch.Tensor | None = None,
+        a_min: torch.Tensor | None = None,
+        a_max: torch.Tensor | None = None,
+        n_actions: int = 0,
+        actions: torch.Tensor | None = None,
     ):
         super().__init__(shape, type)
 
-        mean = actions.mean(0) if actions is not None else None
-        var = actions.var(0) if actions is not None else None
-        min = actions.min(0).values if actions is not None else None
-        max = actions.max(0).values if actions is not None else None
-        n_actions = actions.shape[0] if actions is not None else 0
+        mean = actions.mean(0) if actions is not None else a_mean
+        var = actions.var(0) if actions is not None else a_var
+        min = actions.min(0).values if actions is not None else a_min
+        max = actions.max(0).values if actions is not None else a_max
+        n_actions = actions.shape[0] if actions is not None else n_actions
         self._set_stats(mean, var, min, max, n_actions)
 
     def _set_stats(self, mean, var, min, max, n_actions):
@@ -382,3 +391,51 @@ def load_specs(path: os.PathLike) -> DataSpecs:
 
     log.debug(f"Specs loaded from {path}")
     return specs
+
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # we don't want an explicit dependency on gymnasium in the specs module
+    import gymnasium as gym
+
+
+def specs_to_spaces(specs: DataSpecs) -> tuple["gym.Space", "gym.Space"]:
+    """Convert specs to gym spaces."""
+    import gymnasium.spaces as spaces
+
+    obs_spaces = {key: spec_to_space(spec) for key, spec in specs.obs.items()}
+    obs_space = spaces.Dict(obs_spaces)
+    action_space = spec_to_space(specs.action)
+    return obs_space, action_space
+
+
+def spec_to_space(spec: Spec) -> "gym.Space":
+    """Convert a single spec to a gym space."""
+    import gymnasium.spaces as spaces
+
+    if isinstance(spec, CameraSpec):
+        subspaces = {
+            subkey: spaces.Box(low=0, high=255, shape=spec.shape, dtype=np.uint8)
+            for subkey in spec.intensity_subkeys
+        }
+        if isinstance(spec, RGBCameraSpec):
+            subspaces |= {
+                subkey: spaces.Box(low=0, high=255, shape=spec.shape, dtype=np.uint8)
+                for subkey in spec.rgb_subkeys
+            }
+        if isinstance(spec, DepthCameraSpec):
+            subspaces |= {
+                subkey: spaces.Box(low=0, high=np.inf, shape=spec.shape, dtype=np.uint8)
+                for subkey in spec.depth_subkeys
+            }
+
+        if None in subspaces:
+            # this is a convention that means that the camera has no subkeys
+            return subspaces[None]
+        else:
+            return spaces.Dict(subspaces)
+    elif isinstance(spec, ActionSpec) or type(spec) is Spec:
+        return spaces.Box(low=-np.inf, high=np.inf, shape=spec.shape, dtype=np.float32)
+    else:
+        raise ValueError(f"Unknown spec type: {type(spec).__name__}")

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 import open3d as o3d
 import open3d.visualization as o3dvis
 import torch
@@ -18,7 +16,6 @@ class RenderPointCloud(Transform):
         specs: DataSpecs,
         width: int = 1024,
         height: int = 768,
-        fps: float | None = None,
         render_coordinate_frames: bool = False,
         pcd_key: str = "pcd",
     ) -> None:
@@ -67,8 +64,6 @@ class RenderPointCloud(Transform):
                 self.vis.add_geometry(camera)
                 self.geometries[key] = camera
         self._render_coordinate_frames = render_coordinate_frames
-
-        self.fps = fps
 
         self._output_specs = specs
 
@@ -141,9 +136,6 @@ class RenderPointCloud(Transform):
 
         self.vis.poll_events()
         self.vis.update_renderer()
-
-        if self.fps is not None:
-            time.sleep(1 / self.fps)
 
         return tensordict
 

@@ -7,5 +7,5 @@ env_dataset:
     _partial_: True
     video_filepath: ${paths.root_dir}/never_gonna_give_you_up.mp4
     fps: 30
-    # trim_to: 10
+    trim_to: 3
     loop: True

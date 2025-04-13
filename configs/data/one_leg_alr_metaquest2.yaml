@@ -7,7 +7,7 @@ defaults:
 
 task_suite: furniture_bench
 task: one_leg
-name: 2025-04-05_metaquest3
+name: 2025-04-11_metaquest3
 
 dataset:
   _target_: environments.datasets.furniture_bench_alr_v2.AlrFurnitureBenchDataset

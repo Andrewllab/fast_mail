@@ -1,3 +1,4 @@
+import dataclasses
 import functools
 import logging
 from typing import Callable
@@ -5,7 +6,6 @@ from typing import Callable
 import gymnasium as gym
 import numpy as np
 import torch
-from gymnasium.spaces import Space
 from gymnasium.vector import AutoresetMode, SyncVectorEnv
 from tensordict import TensorDict
 from torch.utils.data import IterableDataset
@@ -35,6 +35,26 @@ class GymEnvDataset(IterableDataset):
             [env] * num_envs, copy=False, autoreset_mode=AutoresetMode.DISABLED
         )
 
+        try:
+            # VecEnvs return a tuple of results whenever an attribute is accessed
+            one_step_specs: DataSpecs = self.env.get_attr("specs")[0]
+
+        except AttributeError:
+            log.error("Gym environment does not define specs.")
+            raise
+
+        obs = dict(one_step_specs.obs)  # copy obs specs for local modification
+        for key, spec in obs.items():
+            obs[key] = dataclasses.replace(spec, shape=(action_horizon, *spec.shape))
+        action = dataclasses.replace(
+            one_step_specs.action,
+            shape=(action_horizon, *one_step_specs.action.shape),
+        )
+        self._specs = one_step_specs.replace(
+            obs=obs,
+            action=action,
+        )
+
         self.num_envs = num_envs
         self.num_episodes = num_episodes
         self.action_horizon = action_horizon
@@ -47,11 +67,7 @@ class GymEnvDataset(IterableDataset):
 
     @property
     def specs(self) -> DataSpecs:
-        try:
-            # VecEnvs return a tuple of results whenever an attribute is accessed
-            return self.env.get_attr("specs")[0]
-        except AttributeError:
-            return spaces_to_specs(self.env.observation_space, self.env.action_space)
+        return self._specs
 
     def __iter__(self):
         # yield once with the reset observation
@@ -97,17 +113,19 @@ class GymEnvDataset(IterableDataset):
 
             time += 1
 
-            # reset the envs that are done
-            done = np.logical_or(terminated, truncated)
-            num_episodes += np.sum(done)
-            if done.any():
-                obs = self.env.reset(options={"mask": done})
-
             # we stack in axis=1 because the first dimension is the batch,
             # and the second dimension is the time dimension
             info = {
                 key: np.stack([info[key] for info in infos], axis=1) for key in infos[0]
             }
+
+            # reset the envs that are done
+            done = np.logical_or(terminated, truncated)
+            num_episodes += np.sum(done)
+            if done.any():
+                obs, reset_info = self.env.reset(options={"mask": done})
+                info |= reset_info
+
             yield step_return_to_tensor_dict(
                 obs,
                 info,
@@ -151,12 +169,8 @@ def step_return_to_tensor_dict(
             "info": info,
         },  # type: ignore
     )
-    return tensordict
-
-
-def spaces_to_specs(obs_space: Space, action_space: Space) -> DataSpecs:
-    # TODO: write function that either converts gym spaces to specs or vice versa
-    raise NotImplementedError
+    # unsqueeze to add singleton time dimension
+    return tensordict.unsqueeze(dim=0)
 
 
 def monkey_patch_data_fetcher():

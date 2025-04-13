@@ -26,8 +26,8 @@ class NullAgent(BaseAgent):
         self,
         specs,
         obs_encoder: TransformPartialsDict,
+        fps: float | None = 30.0,
         replay_data: DictConfig | None = None,
-        replay_fps: float = 30.0,
     ):
         super().__init__(
             model=lambda specs: None,
@@ -57,10 +57,11 @@ class NullAgent(BaseAgent):
                 )
 
             self.data_it = iter(self.datamodule.predict_dataloader())
-            self.clock = pygame.time.Clock()
-            self.fps = replay_fps
         else:
             self.datamodule = None
+
+        self.clock = pygame.time.Clock()
+        self.fps = fps
 
     def configure_optimizers(self):
         raise NotImplementedError(
@@ -72,7 +73,6 @@ class NullAgent(BaseAgent):
         batch = self.obs_encoder(batch)
 
         if self.datamodule is not None:
-            self.clock.tick(self.fps)
             try:
                 data = next(self.data_it)
                 log.debug(f"Fetching action for timestep {batch_idx}...")
@@ -88,6 +88,10 @@ class NullAgent(BaseAgent):
             actions = torch.zeros(
                 batch.batch_size + self.specs.action.shape, device=batch.device
             )
+
+        if self.fps is not None:
+            self.clock.tick(self.fps)
+
         return actions
 
     # reuse predict_step for test_step

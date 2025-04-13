@@ -3,12 +3,11 @@ import os
 from pathlib import Path
 
 import gymnasium as gym
-import numpy as np
 import pygame
 import torch
 from moviepy import VideoFileClip
 
-from environments.specs import ActionSpec, DataSpecs, RGBCameraSpec
+from environments.specs import ActionSpec, DataSpecs, RGBCameraSpec, specs_to_spaces
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +19,6 @@ class DummyGymEnv(gym.Env):
         fps: float = 30,
         trim_to: float | None = None,
         loop: bool = False,
-        action_seq_len: int = 1,
     ):
         self.video_filepath = Path(video_filepath)
         self.fps = fps
@@ -40,20 +38,11 @@ class DummyGymEnv(gym.Env):
         self.clock = pygame.time.Clock()
 
         self._specs = DataSpecs(
-            obs={self.obs_key: RGBCameraSpec(shape=(1, height, width, 3))},
-            action=ActionSpec(shape=(action_seq_len, 1), type="action"),
+            obs={self.obs_key: RGBCameraSpec(shape=(height, width, 3))},
+            action=ActionSpec(shape=(1,), type="action"),
         )
 
-        self.action_space = gym.spaces.Box(
-            low=0, high=1, shape=(action_seq_len, 1), dtype=np.float32
-        )
-        self.observation_space = gym.spaces.Dict(
-            {
-                self.obs_key: gym.spaces.Box(
-                    low=0, high=255, shape=(1, height, width, 3), dtype=np.float32
-                )
-            }
-        )
+        self.observation_space, self.action_space = specs_to_spaces(self._specs)
 
     def get_obs(self) -> dict:
         self.clock.tick(self.fps)
@@ -71,7 +60,7 @@ class DummyGymEnv(gym.Env):
                 raise KeyboardInterrupt
 
         # copy the image because the original is not writable
-        image = torch.tensor(frame).unsqueeze(0)
+        image = torch.tensor(frame)
         return {self.obs_key: image}
 
     def reset(self, *, seed=None, options=None):
