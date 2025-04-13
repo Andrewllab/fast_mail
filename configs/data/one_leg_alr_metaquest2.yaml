@@ -2,7 +2,7 @@
 
 defaults:
   - default
-  # since this dataset was recorded at 50 fps, subsample by a factor of 5
+  # since this dataset was recorded at 50 fps, subsample by a factor of 4
   - /transforms@preprocess_transforms.0_subsample: time_subsample
 
 task_suite: furniture_bench
@@ -19,9 +19,9 @@ dataset:
 
 preprocess_transforms:
   0_subsample:
-    factor: 5
+    factor: 4
 
-device: disk  # this dataset is not small enough to fit in memory
+device: cpu  # this dataset is maybe small enough to fit in memory
 
 # env_dataset:
 #   _target_: environments.simulations.isaac.IsaacSim

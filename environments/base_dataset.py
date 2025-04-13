@@ -258,13 +258,13 @@ class TrajectoryDataset(Dataset, ABC):
                 filenames = [preprocessed_dir / f"{raw_file.stem}"]
 
             for traj, filename in zip(trajs, filenames):
-                specs.action.update_stats(traj["action"])
-                specs.append_length(int(traj.batch_size[0]))
-
                 # TODO: handle the case where multiple trajectories are created
                 # TODO: implement batching here
                 for transform in transforms:
                     traj = transform(traj)
+
+                specs.action.update_stats(traj["action"])
+                specs.append_length(int(traj.batch_size[0]))
 
                 traj = compress_rgb_images(traj, specs)
                 save_tensordict(traj, filename)
