@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import math
+import os
 import os.path as osp
+from pathlib import Path
 from typing import Sequence
 
 import numpy as np
@@ -48,5 +50,23 @@ def delete_keys_recursively(
     for key, value in cfg.items():
         if isinstance(value, DictConfig):
             cfg[key] = delete_keys_recursively(value, keys_to_delete)
+
+    return cfg
+
+
+def patch_load_from_checkpoint(
+    cfg: DictConfig, checkpoint_path: os.PathLike | Path
+) -> DictConfig:
+    # instead of calling the class, call its `load_from_checkpoint()` method
+    target = cfg["_target_"]
+    target += ".load_from_checkpoint"
+    cfg["_target_"] = target
+
+    # prepend the checkpoint path to any positional arguments to
+    # `load_from_checkpoint()`
+    args = (checkpoint_path,)
+    if "_args_" in cfg:
+        args = args + cfg["_args_"]
+    cfg["_args_"] = args
 
     return cfg

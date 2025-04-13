@@ -7,8 +7,6 @@ defaults:
   # ...and then cropped to 224x224
   - /transforms@data.preprocess_transforms.2_crop: image_centercrop
   
-  # - /transforms@data.preprocess_transforms.3_subsample: time_subsample
-
   # apply ImageNet normalization
   - /transforms@data.gpu_batch_transforms.4_norm: imagenet_norm
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import wandb
 from omegaconf import DictConfig, OmegaConf, open_dict
@@ -65,3 +66,39 @@ def init_wandb(cfg: DictConfig) -> Run:
         **init_kwargs,  # type: ignore
     )
     return run
+
+
+def get_model_artifact(cfg: DictConfig) -> tuple[DictConfig, Path]:
+    """Get the model artifact from WandB and return the training config and model directory.
+    Args:
+        cfg: The configuration dictionary.
+    Returns:
+        A tuple containing the training config and the model directory.
+    """
+    checkpoint_path = cfg.get("checkpoint_path")
+    if checkpoint_path is not None:
+        raise NotImplementedError
+
+    if wandb.run is None:
+        raise ValueError(
+            "Cannot get artifact with no WandB run initialized. Please run init_wandb() first."
+        )
+    elif wandb.run.disabled:
+        raise ValueError("WandB is disabled, so downloading an artifact will fail.")
+
+    identifier = f"model-{cfg['artifact_run_name']}"
+    if (project := cfg.get("artifact_project")) is not None:
+        identifier = f"{project}/{identifier}"
+        if (entity := cfg.get("artifact_entity")) is not None:
+            identifier = f"{entity}/{identifier}"
+    version = cfg.get("artifact_version", "latest") or "latest"
+
+    model_artifact = wandb.run.use_artifact(f"{identifier}:{version}")
+
+    # get config used to train the model
+    train_cfg = model_artifact.logged_by().config
+
+    # load saved model state
+    model_dir = Path(model_artifact.download())
+
+    return OmegaConf.create(train_cfg), model_dir

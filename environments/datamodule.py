@@ -36,8 +36,6 @@ class TrajectoryDataModule(L.LightningDataModule):
         prefetch_factor: int | None = None,
         eval_mode: Literal["env", "dataset"] | float | None = None,
         env_dataset: DictConfig | None = None,
-        env_cpu_batch_transforms: TransformPartialsDict | None = None,
-        env_gpu_batch_transforms: TransformPartialsDict | None = None,
         **kwargs,
     ):
         super().__init__()
@@ -53,8 +51,6 @@ class TrajectoryDataModule(L.LightningDataModule):
         self.prefetch_factor = prefetch_factor
         self.eval_mode = eval_mode
         self._env = env_dataset
-        self._env_cpu_batch_transforms = env_cpu_batch_transforms
-        self._env_gpu_batch_transforms = env_gpu_batch_transforms
 
         if device not in ("disk", "cpu") and (
             cpu_transforms is not None or cpu_batch_transforms is not None
@@ -70,8 +66,6 @@ class TrajectoryDataModule(L.LightningDataModule):
         self._specs = None
 
         self.env = None
-        self.env_cpu_batch_transform = env_cpu_batch_transforms
-        self.env_gpu_batch_transform = env_gpu_batch_transforms
 
     def setup(self, stage: str) -> None:
 
@@ -156,13 +150,46 @@ class TrajectoryDataModule(L.LightningDataModule):
             )
             specs = self.env.specs
 
+            pretransforms = self._preprocess_transforms
+            if self._cpu_transforms is not None:
+                if pretransforms is not None:
+                    pretransforms = {**pretransforms, **self._cpu_transforms}
+                else:
+                    pretransforms = self._cpu_transforms
+
+            cpu_batch_transforms = self._cpu_batch_transforms
+            gpu_batch_transforms = self._gpu_batch_transforms
+
+            if pretransforms is not None:
+                if cpu_batch_transforms is not None:
+                    log.debug(
+                        "Prepending preprocess and cpu transforms to cpu batch transforms for gym environment..."
+                    )
+                    cpu_batch_transforms = {
+                        **pretransforms,
+                        **cpu_batch_transforms,
+                    }
+                elif gpu_batch_transforms is not None:
+                    log.debug(
+                        "Prepending preprocess and cpu transforms to gpu batch transforms for gym environment..."
+                    )
+                    gpu_batch_transforms = {
+                        **pretransforms,
+                        **gpu_batch_transforms,
+                    }
+                else:
+                    log.debug(
+                        "Using preprocess and cpu transforms as gpu batch transforms for gym environment..."
+                    )
+                    gpu_batch_transforms = pretransforms
+
             log.debug("Instantiating cpu batch transforms for environment...")
             self.env_cpu_batch_transform, specs = init_transforms(
-                self._env_cpu_batch_transforms, specs
+                cpu_batch_transforms, specs
             )
             log.debug("Instantiating gpu batch transforms for environment...")
             self.env_gpu_batch_transform, specs = init_transforms(
-                self._env_gpu_batch_transforms, specs
+                gpu_batch_transforms, specs
             )
 
             # if we have both a dataset and an environment, we need to check if

@@ -7,5 +7,5 @@ wandb:
   entity: null
   notes: null
   tags: null
-  reinit: True  # required for hydra sweeps with default launcher
+  reinit: finish_previous  # required for hydra sweeps with default launcher
   save_code: True  # save script used to start training, git commit, and patch

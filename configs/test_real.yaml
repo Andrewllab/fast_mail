@@ -1,0 +1,44 @@
+defaults:
+  - data: dummy
+  - callbacks:
+  - logger:
+    - wandb
+  - python_logging: default
+  - paths: default
+  - hydra: default
+  - _self_
+  - experiment: rgb_multiresnet
+  - platform: default
+  - optional local: default
+  - debug: verbose
+
+# task name, determines output directory path
+job_type: test_real
+
+logger:
+  wandb:
+    job_type: ${job_type}
+
+# either specify a complete checkpoint path...
+checkpoint_path:
+# ... or specify the wandb run name
+artifact_run_name: er6zx69x
+# project and entity are only needed if they differ from the settings in the wandb logger config
+artifact_project: 3d-sim2real
+artifact_entity: gyenes
+# by default, the latest version of the artifact is used
+artifact_version:
+
+data:
+  eval_mode: env  # "env" to validate in simulation or a float to validate on subset of data
+
+trainer:
+  accelerator: gpu
+  devices: auto
+  # precision: 16-true
+  default_root_dir: ${paths.output_dir}
+  enable_progress_bar: False
+  log_every_n_steps: 10
+
+torch:
+  set_float32_matmul_precision: medium
