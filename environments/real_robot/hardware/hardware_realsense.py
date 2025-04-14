@@ -1,10 +1,14 @@
 # Original Author: Marcel Ruehle
+import logging
 import time
+from typing import Sequence
 
 import numpy as np
 import pyrealsense2 as rs
 
 from environments.real_robot.hardware.hardware_cameras import DiscreteCamera
+
+log = logging.getLogger(__name__)
 
 
 class RealSense(DiscreteCamera):
@@ -24,24 +28,55 @@ class RealSense(DiscreteCamera):
 
     def __init__(
         self,
-        device_id,
-        name=None,
-        height=480,
-        width=640,
+        serial_number: int | str,
+        name: str | None = None,
+        height=RECORDING_HEIGHT,
+        width=RECORDING_WIDTH,
         fps=30,
+        extrinsics: Sequence[Sequence[float]] | None = None,
         warm_start=30,
         start_frame_latency=0,
     ):
         super().__init__(
-            device_id,
-            name if name else f"RealSense_{device_id}",
-            height,
-            width,
-            start_frame_latency,
+            device_id=str(serial_number),
+            name=name if name else f"RealSense_{serial_number}",
+            height=height,
+            width=width,
+            start_frame_latency=start_frame_latency,
         )
         self.fps = fps
+        self._extrinsics = (
+            np.asarray(extrinsics).reshape(4, 4) if extrinsics is not None else None
+        )
         self.warm_start = warm_start
         self.pipe = None
+
+    def connect(self) -> bool:
+        """
+        Connects to this instance.
+
+        Returns:
+        --------
+        - `success` (bool): Indicates a successful connection.
+        """
+        log.info(f"Connecting to RealSense {self.name}...")
+        try:
+            self._setup_connect()
+            log.info(f"Connection to RealSense {self.name} successful.")
+            return True
+
+        except Exception as e:
+            log.exception(f"Connection to RealSense {self.name} failed.")
+
+        log.info(f"Resetting RealSense {self.name}...")
+        devices = rs.context().query_devices()
+        for device in devices:
+            if device.get_info(rs.camera_info.serial_number) == self.device_id:
+                device.hardware_reset()
+        log.info(f"Retrying connection to RealSense {self.name}...")
+        self._setup_connect()
+        log.info(f"Connection to RealSense {self.name} successful.")
+        return True
 
     def _setup_connect(self):
         self.pipe = rs.pipeline()
@@ -85,7 +120,10 @@ class RealSense(DiscreteCamera):
             self.__get_frames()
 
     def get_intrinsics_dict(self):
-        stream = self.profile.get_streams()[1]
+        # https://github.com/IntelRealSense/librealsense/issues/12090#issuecomment-1673844543
+        # frameset = self.__get_frames()
+        # profile = frameset.get_profile()
+        stream = self.profile.get_streams()[0]
         intrinsics = stream.as_video_stream_profile().get_intrinsics()
         param_dict = dict(
             [
@@ -96,6 +134,10 @@ class RealSense(DiscreteCamera):
         )
         param_dict["model"] = param_dict["model"].name
         return param_dict
+
+    @property
+    def extrinsics(self) -> np.ndarray | None:
+        return self._extrinsics
 
     def __get_frames(self):
         if self.pipe is None:
@@ -151,8 +193,8 @@ class RealSense(DiscreteCamera):
         return {"time": timestamp, "rgb": rgb, "d": d, "ir1": ir1, "ir2": ir2}
 
     def close(self):
-        self.pipe.stop()
-        return True
+        if self.pipe is not None:
+            self.pipe.stop()
 
     @staticmethod
     def get_devices(
@@ -172,23 +214,31 @@ class RealSense(DiscreteCamera):
         --------
         - `devices` (list[RealSense]): List of found devices. If no devices are found, `[]` is returned.
         """
-        super(RealSense, RealSense).get_devices(
-            amount, height=height, width=width, type="RealSense", **kwargs
-        )
-        cam_list = rs.context().query_devices()
-        cams = []
-        counter = 0
-        for device in cam_list:
-            if amount != -1 and counter >= amount:
-                break
-            cam = RealSense(
+        super(RealSense, RealSense).get_devices(amount, height, width, type="RealSense")
+
+        devices = rs.context().query_devices()
+        amount = amount if amount != -1 else len(devices)
+        cameras = [
+            RealSense(
                 device.get_info(rs.camera_info.serial_number),
                 height=height,
                 width=width,
+                **kwargs,
             )
-            cams.append(cam)
-            counter += 1
-        return cams
+            for device in devices[:amount]
+        ]
+        return cameras
+
+    @staticmethod
+    def get_device(serial_number: int, **kwargs) -> "RealSense":
+        devices = rs.context().query_devices()
+        for device in devices:
+            if device.get_info(rs.camera_info.serial_number) == str(serial_number):
+                return RealSense(
+                    device.get_info(rs.camera_info.serial_number),
+                    **kwargs,
+                )
+        raise ValueError(f"RealSense with serial number {serial_number} not found.")
 
 
 if __name__ == "__main__":

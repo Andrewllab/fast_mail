@@ -1,5 +1,4 @@
 import logging
-from typing import TYPE_CHECKING
 
 import hydra
 import numpy as np
@@ -7,11 +6,13 @@ import rootutils
 import torch
 from lightning import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 # enables importing local modules regardless of where the script is run
 rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
 
+from environments.datamodule import TrajectoryDataModule
+from loggers.wandb import resolve_checkpoint
 from utils.conf import (
     delete_keys_recursively,
     patch_load_from_checkpoint,
@@ -24,10 +25,6 @@ from utils.instantiators import (
 )
 from utils.logging import configure_logging
 from utils.torch_conf import configure_torch
-from utils.wandb import get_model_artifact, init_wandb
-
-if TYPE_CHECKING:
-    from environments.datamodule import TrajectoryDataModule
 
 log = logging.getLogger(__name__)
 
@@ -36,42 +33,36 @@ log = logging.getLogger(__name__)
 def main(cfg: DictConfig) -> None:
     configure_logging(cfg.python_logging)
 
-    # resolve all interpolated values, so we can remove them if needed
-    # this also catches any errors in the config early
-    OmegaConf.resolve(cfg)
+    # init wandb first so we can log any info or errors from instantiating dataset and model
+    # this also resolves all interpolated values, catching any errors early
+    log.debug("Instantiating loggers...")
+    logger: list[Logger] = instantiate_loggers(cfg)
 
     # configure torch, e.g. set_float32_matmul_precision
     configure_torch(cfg.get("torch"))
 
     # instantiate dataset
-    # recursively delete these fields in config dictionary
-    # we want these to be saved to WandB but we don't want them for instantiation
-    # delete_keys_recursively(cfg.data, ["name", "task", "task_suite", "randomness"])
     datamodule: TrajectoryDataModule = instantiate_datamodule(cfg.data)
 
     # manually run prepare data and setup so we can use dataset specs for model creation
     log.debug("Instantiating datamodule...")
     datamodule.prepare_data()
-    datamodule.setup(stage="test")
-
-    # init wandb so we can use artifacts from the cloud
-    run = init_wandb(cfg)
+    datamodule.setup(stage="predict")
 
     # instantiate agent
     log.debug("Instantiating agent...")
-    train_cfg, checkpoint_dir = get_model_artifact(cfg)
-    # TODO: add support for overriding the training config
+    train_cfg, checkpoint_path, specs = resolve_checkpoint(cfg, use_artifact=True)
     agent_cfg = train_cfg.agent
+    # recursively delete these fields in config dictionary
+    # we want these to be saved to WandB but we don't want them for instantiation
     delete_keys_recursively(agent_cfg, ["name"])
-    agent_cfg = patch_load_from_checkpoint(agent_cfg, checkpoint_dir / "model.ckpt")
-    agent: LightningModule = hydra.utils.instantiate(agent_cfg, specs=datamodule.specs)
+    agent_cfg = patch_load_from_checkpoint(agent_cfg, checkpoint_path)
+    agent: LightningModule = hydra.utils.instantiate(
+        agent_cfg, specs=specs, _convert_="all"
+    )
 
     log.debug("Instantiating callbacks...")
     callbacks: list[Callback] = instantiate_callbacks(cfg.get("callbacks"))
-    callbacks += datamodule.get_callbacks()
-
-    log.debug("Instantiating loggers...")
-    logger: list[Logger] = instantiate_loggers(cfg.get("logger"))
 
     log.debug("Instantiating trainer...")
     trainer: Trainer = hydra.utils.instantiate(
@@ -79,10 +70,9 @@ def main(cfg: DictConfig) -> None:
     )
 
     log.info("Starting testing...")
-    trainer.test(agent, datamodule=datamodule)
+    trainer.predict(agent, datamodule=datamodule)
 
     log.info("Testing completed")
-    run.finish()
 
 
 if __name__ == "__main__":

@@ -118,17 +118,27 @@ class BesoAgent(BaseAgent):
             scaler=None,  # scalar only used for clipping actions
         )
 
+        action = self.scaler.unnormalize(action)
+
         return action
 
-    def validation_step(self, batch, batch_idx):
-        metrics = self._eval_step(batch, batch_idx)
-
-    def test_step(self, batch, batch_idx):
-        metrics = self._eval_step(batch, batch_idx)
-
-    def _eval_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
         actions = self.predict_step(batch, batch_idx)
-        return {}
+
+        metrics = {"actions": actions}
+
+        if "success" in batch:
+            metrics["success"] = batch["success"]
+
+        if "action" in batch:
+            # only if we are validating on demonstration data
+            loss = ((actions - batch["action"]) ** 2).mean()
+            metrics["loss"] = loss
+
+        return metrics
+
+    # validation and testing are identical
+    test_step = validation_step
 
     def get_scalings(self, sigma):
         """

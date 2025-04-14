@@ -1,9 +1,10 @@
 import logging
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
+import torch
 from lightning import LightningModule, Trainer
 from lightning.pytorch.callbacks import BasePredictionWriter
-from lightning.pytorch.trainer.states import TrainerFn
+from typing_extensions import override
 
 from environments.gym_env_dataset import GymEnvDataset
 
@@ -18,7 +19,6 @@ class ActionWriter(BasePredictionWriter):
 
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         self.stage = stage
-        log.debug(f"ActionWriter setup called with stage: {stage}")
 
     def write_on_batch_end(
         self,
@@ -30,5 +30,29 @@ class ActionWriter(BasePredictionWriter):
         batch_idx: int,
         dataloader_idx: int,
     ) -> None:
-        if self.stage != TrainerFn.FITTING:
-            self.dataset.write_actions(prediction)
+        self.dataset.write_actions(prediction)
+
+    # add a modified version of on_predict_batch_end to handle validation and
+    # testing, where the action is unpacked from the outputs dict
+    @override
+    def on_validation_batch_end(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        outputs: torch.Tensor | Mapping[str, Any] | None,
+        batch: Any,
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        if not self.interval.on_batch:
+            return
+        batch_indices = trainer.predict_loop.current_batch_indices
+
+        assert isinstance(outputs, dict)
+        action = outputs["action"]
+
+        self.write_on_batch_end(
+            trainer, pl_module, action, batch_indices, batch, batch_idx, dataloader_idx
+        )
+
+    on_test_batch_end = on_validation_batch_end

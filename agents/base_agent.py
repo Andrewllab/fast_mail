@@ -1,23 +1,24 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Type
+from typing import Any, Callable, Iterable, Sequence
 
 import lightning as L
+from lightning.pytorch.core.optimizer import LightningOptimizer
+from torch import Tensor
+from torch.nn import Module
+from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.optimizer import Optimizer
 
-from transforms.base_transform import init_transforms
-
-if TYPE_CHECKING:
-    from lightning.pytorch.core.optimizer import LightningOptimizer
-    from torch import Tensor
-    from torch.nn import Module
-    from torch.optim.lr_scheduler import LRScheduler
-    from torch.optim.optimizer import Optimizer
-
-    from agents.utils.scaler import Scaler
-    from environments.specs import DataSpecs
-    from transforms.base_transform import TransformPartial, TransformPartialsDict
-
+from agents.utils.scaler import Scaler
+from callbacks.action_writer import ActionWriter
+from environments.datamodule import TrajectoryDataModule
+from environments.specs import DataSpecs
+from transforms.base_transform import (
+    TransformPartial,
+    TransformPartialsDict,
+    init_transforms,
+)
 
 log = logging.getLogger(__name__)
 
@@ -29,12 +30,14 @@ class BaseAgent(L.LightningModule):
         obs_encoder: TransformPartialsDict,
         optimizer: Callable[[Iterable[Tensor]], Optimizer],
         lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
-        scaler: Callable[[DataSpecs], Callable],
+        scaler: Callable[[DataSpecs], Scaler],
         goal_encoder: TransformPartial | None,
         specs: DataSpecs,
         ema_decay: float = 0.0,
     ):
         super().__init__()
+
+        self.save_hyperparameters("specs")
 
         # maybe instantiate goal encoder (e.g. clip)
         self.goal_encoder, specs = init_transforms(goal_encoder, specs)
@@ -99,6 +102,21 @@ class BaseAgent(L.LightningModule):
         else:
             return optimizer
 
+    def configure_callbacks(self) -> Sequence[L.Callback] | L.Callback:
+        callbacks = super().configure_callbacks()
+        if isinstance(callbacks, Sequence):
+            callbacks = list(callbacks)
+        else:
+            callbacks = [callbacks]
+
+        if (
+            hasattr(self.trainer, "datamodule")
+            and isinstance(self.trainer.datamodule, TrajectoryDataModule)
+            and self.trainer.datamodule.env is not None
+        ):
+            callbacks.append(ActionWriter(self.trainer.datamodule.env))
+        return callbacks
+
     def optimizer_step(
         self,
         epoch: int,
@@ -111,3 +129,49 @@ class BaseAgent(L.LightningModule):
         if self.ema_decay > 0:
             self._ema_model.update_parameters(self._model)
             self._ema_obs_encoder.update_parameters(self._obs_encoder)
+
+    def on_save_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        if self.ema_decay > 0:
+            # we only want to save the ema_model, which is the one we use for inference
+            state_dict = checkpoint["state_dict"]
+            for key in list(state_dict.keys()):
+                if key.startswith("_model.") or key.startswith("_obs_encoder."):
+                    del state_dict[key]
+
+    def on_load_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        if self.ema_decay > 0:
+            # we have instantiated the model, but we only have weights for the
+            # ema_model, so we have to instantiate a dummy AveragedModel to wrap
+            # the model for loading weights
+            # TODO: it might be possible to just reorganize the state dict when
+            # saving the checkpoint so that the ema_model is unnecessary
+
+            from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
+
+            # only these models have learnable parameters
+            self._ema_model = AveragedModel(
+                self._model,
+                multi_avg_fn=get_ema_multi_avg_fn(self.ema_decay),
+                # required for using EMA with BatchNorm
+                # https://pytorch.org/docs/stable/generated/torch.optim.swa_utils.AveragedModel.html
+                use_buffers=True,
+            )
+            self._ema_obs_encoder = AveragedModel(
+                self._obs_encoder,
+                multi_avg_fn=get_ema_multi_avg_fn(self.ema_decay),
+                # required for using EMA with BatchNorm
+                # https://pytorch.org/docs/stable/generated/torch.optim.swa_utils.AveragedModel.html
+                use_buffers=True,
+            )
+
+            # duplicate all state dict entries for ema_model and ema_obs_encoder
+            # with entries for model and obs_encoder
+            state_dict = checkpoint["state_dict"]
+            for key in list(state_dict.keys()):
+                if key.startswith("_ema_model.module"):
+                    new_key = key.replace("_ema_model.module.", "_model.")
+                    state_dict[new_key] = state_dict[key]
+
+                if key.startswith("_ema_obs_encoder.module"):
+                    new_key = key.replace("_ema_obs_encoder.module.", "_obs_encoder.")
+                    state_dict[new_key] = state_dict[key]

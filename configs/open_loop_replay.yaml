@@ -20,6 +20,7 @@ agent:
     dataset:
       action_seq_len: 1  # action chunking unnecessary for open-loop replay
       load_subset: 0.1
+  fps: 20
 
 trainer:
   accelerator: gpu

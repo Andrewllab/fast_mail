@@ -1,8 +1,7 @@
 defaults:
-  - data: dummy
+  - data: real_robot
   - callbacks:
   - logger:
-    - wandb
   - python_logging: default
   - paths: default
   - hydra: default
@@ -20,17 +19,21 @@ logger:
     job_type: ${job_type}
 
 # either specify a complete checkpoint path...
-checkpoint_path:
-# ... or specify the wandb run name
-artifact_run_name: er6zx69x
+log_dir:
+# ...or specify the wandb run name
+artifact_run_name:
 # project and entity are only needed if they differ from the settings in the wandb logger config
 artifact_project: 3d-sim2real
-artifact_entity: gyenes
+artifact_entity: alr-3d-sim2real
 # by default, the latest version of the artifact is used
 artifact_version:
 
 data:
-  eval_mode: env  # "env" to validate in simulation or a float to validate on subset of data
+  eval_mode: env
+  gpu_batch_transforms:
+    3_render_cameras:
+      _target_: transforms.render_cameras.RenderCameras
+      _partial_: True
 
 trainer:
   accelerator: gpu

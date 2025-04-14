@@ -36,7 +36,6 @@ class TrajectoryDataModule(L.LightningDataModule):
         prefetch_factor: int | None = None,
         eval_mode: Literal["env", "dataset"] | float | None = None,
         env_dataset: DictConfig | None = None,
-        **kwargs,
     ):
         super().__init__()
         self._dataset = dataset
@@ -208,12 +207,6 @@ class TrajectoryDataModule(L.LightningDataModule):
                 "Specs are not available until the datamodule has been set up."
             )
         return self._specs
-
-    def get_callbacks(self) -> list[L.Callback]:
-        if self.env is not None:
-            return [ActionWriter(self.env)]
-        else:
-            return []
 
     def train_dataloader(self) -> Any:
         log.debug("Creating new training dataloader...")

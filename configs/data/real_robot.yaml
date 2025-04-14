@@ -1,5 +1,8 @@
 defaults:
   - env
+  - /calibration@env_dataset.env.cameras.left_cam: left_cam1
+  - /calibration@env_dataset.env.cameras.right_cam: right_cam1
+  - /calibration@env_dataset.env.cameras.gripper_cam: gripper_cam1
 
 env_dataset:
   env:
@@ -7,17 +10,27 @@ env_dataset:
     _partial_: True
     robot_arm:
       _target_: environments.real_robot.hardware.hardware_franka.FrankaArm
-      # _partial_: True
+      _partial_: True
       name: p4 arm
       ip_address: 141.3.53.154
       port: 50053
+      use_delta: True
     robot_hand:
       _target_: environments.real_robot.hardware.hardware_frankahand.FrankaHand
       name: p4 gripper
       ip_address: 141.3.53.154
       port: 50054
-    # discrete_devices:
-    #   _target_: environments.real_robot.hardware.hardware_realsense.RealSense.get_devices
-    #   amount: 3
-
-  fps: 10  # inference should probably be around 10fps on the real robot
+    cameras:
+      left_cam:
+        _target_: environments.real_robot.hardware.hardware_realsense.RealSense
+        serial_number: 243322073029
+      right_cam:
+        _target_: environments.real_robot.hardware.hardware_realsense.RealSense
+        serial_number: 944622073668
+      gripper_cam:
+        _target_: environments.real_robot.hardware.hardware_realsense.RealSense
+        serial_number: 218622270040
+      _target_: environments.real_robot.hardware.hardware_realsense.RealSense.get_devices
+      amount: 3
+  action_horizon: 5
+  fps: 2  # inference should probably be around 10fps on the real robot

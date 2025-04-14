@@ -7,6 +7,8 @@ from lightning import Callback
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig, open_dict
 
+from loggers.wandb import init_wandb_logger
+
 log = logging.getLogger(__name__)
 
 
@@ -33,12 +35,15 @@ def instantiate_callbacks(callbacks_cfg: DictConfig) -> list[Callback]:
     return callbacks
 
 
-def instantiate_loggers(logger_cfg: DictConfig) -> list[Logger]:
+def instantiate_loggers(cfg: DictConfig) -> list[Logger]:
     """Instantiates loggers from config.
 
     :param logger_cfg: A DictConfig object containing logger configurations.
     :return: A list of instantiated loggers.
     """
+    from lightning.pytorch.loggers.wandb import WandbLogger
+
+    logger_cfg = cfg.get("logger", None) or {}
     logger: list[Logger] = []
 
     if not logger_cfg:
@@ -53,6 +58,10 @@ def instantiate_loggers(logger_cfg: DictConfig) -> list[Logger]:
             log.debug(f"Instantiating logger <{lg_conf._target_}>")
             logger.append(hydra.utils.instantiate(lg_conf))
 
+    wandb_logger = next((lg for lg in logger if isinstance(lg, WandbLogger)), None)
+    if wandb_logger is not None:
+        init_wandb_logger(wandb_logger, cfg)
+
     return logger
 
 
@@ -63,14 +72,15 @@ def instantiate_datamodule(datamodule_cfg: DictConfig) -> "TrajectoryDataModule"
     :return: An instantiated data module.
     """
     from environments.datamodule import TrajectoryDataModule
-    from utils.conf import delete_keys_recursively
 
     if not isinstance(datamodule_cfg, DictConfig):
         raise TypeError("Data module config must be a DictConfig!")
 
-    # delete_keys_recursively(
-    #     datamodule_cfg, ["name", "task", "task_suite", "randomness"]
-    # )
+    # delete these fields in config dictionary
+    # we want these to be saved to WandB but we don't want them for instantiation
+    with open_dict(datamodule_cfg):
+        for key in ["name", "task", "task_suite", "randomness"]:
+            datamodule_cfg.pop(key, None)
 
     log.debug("Instantiating <TrajectoryDataModule>")
 

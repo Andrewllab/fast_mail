@@ -6,7 +6,6 @@ defaults:
     - model_summary
   - logger: 
     - wandb
-    - csv
   - python_logging: default
   - paths: default
   - hydra: default
@@ -18,6 +17,10 @@ defaults:
 
 # task name, determines output directory path
 job_type: train
+
+logger:
+  wandb:
+    job_type: ${job_type}
 
 seed: null
 
