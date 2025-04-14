@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 
 def beso_resnet_encoder(
     embed_dim: int,
+    input_channels: int = 3,
     pretrained_weights: str | None = None,
     freeze_backbone: bool = False,
     use_group_norm: bool = True,
@@ -26,7 +27,21 @@ def beso_resnet_encoder(
         # so we only set this if we are not using pretrained weights
         resnet_kwargs["num_classes"] = embed_dim
 
+    elif input_channels != 3:
+        raise ValueError("Pretrained weights are only available for 3 input channels.")
+
     model = torchvision.models.resnet18(weights=pretrained_weights, **resnet_kwargs)
+
+    if input_channels != 3:
+        # replace the first conv layer with one that has the correct number of input channels
+        model.conv1 = nn.Conv2d(
+            input_channels,
+            model.conv1.out_channels,
+            kernel_size=model.conv1.kernel_size,
+            stride=model.conv1.stride,
+            padding=model.conv1.padding,
+            bias=model.conv1.bias is not None,
+        )
 
     if use_group_norm:
 

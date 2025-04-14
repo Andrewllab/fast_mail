@@ -11,7 +11,7 @@ defaults:
   - /transforms@data.gpu_batch_transforms.4_norm: imagenet_norm
 
   # tokenize the rgb images using a ResNet
-  - /transforms@agent.obs_encoder.5_resnets: multi_resnets_tokenizer
+  - /transforms@agent.obs_encoder.5_resnets: resnet_image_tokenizer
   # add tokens for the robot state
   - /transforms@agent.obs_encoder.6_robot_state: linear_robot_state_encoder
 
@@ -20,9 +20,9 @@ agent:
     embed_dim: 256
     
     5_resnets:
-      share_rgb_model: False
+      shared_encoder: False
     
-      rgb_model:
+      image_encoder:
         # resnet18
         pretrained_weights: IMAGENET1K_V1  # null or "IMAGENET1K_V1"
         freeze_backbone: False
@@ -30,8 +30,8 @@ agent:
 
 data:
   dataset:
-    preprocessed_dir: ${paths.preprocessed_dir}/dataset_11.04.25/rgb_multiresnet
+    preprocessed_dir: ${paths.preprocessed_dir}/dataset_11.04.25/multiview_image
 
 logger:
   wandb:
-    tags: ["rgb", "rgb_multiresnet"]
+    tags: ["rgb", "resnet18"]

@@ -1,12 +1,12 @@
-name: multi_resnets_tokenizer
-_target_: transforms.multi_rgb_tokenizer.MultiRgbTokenizer
+name: multiview_image_tokenizer
+_target_: transforms.multiview_image_tokenizer.MultiviewImageTokenizer
 _partial_: True
 
-rgb_model:
+image_encoder:
   _target_: models.resnet.beso_resnet_encoder
   _partial_: True
   embed_dim: ${..embed_dim}
   pretrained_weights: null
 
 embed_dim: ${..embed_dim}
-share_rgb_model: False
+shared_encoder: False

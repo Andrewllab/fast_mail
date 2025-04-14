@@ -2,37 +2,56 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from typing import Callable
+from typing import Callable, Literal
 
 import torch
 import torch.nn as nn
 from torch import Tensor
 
-from environments.specs import DataSpecs, EmbedSpec, RGBCameraSpec
+from environments.specs import (
+    DataSpecs,
+    DepthCameraSpec,
+    EmbedSpec,
+    RGBCameraSpec,
+    RGBDCameraSpec,
+)
 from transforms.base_transform import KeyMapping, Transform
 
 log = logging.getLogger(__name__)
 
 
-class MultiRgbTokenizer(Transform, nn.Module):
+class MultiviewImageTokenizer(Transform, nn.Module):
     def __init__(
         self,
         specs: DataSpecs,
-        rgb_model: Callable[[], nn.Module],
+        image_encoder: Callable[[], nn.Module],
         embed_dim: int,
-        # use single rgb model for all rgb inputs
-        share_rgb_model: bool = False,
+        image_type: Literal["rgb", "depth", "rgbd"] = "rgb",
+        shared_encoder: bool = False,
     ):
         super().__init__()
+
+        if image_type == "rgb":
+            allowed_type = RGBCameraSpec
+        elif image_type == "depth":
+            allowed_type = DepthCameraSpec
+        elif image_type == "rgbd":
+            allowed_type = RGBDCameraSpec
+            raise NotImplementedError
+        else:
+            raise ValueError(
+                f"image_type must be one of 'rgb', 'depth', or 'rgbd', but got {image_type}"
+            )
+        self.image_type = image_type
 
         input_specs = {
             key: spec
             for key, spec in specs.obs.items()
-            if isinstance(spec, RGBCameraSpec)
+            if isinstance(spec, allowed_type)
         }
 
         # instantiate rgb model(s)
-        if share_rgb_model:
+        if shared_encoder:
             first_key, spec = next(iter(input_specs.items()))
             im_shape = spec.shape
             for key, spec in input_specs.items():
@@ -41,16 +60,16 @@ class MultiRgbTokenizer(Transform, nn.Module):
                         f"Input specs {first_key} and {key} have different image shapes."
                     )
 
-            self.model = rgb_model()
+            self.model = image_encoder()
         else:
             self.models = nn.ModuleDict()
             for key in input_specs:
-                self.models[key] = rgb_model()
+                self.models[key] = image_encoder()
 
             # store the rgb_keys so we can use them in the call method
-            self._rgb_keys = list(input_specs.keys())
+            self._input_keys = list(input_specs.keys())
 
-        self.share_rgb_model = share_rgb_model
+        self.shared_encoder = shared_encoder
 
         # the leading dim is the number of observed time steps
         Ts = [spec.shape[0] for spec in input_specs.values()]
@@ -94,7 +113,16 @@ class MultiRgbTokenizer(Transform, nn.Module):
         nested_keys = []
         for key, spec in input_specs.items():
             # if we get a stereo camera, we just take the left camera
-            subkey = spec.rgb_subkeys[0]
+            if image_type == "rgb":
+                assert isinstance(spec, RGBCameraSpec)
+                subkey = spec.rgb_subkeys[0]
+            elif image_type == "depth":
+                assert isinstance(spec, DepthCameraSpec)
+                subkey = spec.depth_subkeys[0]
+            elif image_type == "rgbd":
+                assert isinstance(spec, RGBDCameraSpec)
+                raise NotImplementedError
+
             if subkey is not None:
                 nested_keys.append(("obs", key, subkey))
             else:
@@ -117,7 +145,7 @@ class MultiRgbTokenizer(Transform, nn.Module):
     def _call_one(self, obs_embed, *imgs: Tensor) -> Tensor:
         default_float_dtype = torch.get_default_dtype()
 
-        if self.share_rgb_model:
+        if self.shared_encoder:
             # pass all rgb obs to rgb model
 
             # we stack and flatten rather than concatenate, to keep images from the same time step together
@@ -126,7 +154,7 @@ class MultiRgbTokenizer(Transform, nn.Module):
 
             if img.shape[-1] == 3:
                 img = torch.movedim(img, -1, -3)
-            if img.dtype != default_float_dtype:
+            if img.dtype == torch.uint8:
                 img = img.to(dtype=default_float_dtype).div(255)
 
             leading_dims, N, img_shape = (img.shape[:-4], img.shape[-4], img.shape[-3:])
@@ -141,15 +169,21 @@ class MultiRgbTokenizer(Transform, nn.Module):
         else:
             # run each rgb obs to independent models
             img = imgs[0]
-            leading_dims, img_shape = img.shape[:-3], img.shape[-3:]
+            if self.image_type == "rgb":
+                leading_dims, img_shape = img.shape[:-3], img.shape[-3:]
+            elif self.image_type == "depth":
+                leading_dims, img_shape = img.shape[:-2], img.shape[-2:]
+                img_shape = (1,) + img_shape  # add singleton channel dim
+            elif self.image_type == "rgbd":
+                raise NotImplementedError
 
             if img.shape[-1] == 3:
                 imgs = tuple(torch.movedim(im, -1, -3) for im in imgs)
-            if img.dtype != default_float_dtype:
+            if img.dtype == torch.uint8:
                 imgs = tuple(im.to(dtype=default_float_dtype).div(255) for im in imgs)
 
             features = []
-            for img, key in zip(imgs, self._rgb_keys):
+            for img, key in zip(imgs, self._input_keys):
                 # [B,T,C,H,W] -> [B*T,C,H,W]
                 img = img.view(-1, *img_shape)
 

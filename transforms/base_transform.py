@@ -235,6 +235,7 @@ def _item_to_sort_key(item: tuple[str, Any]) -> float:
     key, _ = item
     # get the part before the first "_"
     num = key.split("_")[0]
+    num = num[1:]
     # convert e.g. 1-1 or 1,1 to 1.1, which can be converted to a float
     # periods are not allowed in keys
     num = num.replace("-", ".").replace(",", ".")

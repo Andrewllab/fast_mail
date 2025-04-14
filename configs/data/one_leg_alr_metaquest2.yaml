@@ -3,7 +3,7 @@
 defaults:
   - default
   # since this dataset was recorded at 50 fps, subsample by a factor of 4
-  - /transforms@preprocess_transforms.0_subsample: time_subsample
+  - /transforms@preprocess_transforms.t0_subsample: time_subsample
 
 task_suite: furniture_bench
 task: one_leg
@@ -18,7 +18,7 @@ dataset:
   obs_seq_len: 1
 
 preprocess_transforms:
-  0_subsample:
+  t0_subsample:
     factor: 4
 
 device: cpu  # this dataset is maybe small enough to fit in memory
