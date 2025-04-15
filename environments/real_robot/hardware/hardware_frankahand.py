@@ -1,11 +1,13 @@
 import argparse
-import concurrent
+import logging
 import time
 
 import numpy as np
 from polymetis import GripperInterface
 
 from environments.real_robot.hardware.hardware_robot import RobotHand
+
+log = logging.getLogger(__name__)
 
 
 class FrankaHand(RobotHand):
@@ -17,26 +19,22 @@ class FrankaHand(RobotHand):
         self.max_width = 0.0
         self.min_width = 0.0
 
-        self.within_grasp_action = False
-
-        self.pool = concurrent.futures.ThreadPoolExecutor(1)
-
     def connect(self):
         """Establish hardware connection"""
         connection = False
         # Initialize self.robot interface
-        print("FrankaHand:> Connecting to {}: ".format(self.name), end="")
+        log.info("FrankaHand:> Connecting to {}: ".format(self.name))
         try:
             self.robot = GripperInterface(ip_address=self.ip_address, port=self.port)
-            print("Success")
+            log.info("Success")
         except Exception as e:
             self.robot = None  # declare dead
-            print("Failed with exception: ", e)
+            log.info("Failed with exception: ", e)
             return connection
 
-        print("FrankaHand:> Testing {} connection: ".format(self.name), end="")
+        log.info("FrankaHand:> Testing {} connection: ".format(self.name))
         if self.okay():
-            print("Okay")
+            log.info("Okay")
             # get max_width based on polymetis version
             if self.robot.metadata:
                 self.max_width = self.robot.metadata.max_width
@@ -48,7 +46,7 @@ class FrankaHand(RobotHand):
 
             # self.reset()
         else:
-            print("Not ready. Please retry connection")
+            log.info("Not ready. Please retry connection")
 
         return connection
 
@@ -71,14 +69,14 @@ class FrankaHand(RobotHand):
     def close(self):
         """Close hardware connection"""
         if self.robot:
-            print("FrankaHand:> Resetting robot before close: ", end="")
+            log.info("FrankaHand:> Resetting robot before close: ")
             try:
                 self.reset()
-                print("FrankaHand:> Success: ", end="")
+                log.info("FrankaHand:> Success: ")
             except:
-                print("FrankaHand:> Failed. Exiting : ", end="")
+                log.info("FrankaHand:> Failed. Exiting : ")
             self.robot = None
-            print("Connection closed")
+            log.info("Connection closed")
         return True
 
     def reset(self, width=None, **kwargs):
@@ -96,14 +94,14 @@ class FrankaHand(RobotHand):
         try:
             curr_state = self.robot.get_state()
         except:
-            print("FrankaHand:> Failed to get current sensors: ", end="")
+            log.info("FrankaHand:> Failed to get current sensors: ")
             self.reconnect()
             return self.get_sensors()
         return np.array([curr_state.width])
 
     def apply_commands(self, width: float, speed: float = 0.1, force: float = 0.1):
         # assert width>=0.0 and width<=self.max_width, "Gripper desired width ({}) is out of bound (0,{})".format(width, self.max_width)
-        # print("Gripper: {}".format(width))
+        # log.info("Gripper: {}".format(width))
         if width < 0:
             self.grasp(speed, force)
         else:
@@ -112,31 +110,20 @@ class FrankaHand(RobotHand):
         return 0
 
     def grasp(self, speed, force, blocking: bool = False):
-        # don't send grasp if we are currently in one already
-        if self.within_grasp_action:
-            return
-
         state = self.robot.get_state()
         if state.is_moving:
             return
 
-        # # don't issue grasp if not fully open
-        # if state.width < (self.max_width * (4/5)):
-        #     return
+        if state.is_grasped:
+            return
 
-        if not state.is_grasped:
-            if blocking:
-                self.grasp_helper(speed, force)
-            else:
-                self.pool.submit(self.grasp_helper, speed, force)
+        self.robot.grasp(speed, force, blocking=blocking)
 
-    def grasp_helper(self, speed, force):
-        self.within_grasp_action = True
-        # print('send_grasp')
+        if not blocking:
+            return
 
-        self.robot.grasp(speed, force)
-
-        state = self.robot.get_state()
+        # even though we set blocking, the command might return before the
+        # gripper is actually grasping
         while not state.is_grasped:
             state = self.robot.get_state()
             time.sleep(0.1)
@@ -144,20 +131,15 @@ class FrankaHand(RobotHand):
             state = self.robot.get_state()
             time.sleep(0.1)
 
-        self.within_grasp_action = False
-
     def open(self, speed, force, blocking: bool = False):
         state = self.robot.get_state()
         if state.is_moving:
             return
 
-        if state.is_grasped:
-            # print('send open')
-            # print(state)
-            if blocking:
-                self.robot.goto(self.max_width, speed, force)
-            else:
-                self.pool.submit(self.robot.goto, self.max_width, speed, force)
+        if not state.is_grasped:
+            return
+
+        self.robot.goto(self.max_width, speed, force, blocking=blocking)
 
 
 # Get inputs from user
