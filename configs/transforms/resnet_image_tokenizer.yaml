@@ -6,7 +6,7 @@ image_encoder:
   _target_: models.resnet.beso_resnet_encoder
   _partial_: True
   embed_dim: ${..embed_dim}
-  pretrained_weights: null
+  use_group_norm: True
 
 embed_dim: ${..embed_dim}
 shared_encoder: False

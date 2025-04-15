@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import re
 from abc import ABC, ABCMeta, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -230,20 +231,28 @@ TransformPartial = Callable[[DataSpecs], Transform]
 TransformPartialsDict = Mapping[str, TransformPartial]
 
 
+# Regex pattern explanation:
+# t                 — literal 't'
+# (\d+)             — first group of digits
+# (?:[-,](\d+))?    — optional dash or comma followed by second group of digits
+# _                 — literal underscore
+# (.+)              — everything after the underscore
+pattern = re.compile(r"t(\d+)(?:[-,](\d+))?_(.+)")
+
+
 def _item_to_sort_key(item: tuple[str, Any]) -> float:
     """Extracts a float from the first part of a key in a dictionary item."""
     key, _ = item
-    # get the part before the first "_"
-    num = key.split("_")[0]
-    num = num[1:]
-    # convert e.g. 1-1 or 1,1 to 1.1, which can be converted to a float
-    # periods are not allowed in keys
-    num = num.replace("-", ".").replace(",", ".")
-    try:
-        return float(num)
-    except ValueError:
+
+    match = pattern.fullmatch(key)
+    if match:
+        first_number = match.group(1)
+        second_number = match.group(2)  # may be None
+        ordinal = float(f"{first_number}.{second_number if second_number else 0}")
+        return ordinal
+    else:
         raise ValueError(
-            f"All transform keys must begin with a number separated by an underscore. Got {key}"
+            f"All transform keys must match the following pattern: t##_name or t##-##_name or t##,##_name. Got {key}"
         )
 
 

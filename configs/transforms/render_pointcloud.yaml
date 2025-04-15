@@ -1,0 +1,3 @@
+_target_: transforms.render_pointcloud.RenderPointCloud
+_partial_: True
+render_coordinate_frames: True

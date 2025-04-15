@@ -6,10 +6,8 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: default
-  - experiment:
-    - pointpatchrl
-    # - render_cameras
-    - render_pointcloud
+  - experiment: pointpatchrl
+  - transforms@agent.obs_encoder.t9_render: render_pointclouds
   - _self_
   - platform: default
   - optional local: default
@@ -18,10 +16,6 @@ defaults:
 # task name, determines output directory path
 job_type: visualize_dataset
 
-agent:
-  obs_encoder:
-    5_tokenizer: null
-
 data:
   batch_size: 1
   eval_mode: dataset
@@ -29,9 +23,8 @@ data:
     action_seq_len: 1
     load_subset: 0.05
   gpu_batch_transforms:
-    1_to_pcd:
+    t1-3_to_pcd:
       color: True
-    4_norm: null  # do not normalize when rendering
   num_workers: 0
 
 trainer:

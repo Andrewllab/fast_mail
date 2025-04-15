@@ -1,0 +1,2 @@
+_target_: transforms.render_cameras.RenderCameras
+_partial_: True

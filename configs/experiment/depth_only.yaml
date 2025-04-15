@@ -16,14 +16,13 @@ agent:
   obs_encoder:
     embed_dim: 256
     
-    5_resnets:
+    t5_resnets:
       shared_encoder: False
       image_type: depth
     
       image_encoder:
         # resnet18
         input_channels: 1
-        use_group_norm: True
 
 data:
   dataset:

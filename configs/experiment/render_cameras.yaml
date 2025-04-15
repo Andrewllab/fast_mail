@@ -1,7 +1,0 @@
-# @package _global_
-
-agent:
-  obs_encoder:
-    9_render_cameras:
-      _target_: transforms.render_cameras.RenderCameras
-      _partial_: True

@@ -193,6 +193,14 @@ class TrajectoryDataset(Dataset, ABC):
         # If these files don't exist, we assume that preprocessing has not been
         # done yet
         if not (transforms_file.exists() and specs_file.exists()):
+            # delete the preprocessed directory if it exists and create a new one
+            if preprocessed_dir.exists():
+                log.error(
+                    f"Preprocessed directory {preprocessed_dir} is not empty (perhaps an incomplete earlier preprocessing run). If you intend to overwrite it, run `rm -rf {preprocessed_dir}` and retry."
+                )
+                raise ValueError(
+                    f"Preprocessed directory {preprocessed_dir} is not empty!"
+                )
             log.info(
                 f"{self.__class__.__name__}: Preprocessing dataset from {self.root_dir} and saving to "
                 f"{preprocessed_dir}"
@@ -233,10 +241,7 @@ class TrajectoryDataset(Dataset, ABC):
         resulting TensorDicts to disk. This method also sets self.specs and
         self.processed_files.
         """
-        # delete the preprocessed directory if it exists and create a new one
-        if preprocessed_dir.exists():
-            log.debug(f"Deleting preprocessed directory {preprocessed_dir}")
-            shutil.rmtree(str(preprocessed_dir))
+        assert not preprocessed_dir.exists()
         preprocessed_dir.mkdir(parents=True)
 
         raw_files = self._find_raw_files()

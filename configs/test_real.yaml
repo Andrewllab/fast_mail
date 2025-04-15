@@ -5,6 +5,7 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: default
+  - transforms@agent.obs_encoder.t3_render: render_cameras
   - _self_
   - experiment: rgb_only
   - platform: default
@@ -27,13 +28,6 @@ artifact_project: 3d-sim2real
 artifact_entity: alr-3d-sim2real
 # by default, the latest version of the artifact is used
 artifact_version:
-
-data:
-  eval_mode: env
-  gpu_batch_transforms:
-    3_render_cameras:
-      _target_: transforms.render_cameras.RenderCameras
-      _partial_: True
 
 trainer:
   accelerator: gpu
