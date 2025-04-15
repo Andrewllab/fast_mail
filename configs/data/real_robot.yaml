@@ -30,7 +30,5 @@ env_dataset:
       gripper_cam:
         _target_: environments.real_robot.hardware.hardware_realsense.RealSense
         serial_number: 218622270040
-      _target_: environments.real_robot.hardware.hardware_realsense.RealSense.get_devices
-      amount: 3
   action_horizon: 5
   fps: 2  # inference should probably be around 10fps on the real robot

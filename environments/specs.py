@@ -436,10 +436,13 @@ def spec_to_space(spec: Spec) -> "gym.Space":
                 for subkey in spec.rgb_subkeys
             }
         if isinstance(spec, DepthCameraSpec):
-            subspaces |= {
-                subkey: spaces.Box(low=0, high=np.inf, shape=spec.shape, dtype=np.uint8)
-                for subkey in spec.depth_subkeys
-            }
+            for subkey in spec.depth_subkeys:
+                if spec.channel_order == "HWC":
+                    H, W = spec.shape[-3:-1]
+                else:
+                    H, W = spec.shape[-2:]
+
+                subspaces[subkey] = spaces.Box(low=0, high=np.inf, shape=spec.shape[:-3] + (H, W), dtype=np.float32)
 
         if None in subspaces:
             # this is a convention that means that the camera has no subkeys

@@ -190,7 +190,7 @@ class RealSense(DiscreteCamera):
         rgb, d, ir1, ir2 = self.get_obs()
 
         timestamp = time.time()
-        return {"time": timestamp, "rgb": rgb, "d": d, "ir1": ir1, "ir2": ir2}
+        return {"time": timestamp, "rgb": rgb, "depth": d, "left": ir1, "right": ir2}
 
     def close(self):
         if self.pipe is not None:
