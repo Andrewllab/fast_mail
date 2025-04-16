@@ -1,7 +1,9 @@
 import re
 
+import torch
 from torch import Tensor
 from torch_geometric.data import Data
+from torch_geometric.utils import scatter
 
 
 def apply_mask(data: Data, mask: Tensor) -> Data:
@@ -21,10 +23,14 @@ def apply_mask(data: Data, mask: Tensor) -> Data:
 
     num_nodes = data.num_nodes
     assert num_nodes is not None
+    batch = data.batch
 
     for key, value in data.items():
         if key == "num_nodes":
             data.num_nodes = mask.sum().item()
+        elif key == "ptr":
+            assert batch is not None
+            data.ptr = scatter(mask.to(torch.int64), batch, dim_size=data.batch_size)
         elif bool(re.search("edge", key)):
             continue
         elif (

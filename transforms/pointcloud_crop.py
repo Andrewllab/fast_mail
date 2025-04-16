@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Sequence
+from typing import Sequence
 
 import torch
 from tensordict import NonTensorData
+from torch_geometric.data import Data
 
+from environments.specs import DataSpecs
 from transforms.base_transform import KeyMapping, Transform
 from utils.pyg import apply_mask
-
-if TYPE_CHECKING:
-    from torch_geometric.data import Data
-
-    from environments.specs import DataSpecs
 
 
 class CropPointCloud(Transform):

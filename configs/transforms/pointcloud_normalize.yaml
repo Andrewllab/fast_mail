@@ -1,0 +1,5 @@
+# name: normalize_pointcloud
+_target_: transforms.pointcloud_normalize.NormalizePointCloud
+_partial_: True
+center: null
+scale: null

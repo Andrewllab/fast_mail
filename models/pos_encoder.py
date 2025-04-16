@@ -66,22 +66,20 @@ class SinusoidalCartesianPosEncoder(nn.Module):
         # exponents from 0.0 to 1.0
         exponents = torch.arange(half_dim) / (half_dim - 1)
 
-        # equivalent to this, but avoids division
-        # frequencies = 1 / torch.pow(10000, exponents)
-        frequencies = torch.exp(-math.log(temperature) * exponents)
+        # frequencies increase exponentially instead of decreasing
+        frequencies = torch.pow(temperature, exponents)
+
+        # rescale frequencies so that input of x = scale results in an encoding
+        # of 1.0 for the sin component of the lowest frequency
+        frequencies = frequencies * (torch.pi / 2) / scale
 
         # unsqueeze to allow broadcasting input position with all frequencies
         self.register_buffer("frequencies", frequencies.unsqueeze(dim=0))
-
-        # adjust the scale so that coordinates of 1 are the maxima of sin/cos
-        self.scale = scale * 2 * torch.pi
 
     def forward(self, pos: torch.Tensor) -> torch.Tensor:
         pos_emb = torch.zeros(
             *pos.shape[:-1], self.embed_dim, dtype=pos.dtype, device=pos.device
         )
-
-        pos = pos * self.scale
 
         # multiply each coordinate by each frequency using broadcasting, then flatten
         arg = pos.unsqueeze(-1) * self.frequencies

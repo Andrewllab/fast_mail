@@ -10,6 +10,8 @@ defaults:
 
   - /transforms@data.gpu_batch_transforms.t2-2_voxel_downsample: pointcloud_downsample_voxel
 
+  # - /transforms@data.gpu_batch_transforms.t4_normalize: pointcloud_normalize
+
   # patch the pointcloud and tokenize the patches
   - /transforms@agent.obs_encoder.t5_tokenizer: pointpatchrl_tokenizer
   # add tokens for the robot state

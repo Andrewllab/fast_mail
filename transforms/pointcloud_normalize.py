@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import torch
+from torch_geometric.data import Data
 
 from environments.specs import DataSpecs, PointCloudSpec
 from transforms.base_transform import KeyMapping, Transform
-
-if TYPE_CHECKING:
-    from torch_geometric.data import Data
 
 
 class NormalizePointCloud(Transform):
@@ -14,10 +12,13 @@ class NormalizePointCloud(Transform):
         self,
         specs: DataSpecs,
         center: tuple[float, float, float] | None = None,
-        scale: tuple[float, float, float] | None = None,
+        scale: float | None = None,
     ) -> None:
         self.center = center
         self.scale = scale
+
+        if center is None or scale is None:
+            raise NotImplementedError("Both center and scale must be provided.")
 
         self._pcd_keys = [
             key for key, spec in specs.obs.items() if isinstance(spec, PointCloudSpec)
@@ -35,25 +36,30 @@ class NormalizePointCloud(Transform):
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def __call__(self, pcd: Data) -> Data:
-        assert pcd.pos is not None
+    def _call_one(self, nt_data: NonTensorData) -> Data:
+        data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
+
+        assert data.pos is not None
 
         if self.center is None:
+            # TODO: compute center for each point cloud in batch
             # center the point cloud at the origin
-            center = pcd.pos[:, :3].mean(dim=-2, keepdim=True)
-        pcd.pos[...] -= center
+            center = data.pos[:, :3].mean(dim=-2, keepdim=True)
+        else:
+            center = torch.tensor(self.center, device=data.pos.device)
+        data.pos[...] -= center
 
         if self.scale is None:
             # scale such that the maximum coordinate (in any dimension) is 1
             # this is equivalent to scaling the point cloud to fit in a unit cube
             max = (
-                pcd.pos.abs()
+                data.pos.abs()
                 # can you believe that max does not take a tuple as a dim argument?
                 .flatten(start_dim=-2)
                 .max(dim=-1, keepdim=True)
                 .values.unsqueeze(-1)
             )
             scale = 0.999999 / max
-        pcd.pos[...] *= scale
+        data.pos[...] *= scale
 
-        return pcd
+        return data

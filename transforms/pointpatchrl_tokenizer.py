@@ -140,23 +140,25 @@ class PointPatchTokenizer(Transform, nn.Module):
         patch_pos = patch_pos.view(-1, self.patch_size, 3)  # patch_pos -> (B*C, G, 3)
 
         # convert to relative coordinates around patch center
-        patch_pos = patch_pos - center_points.unsqueeze(1)
+        # features: (B*C, G, 3)
+        features = patch_pos - center_points.unsqueeze(1)
 
         if color is not None:
             # concatenate color as an additional feature to the position
             color = color[patch_idxs]  # color -> (B*C*G, 3)
             color = color.view(-1, self.patch_size, 3)  # color -> (B*C, G, 3)
-            color = color.to(dtype=patch_pos.dtype)
-            patch_pos = torch.cat([patch_pos, color], dim=-1)
+            color = color.to(dtype=features.dtype)
+            features = torch.cat([features, color], dim=-1)
 
-        features = self.mlp_1(patch_pos)  # features: (B*C, G, D)
+        features = self.mlp_1(features)  # features -> (B*C, G, D)
 
         # max pool over each patch
         aggr_features = torch.max(features, dim=1, keepdim=True).values
 
         # add the neighborhood max to the original features for each node
+        # features -> (B*C, G, 2*D)
         aggr_features = aggr_features.expand(-1, self.patch_size, -1)
-        features = torch.cat([aggr_features, features], dim=2)
+        features = torch.cat([aggr_features, features], dim=-1)
 
         features = self.mlp_2(features)  # features -> (B*C, G, D)
 
