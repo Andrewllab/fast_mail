@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import einops
 import torch.nn as nn
 
-from models.pos_encoder import SinusoidalPosEncoder
+from models.pos_encoder import SinusoidalTokenPosEncoder
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -16,7 +16,7 @@ class BESO_SigmaEncoder(nn.Module):
         super().__init__()
 
         self.sigma_emb = nn.Sequential(
-            SinusoidalPosEncoder(embed_dim),
+            SinusoidalTokenPosEncoder(embed_dim),
             nn.Linear(embed_dim, embed_dim * 2),
             nn.Mish(),
             nn.Linear(embed_dim * 2, embed_dim),
@@ -33,7 +33,7 @@ class DDPM_SigmaEncoder(nn.Module):
     def __init__(self, embed_dim: int):
         super().__init__()
         self.sigma_emb = nn.Sequential(
-            SinusoidalPosEncoder(embed_dim),
+            SinusoidalTokenPosEncoder(embed_dim),
             nn.Linear(embed_dim, embed_dim * 2),
             nn.Mish(),
             nn.Linear(embed_dim * 2, embed_dim),

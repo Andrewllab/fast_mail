@@ -1,5 +1,5 @@
 defaults:
-  - backbone@decoder: transformer
+  - backbone@decoder: new_transformer
   - time_encoder: learned
   - sigma_encoder: beso
   - action_head: linear

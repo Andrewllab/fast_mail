@@ -13,7 +13,11 @@ def collate_tensor_dict(batch: list[TensorDict], *, collate_fn_map) -> TensorDic
     # tensordict.lazy_stack always produces a NonTensorStack when stacking
     # NonTensorData, and may be more performant
     # TODO: is this really better than torch.stack?
-    stacked: TensorDict = tensordict.lazy_stack(batch, dim=0).contiguous()
+    stacked: TensorDict = tensordict.stack(batch, dim=0)
+
+    # recompute batch size with only a single batch dimension, since tensordict
+    # eagerly increases the number of batch dims when stacking
+    stacked = stacked.auto_batch_size_(batch_dims=1)
 
     for key, value in stacked.items(include_nested=True, leaves_only=True):
         # when NonTensorStack is accessed, it returns its contents in a list

@@ -11,6 +11,7 @@ from torch.nn import Module
 
 from environments.specs import DataSpecs, EmbedSpec
 from transforms.base_transform import KeyMapping, Transform
+from utils.nested import cat_nested
 
 log = logging.getLogger(__name__)
 
@@ -43,8 +44,10 @@ class RobotStateEncoder(Transform, nn.Module):
             # if embedding sequence has fixed length, increase length to account for state tokens
             embed_spec = obs_specs["embed"]
             assert isinstance(embed_spec, EmbedSpec)
-            assert len(embed_spec.shape) == 3
-            assert embed_spec.shape[0] == T
+
+            if len(embed_spec.shape) == 3:
+                # if we have a time dimension, it must match
+                assert embed_spec.shape[0] == T
 
             if embed_spec.fixed_shape:
                 assert embed_spec.shape[1] is not None
@@ -89,9 +92,13 @@ class RobotStateEncoder(Transform, nn.Module):
         # (B, T, D) -> (B, T, N, D)
         state_emb = state_emb.unsqueeze(-2)
 
-        if obs_embed is not None:
-            # concatenate along N dimension of embedding, keeping tokens from the same time step together
-            obs_embed = torch.cat([obs_embed, state_emb], dim=-2)
-            return obs_embed
-        else:
+        if obs_embed is None:
             return state_emb
+
+        if obs_embed.is_nested:
+            # the time dimension needs to be 1
+            state_emb = state_emb.squeeze(1)
+            return cat_nested([obs_embed, state_emb], dim=1)
+
+        # concatenate along N dimension of embedding, keeping tokens from the same time step together
+        return torch.cat([obs_embed, state_emb], dim=-2)

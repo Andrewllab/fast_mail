@@ -24,7 +24,8 @@ trainer:
   max_epochs: 1
   accelerator: gpu  # run using gpu to test handling of device
   devices: 1 # debuggers don't like multiprocessing
-  detect_anomaly: true # raise exception if NaN or +/-inf is detected in any tensor
+  # # disabled `detect_anomaly` because it's not compatible with jagged tensor
+  # detect_anomaly: true # raise exception if NaN or +/-inf is detected in any tensor
   fast_dev_run: true
 
 data:

@@ -15,6 +15,11 @@ mlp_2:
   _args_: ["${prod:2,${...mlp_1.out_features}}"]  # in_features must be 2 * out_features of mlp_1
   hidden_sizes: [512]
   nonlinearity: ReLU
+positional_encoder:
+  _target_: models.pos_encoder.SinusoidalCartesianPosEncoder
+  _partial_: True  # requires embed_dim
+  temperature: 10000
+  scale: 1.0
 patch_size: 32
 oversampling_ratio: 4.0
 fps_random_start: True

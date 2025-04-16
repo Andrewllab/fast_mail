@@ -24,18 +24,19 @@ layer_module:
     _target_: torch.nn.Dropout
     _partial_: True
     p: 0.1
-  mlp1_module:
-    _target_: models.transformer.SwishGLU
-    _partial_: True
-  activation:
-    _target_: torch.nn.Identity
-    _partial_: True
+  # not yet compatible with jagged tensors
   # mlp1_module:
-  #   _target_: torch.nn.Linear
+  #   _target_: models.transformer.SwishGLU
   #   _partial_: True
   # activation:
-  #   _target_: torch.nn.ReLU
+  #   _target_: torch.nn.Identity
   #   _partial_: True
+  mlp1_module:
+    _target_: torch.nn.Linear
+    _partial_: True
+  activation:
+    _target_: torch.nn.ReLU
+    _partial_: True
   mlp_dropout_module:
     _target_: torch.nn.Dropout
     _partial_: True

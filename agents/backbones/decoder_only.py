@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 import torch
 import torch.nn as nn
+from torch import Tensor
+from torch.nn import Module
 
-if TYPE_CHECKING:
-    from torch import Tensor
-    from torch.nn import Module
-
-    from environments.specs import DataSpecs
+from environments.specs import DataSpecs
+from utils.nested import cat_nested
 
 log = logging.getLogger(__name__)
 
@@ -138,6 +137,7 @@ class DecoderOnlyNoise(nn.Module):
         action_head: Callable[[int, int], Module],
         token_dim: int,
         dropout_prob: float,
+        time_encode_obs: bool = True,
     ):
         super().__init__()
 
@@ -152,7 +152,7 @@ class DecoderOnlyNoise(nn.Module):
         # we use time to refer to the position in the sequence of tokens
         # this often corresponds to real time, but not always, e.g. with goal tokens
         if time_encoder is not None:
-            if specs.obs_embed_seq_len is not None:
+            if specs.obs_embed_seq_len is not None and time_encode_obs:
                 self.obs_time_encoder = time_encoder(specs.obs_embed_seq_len, token_dim)
             else:
                 self.obs_time_encoder = None
@@ -164,9 +164,9 @@ class DecoderOnlyNoise(nn.Module):
                     specs.goal_embed_seq_len, token_dim
                 )
         else:
-            self.obs_time_encoder = time_encoder
-            self.action_time_encoder = time_encoder
-            self.goal_time_encoder = time_encoder
+            self.obs_time_encoder = None
+            self.action_time_encoder = None
+            self.goal_time_encoder = None
 
         # linear embedding for the state
         self.state_encoder = nn.Linear(specs.obs_embed_dim, token_dim)
@@ -197,7 +197,7 @@ class DecoderOnlyNoise(nn.Module):
             torch.nn.init.ones_(module.weight)
 
     def forward(
-        self, states: Tensor, actions: Tensor, goal: Tensor | None, sigma: Tensor
+        self, obs_embed: Tensor, actions: Tensor, goal: Tensor | None, sigma: Tensor
     ) -> Tensor:
 
         input_seq = []
@@ -213,15 +213,17 @@ class DecoderOnlyNoise(nn.Module):
                 goal_embed += self.goal_time_encoder(indices)
             input_seq.append(self.drop(goal_embed))
 
-        # states: [B,T,N,D] -> [B,T*N,D]
-        # state_embed: [B,T*N,D]
-        state_embed = self.state_encoder(states.flatten(start_dim=1, end_dim=2))
+        if not obs_embed.is_nested:
+            # obs_embed: [B,T,N,D] -> [B,T*N,D]
+            obs_embed = obs_embed.flatten(start_dim=1, end_dim=2)
+
         if self.obs_time_encoder is not None:
+            assert not obs_embed.is_nested
             indices = torch.arange(
-                state_embed.shape[1], dtype=torch.long, device=state_embed.device
+                obs_embed.shape[1], dtype=torch.long, device=obs_embed.device
             )
-            state_embed += self.obs_time_encoder(indices)
-        input_seq.append(self.drop(state_embed))
+            obs_embed += self.obs_time_encoder(indices)
+        input_seq.append(self.drop(obs_embed))
 
         action_embed = self.action_encoder(actions)
         if self.action_time_encoder is not None:
@@ -231,10 +233,17 @@ class DecoderOnlyNoise(nn.Module):
             action_embed += self.action_time_encoder(indices)
         input_seq.append(self.drop(action_embed))
 
-        input_seq = torch.cat(input_seq, dim=1)
+        input_seq = cat_nested(input_seq, dim=1)
 
         output = self.decoder(input_seq)
 
-        pred_actions = self.action_head(output[:, -self.action_seq_len :])
+        # retrieve the decoded action tokens from the sequence
+        if output.is_nested:
+            action_tokens = [out[-self.action_seq_len :] for out in output.unbind()]
+            action_tokens = torch.stack(action_tokens, dim=0)
+        else:
+            action_tokens = output[:, -self.action_seq_len :]
+
+        pred_actions = self.action_head(action_tokens)
 
         return pred_actions

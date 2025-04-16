@@ -50,7 +50,7 @@ class MultiHeadAttention(nn.Module):
         dropout: float = 0.0,
         is_causal: bool = False,
         bias: bool = False,
-        qk_norm: bool = False,
+        qk_norm_module: type[nn.Module] | None = None,
         device=None,
         dtype=None,
     ):
@@ -71,9 +71,9 @@ class MultiHeadAttention(nn.Module):
         self.E_head = E_total // n_heads
         self.bias = bias
 
-        if qk_norm:
-            self.q_norm = RMSNorm(self.E_head, eps=1e-6)
-            self.k_norm = RMSNorm(self.E_head, eps=1e-6)
+        if qk_norm_module is not None:
+            self.q_norm = qk_norm_module(self.E_head)
+            self.k_norm = qk_norm_module(self.E_head)
         else:
             self.q_norm = self.k_norm = nn.Identity()
 
