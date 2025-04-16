@@ -1,0 +1,6 @@
+# name: crop_pointcloud
+_target_: transforms.pointcloud_crop.CropPointCloud
+_partial_: True
+x_range: ???
+y_range: ???
+z_range: ???

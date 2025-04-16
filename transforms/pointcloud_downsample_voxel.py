@@ -2,6 +2,7 @@ import re
 from typing import Sequence
 
 import torch
+from tensordict import NonTensorData
 from torch import Tensor
 from torch_geometric.data import Data
 from torch_geometric.nn import voxel_grid
@@ -65,7 +66,9 @@ class GridSamplePointCloud(Transform):
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def __call__(self, data: Data) -> Data:
+    def _call_one(self, nt_data: NonTensorData) -> Data:
+        data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
+
         num_nodes = data.num_nodes
 
         assert data.pos is not None

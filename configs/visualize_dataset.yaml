@@ -7,7 +7,7 @@ defaults:
   - paths: default
   - hydra: default
   - experiment: pointpatchrl
-  - transforms@agent.obs_encoder.t9_render: render_pointclouds
+  - transforms@agent.obs_encoder.t9_render: render_pointcloud
   - _self_
   - platform: default
   - optional local: default
@@ -26,6 +26,9 @@ data:
     t1-3_to_pcd:
       color: True
   num_workers: 0
+
+agent:
+  fps: 10
 
 trainer:
   accelerator: gpu

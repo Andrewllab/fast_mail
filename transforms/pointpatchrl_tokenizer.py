@@ -146,6 +146,7 @@ class PointPatchTokenizer(Transform, nn.Module):
             # concatenate color as an additional feature to the position
             color = color[patch_idxs]  # color -> (B*C*G, 3)
             color = color.view(-1, self.patch_size, 3)  # color -> (B*C, G, 3)
+            color = color.to(dtype=patch_pos.dtype)
             patch_pos = torch.cat([patch_pos, color], dim=-1)
 
         features = self.mlp_1(patch_pos)  # features: (B*C, G, D)

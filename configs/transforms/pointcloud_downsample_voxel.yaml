@@ -1,0 +1,4 @@
+# name: voxel_downsample_pointcloud
+_target_: transforms.pointcloud_downsample_voxel.GridSamplePointCloud
+_partial_: True
+size: ???

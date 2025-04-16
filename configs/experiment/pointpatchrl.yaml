@@ -6,11 +6,9 @@ defaults:
 
   - /transforms@data.gpu_batch_transforms.t1-3_to_pcd: to_pointcloud
   
-  # - /transforms@data.gpu_batch_transforms.t2-1_crop: pointcloud_crop
+  - /transforms@data.gpu_batch_transforms.t2-1_crop: pointcloud_crop
 
-  # - /transforms@data.gpu_batch_transforms.t2-2_remove_table: pointcloud_remove_plane
-
-  # - /transforms@data.gpu_batch_transforms.t2-3_voxel_downsample: pointcloud_voxel_downsample
+  - /transforms@data.gpu_batch_transforms.t2-2_voxel_downsample: pointcloud_downsample_voxel
 
   # patch the pointcloud and tokenize the patches
   - /transforms@agent.obs_encoder.t5_tokenizer: pointpatchrl_tokenizer
@@ -20,11 +18,23 @@ defaults:
 agent:
   obs_encoder:
     embed_dim: 256
+    t5_tokenizer:
+      patch_size: 16
+      oversampling_ratio: 4.0
 data:
-  batch_size: 4  # TODO: set as factor of platform.batch_size
+  batch_size: 16  # TODO: set as factor of platform.batch_size
   gpu_batch_transforms:
     t1-2_resize:
-      shape: 64
+      shape: 128
+    t2-1_crop:
+      x_range: [0.1, 1.0]  # crop the robot base out of the observation
+      y_range: [-0.4, 0.4]
+      z_range: [0.007, 0.4]  # just high enough to remove the table
+    t2-2_voxel_downsample:
+      size: 0.006
+  dataset:
+    preprocessed_dir: ${paths.preprocessed_dir}/dataset_11.04.25/pointpatchrl # pointpatchrl_nosubsample
+    # overwrite_preprocessed: True
 
 logger:
   wandb:

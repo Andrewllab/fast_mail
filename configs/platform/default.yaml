@@ -13,4 +13,4 @@ torch:
 trainer:
   accelerator: gpu
   devices: auto
-  # precision: 16-true
+  # precision: bf16

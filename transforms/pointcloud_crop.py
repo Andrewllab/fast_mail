@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Sequence
 
 import torch
+from tensordict import NonTensorData
 
 from transforms.base_transform import KeyMapping, Transform
 from utils.pyg import apply_mask
@@ -29,11 +30,15 @@ class CropPointCloud(Transform):
     def __init__(
         self,
         specs: DataSpecs,
-        x_range: tuple[float, float],
-        y_range: tuple[float, float],
-        z_range: tuple[float, float],
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
+        z_range: tuple[float, float] | None = None,
         pcd_keys: str | Sequence[str] = "pcd",
     ):
+        x_range = x_range or (-torch.inf, torch.inf)
+        y_range = y_range or (-torch.inf, torch.inf)
+        z_range = z_range or (-torch.inf, torch.inf)
+
         self.min_bound = [x_range[0], y_range[0], z_range[0]]
         self.max_bound = [x_range[1], y_range[1], z_range[1]]
 
@@ -55,14 +60,16 @@ class CropPointCloud(Transform):
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def __call__(self, data: Data) -> Data:
+    def _call_one(self, nt_data: NonTensorData) -> Data:
+        data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
+
         pos = data.pos
         assert pos is not None
 
         min_bound = torch.tensor(self.min_bound, device=pos.device)
         max_bound = torch.tensor(self.max_bound, device=pos.device)
 
-        mask = ((pos >= [min_bound]) & (pos <= max_bound)).all(dim=-2)
+        mask = ((pos >= min_bound) & (pos <= max_bound)).all(dim=-1)
 
         data = apply_mask(data, mask)
 

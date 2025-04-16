@@ -64,7 +64,7 @@ class PinholeCameraIntrinsic:
         return self._inverse_matrix
 
     def resize(self, new_shape: tuple[int, int]) -> PinholeCameraIntrinsic:
-        new_width, new_height = new_shape
+        new_height, new_width = new_shape
         scale_x = new_width / self.width
         scale_y = new_height / self.height
 
