@@ -1,13 +1,15 @@
+import dataclasses
 import os
 from collections import namedtuple
 
 import numpy as np
 import tensorrt as trt
 import torch
+from tensordict import TensorDict
 from torch import Tensor
 
-from environments.specs import DataSpecs, StereoCameraSpec
-from transforms.base_transform import KeyMapping, Transform
+from environments.specs import CameraSpec, DataSpecs, DepthStream
+from transforms.base_transform import Transform
 from utils.FoundationStereo.utils import InputPadder
 
 TRT_LOGGER = trt.Logger(trt.Logger.INFO)
@@ -27,13 +29,34 @@ class FoundationStereo(Transform):
         self._input_specs = {
             key: spec
             for key, spec in specs.obs.items()
-            if isinstance(spec, StereoCameraSpec)
+            if isinstance(spec, CameraSpec)
+            and "left" in spec.streams
+            and "right" in spec.streams
         }
 
-        self._padders = {
-            key: InputPadder(spec.shape[-2:], divis_by=32, force_square=False)
-            for key, spec in self._input_specs.items()
-        }
+        # instantiate functions to pad the inputs
+        # create a modified specs object for the output
+        self._padders = {}
+        obs_specs = dict(specs.obs)  # copy obs specs for local modification
+        for key, spec in self._input_specs.items():
+            left = spec.streams["left"]
+            right = spec.streams["right"]
+            assert (
+                left.shape == right.shape
+            ), "Left and right images must have the same shape"
+            self._padders[key] = InputPadder(
+                left.height_width, divis_by=32, force_square=False
+            )
+
+            streams = dict(spec.streams)  # copy streams for local modification
+            depth_stream = DepthStream(
+                height=left.height, width=left.width, intrinsics=left.intrinsics
+            )
+            # update stream with resized shape and modified camera intrinsics
+            streams["depth"] = depth_stream
+
+            obs_specs[key] = dataclasses.replace(spec, streams=streams)
+        self._output_specs = specs.replace(obs=obs_specs)
 
         # Load tensorRT engine
         self.device = torch.device("cuda")  # TODO: avoid hardcoding this
@@ -42,91 +65,77 @@ class FoundationStereo(Transform):
         self.engine = load_engine(self.engine_path)
         self.bindings = allocate_bindings(self.engine, self.device)
 
-        self._output_specs = ...
-
-        self._key_iter = iter(self._input_specs)
-        self._key = next(self._key_iter)
-
-    @property
-    def key_mappings(self) -> list[KeyMapping]:
-        return [
-            KeyMapping(
-                in_keys=[("obs", key, "left"), ("obs", key, "left")],
-                out_keys=[("obs", f"{key}_depth")],
-            )
-            for key in self._input_specs
-        ]
-
     @property
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def __call__(self, left: Tensor, right: Tensor) -> Tensor:
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
 
-        spec = self._input_specs[self.key]
+        for key, spec in self._input_specs.items():
+            left_stream = spec.streams["left"]
 
-        assert (
-            left.shape == right.shape
-        ), "Left and right images must have the same shape"
+            left = tensordict["obs", key, "left"]
+            right = tensordict["obs", key, "right"]
 
-        # flatten batch dimensions
-        if spec.type == "ir":
-            # expand intensity images to 3 channels (in torch order)
-            leading_dims = left.shape[:-2]
-            left = left.flatten(end_dim=-3)  # inclusive
-            right = right.flatten(end_dim=-3)
-        elif spec.type == "rgb":
-            leading_dims = left.shape[:-3]
-            left = left.flatten(end_dim=-4)  # inclusive
-            right = right.flatten(end_dim=-4)
+            assert (
+                left.shape == right.shape
+            ), "Left and right images must have the same shape"
 
-        # expand intensity images to 3 channels (in torch order)
-        if spec.type == "ir":
-            left = left.unsqueeze(-3).expand(-1, 3, -1, -1)
-            right = right.unsqueeze(-3).expand(-1, 3, -1, -1)
+            n_image_dims = left_stream.n_image_dims
+            leading_dims = left.shape[:-n_image_dims]
 
-        if spec.type == "rgb" and spec.channel_order == "HWC":
-            left = left.permute(0, 3, 1, 2)
-            right = right.permute(0, 3, 1, 2)
+            # flatten batch dimensions
+            left = left.flatten(end_dim=-n_image_dims - 1)  # inclusive
+            right = right.flatten(end_dim=-n_image_dims - 1)
 
-        # as of this point, all images are in the shape (B, 3, H, W)
-        assert left.shape[-3] == right.shape[-3] == 3, "RGB images must have 3 channels"
-        _, C, H, W = left.shape
+            if left_stream.channels is None:
+                # expand intensity images to 3 channels (in torch order)
+                left = left.unsqueeze(-3).expand(-1, 3, -1, -1)
+                right = right.unsqueeze(-3).expand(-1, 3, -1, -1)
 
-        # pad images dimensions to be divisible by 32
-        padder = self._padders[self.key]
-        left, right = padder.pad(left, right)
+            if left_stream.channel_order == "HWC":
+                # move channels to the end (in torch order)
+                left = torch.movedim(left, -1, -3)
+                right = torch.movedim(right, -1, -3)
 
-        # foundation stereo
-        with torch.amp.autocast("cuda", enabled=True):
-            run_inference(self.engine, self.context, self.bindings)
+            # as of this point, all images are in the shape (B, 3, H, W)
+            assert (
+                left.shape[-3] == right.shape[-3] == 3
+            ), "RGB images must have 3 channels"
+            _, C, H, W = left.shape
 
-        output_binding = [
-            name
-            for name in self.bindings
-            if self.engine.get_tensor_mode(name) == trt.TensorIOMode.OUTPUT
-        ][0]
-        output = self.bindings[output_binding].data
-        disp = output.reshape(self.bindings[output_binding].shape)
+            # pad images dimensions to be divisible by 32
+            padder = self._padders[key]
+            left, right = padder.pad(left, right)
 
-        disp = padder.unpad(disp.float())
-        disp = disp.data.reshape(H, W)
+            # foundation stereo
+            with torch.amp.autocast("cuda", enabled=True):
+                run_inference(self.engine, self.context, self.bindings)
 
-        if self.remove_invisible:
-            yy, xx = torch.meshgrid(
-                torch.arange(disp.shape[0]), torch.arange(disp.shape[1]), indexing="ij"
-            )
-            us_right = xx - disp
-            invalid = us_right < 0
-            disp[invalid] = np.inf
+            output_binding = [
+                name
+                for name in self.bindings
+                if self.engine.get_tensor_mode(name) == trt.TensorIOMode.OUTPUT
+            ][0]
+            output = self.bindings[output_binding].data
+            disp = output.reshape(self.bindings[output_binding].shape)
 
-        try:
-            self.key = next(self._key_iter)
-        except StopIteration:
-            self._key_iter = iter(self._input_specs)
-            self.key = next(self._key_iter)
+            disp = padder.unpad(disp.float())
+            disp = disp.data.reshape(H, W)
 
-        return disp
+            if self.remove_invisible:
+                yy, xx = torch.meshgrid(
+                    torch.arange(disp.shape[0]),
+                    torch.arange(disp.shape[1]),
+                    indexing="ij",
+                )
+                us_right = xx - disp
+                invalid = us_right < 0
+                disp[invalid] = np.inf
+
+            tensordict["obs", key, "depth"] = disp
+
+        return tensordict
 
 
 def load_engine(engine_path: str | os.PathLike) -> trt.ICudaEngine:

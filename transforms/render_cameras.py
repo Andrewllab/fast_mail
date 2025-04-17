@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import Literal, Sequence
+from typing import Sequence
 
 import matplotlib.cm as cm
 import numpy as np
@@ -9,7 +9,13 @@ import pygame
 import torch
 from tensordict import TensorDict
 
-from environments.specs import CameraSpec, DataSpecs, DepthCameraSpec, RGBCameraSpec
+from environments.specs import (
+    CameraSpec,
+    ChannelOrderType,
+    DataSpecs,
+    DepthStream,
+    RGBStream,
+)
 from transforms.base_transform import Transform
 
 
@@ -19,24 +25,19 @@ class RenderCameras(Transform):
             key: spec for key, spec in specs.obs.items() if isinstance(spec, CameraSpec)
         }
 
-        first_spec = next(iter(input_specs.values()))
-        if isinstance(first_spec, RGBCameraSpec) and first_spec.channel_order == "HWC":
-            H, W = first_spec.shape[-3:-1]
-        else:
-            H, W = first_spec.shape[-2:]
-
+        H, W = None, None
         n_images = 0
         for key, spec in input_specs.items():
-            n_images += len(spec.intensity_subkeys)
-            if isinstance(spec, RGBCameraSpec):
-                n_images += len(spec.rgb_subkeys)
-            if isinstance(spec, DepthCameraSpec):
-                n_images += len(spec.depth_subkeys)
+            for name, stream in spec.streams.items():
+                if H is None or W is None:
+                    H, W = stream.height_width
+                else:
+                    assert (H, W) == stream.height_width
+            n_images += len(spec.streams)
 
-            if isinstance(spec, RGBCameraSpec) and spec.channel_order == "HWC":
-                assert (H, W) == spec.shape[-3:-1]
-            else:
-                assert (H, W) == spec.shape[-2:]
+        if n_images == 0:
+            raise ValueError("No camera specs found.")
+        assert H is not None and W is not None
 
         self.tiled_height, self.tiled_width = find_tiling(n_images)
 
@@ -46,7 +47,6 @@ class RenderCameras(Transform):
         # pygame.display.set_caption(f"obs.{key}")
         self.screen.fill((0, 0, 0))  # Clear the screen
 
-        self._key, self._spec = key, spec
         self._input_specs = input_specs
         self._specs = specs
 
@@ -62,34 +62,19 @@ class RenderCameras(Transform):
 
         images = []
         for key, spec in self._input_specs.items():
-            if isinstance(spec, RGBCameraSpec):
-                for subkey in spec.rgb_subkeys:
-                    nested_key = ("obs", key)
-                    if subkey is not None:
-                        nested_key += (subkey,)
-                    image = tensordict[nested_key]
-                    image = image[0, -1]  # remove batch and time dimensions
-                    image = rgb_tensor_to_np(image, spec.channel_order)
-                    images.append(image)
-
-            for subkey in spec.intensity_subkeys:
-                nested_key = ("obs", key)
-                if subkey is not None:
-                    nested_key += (subkey,)
-                image = tensordict[nested_key]
+            camera = tensordict["obs", key]
+            for name, stream in spec.streams.items():
+                image = camera[name]
                 image = image[0, -1]  # remove batch and time dimensions
-                image = intensity_tensor_to_np(image)
-                images.append(image)
-
-            if isinstance(spec, DepthCameraSpec):
-                for subkey in spec.depth_subkeys:
-                    nested_key = ("obs", key)
-                    if subkey is not None:
-                        nested_key += (subkey,)
-                    image = tensordict[nested_key]
-                    image = image[0, -1]  # remove batch and time dimensions
+                if isinstance(stream, RGBStream):
+                    image = rgb_tensor_to_np(image, stream.channel_order)
+                elif isinstance(stream, DepthStream):
                     image = depth_tensor_to_np(image)
-                    images.append(image)
+                else:
+                    assert stream.channels is None
+                    image = intensity_tensor_to_np(image)
+
+                images.append(image)
 
         image = tile_images(images, self.tiled_height, self.tiled_width, vertical=True)
 
@@ -134,7 +119,7 @@ def find_tiling(n_images: int) -> tuple[int, int]:
 
 
 def rgb_tensor_to_np(
-    image: torch.Tensor, channel_order: Literal["HWC", "CHW"]
+    image: torch.Tensor, channel_order: ChannelOrderType
 ) -> np.ndarray:
     """Convert a torch tensor to a numpy array.
     The tensor is assumed to be in the format (C, H, W) or (H, W, C).

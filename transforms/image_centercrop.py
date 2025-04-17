@@ -6,7 +6,7 @@ import torch
 import torchvision.transforms.functional as F
 from tensordict import TensorDict
 
-from environments.specs import CameraSpec, DataSpecs, DepthCameraSpec, RGBCameraSpec
+from environments.specs import CameraSpec, DataSpecs
 from transforms.base_transform import Transform
 
 
@@ -17,6 +17,15 @@ class CenterCropImage(Transform):
         shape: int | tuple[int, int] | None = None,
     ) -> None:
 
+        # compute new shape of image
+        if isinstance(shape, int):
+            new_shape = (shape, shape)
+        elif isinstance(shape, tuple):
+            # if shape is a tuple, it is the new shape
+            new_shape = shape
+        else:
+            raise ValueError("Shape must be an int or a tuple of ints.")
+
         # find the specs that this transform acts on
         input_specs = {
             key: spec for key, spec in specs.obs.items() if isinstance(spec, CameraSpec)
@@ -25,33 +34,15 @@ class CenterCropImage(Transform):
         # create a modified specs object for the output
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         for key, spec in input_specs.items():
-            if isinstance(spec, RGBCameraSpec) and spec.channel_order != "CHW":
-                spec = dataclasses.replace(
-                    spec,
-                    shape=spec.shape[:-3] + spec.shape[-1:] + spec.shape[-3:-1],
-                    channel_order="CHW",
-                )
+            streams = dict(spec.streams)  # copy streams for local modification
+            for name, stream in streams.items():
+                stream = stream.reorder_channels("CHW")
+                stream = stream.center_crop(new_shape)
 
-            # compute new shape of image
-            if isinstance(shape, int):
-                new_shape = (shape, shape)
-            elif isinstance(shape, tuple):
-                # if shape is a tuple, it is the new shape
-                new_shape = shape
-            else:
-                raise ValueError("Shape must be an int or a tuple of ints.")
+                # update stream with resized shape and modified camera intrinsics
+                streams[name] = stream
 
-            # update specs with resized shape and modified camera intrinsics
-            spec = dataclasses.replace(
-                spec,
-                shape=(spec.shape[:-2] + new_shape),
-            )
-            if spec.intrinsics is not None:
-                spec = dataclasses.replace(
-                    spec,
-                    intrinsics=spec.intrinsics.center_crop(new_shape),
-                )
-            obs_specs[key] = spec
+            obs_specs[key] = dataclasses.replace(spec, streams=streams)
         self._output_specs = specs.replace(obs=obs_specs)
 
     @property
@@ -64,32 +55,21 @@ class CenterCropImage(Transform):
             if not isinstance(spec, CameraSpec):
                 continue
 
-            images = [(subkey, CameraSpec) for subkey in spec.intensity_subkeys]
-            if isinstance(spec, RGBCameraSpec):
-                images += [(subkey, RGBCameraSpec) for subkey in spec.rgb_subkeys]
-            if isinstance(spec, DepthCameraSpec):
-                images += [(subkey, DepthCameraSpec) for subkey in spec.depth_subkeys]
+            images = tensordict["obs", key]
+            for name, stream in spec.streams.items():
 
-            for subkey, image_type in images:
-                nested_key = ("obs", key)
-                if subkey is not None:
-                    nested_key += (subkey,)
-                image = tensordict[nested_key]
+                image = images[name]
 
-                if image_type is RGBCameraSpec:
-                    assert isinstance(spec, RGBCameraSpec)
-                    if spec.channel_order == "HWC":
-                        image = torch.movedim(image, -1, -3)
+                n_image_dims = stream.n_image_dims
+                leading_dims = image.shape[:-n_image_dims]
+                image = torch.flatten(image, end_dim=-n_image_dims - 1)
 
-                    leading_dims = image.shape[:-3]
-                    image = torch.flatten(image, end_dim=-4)
-                else:
-                    leading_dims = image.shape[:-2]
-                    image = torch.flatten(image, end_dim=-3)
+                if stream.channel_order == "HWC":
+                    image = torch.movedim(image, -1, -3)
 
-                image = F.center_crop(image, spec.shape[-2:])
+                image = F.center_crop(image, stream.height_width)
                 image = torch.unflatten(image, dim=0, sizes=leading_dims)
 
-                tensordict[nested_key] = image
+                images[name] = image
 
         return tensordict

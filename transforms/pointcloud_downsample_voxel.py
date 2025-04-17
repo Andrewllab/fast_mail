@@ -75,6 +75,7 @@ class GridSamplePointCloud(Transform):
         c = voxel_grid(data.pos, self.size, data.batch, self.start, self.end)
         c, perm = consecutive_cluster(c)
 
+        default_dtype = torch.get_default_dtype()
         for key, item in data.items():
             if bool(re.search("edge", key)):
                 raise ValueError(
@@ -88,6 +89,10 @@ class GridSamplePointCloud(Transform):
                     data[key] = item.argmax(dim=-1)
                 elif key == "batch":
                     data[key] = item[perm]
+                elif key == "x":
+                    if item.dtype == torch.uint8:
+                        item = item.to(default_dtype) / 255.0
+                    data[key] = scatter(item, c, dim=0, reduce="mean")
                 else:
                     data[key] = scatter(item, c, dim=0, reduce="mean")
 

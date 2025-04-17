@@ -8,7 +8,7 @@ import torch
 from torch import Tensor
 from torch_geometric.data import Batch, Data
 
-from environments.specs import DepthCameraSpec, PointCloudSpec, RGBCameraSpec
+from environments.specs import CameraSpec, DepthStream, PointCloudSpec, RGBStream
 from transforms.base_transform import Transform
 from utils.math import transform_pointmap, unproject_depth
 
@@ -50,47 +50,51 @@ class ToPointCloud(Transform):
         depth_specs = {
             key: spec
             for key, spec in specs.obs.items()
-            if isinstance(spec, DepthCameraSpec)
+            if isinstance(spec, CameraSpec)
+            and any(isinstance(stream, DepthStream) for stream in spec.streams.values())
         }
+
+        multiview = len(depth_specs) > 1
+
         for key, spec in depth_specs.items():
-            if spec.intrinsics is None:
+            name, depth_stream = next(
+                (name, stream)
+                for name, stream in spec.streams.items()
+                if isinstance(stream, DepthStream)
+            )
+            if depth_stream.intrinsics is None:
                 raise ValueError(
-                    f"Depth camera spec {key} does not have an intrinsics matrix."
+                    f"Depth stream at {key}.{name} does not have an intrinsics matrix."
                 )
 
-            if color and not isinstance(spec, RGBCameraSpec):
+            if color and not any(
+                isinstance(stream, RGBStream) for stream in spec.streams.values()
+            ):
                 raise ValueError(
                     f"Depth camera spec {key} is not an RGBCameraSpec. Cannot use color."
                 )
 
-        # correct extrinsics by adding conversion from ROS to WORLD camera convention
-        has_extrinsics = [spec.extrinsics is not None for spec in depth_specs.values()]
-        if all(has_extrinsics):
-            for key, spec in depth_specs.items():
-                extrinsics = spec.extrinsics
-                assert extrinsics is not None
+            if multiview and spec.extrinsics is None:
+                raise ValueError(
+                    f"Depth camera {key} does not have an extrinsics matrix."
+                )
+            if spec.dynamic_pose_obs_key is not None and spec.extrinsics is None:
+                raise ValueError(
+                    f"Dynamic pose obs key {spec.dynamic_pose_obs_key} is not supported for depth cameras without extrinsics."
+                )
+
+            # correct extrinsics by adding conversion from ROS to WORLD camera convention
+            if (extrinsics := spec.extrinsics) is not None:
                 # we right-multiply, since we first need to transform the points
                 # into the WORLD convention, and then apply the extrinsics
                 extrinsics[:3, :3] = extrinsics[:3, :3] @ torch.tensor(
                     ROS_TO_WORLD, dtype=extrinsics.dtype
                 )
-
                 depth_specs[key] = dataclasses.replace(spec, extrinsics=extrinsics)
-        elif any(has_extrinsics):
-            raise ValueError(
-                "All depth cameras must have extrinsics or none of them must have extrinsics."
-            )
-        elif any(
-            spec.dynamic_pose_obs_key is not None for spec in depth_specs.values()
-        ):
-            raise ValueError(
-                "Dynamic pose obs key is not supported for depth cameras without extrinsics."
-            )
-
         self._input_specs = depth_specs
 
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
-        obs_specs["pcd"] = PointCloudSpec(shape=(6 if color else 3,), color=color)
+        obs_specs["pcd"] = PointCloudSpec(feature_dim=(6 if color else 3), color=color)
         self._output_specs = specs.replace(obs=obs_specs)
 
     @property
@@ -105,18 +109,19 @@ class ToPointCloud(Transform):
 
         for key, spec in self._input_specs.items():
 
-            subkey = spec.depth_subkeys[0]
-            nested_key = ("obs", key)
-            if subkey is not None:
-                nested_key += (subkey,)
-            depth = tensordict[nested_key]
+            name, depth_stream = next(
+                (name, stream)
+                for name, stream in spec.streams.items()
+                if isinstance(stream, DepthStream)
+            )
+            depth = tensordict["obs", key, name]
 
-            assert spec.intrinsics is not None
+            assert depth_stream.intrinsics is not None
             # points: (..., H, W, 3)
             points = unproject_depth(
                 depth,
-                spec.intrinsics.intrinsic_matrix.to(depth.device),
-                is_ortho=spec.orthogonal,
+                depth_stream.intrinsics.intrinsic_matrix.to(depth.device),
+                is_ortho=depth_stream.orthogonal,
             )
             if (extrinsics := spec.extrinsics) is not None:
                 extrinsics = extrinsics.to(points.device)
@@ -144,14 +149,14 @@ class ToPointCloud(Transform):
                 all_masks.append(mask)
 
             if self.color:
-                assert isinstance(spec, RGBCameraSpec)
-                subkey = spec.rgb_subkeys[0]
-                nested_key = ("obs", key)
-                if subkey is not None:
-                    nested_key += (subkey,)
-                rgb = tensordict[nested_key]
+                name, rgb_stream = next(
+                    (name, stream)
+                    for name, stream in spec.streams.items()
+                    if isinstance(stream, RGBStream)
+                )
+                rgb = tensordict["obs", key, name]
 
-                if spec.channel_order == "CHW":
+                if rgb_stream.channel_order == "CHW":
                     # convert to HWC order
                     rgb = torch.movedim(rgb, -3, -1)
 

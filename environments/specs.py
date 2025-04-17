@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 import os
 import pickle
-from dataclasses import dataclass
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, replace
 from typing import Literal, Mapping, Sequence
 
 import numpy as np
@@ -17,18 +18,18 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class PinholeCameraIntrinsic:
-    width: int
     height: int
+    width: int
     fx: float
     fy: float
     cx: float
     cy: float
 
     def __init__(
-        self, width: int, height: int, fx: float, fy: float, cx: float, cy: float
+        self, height: int, width: int, fx: float, fy: float, cx: float, cy: float
     ):
-        self.width = width
         self.height = height
+        self.width = width
         self.fx = fx
         self.fy = fy
         self.cx = cx
@@ -46,14 +47,14 @@ class PinholeCameraIntrinsic:
 
     @classmethod
     def from_intrinsic_matrix(
-        cls, intrinsic_matrix: torch.Tensor, width: int, height: int
+        cls, intrinsic_matrix: torch.Tensor, height: int, width: int
     ) -> PinholeCameraIntrinsic:
-        fx = intrinsic_matrix[0, 0]
-        fy = intrinsic_matrix[1, 1]
-        cx = intrinsic_matrix[0, 2]
-        cy = intrinsic_matrix[1, 2]
+        fx = intrinsic_matrix[0, 0].item()
+        fy = intrinsic_matrix[1, 1].item()
+        cx = intrinsic_matrix[0, 2].item()
+        cy = intrinsic_matrix[1, 2].item()
 
-        return cls(width=width, height=height, fx=fx, fy=fy, cx=cx, cy=cy)
+        return cls(height=height, width=width, fx=fx, fy=fy, cx=cx, cy=cy)
 
     @property
     def intrinsic_matrix(self) -> torch.Tensor:
@@ -65,12 +66,12 @@ class PinholeCameraIntrinsic:
 
     def resize(self, new_shape: tuple[int, int]) -> PinholeCameraIntrinsic:
         new_height, new_width = new_shape
-        scale_x = new_width / self.width
         scale_y = new_height / self.height
+        scale_x = new_width / self.width
 
         return PinholeCameraIntrinsic(
-            width=new_width,
             height=new_height,
+            width=new_width,
             fx=self.fx * scale_x,
             fy=self.fy * scale_y,
             cx=self.cx * scale_x,
@@ -78,13 +79,13 @@ class PinholeCameraIntrinsic:
         )
 
     def center_crop(self, new_shape: tuple[int, int]) -> PinholeCameraIntrinsic:
-        new_width, new_height = new_shape
-        crop_x = (self.width - new_width) / 2
+        new_height, new_width = new_shape
         crop_y = (self.height - new_height) / 2
+        crop_x = (self.width - new_width) / 2
 
         return PinholeCameraIntrinsic(
-            width=new_width,
             height=new_height,
+            width=new_width,
             fx=self.fx,
             fy=self.fy,
             cx=self.cx - crop_x,
@@ -92,71 +93,150 @@ class PinholeCameraIntrinsic:
         )
 
 
+class Spec(ABC):
+    @property
+    @abstractmethod
+    def shape(self) -> tuple[int, ...]:
+        """The shape of the data. The first dimension is always the batch dimension."""
+        pass
+
+
 @dataclass(frozen=True)
-class Spec:
-    shape: tuple[int, ...]
-    type: str | None = None
+class ObsSpec(Spec):
+    elem_shape: tuple[int, ...]
+    time: int = 1
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return (self.time, *self.elem_shape)
+
+
+ChannelOrderType = Literal["HWC", "CHW", "HW"]
+
+
+@dataclass(frozen=True)
+class ImageStream(ABC):
+    height: int
+    width: int
+    channels: int | None = None
+    channel_order: ChannelOrderType = "HW"
+    time: int = 1
+    intrinsics: PinholeCameraIntrinsic | None = None
+
+    @property
+    def height_width(self) -> tuple[int, int]:
+        return self.height, self.width
+
+    @property
+    def image_shape(self) -> tuple[int, int] | tuple[int, int, int]:
+        if self.channel_order == "HWC":
+            assert self.channels is not None
+            return self.height, self.width, self.channels
+        elif self.channel_order == "CHW":
+            assert self.channels is not None
+            return self.channels, self.height, self.width
+        elif self.channel_order == "HW":
+            return self.height, self.width
+        else:
+            raise ValueError(f"Unknown channel order: {self.channel_order}")
+
+    @property
+    def n_image_dims(self) -> int:
+        if self.channels is None:
+            return 2
+        return 3
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return (self.time, *self.image_shape)
+
+    def reorder_channels(self, channel_order: ChannelOrderType) -> ImageStream:
+        if self.channels is None or self.channel_order == "HW":
+            return self
+
+        return replace(self, channel_order=channel_order)
+
+    def center_crop(self, new_shape: tuple[int, int]) -> ImageStream:
+        """Crop the image to the specified size."""
+        new_height, new_width = new_shape
+        new_intrinsics = (
+            self.intrinsics.center_crop(new_shape)
+            if self.intrinsics is not None
+            else None
+        )
+        return replace(
+            self, height=new_height, width=new_width, intrinsics=new_intrinsics
+        )
+
+    def resize(self, new_shape: tuple[int, int]) -> ImageStream:
+        """Resize the image to the specified size."""
+        new_height, new_width = new_shape
+        new_intrinsics = (
+            self.intrinsics.resize(new_shape) if self.intrinsics is not None else None
+        )
+
+        return replace(
+            self, height=new_height, width=new_width, intrinsics=new_intrinsics
+        )
+
+
+@dataclass(frozen=True)
+class RGBStream(ImageStream):
+    channels: int = 3
+    channel_order: ChannelOrderType = "HWC"
+
+
+@dataclass(frozen=True)
+class DepthStream(ImageStream):
+    # orthogonal or perspective depth measurement
+    orthogonal: bool = True
+    channels = None
+    channel_order: ChannelOrderType = "HW"
+
+    def __post_init__(self):
+        if self.channels is not None:
+            raise ValueError("channels must be None for a depth stream")
+        if self.channel_order != "HW":
+            raise ValueError("Depth stream must have channel order HW")
 
 
 @dataclass(frozen=True)
 class CameraSpec(Spec):
-    """Base class for camera specifications.
-    The image should have no channel dimension.
-    """
-
+    streams: frozendict[str, ImageStream]
+    time: int = 1
     intrinsics: PinholeCameraIntrinsic | None = None
     extrinsics: torch.Tensor | None = None
     # the key (within the obs dict) with the dynamic pose information for the camera
     # e.g. a wrist camera would have extrinsics relative to the end effector pose
     dynamic_pose_obs_key: str | tuple[str, ...] | None = None
-    # subkey fields exclusively list the data subfields of this camera
-    # e.g. a stereo camera would have "left" and "right" as subkeys
-    # intensity subkeys are for images with no channel dimension
-    intensity_subkeys: tuple[str | None, ...] = ()
 
+    def __init__(
+        self,
+        streams: Mapping[str, ImageStream],
+        time: int = 1,
+        intrinsics: PinholeCameraIntrinsic | None = None,
+        extrinsics: torch.Tensor | None = None,
+        dynamic_pose_obs_key: str | tuple[str, ...] | None = None,
+    ):
+        streams = {
+            key: replace(
+                stream,
+                time=time,
+                # if intrinsics not set for the stream, use the camera intrinsics
+                intrinsics=stream.intrinsics or intrinsics,
+            )
+            for key, stream in streams.items()
+        }
 
-@dataclass(frozen=True)
-class DepthCameraSpec(CameraSpec):
-    """A depth image is fundamentally different from an intensity image, since
-    its values measure distance and not intensity. For example, a depth image
-    should not be interpolated the same way as an intensity image.
-    """
+        object.__setattr__(self, "streams", frozendict(streams))
+        object.__setattr__(self, "time", time)
+        object.__setattr__(self, "intrinsics", intrinsics)
+        object.__setattr__(self, "extrinsics", extrinsics)
+        object.__setattr__(self, "dynamic_pose_obs_key", dynamic_pose_obs_key)
 
-    # orthogonal or perspective depth measurement
-    orthogonal: bool = True
-    # depth subkeys are for depth information with no channel dimension
-    # depth is fundamentally different from intensity, because it must be
-    # interpolated differently
-    depth_subkeys: tuple[str | None, ...] = ()
-
-
-@dataclass(frozen=True)
-class RGBCameraSpec(CameraSpec):
-    channel_order: Literal["HWC", "CHW"] = "HWC"
-    # rgb subkeys are for images with a channel dimension
-    rgb_subkeys: tuple[str | None, ...] = (None,)
-
-
-@dataclass(frozen=True)
-class RGBDCameraSpec(RGBCameraSpec, DepthCameraSpec):
-    """
-    The RGB and depth images must have the same shape, but the depth image should
-    not have a channel dimension.
-    """
-
-    rgb_subkeys: tuple[str | None, ...] = ("rgb",)
-    depth_subkeys: tuple[str | None, ...] = ("depth",)
-
-
-@dataclass(frozen=True)
-class RealSenseSpec(RGBCameraSpec):
-    """
-    Intrinsics are relative to the left camera.
-    The image shape should have no channel dimension.
-    """
-
-    intensity_subkeys: tuple[str | None, ...] = ("left", "right")
-    rgb_subkeys: tuple[str | None, ...] = ("rgb",)
+    @property
+    def shape(self) -> tuple[int, ...]:
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
@@ -164,7 +244,13 @@ class PointCloudSpec(Spec):
     """The shape should be (*leading_dims) + (3 or 6,), depending on whether
     the point cloud has color or not."""
 
+    feature_dim: int
+    time: int = 1
     color: bool = False
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        raise ValueError("A pointcloud does not have a fixed shape.")
 
 
 @dataclass(frozen=True)
@@ -196,6 +282,8 @@ class EmbedSpec:
 
 @dataclass(frozen=True)
 class ActionSpec(Spec):
+    action_dim: int
+    time: int
     a_mean: torch.Tensor | None = None
     a_var: torch.Tensor | None = None
     a_min: torch.Tensor | None = None
@@ -204,8 +292,8 @@ class ActionSpec(Spec):
 
     def __init__(
         self,
-        shape: tuple[int, ...],
-        type: str,
+        action_dim: int,
+        time: int,
         a_mean: torch.Tensor | None = None,
         a_var: torch.Tensor | None = None,
         a_min: torch.Tensor | None = None,
@@ -213,7 +301,8 @@ class ActionSpec(Spec):
         n_actions: int = 0,
         actions: torch.Tensor | None = None,
     ):
-        super().__init__(shape, type)
+        object.__setattr__(self, "action_dim", action_dim)
+        object.__setattr__(self, "time", time)
 
         mean = actions.mean(0) if actions is not None else a_mean
         var = actions.var(0) if actions is not None else a_var
@@ -221,6 +310,10 @@ class ActionSpec(Spec):
         max = actions.max(0).values if actions is not None else a_max
         n_actions = actions.shape[0] if actions is not None else n_actions
         self._set_stats(mean, var, min, max, n_actions)
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return (self.time, self.action_dim)
 
     def _set_stats(self, mean, var, min, max, n_actions):
         # frozen dataclass does not allow setting attributes after creation

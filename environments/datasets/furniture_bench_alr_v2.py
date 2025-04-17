@@ -7,10 +7,12 @@ from tensordict import TensorDict
 from environments.base_dataset import TrajectoryDataset
 from environments.specs import (
     ActionSpec,
+    CameraSpec,
     DataSpecs,
+    DepthStream,
+    ObsSpec,
     PinholeCameraIntrinsic,
-    RGBDCameraSpec,
-    Spec,
+    RGBStream,
 )
 from utils.math import euler_xyz_to_quaternion
 
@@ -129,14 +131,16 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         extrinsics = data[
             "obs", "camera_params", "extrinsics", "static", "static_camera_front_left"
         ].reshape(4, 4)
-        left_cam = RGBDCameraSpec(
-            shape=(self.obs_seq_len, *shape[-3:]),
+        left_cam = CameraSpec(
+            streams={
+                "rgb": RGBStream(shape[1], shape[2], shape[3], channel_order="HWC"),
+                "depth": DepthStream(shape[-3], shape[-2], orthogonal=True),
+            },
+            time=self.obs_seq_len,
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
-                intrinsics, width=shape[2], height=shape[1]
+                intrinsics, height=shape[1], width=shape[2]
             ),
             extrinsics=extrinsics,
-            orthogonal=True,
-            channel_order="HWC",
         )
 
         # static camera front right
@@ -149,14 +153,16 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         extrinsics = data[
             "obs", "camera_params", "extrinsics", "static", "static_camera_front_right"
         ].reshape(4, 4)
-        right_cam = RGBDCameraSpec(
-            shape=(self.obs_seq_len, *shape[-3:]),
+        right_cam = CameraSpec(
+            streams={
+                "rgb": RGBStream(shape[1], shape[2], shape[3], channel_order="HWC"),
+                "depth": DepthStream(shape[-3], shape[-2], orthogonal=True),
+            },
+            time=self.obs_seq_len,
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
-                intrinsics, width=shape[2], height=shape[1]
+                intrinsics, height=shape[1], width=shape[2]
             ),
             extrinsics=extrinsics,
-            orthogonal=True,
-            channel_order="HWC",
         )
 
         # gripper camera
@@ -166,16 +172,18 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         intrinsics = data[
             "obs", "camera_params", "intrinsics", "gripper_camera"
         ].reshape(3, 3)
-        gripper_cam = RGBDCameraSpec(
-            shape=(self.obs_seq_len, *shape[-3:]),
+        gripper_cam = CameraSpec(
+            streams={
+                "rgb": RGBStream(shape[1], shape[2], shape[3], channel_order="HWC"),
+                "depth": DepthStream(shape[-3], shape[-2], orthogonal=True),
+            },
+            time=self.obs_seq_len,
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
-                intrinsics, width=shape[2], height=shape[1]
+                intrinsics, height=shape[1], width=shape[2]
             ),
             dynamic_pose_obs_key="gripper_cam_transform",
             # gripper_cam_transform provides complete transform to camera
             extrinsics=torch.eye(4),
-            orthogonal=True,
-            channel_order="HWC",
         )
 
         # robot state
@@ -186,7 +194,7 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         assert gripper_pos.ndim == 2
         assert gripper_pos.shape[-1] == 2
         # we concatenate joint_pos and gripper_pos to get a shape of (T, 9)
-        robot_state = Spec(shape=(self.obs_seq_len, 9), type="state")
+        robot_state = ObsSpec(elem_shape=(9,), time=self.obs_seq_len)
 
         # gripper_cam_transform
         transform = data[
@@ -194,14 +202,14 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         ]
         assert transform.ndim == 2
         assert transform.shape[-1] == 16  # flattened 4x4 matrix
-        gripper_cam_transform = Spec(shape=(self.obs_seq_len, 4, 4), type="transform")
+        gripper_cam_transform = ObsSpec(elem_shape=(4, 4), time=self.obs_seq_len)
 
         # actions
         assert data["actions"].ndim == 2
         assert data["actions"].shape[-1] == 7
         # we convert euler xyz angles to quaternions, resulting in 8-D actions
         # instead of 7-D
-        action = ActionSpec(shape=(self.action_seq_len, 8), type="action")
+        action = ActionSpec(action_dim=8, time=self.action_seq_len)
 
         self._specs = DataSpecs(
             obs={

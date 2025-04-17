@@ -13,7 +13,7 @@ from tensordict import TensorDict
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from environments.specs import DataSpecs, RGBCameraSpec, load_specs, save_specs
+from environments.specs import CameraSpec, DataSpecs, RGBStream, load_specs, save_specs
 from transforms.base_transform import (
     TransformPartialsDict,
     get_transforms_config,
@@ -149,9 +149,7 @@ class TrajectoryDataset(Dataset, ABC):
         # TODO: also update obs_seq_len
         action_spec = self._specs.action
         self._specs = self._specs.replace(
-            action=dataclasses.replace(
-                action_spec, shape=(action_seq_len, action_spec.shape[-1])
-            )
+            action=dataclasses.replace(action_spec, time=self.action_seq_len)
         )
 
         # move dataset to device if needed
@@ -437,18 +435,22 @@ def load_tensordict(
 
 def compress_rgb_images(tensordict: TensorDict, specs: DataSpecs) -> TensorDict:
     for key, spec in specs.obs.items():
-        if not isinstance(spec, RGBCameraSpec):
+        if not isinstance(spec, CameraSpec):
             continue
 
-        for subkey in spec.rgb_subkeys:
-            nested_key = ("obs", key)
-            if subkey is not None:
-                nested_key += (subkey,)
-            image = tensordict[nested_key]
+        for name, stream in spec.streams.items():
+            if isinstance(stream, RGBStream):
 
-            if image.dtype != torch.uint8:
-                image = image.mul(255).clamp(0, 255).to(torch.uint8)
-            tensordict[nested_key] = image
+                image = tensordict["obs", key, name]
+                if image.dtype != torch.uint8:
+                    image = image.mul(255).clamp(0, 255).to(torch.uint8)
+                    tensordict["obs", key, name] = image
+
+                # if the stream is RGB, we need to convert it to uint8
+                tensordict["obs", key, name] = tensordict["obs", key, name].to(
+                    dtype=torch.uint8
+                )
+
     return tensordict
 
 
