@@ -168,10 +168,30 @@ class PointCloudSpec(Spec):
 
 
 @dataclass(frozen=True)
-class EmbedSpec(Spec):
-    shape: tuple[int | None, ...]
+class EmbedSpec:
+    embed_dim: int
+    n_tokens: int | None = None
     fixed_shape: bool = True
-    type: str | None = "embed"
+
+    def __post_init__(self):
+        if self.fixed_shape and self.n_tokens is None:
+            raise ValueError("Must specify n_tokens for an embedding of fixed shape")
+        elif not self.fixed_shape and self.n_tokens is not None:
+            raise ValueError("n_tokens must be None for an embedding of variable shape")
+
+    @property
+    def shape(self) -> tuple[int | None, int]:
+        return (self.n_tokens, self.embed_dim)
+
+    def concat(self, other: EmbedSpec) -> EmbedSpec:
+        assert self.embed_dim == other.embed_dim
+        fixed_shape = self.fixed_shape and other.fixed_shape
+        n_tokens = self.n_tokens + other.n_tokens if fixed_shape else None  # type: ignore
+        return EmbedSpec(
+            embed_dim=self.embed_dim,
+            n_tokens=n_tokens,
+            fixed_shape=fixed_shape,
+        )
 
 
 @dataclass(frozen=True)

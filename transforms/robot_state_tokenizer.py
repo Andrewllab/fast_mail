@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 import logging
 from typing import Callable
 
@@ -30,13 +29,13 @@ class RobotStateEncoder(Transform, nn.Module):
         if len(robot_state_shape) != 2:
             raise ValueError(f"Robot state at key {obs_key} must be of shape [T,M]")
 
-        # the length of the embedding is the number of leading
-        assert len(robot_state_shape) == 2
-        T, state_dim = robot_state_shape
-        n_embed_tokens = 1  # each robot state is a single token
+        T, M = robot_state_shape
 
         # instantiate the model
-        self.model = model(state_dim, embed_dim)
+        self.model = model(M, embed_dim)
+
+        # each time step produces a single token
+        new_spec = EmbedSpec(embed_dim=embed_dim, n_tokens=T)
 
         # create a modified specs object for the output
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
@@ -44,30 +43,8 @@ class RobotStateEncoder(Transform, nn.Module):
             # if embedding sequence has fixed length, increase length to account for state tokens
             embed_spec = obs_specs["embed"]
             assert isinstance(embed_spec, EmbedSpec)
-
-            if len(embed_spec.shape) == 3:
-                # if we have a time dimension, it must match
-                assert embed_spec.shape[0] == T
-
-            if embed_spec.fixed_shape:
-                assert embed_spec.shape[1] is not None
-                obs_specs["embed"] = dataclasses.replace(
-                    embed_spec,
-                    shape=(
-                        T,
-                        embed_spec.shape[1] + n_embed_tokens,
-                        embed_spec.shape[2],
-                    ),
-                )
-                log.debug(
-                    f"Extended obs embedding spec to {n_embed_tokens} tokens per time step",
-                )
-        else:
-            # create new embedding spec
-            obs_specs["embed"] = EmbedSpec(shape=(T, n_embed_tokens, embed_dim))
-            log.debug(
-                f"Created obs embedding spec with {n_embed_tokens} tokens per time step",
-            )
+            new_spec = embed_spec.concat(new_spec)
+        obs_specs["embed"] = new_spec
         self._output_specs = specs.replace(obs=obs_specs)
 
         self._obs_key = obs_key
@@ -86,19 +63,14 @@ class RobotStateEncoder(Transform, nn.Module):
         ]
 
     def _call_one(self, robot_state: Tensor, obs_embed: Tensor | None) -> Tensor:
-        # (B, T, M) -> (B, T, D)
+        # (B, T, M) -> (B, N, D)
         state_emb = self.model(robot_state)
-
-        # (B, T, D) -> (B, T, N, D)
-        state_emb = state_emb.unsqueeze(-2)
 
         if obs_embed is None:
             return state_emb
 
         if obs_embed.is_nested:
-            # the time dimension needs to be 1
-            state_emb = state_emb.squeeze(1)
-            return cat_nested([obs_embed, state_emb], dim=1)
+            return cat_nested([obs_embed, state_emb], dim=-2)
 
         # concatenate along N dimension of embedding, keeping tokens from the same time step together
         return torch.cat([obs_embed, state_emb], dim=-2)

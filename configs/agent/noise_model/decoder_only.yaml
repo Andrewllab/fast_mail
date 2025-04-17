@@ -1,6 +1,6 @@
 defaults:
   - backbone@decoder: new_transformer
-  - time_encoder: learned
+  - time_encoder@seq_position_encoder: learned
   - sigma_encoder: beso
   - action_head: linear
   - _self_

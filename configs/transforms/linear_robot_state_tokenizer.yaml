@@ -1,5 +1,5 @@
-name: linear_robot_state_encoder
-_target_: transforms.robot_state_encoder.RobotStateEncoder
+name: linear_robot_state_tokenizer
+_target_: transforms.robot_state_tokenizer.RobotStateEncoder
 _partial_: True
 
 model:

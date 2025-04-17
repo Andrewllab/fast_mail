@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 import logging
 from typing import Callable
 
@@ -25,7 +24,7 @@ class PointPatchTokenizer(Transform, nn.Module):
         embed_dim: int,
         mlp_1: Callable[[int], nn.Module],
         mlp_2: Callable[[int], nn.Module],
-        positional_encoder: Callable[[int], nn.Module],
+        position_encoder: Callable[[int], nn.Module],
         patch_size: int,
         oversampling_ratio: float,
         fps_random_start: bool = True,
@@ -49,7 +48,7 @@ class PointPatchTokenizer(Transform, nn.Module):
         self.point_dim = 6 if self._input_spec.color else 3
         self.mlp_1 = mlp_1(self.point_dim)
         self.mlp_2 = mlp_2(embed_dim)
-        self.pos_encoder = positional_encoder(embed_dim)
+        self.pos_encoder = position_encoder(embed_dim)
 
         if self.mlp_1.out_features * 2 != self.mlp_2.in_features:
             raise ValueError(
@@ -65,29 +64,15 @@ class PointPatchTokenizer(Transform, nn.Module):
         self.fps_random_start = fps_random_start
         self.padding_value = padding_value
 
+        new_spec = EmbedSpec(embed_dim=embed_dim, fixed_shape=False)
+
         # create a modified specs object for the output
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         if "embed" in obs_specs:
             embed_spec = obs_specs["embed"]
             assert isinstance(embed_spec, EmbedSpec)
-            # point clouds are always 1 time step
-            if len(embed_spec.shape) == 3 and embed_spec.shape[0] == 1:
-                raise ValueError("With point clouds, only one time step is allowed.")
-
-            # the shape includes a none to indicate the jagged dimension
-            obs_specs["embed"] = dataclasses.replace(
-                embed_spec,
-                shape=(None, embed_spec.shape[-1]),
-                fixed_shape=False,
-            )
-            log.debug(
-                "Extended obs embedding spec with a variable number of tokens per time step",
-            )
-        else:
-            obs_specs["embed"] = EmbedSpec(shape=(None, embed_dim), fixed_shape=False)
-            log.debug(
-                f"Created obs embedding spec with a variable number of tokens per time step",
-            )
+            new_spec = embed_spec.concat(new_spec)
+        obs_specs["embed"] = new_spec
         self._output_specs = specs.replace(obs=obs_specs)
 
     @property
@@ -175,9 +160,7 @@ class PointPatchTokenizer(Transform, nn.Module):
 
         # concatenate along N dimension of embedding
         # obs_embed: (B, N, D)
-        obs_embed = obs_embed.squeeze(1)  # remove time dimension
-        obs_embed = cat_nested([obs_embed, pcd_embed], dim=2)
-        return obs_embed
+        return cat_nested([obs_embed, features], dim=-2)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(mlp_1={self.mlp_1},(mlp_2={self.mlp_2})"

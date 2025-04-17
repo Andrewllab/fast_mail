@@ -8,131 +8,28 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
 
-from environments.specs import DataSpecs
+from environments.specs import DataSpecs, EmbedSpec
 from utils.nested import cat_nested
 
 log = logging.getLogger(__name__)
 
 
-# Non-diffusion based decoder-only model
-class Dec_only(nn.Module):
-    def __init__(
-        self,
-        encoder: DictConfig,
-        state_dim: int,
-        action_dim: int,
-        goal_dim: int,
-        device: str,
-        goal_conditioned: bool,
-        embed_dim: int,
-        embed_pdrob: float,
-        goal_seq_len: int,
-        obs_seq_len: int,
-        action_seq_len: int,
-        linear_output: bool = False,
-    ):
-        super().__init__()
-
-        self.encoder = hydra.utils.instantiate(encoder)
-
-        self.device = device
-
-        # mainly used for language condition or goal image condition
-        self.goal_conditioned = goal_conditioned
-        if not goal_conditioned:
-            goal_seq_len = 0
-
-        # the seq_size is the number of tokens in the input sequence
-        self.seq_size = goal_seq_len + obs_seq_len + action_seq_len
-
-        # linear embedding for the state
-        self.tok_emb = nn.Linear(state_dim, embed_dim)
-
-        # linear embedding for the goal
-        self.goal_emb = nn.Linear(goal_dim, embed_dim)
-
-        # position embedding
-        self.pos_emb = nn.Parameter(torch.zeros(1, self.seq_size, embed_dim))
-        self.drop = nn.Dropout(embed_pdrob)
-        self.drop.to(self.device)
-
-        # get an action embedding
-        self.query_embed = nn.Embedding(action_seq_len, embed_dim)
-
-        self.action_dim = action_dim
-        self.obs_dim = state_dim
-        self.embed_dim = embed_dim
-
-        self.goal_seq_len = goal_seq_len
-        self.obs_seq_len = obs_seq_len
-        self.action_seq_len = action_seq_len
-
-        # action pred module
-        if linear_output:
-            self.action_pred = nn.Linear(embed_dim, action_dim)
-        else:
-            self.action_pred = nn.Sequential(
-                nn.Linear(embed_dim, 100), nn.GELU(), nn.Linear(100, self.action_dim)
-            )
-        self.action_pred.to(self.device)
-
-        self.apply(self._init_weights)
-
-        # logger.info(
-        #     "number of parameters: %e", sum(p.numel() for p in self.parameters())
-        # )
-
-    def _init_weights(self, module):
-        if isinstance(module, (nn.Linear, nn.Embedding)):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if isinstance(module, nn.Linear) and module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.LayerNorm):
-            torch.nn.init.zeros_(module.bias)
-            torch.nn.init.ones_(module.weight)
-
-    def forward(
-        self,
-        states,
-        goals=None,
-    ):
-
-        if len(states.size()) != 3:
-            states = states.unsqueeze(0)
-
-        b, t, dim = states.size()
-
-        if self.goal_conditioned:
-            goal_embed = self.goal_emb(goals)
-            goal_x = self.drop(goal_embed + self.pos_emb[:, : self.goal_seq_len, :])
-
-        state_embed = self.tok_emb(states)
-        state_x = self.drop(
-            state_embed
-            + self.pos_emb[:, self.goal_seq_len : (self.goal_seq_len + t), :]
-        )
-
-        action_seq = self.query_embed.weight.unsqueeze(0).repeat(b, 1, 1)
-
-        if self.goal_conditioned:
-            input_seq = torch.cat([goal_x, state_x, action_seq], dim=1)
-        else:
-            input_seq = torch.cat([state_x, action_seq], dim=1)
-
-        encoder_output = self.encoder(input_seq)
-
-        pred_actions = self.action_pred(encoder_output[:, -self.action_seq_len :, :])
-
-        return pred_actions
-
-
-# Diffusion based decoder-only model, we need time embedding and noisy antions inputs here
 class DecoderOnlyNoise(nn.Module):
+    """Decoder-only model for noise prediction in the diffusion process.
+
+    This model takes observation embeddings, action tokens, goal tokens (if
+    available), and sigma as input. The actions and goal tokens are passed
+    through a linear embedding layer and a learned token position encoder is
+    added. The observation embedding is not transformed, and is only given a
+    learned positional encoding if the sequence has a fixed length and
+    `time_encode_obs` is set to True.
+    """
+
     def __init__(
         self,
         specs: DataSpecs,
         decoder: Module,
-        time_encoder: Callable[[int, int], Module] | None,
+        seq_position_encoder: Callable[[int, int], Module] | None,
         sigma_encoder: Callable[[int], Module],
         action_head: Callable[[int, int], Module],
         token_dim: int,
@@ -151,22 +48,28 @@ class DecoderOnlyNoise(nn.Module):
 
         # we use time to refer to the position in the sequence of tokens
         # this often corresponds to real time, but not always, e.g. with goal tokens
-        if time_encoder is not None:
-            if specs.obs_embed_seq_len is not None and time_encode_obs:
-                self.obs_time_encoder = time_encoder(specs.obs_embed_seq_len, token_dim)
+        if seq_position_encoder is not None:
+            embed_spec = specs.obs["embed"]
+            assert isinstance(embed_spec, EmbedSpec)
+            if embed_spec.fixed_shape and time_encode_obs:
+                self.obs_pos_encoder = seq_position_encoder(
+                    embed_spec.n_tokens, token_dim
+                )
             else:
-                self.obs_time_encoder = None
+                self.obs_pos_encoder = None
 
-            self.action_time_encoder = time_encoder(specs.action_seq_len, token_dim)
+            self.action_pos_encoder = seq_position_encoder(
+                specs.action_seq_len, token_dim
+            )
 
             if specs.goal_embed_seq_len > 0:
-                self.goal_time_encoder = time_encoder(
+                self.goal_pos_encoder = seq_position_encoder(
                     specs.goal_embed_seq_len, token_dim
                 )
         else:
-            self.obs_time_encoder = None
-            self.action_time_encoder = None
-            self.goal_time_encoder = None
+            self.obs_pos_encoder = None
+            self.action_pos_encoder = None
+            self.goal_pos_encoder = None
 
         # linear embedding for the state
         self.state_encoder = nn.Linear(specs.obs_embed_dim, token_dim)
@@ -206,31 +109,27 @@ class DecoderOnlyNoise(nn.Module):
 
         if goal is not None:
             goal_embed = self.goal_encoder(goal)
-            if self.goal_time_encoder is not None:
+            if self.goal_pos_encoder is not None:
                 indices = torch.arange(
                     goal_embed.shape[1], dtype=torch.long, device=goal_embed.device
                 )
-                goal_embed += self.goal_time_encoder(indices)
+                goal_embed += self.goal_pos_encoder(indices)
             input_seq.append(self.drop(goal_embed))
 
-        if not obs_embed.is_nested:
-            # obs_embed: [B,T,N,D] -> [B,T*N,D]
-            obs_embed = obs_embed.flatten(start_dim=1, end_dim=2)
-
-        if self.obs_time_encoder is not None:
+        if self.obs_pos_encoder is not None:
             assert not obs_embed.is_nested
             indices = torch.arange(
                 obs_embed.shape[1], dtype=torch.long, device=obs_embed.device
             )
-            obs_embed += self.obs_time_encoder(indices)
+            obs_embed += self.obs_pos_encoder(indices)
         input_seq.append(self.drop(obs_embed))
 
         action_embed = self.action_encoder(actions)
-        if self.action_time_encoder is not None:
+        if self.action_pos_encoder is not None:
             indices = torch.arange(
                 action_embed.shape[1], dtype=torch.long, device=action_embed.device
             )
-            action_embed += self.action_time_encoder(indices)
+            action_embed += self.action_pos_encoder(indices)
         input_seq.append(self.drop(action_embed))
 
         input_seq = cat_nested(input_seq, dim=1)

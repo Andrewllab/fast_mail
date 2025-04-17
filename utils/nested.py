@@ -7,9 +7,7 @@ from torch_geometric.utils import scatter
 
 
 def cat_nested(tensors: Sequence[Tensor], dim: int = 0) -> Tensor:
-    nesteds = [t.is_nested for t in tensors]
-
-    if not any(nesteds):
+    if not any(t.is_nested for t in tensors):
         return torch.cat(tensors, dim=dim)
 
     # convert dim to a positive integer
