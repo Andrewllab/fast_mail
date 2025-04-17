@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
-import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Iterator, Literal, Sequence, TypeVar
@@ -145,6 +145,14 @@ class TrajectoryDataset(Dataset, ABC):
 
         log.debug("Instantiating cpu transforms...")
         self.transform, self._specs = init_transforms(transforms, self._specs)
+
+        # TODO: also update obs_seq_len
+        action_spec = self._specs.action
+        self._specs = self._specs.replace(
+            action=dataclasses.replace(
+                action_spec, shape=(action_seq_len, action_spec.shape[-1])
+            )
+        )
 
         # move dataset to device if needed
         if self.device != "disk":

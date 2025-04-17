@@ -13,4 +13,5 @@ torch:
 trainer:
   accelerator: gpu
   devices: auto
-  # precision: bf16
+  # https://lightning.ai/docs/fabric/stable/fundamentals/precision.html
+  precision: bf16-mixed

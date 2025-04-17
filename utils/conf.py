@@ -30,6 +30,9 @@ def setup_resolvers(exclude: list[str] | None = None):
             "prod", lambda *numbers: np.prod(numbers).item()
         )
 
+    if "floor_div" not in exclude:
+        OmegaConf.register_new_resolver("floor_div", lambda x, y: x // y)
+
     if "sub" not in exclude:
         OmegaConf.register_new_resolver("sub", lambda x, y: x - y)
 
