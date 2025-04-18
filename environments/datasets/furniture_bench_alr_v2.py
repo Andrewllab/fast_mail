@@ -19,6 +19,23 @@ from utils.math import euler_xyz_to_quaternion
 log = logging.getLogger(__name__)
 
 
+"""In ROS, the camera is looking down the +Z axis with the +Y axis pointing down,
+and +X axis pointing right. This is the convention the point clouds are in after
+conversion by `unproject_depth`. On the other hand, the typical world coordinate
+system is with +X pointing forward, +Y pointing left, and +Z pointing up. We can
+achieve this transformation using the following rotation matrix.
+
+Reference: https://isaac-sim.github.io/IsaacLab/main/source/api/lab/isaaclab.utils.html#isaaclab.utils.math.convert_camera_frame_orientation_convention
+
+(equivalent to T_USD_to_WORLD @ (T_USD_to_ROS)^(-1) in the convention used in Isaac Sim)
+"""
+ROS_TO_WORLD = [
+    [0, 0, 1],
+    [-1, 0, 0],
+    [0, -1, 0],
+]
+
+
 class AlrFurnitureBenchDataset(TrajectoryDataset):
     def __init__(self, *args, **kwargs):
         self._specs = None
@@ -131,6 +148,12 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         extrinsics = data[
             "obs", "camera_params", "extrinsics", "static", "static_camera_front_left"
         ].reshape(4, 4)
+        # correct extrinsics by adding conversion from ROS to WORLD camera convention
+        # we right-multiply, since we first need to transform the points
+        # into the WORLD convention, and then apply the extrinsics
+        extrinsics[:3, :3] = extrinsics[:3, :3] @ torch.tensor(
+            ROS_TO_WORLD, dtype=extrinsics.dtype
+        )
         left_cam = CameraSpec(
             streams={
                 "rgb": RGBStream(shape[1], shape[2], shape[3], channel_order="HWC"),
@@ -153,6 +176,12 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         extrinsics = data[
             "obs", "camera_params", "extrinsics", "static", "static_camera_front_right"
         ].reshape(4, 4)
+        # correct extrinsics by adding conversion from ROS to WORLD camera convention
+        # we right-multiply, since we first need to transform the points
+        # into the WORLD convention, and then apply the extrinsics
+        extrinsics[:3, :3] = extrinsics[:3, :3] @ torch.tensor(
+            ROS_TO_WORLD, dtype=extrinsics.dtype
+        )
         right_cam = CameraSpec(
             streams={
                 "rgb": RGBStream(shape[1], shape[2], shape[3], channel_order="HWC"),
@@ -172,6 +201,14 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         intrinsics = data[
             "obs", "camera_params", "intrinsics", "gripper_camera"
         ].reshape(3, 3)
+        # gripper_cam_transform provides complete transform to camera
+        extrinsics = torch.eye(4, dtype=torch.float32)
+        # correct extrinsics by adding conversion from ROS to WORLD camera convention
+        # we right-multiply, since we first need to transform the points
+        # into the WORLD convention, and then apply the extrinsics
+        extrinsics[:3, :3] = extrinsics[:3, :3] @ torch.tensor(
+            ROS_TO_WORLD, dtype=extrinsics.dtype
+        )
         gripper_cam = CameraSpec(
             streams={
                 "rgb": RGBStream(shape[1], shape[2], shape[3], channel_order="HWC"),
@@ -183,7 +220,7 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             ),
             dynamic_pose_obs_key="gripper_cam_transform",
             # gripper_cam_transform provides complete transform to camera
-            extrinsics=torch.eye(4),
+            extrinsics=extrinsics,
         )
 
         # robot state

@@ -62,7 +62,7 @@ class DecoderOnlyNoise(nn.Module):
                 specs.action_seq_len, token_dim
             )
 
-            if specs.goal_embed_seq_len > 0:
+            if specs.goal_embed_seq_len is not None:
                 self.goal_pos_encoder = seq_position_encoder(
                     specs.goal_embed_seq_len, token_dim
                 )
@@ -72,13 +72,14 @@ class DecoderOnlyNoise(nn.Module):
             self.goal_pos_encoder = None
 
         # linear embedding for the state
+        assert specs.obs_embed_dim is not None
         self.state_encoder = nn.Linear(specs.obs_embed_dim, token_dim)
 
         # linear embedding for the action
         self.action_encoder = nn.Linear(specs.action_dim, token_dim)
 
         # linear embedding for the goal
-        if specs.goal_embed_dim > 0:
+        if specs.goal_embed_dim is not None:
             self.goal_encoder = nn.Linear(specs.goal_embed_dim, token_dim)
 
         if dropout_prob > 0:

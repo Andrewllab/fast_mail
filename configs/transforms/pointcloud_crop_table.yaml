@@ -1,0 +1,7 @@
+# name: crop_pointcloud
+_target_: transforms.pointcloud_crop_table.CropTablePointCloud
+_partial_: True
+ransac_distance_threshold: ???
+ransac_n: ???
+num_iterations: ???
+crop_threshold: ???

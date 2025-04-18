@@ -104,11 +104,14 @@ class Spec(ABC):
 @dataclass(frozen=True)
 class ObsSpec(Spec):
     elem_shape: tuple[int, ...]
-    time: int = 1
+    time: int | None = None
 
     @property
     def shape(self) -> tuple[int, ...]:
-        return (self.time, *self.elem_shape)
+        if self.time is None:
+            return self.elem_shape
+        else:
+            return (self.time, *self.elem_shape)
 
 
 ChannelOrderType = Literal["HWC", "CHW", "HW"]
@@ -116,11 +119,15 @@ ChannelOrderType = Literal["HWC", "CHW", "HW"]
 
 @dataclass(frozen=True)
 class ImageStream(ABC):
+    """Base class for all image streams. By convention, rgb and monocolor
+    intensity streams are dtype uint8, while depth streams are float32.
+    """
+
     height: int
     width: int
     channels: int | None = None
     channel_order: ChannelOrderType = "HW"
-    time: int = 1
+    time: int | None = None
     intrinsics: PinholeCameraIntrinsic | None = None
 
     @property
@@ -148,7 +155,10 @@ class ImageStream(ABC):
 
     @property
     def shape(self) -> tuple[int, ...]:
-        return (self.time, *self.image_shape)
+        if self.time is None:
+            return self.image_shape
+        else:
+            return (self.time, *self.image_shape)
 
     def reorder_channels(self, channel_order: ChannelOrderType) -> ImageStream:
         if self.channels is None or self.channel_order == "HW":
@@ -182,12 +192,16 @@ class ImageStream(ABC):
 
 @dataclass(frozen=True)
 class RGBStream(ImageStream):
+    """RGB image stream. By convention, the dtype is uint8."""
+
     channels: int = 3
     channel_order: ChannelOrderType = "HWC"
 
 
 @dataclass(frozen=True)
 class DepthStream(ImageStream):
+    """RGB image stream. By convention, the dtype is (usually) float32."""
+
     # orthogonal or perspective depth measurement
     orthogonal: bool = True
     channels = None
@@ -203,7 +217,7 @@ class DepthStream(ImageStream):
 @dataclass(frozen=True)
 class CameraSpec(Spec):
     streams: frozendict[str, ImageStream]
-    time: int = 1
+    time: int | None = None
     intrinsics: PinholeCameraIntrinsic | None = None
     extrinsics: torch.Tensor | None = None
     # the key (within the obs dict) with the dynamic pose information for the camera
@@ -213,7 +227,7 @@ class CameraSpec(Spec):
     def __init__(
         self,
         streams: Mapping[str, ImageStream],
-        time: int = 1,
+        time: int | None = None,
         intrinsics: PinholeCameraIntrinsic | None = None,
         extrinsics: torch.Tensor | None = None,
         dynamic_pose_obs_key: str | tuple[str, ...] | None = None,
@@ -238,6 +252,25 @@ class CameraSpec(Spec):
     def shape(self) -> tuple[int, ...]:
         raise NotImplementedError
 
+    def replace(self, **kwargs) -> CameraSpec:
+        """Replace the camera spec with a new one. This is used to change the
+        time dimension of the camera spec."""
+
+        new_streams = kwargs.pop("streams", None) or self.streams
+
+        stream_kwargs = {}
+        for key in ("time", "intrinsics"):
+            if key in kwargs:
+                stream_kwargs[key] = kwargs.pop(key)
+
+        if stream_kwargs:
+            new_streams = {
+                key: replace(stream, **stream_kwargs)
+                for key, stream in new_streams.items()
+            }
+
+        return replace(self, streams=new_streams, **kwargs)
+
 
 @dataclass(frozen=True)
 class PointCloudSpec(Spec):
@@ -245,7 +278,7 @@ class PointCloudSpec(Spec):
     the point cloud has color or not."""
 
     feature_dim: int
-    time: int = 1
+    time: int | None = None
     color: bool = False
 
     @property
@@ -283,7 +316,7 @@ class EmbedSpec:
 @dataclass(frozen=True)
 class ActionSpec(Spec):
     action_dim: int
-    time: int
+    time: int | None = None
     a_mean: torch.Tensor | None = None
     a_var: torch.Tensor | None = None
     a_min: torch.Tensor | None = None
@@ -293,7 +326,7 @@ class ActionSpec(Spec):
     def __init__(
         self,
         action_dim: int,
-        time: int,
+        time: int | None = None,
         a_mean: torch.Tensor | None = None,
         a_var: torch.Tensor | None = None,
         a_min: torch.Tensor | None = None,
@@ -313,7 +346,10 @@ class ActionSpec(Spec):
 
     @property
     def shape(self) -> tuple[int, ...]:
-        return (self.time, self.action_dim)
+        if self.time is None:
+            return (self.action_dim,)
+        else:
+            return (self.time, self.action_dim)
 
     def _set_stats(self, mean, var, min, max, n_actions):
         # frozen dataclass does not allow setting attributes after creation
@@ -414,6 +450,24 @@ class DataSpecs:
 
         return DataSpecs(**default_kwargs)
 
+    def set_obs_seq_len(self, seq_len: int | None) -> DataSpecs:
+        """Set the sequence length of the observation specs. This is used to
+        create a new DataSpecs object with the same specs but with a different
+        observation sequence length."""
+        new_obs = {}
+        for key, spec in self.obs.items():
+            if isinstance(spec, CameraSpec):
+                new_obs[key] = spec.replace(time=seq_len)
+            elif isinstance(spec, ObsSpec):
+                new_obs[key] = replace(spec, time=seq_len)
+        return self.replace(obs=new_obs)
+
+    def set_action_seq_len(self, seq_len: int | None) -> DataSpecs:
+        """Set the sequence length of the action specs. This is used to create a
+        new DataSpecs object with the same specs but with a different action
+        sequence length."""
+        return self.replace(action=replace(self.action, time=seq_len))
+
     @property
     def obs(self) -> frozendict[str, Spec]:
         return self._obs
@@ -438,11 +492,11 @@ class DataSpecs:
         self._lengths.extend(lengths)
 
     @property
-    def state_dim(self) -> int:
+    def state_dim(self) -> int | None:
         try:
             robot_state_space = self.obs["robot_state"]
         except KeyError:
-            return 0
+            return None
 
         return robot_state_space.shape[-1]
 
@@ -454,23 +508,23 @@ class DataSpecs:
     @property
     def action_dim(self) -> int:
         assert len(self.action.shape) == 2
-        return self.action.shape[1]
+        return self.action.shape[-1]
 
     @property
-    def obs_embed_dim(self) -> int:
+    def obs_embed_dim(self) -> int | None:
         try:
             embed_space = self.obs["embed"]
         except KeyError:
-            return 0
+            return None
 
         return embed_space.shape[-1]
 
     @property
-    def obs_embed_seq_len(self) -> int:
+    def obs_embed_seq_len(self) -> int | None:
         try:
             embed_space = self.obs["embed"]
         except KeyError:
-            return 0
+            return None
 
         assert isinstance(embed_space, EmbedSpec)
         if embed_space.fixed_shape:
@@ -479,24 +533,24 @@ class DataSpecs:
             return None
 
     @property
-    def goal_embed_seq_len(self) -> int:
+    def goal_embed_seq_len(self) -> int | None:
         if self.goal is None:
-            return 0
+            return None
 
         try:
             return self.goal["embed"].shape[0]
         except KeyError:
-            return 0
+            return None
 
     @property
-    def goal_embed_dim(self) -> int:
+    def goal_embed_dim(self) -> int | None:
         if self.goal is None:
-            return 0
+            return None
 
         try:
             return self.goal["embed"].shape[-1]
         except KeyError:
-            return 0
+            return None
 
 
 def save_specs(specs: DataSpecs, path: os.PathLike) -> None:
@@ -540,31 +594,16 @@ def spec_to_space(spec: Spec) -> "gym.Space":
 
     if isinstance(spec, CameraSpec):
         subspaces = {
-            subkey: spaces.Box(low=0, high=255, shape=spec.shape, dtype=np.uint8)
-            for subkey in spec.intensity_subkeys
+            name: spaces.Box(
+                low=0,
+                high=255,
+                shape=stream.shape,
+                dtype=np.float32 if isinstance(stream, DepthStream) else np.uint8,
+            )
+            for name, stream in spec.streams.items()
         }
-        if isinstance(spec, RGBCameraSpec):
-            subspaces |= {
-                subkey: spaces.Box(low=0, high=255, shape=spec.shape, dtype=np.uint8)
-                for subkey in spec.rgb_subkeys
-            }
-        if isinstance(spec, DepthCameraSpec):
-            for subkey in spec.depth_subkeys:
-                if isinstance(spec, RGBCameraSpec) and spec.channel_order == "HWC":
-                    H, W = spec.shape[-3:-1]
-                else:
-                    H, W = spec.shape[-2:]
-
-                subspaces[subkey] = spaces.Box(
-                    low=0, high=np.inf, shape=spec.shape[:-3] + (H, W), dtype=np.float32
-                )
-
-        if None in subspaces:
-            # this is a convention that means that the camera has no subkeys
-            return subspaces[None]
-        else:
-            return spaces.Dict(subspaces)
-    elif isinstance(spec, ActionSpec) or type(spec) is Spec:
+        return spaces.Dict(subspaces)
+    elif isinstance(spec, (ActionSpec, ObsSpec)):
         return spaces.Box(low=-np.inf, high=np.inf, shape=spec.shape, dtype=np.float32)
     else:
         raise ValueError(f"Unknown spec type: {type(spec).__name__}")

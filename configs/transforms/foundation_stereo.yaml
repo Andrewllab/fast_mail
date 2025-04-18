@@ -1,0 +1,4 @@
+_target_: transforms.foundation_stereo.FoundationStereo
+_partial_: True
+engine_path: ${paths.root_dir}/tensor_rt/foundation_stereo_batchsize1.engine
+remove_invisible: True

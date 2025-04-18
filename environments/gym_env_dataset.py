@@ -45,17 +45,10 @@ class GymEnvDataset(IterableDataset):
             log.error("Gym environment does not define specs.")
             raise
 
-        obs = dict(one_step_specs.obs)  # copy obs specs for local modification
-        for key, spec in obs.items():
-            obs[key] = dataclasses.replace(spec, shape=(obs_seq_len, *spec.shape))
-        action = dataclasses.replace(
-            one_step_specs.action,
-            shape=(action_horizon, *one_step_specs.action.shape),
-        )
-        self._specs = one_step_specs.replace(
-            obs=obs,
-            action=action,
-        )
+        specs = one_step_specs.set_obs_seq_len(obs_seq_len)
+        # if the action horizon is None, all predicted actions are executed
+        specs = specs.set_action_seq_len(action_horizon if action_horizon else 1)
+        self._specs = specs
 
         self.num_envs = num_envs
         self.num_episodes = num_episodes
@@ -158,6 +151,8 @@ def step_return_to_tensor_dict(
 ) -> TensorDict:
     """Convert step return to TensorDict."""
     tensordict = TensorDict({"obs": obs})  # type: ignore
+    # we expect the first dimension to be the batch dimension resulting from
+    # the vectorized environment stacking the observations from all envs
     tensordict.auto_batch_size_(batch_dims=1)
 
     if reward is None:
@@ -178,7 +173,9 @@ def step_return_to_tensor_dict(
         },  # type: ignore
     )
     # unsqueeze to add singleton time dimension
-    return tensordict.unsqueeze(dim=0)
+    tensordict = tensordict.unsqueeze(dim=1)
+    tensordict.auto_batch_size_(batch_dims=1)
+    return tensordict
 
 
 def monkey_patch_data_fetcher():

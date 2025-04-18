@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 from typing import Mapping
 
@@ -8,16 +9,8 @@ import torch
 from environments.real_robot.hardware.hardware_cameras import DiscreteCamera
 from environments.real_robot.hardware.hardware_franka import ControlType
 from environments.real_robot.hardware.hardware_robot import RobotArm, RobotHand
-from environments.specs import (
-    ActionSpec,
-    DataSpecs,
-    PinholeCameraIntrinsic,
-    RGBCameraSpec,
-    Spec,
-    specs_to_spaces,
-)
-
-# from utils.math import euler_xyz_to_quaternion
+from environments.specs import ActionSpec, DataSpecs, ObsSpec, specs_to_spaces
+from utils.math import make_pose, quaternion_to_matrix
 
 log = logging.getLogger(__name__)
 
@@ -48,16 +41,14 @@ class RealRobotEnv(gym.Env):
 
         self.robot_arm = robot_arm(
             control_type=CONTROL_TYPE,
-            # default_reset_pose=DEFAULT_RESET_POSE,
+            default_reset_pose=DEFAULT_RESET_POSE,
         )
         self.robot_hand = robot_hand
 
-        self.left_cam = cameras["left_cam"]
-        self.left_cam.connect()
-        self.right_cam = cameras["right_cam"]
-        self.right_cam.connect()
-        self.gripper_cam = cameras["gripper_cam"]
-        self.gripper_cam.connect()
+        self.cameras = cameras
+        for cam in cameras.values():
+            assert isinstance(cam, DiscreteCamera), f"Invalid camera type: {type(cam)}"
+            cam.connect()
 
         assert self.robot_arm.connect(), f"Connection to {self.robot_arm.name} failed"
         assert self.robot_hand.connect(), f"Connection to {self.robot_hand.name} failed"
@@ -65,61 +56,37 @@ class RealRobotEnv(gym.Env):
         self.devices = [
             self.robot_arm,
             self.robot_hand,
-            self.gripper_cam,
-            self.left_cam,
-            self.right_cam,
-        ]
-
-        # static camera front left
-        left_cam = RGBCameraSpec(
-            shape=(480, 640, 3),
-            # intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
-            #     intrinsics, width=shape[2], height=shape[1]
-            # ),
-            # orthogonal=False,
-            channel_order="HWC",
-        )
-
-        # static camera front right
-        right_cam = RGBCameraSpec(
-            shape=(480, 640, 3),
-            # intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
-            #     intrinsics, width=shape[2], height=shape[1]
-            # ),
-            # orthogonal=False,
-            channel_order="HWC",
-        )
-
-        # gripper camera
-        gripper_cam = RGBCameraSpec(
-            shape=(480, 640, 3),
-            # intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
-            #     intrinsics, width=shape[2], height=shape[1]
-            # ),
-            # dynamic_pose_obs_key="gripper_cam_transform",
-            # extrinsics=None,  # gripper_cam_transform provides complete transform
-            # orthogonal=False,
-            channel_order="HWC",
-        )
+        ] + list(self.cameras.values())
 
         # robot state
         # we concatenate joint_pos and gripper_pos to get a shape of (T, 9)
-        robot_state = Spec(shape=(9,), type="state")
+        robot_state = ObsSpec(elem_shape=(9,))
 
         # gripper_cam_transform
-        gripper_cam_transform = Spec(shape=(4, 4), type="transform")
+        gripper_cam_transform = ObsSpec(elem_shape=(4, 4))
+
+        obs_specs = {
+            "robot_state": robot_state,
+            "gripper_cam_transform": gripper_cam_transform,
+        }
+
+        camera_specs = {key: camera.spec for key, camera in cameras.items()}
+
+        # add the dynamic_pose_obs_key to the gripper_cam if we have it
+        # this is needed for the complete extrinsics of the moving gripper cam
+        if "gripper_cam" in camera_specs:
+            camera_specs["gripper_cam"] = dataclasses.replace(
+                camera_specs["gripper_cam"],
+                dynamic_pose_obs_key="gripper_cam_transform",
+            )
+
+        obs_specs.update(camera_specs)
 
         # actions
-        action = ActionSpec(shape=(8,), type="action")
+        action = ActionSpec(action_dim=8)
 
         self._specs = DataSpecs(
-            obs={
-                "left_cam": left_cam,
-                "right_cam": right_cam,
-                "gripper_cam": gripper_cam,
-                "robot_state": robot_state,
-                # "gripper_cam_transform": gripper_cam_transform,
-            },
+            obs=obs_specs,
             action=action,
         )
 
@@ -136,7 +103,7 @@ class RealRobotEnv(gym.Env):
 
         action_np /= 1.0  # reverse scaling applied in recording demos
 
-        log.debug(f"Action: {action_np}")
+        # log.debug(f"Action: {action_np}")
 
         action = torch.from_numpy(action_np)
         wxyz = action[3:7]
@@ -182,12 +149,21 @@ class RealRobotEnv(gym.Env):
             axis=-1,
         )
 
+        robot_arm_ee_pose = self.robot_arm.get_state().ee_pos
+
+        pos, xyzw = robot_arm_ee_pose[:3], robot_arm_ee_pose[3:]
+        wxyz = torch.cat((xyzw[3:], xyzw[:3]), dim=0)
+        rot = quaternion_to_matrix(wxyz)
+        gripper_cam_transform = make_pose(pos, rot).numpy()
+
         obs_dict = {
             "robot_state": robot_state,
-            "left_cam": self.left_cam.get_sensors()["rgb"],
-            "right_cam": self.right_cam.get_sensors()["rgb"],
-            "gripper_cam": self.gripper_cam.get_sensors()["rgb"],
+            "gripper_cam_transform": gripper_cam_transform,
         }
+
+        images = {key: camera.get_sensors() for key, camera in self.cameras.items()}
+
+        obs_dict.update(images)
 
         return obs_dict
 

@@ -85,9 +85,12 @@ class NullAgent(BaseAgent):
             actions = data["action"]
 
         else:
+            # TODO: add definition of zero action
             actions = torch.zeros(
-                batch.batch_size + self.specs.action.shape, device=batch.device
+                (batch.shape[0], *self.specs.action.shape), device=batch.device
             )
+            # the real part of the quaternion should be 1.0 for a no-op rotation
+            actions[..., 3] = 1.0
 
         if self.fps is not None:
             self.clock.tick(self.fps)

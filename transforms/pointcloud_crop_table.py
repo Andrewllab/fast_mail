@@ -1,20 +1,17 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Sequence
+from typing import Sequence
 
 import open3d as o3d
 import torch
-from torch_geometric.data import Batch
+from torch import Tensor
+from tensordict import NonTensorData
+from torch_geometric.data import Batch, Data
 
+from environments.specs import DataSpecs
 from transforms.base_transform import KeyMapping, Transform
 from utils.pyg import apply_mask
-
-if TYPE_CHECKING:
-    from torch import Tensor
-    from torch_geometric.data import Data
-
-    from environments.specs import DataSpecs
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +24,7 @@ class CropTablePointCloud(Transform):
 
     Args:
         specs (DataSpecs): The data specifications.
-        distance_threshold (float): Max distance a point can be from the plane model, and still be considered an inlier.
+        ransac_distance_threshold (float): Max distance a point can be from the plane model, and still be considered an inlier.
         ransac_n (int): Number of initial points to be considered inliers in each iteration.
         num_iterations (int): The number of iterations for RANSAC.
         probability (float): The expected probability of finding the optimal plane.
@@ -36,13 +33,14 @@ class CropTablePointCloud(Transform):
     def __init__(
         self,
         specs: DataSpecs,
-        distance_threshold: float,
+        ransac_distance_threshold: float,
         ransac_n: int,
         num_iterations: int,
+        crop_threshold: float,
         probability: float = 0.99999999,
         pcd_keys: str | Sequence[str] = "pcd",
     ):
-        self.distance_threshold = distance_threshold
+        self.ransac_distance_threshold = ransac_distance_threshold
         self.ransac_n = ransac_n
         self.num_iterations = num_iterations
         self.probability = probability
@@ -56,6 +54,7 @@ class CropTablePointCloud(Transform):
 
         self._normal = None
         self._d = None
+        self.crop_threshold = crop_threshold
 
     @property
     def key_mappings(self) -> list[KeyMapping]:
@@ -68,39 +67,29 @@ class CropTablePointCloud(Transform):
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def __call__(self, data: Data) -> Data:
+    def _call_one(self, nt_data: NonTensorData) -> Data:
+        data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
 
         # https://archive.ph/XNLup    Beware, this is a medium link.
 
-        if isinstance(data, Batch):
-            batch = data.to_data_list()
-        else:
-            batch = [data]
+        # TODO: batching
+        pos = data.pos
+        assert pos is not None
 
-        for i, elem in enumerate(batch):
-            pos = elem.pos
-            assert pos is not None
+        # Get the plane parameters
+        if self._normal is None or self._d is None:
+            self._normal, self._d = get_plane_parameters(
+                pos,
+                self.ransac_distance_threshold,
+                self.ransac_n,
+                self.num_iterations,
+                self.probability,
+            )
 
-            # Get the plane parameters
-            if self._normal is None or self._d is None:
-                self._normal, self._d = get_plane_parameters(
-                    pos,
-                    self.distance_threshold,
-                    self.ransac_n,
-                    self.num_iterations,
-                    self.probability,
-                )
+        # a point is above the plane if P * N + d >= 0, where * is the dot product
+        mask = torch.matmul(pos, self._normal) + self._d >= self.crop_threshold
 
-            # a point is above the plane if P * N + d >= 0, where * is the dot product
-            mask = torch.matmul(pos, self._normal) + self._d >= 0
-
-            elem = apply_mask(elem, mask)
-            batch[i] = elem
-
-        if isinstance(data, Batch):
-            data = Batch.from_data_list(batch)
-        else:
-            data = batch[0]
+        data = apply_mask(data, mask)
 
         return data
 
@@ -124,10 +113,10 @@ def get_plane_parameters(
     )
 
     a, b, c, d = plane_model
-    log.debug(f"Plane equation: {a:.2f}x + {b:.2f}y + {c:.2f}z + {d:.2f} = 0")
+    log.info(f"Plane equation: {a:.3f}x + {b:.3f}y + {c:.3f}z + {d:.3f} = 0")
 
-    normal = torch.tensor([a, b, c], device=pos.device)
-    d = torch.tensor(d, device=pos.device)
+    normal = torch.tensor([a, b, c], dtype=torch.float32, device=pos.device)
+    d = torch.tensor(d, dtype=torch.float32, device=pos.device)
 
     # Flip the normal vector to point upwards
     if c < 0:
@@ -140,5 +129,5 @@ def get_plane_parameters(
 
     # move the plane upwards by `distance_threshold`
     # to remove points that are too close to the plane
-    d -= distance_threshold
+    # d -= distance_threshold
     return normal, d

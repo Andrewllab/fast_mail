@@ -6,7 +6,6 @@ import numpy as np
 import tensorrt as trt
 import torch
 from tensordict import TensorDict
-from torch import Tensor
 
 from environments.specs import CameraSpec, DataSpecs, DepthStream
 from transforms.base_transform import Transform
@@ -14,6 +13,18 @@ from utils.FoundationStereo.utils import InputPadder
 
 TRT_LOGGER = trt.Logger(trt.Logger.INFO)
 Binding = namedtuple("Binding", ("name", "dtype", "shape", "data", "ptr"))
+
+BASELINES = {
+    "gripper_cam": 0.0180272,
+    "left_cam": 0.0500103,
+    "right_cam": 0.0501555,
+}
+
+
+class ModelData:
+    INPUT_NAME_0 = "left"
+    INPUT_NAME_1 = "right"
+    DTYPE = trt.float32
 
 
 class FoundationStereo(Transform):
@@ -60,16 +71,18 @@ class FoundationStereo(Transform):
 
         # Load tensorRT engine
         self.device = torch.device("cuda")  # TODO: avoid hardcoding this
-        self.context = self.engine.create_execution_context()
         self.engine_path = engine_path
         self.engine = load_engine(self.engine_path)
         self.bindings = allocate_bindings(self.engine, self.device)
+
+        self.context = self.engine.create_execution_context()
 
     @property
     def specs(self) -> DataSpecs:
         return self._output_specs
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
+        default_dtype = torch.get_default_dtype()
 
         for key, spec in self._input_specs.items():
             left_stream = spec.streams["left"]
@@ -104,13 +117,27 @@ class FoundationStereo(Transform):
             ), "RGB images must have 3 channels"
             _, C, H, W = left.shape
 
+            if left.dtype == torch.uint8:
+                left = left.to(default_dtype)
+                right = right.to(default_dtype)
+            else:
+                assert left.max() <= 1.0 and right.max() <= 1.0
+                left = left.mul(255)
+                right = right.mul(255)
+
             # pad images dimensions to be divisible by 32
             padder = self._padders[key]
             left, right = padder.pad(left, right)
 
+            self.bindings[ModelData.INPUT_NAME_0] = self.bindings[
+                ModelData.INPUT_NAME_0
+            ]._replace(data=left, ptr=int(left.data_ptr()))
+            self.bindings[ModelData.INPUT_NAME_1] = self.bindings[
+                ModelData.INPUT_NAME_1
+            ]._replace(data=right, ptr=int(right.data_ptr()))
+
             # foundation stereo
-            with torch.amp.autocast("cuda", enabled=True):
-                run_inference(self.engine, self.context, self.bindings)
+            run_inference(self.engine, self.context, self.bindings)
 
             output_binding = [
                 name
@@ -120,7 +147,7 @@ class FoundationStereo(Transform):
             output = self.bindings[output_binding].data
             disp = output.reshape(self.bindings[output_binding].shape)
 
-            disp = padder.unpad(disp.float())
+            disp = padder.unpad(disp)
             disp = disp.data.reshape(H, W)
 
             if self.remove_invisible:
@@ -129,11 +156,18 @@ class FoundationStereo(Transform):
                     torch.arange(disp.shape[1]),
                     indexing="ij",
                 )
+                xx = xx.to(disp.device)
                 us_right = xx - disp
                 invalid = us_right < 0
                 disp[invalid] = np.inf
 
-            tensordict["obs", key, "depth"] = disp
+            baseline = BASELINES[key]
+
+            depth = spec.intrinsics.fx * baseline / disp
+
+            tensordict["obs", key, "depth"] = torch.unflatten(
+                depth.unsqueeze(0), dim=0, sizes=leading_dims
+            )
 
         return tensordict
 

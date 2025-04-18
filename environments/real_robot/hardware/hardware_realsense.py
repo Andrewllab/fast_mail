@@ -5,8 +5,16 @@ from typing import Sequence
 
 import numpy as np
 import pyrealsense2 as rs
+import torch
 
 from environments.real_robot.hardware.hardware_cameras import DiscreteCamera
+from environments.specs import (
+    CameraSpec,
+    DepthStream,
+    ImageStream,
+    PinholeCameraIntrinsic,
+    RGBStream,
+)
 
 log = logging.getLogger(__name__)
 
@@ -46,10 +54,12 @@ class RealSense(DiscreteCamera):
         )
         self.fps = fps
         self._extrinsics = (
-            np.asarray(extrinsics).reshape(4, 4) if extrinsics is not None else None
+            torch.tensor(extrinsics).reshape(4, 4) if extrinsics is not None else None
         )
         self.warm_start = warm_start
         self.pipe = None
+
+        self._spec = None
 
     def connect(self) -> bool:
         """
@@ -119,6 +129,32 @@ class RealSense(DiscreteCamera):
         for _ in range(self.warm_start):
             self.__get_frames()
 
+        intrinsics = self.get_intrinsics_dict()
+
+        self._spec = CameraSpec(
+            streams={
+                "rgb": RGBStream(
+                    self.RECORDING_HEIGHT, self.RECORDING_WIDTH, channels=3
+                ),
+                "depth": DepthStream(self.RECORDING_HEIGHT, self.RECORDING_WIDTH),
+                "left": ImageStream(
+                    self.RECORDING_HEIGHT, self.RECORDING_WIDTH, channels=None
+                ),
+                "right": ImageStream(
+                    self.RECORDING_HEIGHT, self.RECORDING_WIDTH, channels=None
+                ),
+            },
+            intrinsics=PinholeCameraIntrinsic(
+                height=self.RECORDING_HEIGHT,
+                width=self.RECORDING_WIDTH,
+                fx=intrinsics["fx"],
+                fy=intrinsics["fy"],
+                cx=intrinsics["ppx"],
+                cy=intrinsics["ppy"],
+            ),
+            extrinsics=self._extrinsics,
+        )
+
     def get_intrinsics_dict(self):
         # https://github.com/IntelRealSense/librealsense/issues/12090#issuecomment-1673844543
         # frameset = self.__get_frames()
@@ -136,8 +172,9 @@ class RealSense(DiscreteCamera):
         return param_dict
 
     @property
-    def extrinsics(self) -> np.ndarray | None:
-        return self._extrinsics
+    def spec(self) -> CameraSpec:
+        assert self._spec is not None
+        return self._spec
 
     def __get_frames(self):
         if self.pipe is None:
@@ -151,24 +188,11 @@ class RealSense(DiscreteCamera):
         """
         frameset = self.__get_frames()
 
-        rgb = np.empty(
-            [self.RECORDING_HEIGHT, self.RECORDING_WIDTH, 3], dtype=np.uint16
-        )
-        d = np.empty([self.RECORDING_HEIGHT, self.RECORDING_WIDTH], dtype=np.uint16)
-        infrared_1 = np.empty(
-            [self.RECORDING_HEIGHT, self.RECORDING_WIDTH], dtype=np.uint16
-        )
-        infrared_2 = np.empty(
-            [self.RECORDING_HEIGHT, self.RECORDING_WIDTH], dtype=np.uint16
-        )
-
         color_frame = frameset.get_color_frame()
         rgb = np.asanyarray(color_frame.get_data())
 
         depth_frame = frameset.get_depth_frame()
-        d = (
-            np.asanyarray(depth_frame.get_data()) * depth_frame.get_units() * 1000
-        )  # in millimeters
+        d = np.asanyarray(depth_frame.get_data()) * depth_frame.get_units()
 
         IR1_frame = frameset.get_infrared_frame(1)
         infrared_1 = np.asanyarray(IR1_frame.get_data())
@@ -190,7 +214,13 @@ class RealSense(DiscreteCamera):
         rgb, d, ir1, ir2 = self.get_obs()
 
         timestamp = time.time()
-        return {"time": timestamp, "rgb": rgb, "depth": d, "left": ir1, "right": ir2}
+        return {
+            "time": timestamp,
+            "rgb": rgb,
+            "depth": d.astype(np.float32),
+            "left": ir1,
+            "right": ir2,
+        }
 
     def close(self):
         if self.pipe is not None:

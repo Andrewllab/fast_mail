@@ -47,6 +47,7 @@ class DenoisePointCloud(Transform):
     def _call_one(self, nt_data: NonTensorData) -> Data:
         data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
 
+        # TODO: batching
         pos = data.pos
         assert pos is not None
         pos = torch_to_o3d(pos)

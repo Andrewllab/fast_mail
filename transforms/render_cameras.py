@@ -135,7 +135,15 @@ def rgb_tensor_to_np(
 
 
 def intensity_tensor_to_np(image: torch.Tensor) -> np.ndarray:
-    raise NotImplementedError
+    # convert back to uint8 if needed
+    if image.dtype != torch.uint8:
+        image = image.mul(255).clamp(0, 255).to(torch.uint8)
+
+    # add a channel dimension and repeat the intensity value
+    # to create a 3-channel image
+    image = image.unsqueeze(-1).expand(-1, -1, 3)
+
+    return image.cpu().numpy()
 
 
 def depth_tensor_to_np(depth: torch.Tensor, colormap_name="magma") -> np.ndarray:

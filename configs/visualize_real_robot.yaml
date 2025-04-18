@@ -6,9 +6,9 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: default
+  - experiment: real_pointclouds
+  - transforms@agent.obs_encoder.t5_render: render_pointcloud
   - _self_
-  - experiment: null
-  - transforms@agent.obs_encoder.t3_render: render_cameras
   - platform: default
   - optional local: default
   - debug: verbose
@@ -16,12 +16,18 @@ defaults:
 # task name, determines output directory path
 job_type: visualize_real_robot
 
+data:
+  gpu_batch_transforms:
+    t2_to_pcd:
+      color: True
+
 trainer:
   accelerator: gpu
   devices: 1
   # precision: 16-true
   default_root_dir: ${paths.output_dir}
   enable_progress_bar: False
+  precision: null  # disable bf16-mixed precision
 
 torch:
   set_float32_matmul_precision: medium

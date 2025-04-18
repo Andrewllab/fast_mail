@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 import itertools
 from typing import TYPE_CHECKING
 
@@ -16,23 +15,6 @@ if TYPE_CHECKING:
     from tensordict import TensorDict
 
     from environments.specs import DataSpecs
-
-
-"""In ROS, the camera is looking down the +Z axis with the +Y axis pointing down,
-and +X axis pointing right. This is the convention the point clouds are in after
-conversion by `unproject_depth`. On the other hand, the typical world coordinate
-system is with +X pointing forward, +Y pointing left, and +Z pointing up. We can
-achieve this transformation using the following rotation matrix.
-
-Reference: https://isaac-sim.github.io/IsaacLab/main/source/api/lab/isaaclab.utils.html#isaaclab.utils.math.convert_camera_frame_orientation_convention
-
-(equivalent to T_USD_to_WORLD @ (T_USD_to_ROS)^(-1) in the convention used in Isaac Sim)
-"""
-ROS_TO_WORLD = [
-    [0, 0, 1],
-    [-1, 0, 0],
-    [0, -1, 0],
-]
 
 
 class ToPointCloud(Transform):
@@ -83,14 +65,6 @@ class ToPointCloud(Transform):
                     f"Dynamic pose obs key {spec.dynamic_pose_obs_key} is not supported for depth cameras without extrinsics."
                 )
 
-            # correct extrinsics by adding conversion from ROS to WORLD camera convention
-            if (extrinsics := spec.extrinsics) is not None:
-                # we right-multiply, since we first need to transform the points
-                # into the WORLD convention, and then apply the extrinsics
-                extrinsics[:3, :3] = extrinsics[:3, :3] @ torch.tensor(
-                    ROS_TO_WORLD, dtype=extrinsics.dtype
-                )
-                depth_specs[key] = dataclasses.replace(spec, extrinsics=extrinsics)
         self._input_specs = depth_specs
 
         obs_specs = dict(specs.obs)  # copy obs specs for local modification

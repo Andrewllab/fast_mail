@@ -1648,6 +1648,7 @@ def create_rotation_matrix_from_view(
     return R.transpose(1, 2)
 
 
+@torch.jit.script
 def make_pose(pos, rot):
     """
     Make homogeneous pose matrices from a set of translation vectors and rotation matrices.

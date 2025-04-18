@@ -149,14 +149,12 @@ def data_to_o3d(
     """
     Convert a Data object to an Open3D PointCloud.
     """
-    data = data.cpu()  # rendering of cuda tensors is not supported
-
-    points = data.pos
+    points = data.pos.cpu()  # rendering of cuda tensors is not supported
     assert points is not None
     points = o3d.utility.Vector3dVector(points.numpy())
 
     if data.x is not None:
-        color = data.x
+        color = data.x.cpu()
         if color.dtype == torch.uint8:
             color = color.float() / 255.0
         color = o3d.utility.Vector3dVector(color.numpy())
