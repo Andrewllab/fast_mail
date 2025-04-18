@@ -229,7 +229,7 @@ class TrajectoryDataset(Dataset, ABC):
                 return
 
             raise ValueError(
-                "Preprocess transforms do not match saved version. Set overwrite_preprocessed=True to overwrite."
+                f"Preprocess transforms do not match saved version at {preprocessed_dir}. Set overwrite_preprocessed=True to overwrite."
             )
 
         # preprocessed data matches, so we can load it

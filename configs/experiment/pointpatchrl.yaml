@@ -35,7 +35,7 @@ data:
     t2-2_voxel_downsample:
       size: 0.006
   dataset:
-    preprocessed_dir: ${paths.preprocessed_dir}/dataset_11.04.25/pointpatchrl # pointpatchrl_nosubsample
+    preprocessed_dir: ${paths.preprocessed_dir}/dataset_11.04.25/${job_type}_pointpatchrl # pointpatchrl_nosubsample
     # overwrite_preprocessed: True
 
 logger:
