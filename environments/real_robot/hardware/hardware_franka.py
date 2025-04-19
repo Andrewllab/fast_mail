@@ -18,10 +18,16 @@ from polymetis import RobotInterface
 
 from environments.real_robot.hardware.hardware_robot import ArmState, RobotArm
 
+
 class ResolvedRateControl(toco.PolicyModule):
     """Resolved Rates Control --> End-Effector Control (dx, dy, dz, droll, dpitch, dyaw) via Joint Velocity Control"""
 
-    def __init__(self, Kp: torch.Tensor, robot_model: torch.nn.Module, ignore_gravity: bool = True) -> None:
+    def __init__(
+        self,
+        Kp: torch.Tensor,
+        robot_model: torch.nn.Module,
+        ignore_gravity: bool = True,
+    ) -> None:
         """
         Initializes a Resolved Rates controller with the given P gains and robot model.
 
@@ -33,7 +39,9 @@ class ResolvedRateControl(toco.PolicyModule):
 
         # Initialize Modules --> Inverse Dynamics is necessary as it needs to be compensated for in output torques...
         self.robot_model = robot_model
-        self.invdyn = toco.modules.feedforward.InverseDynamics(self.robot_model, ignore_gravity=ignore_gravity)
+        self.invdyn = toco.modules.feedforward.InverseDynamics(
+            self.robot_model, ignore_gravity=ignore_gravity
+        )
 
         # Create LinearFeedback (P) Controller...
         self.p = toco.modules.feedback.LinearFeedback(Kp)
@@ -49,20 +57,28 @@ class ResolvedRateControl(toco.PolicyModule):
         :return Dictionary containing joint torques.
         """
         # State Extraction
-        joint_pos_current, joint_vel_current = state_dict["joint_positions"], state_dict["joint_velocities"]
+        joint_pos_current, joint_vel_current = (
+            state_dict["joint_positions"],
+            state_dict["joint_velocities"],
+        )
 
         # Compute Target Joint Velocity via Resolved Rate Control...
         #   =>> Resolved Rate: joint_vel_desired = J.pinv() @ ee_vel_desired
         #                      >> Numerically stable --> torch.linalg.lstsq(J, ee_vel_desired).solution
         jacobian = self.robot_model.compute_jacobian(joint_pos_current)
-        joint_vel_desired = torch.linalg.lstsq(jacobian, self.ee_velocity_desired).solution
+        joint_vel_desired = torch.linalg.lstsq(
+            jacobian, self.ee_velocity_desired
+        ).solution
 
         # Control Logic --> Compute P Torque (feedback) & Inverse Dynamics Torque (feedforward)
         torque_feedback = self.p(joint_vel_current, joint_vel_desired)
-        torque_feedforward = self.invdyn(joint_pos_current, joint_vel_current, torch.zeros_like(joint_pos_current))
+        torque_feedforward = self.invdyn(
+            joint_pos_current, joint_vel_current, torch.zeros_like(joint_pos_current)
+        )
         torque_out = torque_feedback + torque_feedforward
 
         return {"joint_torques": torque_out}
+
 
 class HybridJointImpedanceControl(toco.PolicyModule):
     """
@@ -378,7 +394,7 @@ class FrankaArm(RobotArm):
             print("Done")
         return True
 
-    def reset(self, time_to_go=2):
+    def reset(self, time_to_go=3):
         """Reset hardware"""
 
         if self.okay():
@@ -433,24 +449,21 @@ class FrankaArm(RobotArm):
             print("1> Failed to udpate policy with exception", e)
             self.reconnect()
 
-    def apply_ee_vel(
-           self,
-           ee_velocities: torch.Tensor
-    ):
+    def apply_ee_vel(self, ee_velocities: torch.Tensor):
         self.robot.update_desired_ee_velocities(ee_velocities=ee_velocities)
 
     def apply_ee(
-            self,
-            position: torch.Tensor,
-            orientation: torch.Tensor = None,
-            # time_to_go: float = None,
-            delta: bool = True,
-            # Kx: torch.Tensor = None,
-            # Kxd: torch.Tensor = None,
-            # op_space_interp: bool = True,
-            # **kwargs,
-            ):
-        
+        self,
+        position: torch.Tensor,
+        orientation: torch.Tensor = None,
+        # time_to_go: float = None,
+        delta: bool = True,
+        # Kx: torch.Tensor = None,
+        # Kxd: torch.Tensor = None,
+        # op_space_interp: bool = True,
+        # **kwargs,
+    ):
+
         ee_pos_current, ee_quat_current = self.robot.get_ee_pose()
 
         # Parse parameters
@@ -469,12 +482,13 @@ class FrankaArm(RobotArm):
                 ee_quat_desired = (
                     R.from_quat(ee_quat_desired) * R.from_quat(ee_quat_current)
                 ).as_quat()
-                
-        
-        self.robot.update_desired_ee_pose(position=ee_pos_desired, orientation=ee_quat_desired)
+
+        self.robot.update_desired_ee_pose(
+            position=ee_pos_desired, orientation=ee_quat_desired
+        )
 
         return self.robot.get_ee_pose()
-        
+
         # self.robot.move_to_ee_pose(
         #     position,
         #     orientation,
@@ -485,7 +499,6 @@ class FrankaArm(RobotArm):
         #     op_space_interp,
         #     **kwargs,
         # )
-        
 
     def generate_waypoints_within_limits(
         self, start, goal, hz, max_vel_norm=float("inf")
