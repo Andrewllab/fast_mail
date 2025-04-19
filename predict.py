@@ -12,7 +12,12 @@ from omegaconf import DictConfig
 rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
 
 from environments.datamodule import TrajectoryDataModule
-from utils.conf import delete_keys_recursively, setup_resolvers
+from loggers.wandb import resolve_checkpoint
+from utils.conf import (
+    delete_keys_recursively,
+    patch_load_from_checkpoint,
+    setup_resolvers,
+)
 from utils.instantiators import (
     instantiate_callbacks,
     instantiate_datamodule,
@@ -46,11 +51,20 @@ def main(cfg: DictConfig) -> None:
 
     # instantiate agent
     log.debug("Instantiating agent...")
-    # recursively delete these fields in config dictionary
-    # we want these to be saved to WandB but we don't want them for instantiation
-    delete_keys_recursively(cfg.agent, ["name"])
+    if checkpoint := resolve_checkpoint(cfg, use_artifact=True):
+        # load agent config and specs from checkpoint
+        train_cfg, checkpoint_path, specs = checkpoint
+        agent_cfg = train_cfg.agent
+        # recursively delete these fields in config dictionary
+        # we want these to be saved to WandB but we don't want them for instantiation
+        agent_cfg = patch_load_from_checkpoint(agent_cfg, checkpoint_path)
+    else:
+        # otherwise use the given agent config and the specs from the datamodule
+        specs = datamodule.specs
+        agent_cfg = cfg.agent
+    delete_keys_recursively(agent_cfg, ["name"])
     agent: LightningModule = hydra.utils.instantiate(
-        cfg.agent, specs=datamodule.specs, _convert_="all"
+        agent_cfg, specs=specs, _convert_="all"
     )
 
     log.debug("Instantiating callbacks...")
@@ -64,7 +78,7 @@ def main(cfg: DictConfig) -> None:
     log.info("Starting prediction loop")
     trainer.predict(agent, datamodule=datamodule)
 
-    log.info("Dataset exhausted, prediction loop completed")
+    log.info("Prediction loop completed")
 
 
 if __name__ == "__main__":

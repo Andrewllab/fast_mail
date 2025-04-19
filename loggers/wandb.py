@@ -79,7 +79,7 @@ def init_wandb_logger(logger: LightningWandbLogger, cfg: DictConfig) -> None:
 
 def resolve_checkpoint(
     cfg: DictConfig, use_artifact: bool = False
-) -> tuple[DictConfig, Path, DataSpecs]:
+) -> tuple[DictConfig, Path, DataSpecs] | None:
     """Get the model artifact from WandB and return the training config and model directory.
     Args:
         cfg: The configuration dictionary.
@@ -91,7 +91,7 @@ def resolve_checkpoint(
         # retrieve training config, specs and model path from local log_dir
         log_dir = Path(log_dir)
 
-        train_cfg = OmegaConf.load(log_dir / ".hydra/config.yaml")
+        train_cfg: DictConfig = OmegaConf.load(log_dir / ".hydra/config.yaml")
 
         model_paths = (log_dir / "checkpoints").glob("*.ckpt")
         model_paths = {
@@ -123,41 +123,39 @@ def resolve_checkpoint(
 
         return train_cfg, model_path, specs
 
-    # download model and specs artifacts from wandb, and get the config used
-    # to train the model
-    try:
-        run_name = cfg["artifact_run_name"]
-    except KeyError:
-        raise ValueError(
-            "Either the artifact_run_name or the log_dir must be specified when loading from checkpoint."
-        )
+    if "artifact_run_name" in cfg:
+        # download model and specs artifacts from wandb, and get the config used
+        # to train the model
+        run_name = cfg.artifact_run_name
+        prefix = ""
+        if (project := cfg.get("artifact_project")) is not None:
+            prefix = f"{project}/{prefix}"
+            if (entity := cfg.get("artifact_entity")) is not None:
+                prefix = f"{entity}/{prefix}"
 
-    prefix = ""
-    if (project := cfg.get("artifact_project")) is not None:
-        prefix = f"{project}/{prefix}"
-        if (entity := cfg.get("artifact_entity")) is not None:
-            prefix = f"{entity}/{prefix}"
+        version = cfg.get("artifact_version", "latest") or "latest"
+        model_identifier = f"{prefix}model-{run_name}:{version}"
+        specs_identifier = f"{prefix}specs-{run_name}:latest"
 
-    version = cfg.get("artifact_version", "latest") or "latest"
-    model_identifier = f"{prefix}model-{run_name}:{version}"
-    specs_identifier = f"{prefix}specs-{run_name}:latest"
+        if wandb.run is not None and not wandb.run.disabled and use_artifact:
+            model_artifact = wandb.run.use_artifact(model_identifier, type="model")
+            specs_artifact = wandb.run.use_artifact(specs_identifier, type="specs")
+        else:
+            api = wandb.Api()
+            model_artifact = api.artifact(model_identifier, type="model")
+            specs_artifact = api.artifact(specs_identifier, type="specs")
 
-    if wandb.run is not None and not wandb.run.disabled and use_artifact:
-        model_artifact = wandb.run.use_artifact(model_identifier, type="model")
-        specs_artifact = wandb.run.use_artifact(specs_identifier, type="specs")
+        # get config used to train the model
+        train_cfg = model_artifact.logged_by().config
+        train_cfg: DictConfig = OmegaConf.create(train_cfg)
+
+        # load saved model state
+        model_path = Path(model_artifact.download()) / "model.ckpt"
+        specs_path = Path(specs_artifact.download()) / "specs.pkl"
+
+        specs = load_specs(specs_path)
+
+        return train_cfg, model_path, specs
+
     else:
-        api = wandb.Api()
-        model_artifact = api.artifact(model_identifier, type="model")
-        specs_artifact = api.artifact(specs_identifier, type="specs")
-
-    # get config used to train the model
-    train_cfg = model_artifact.logged_by().config
-    train_cfg = OmegaConf.create(train_cfg)
-
-    # load saved model state
-    model_path = Path(model_artifact.download()) / "model.ckpt"
-    specs_path = Path(specs_artifact.download()) / "specs.pkl"
-
-    specs = load_specs(specs_path)
-
-    return train_cfg, model_path, specs
+        return None
