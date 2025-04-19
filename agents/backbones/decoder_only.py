@@ -106,7 +106,7 @@ class DecoderOnlyNoise(nn.Module):
 
         input_seq = []
 
-        input_seq.append(self.sigma_encoder(sigma))
+        input_seq.append(self.sigma_encoder(sigma).unsqueeze(dim=-2))
 
         if goal is not None:
             goal_embed = self.goal_encoder(goal)

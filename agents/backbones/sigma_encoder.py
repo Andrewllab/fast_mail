@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import einops
 import torch.nn as nn
 
 from models.pos_encoder import SinusoidalTokenPosEncoder
@@ -24,7 +23,6 @@ class BESO_SigmaEncoder(nn.Module):
 
     def forward(self, sigma: Tensor) -> Tensor:
         sigma = sigma.log() / 4
-        sigma = einops.rearrange(sigma, "b -> b 1")
         sigma_emb = self.sigma_emb(sigma)
         return sigma_emb
 
@@ -40,5 +38,4 @@ class DDPM_SigmaEncoder(nn.Module):
         )
 
     def forward(self, sigma: Tensor) -> Tensor:
-        sigma = einops.rearrange(sigma, "b -> b 1")
         return self.sigma_emb(sigma)

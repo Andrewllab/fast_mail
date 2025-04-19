@@ -1,0 +1,4 @@
+name: point_mae_position_encoder
+_target_: models.pos_encoder.PointMAECartesianPosEncoder
+_partial_: True  # requires embed_dim
+hidden_dim: 128

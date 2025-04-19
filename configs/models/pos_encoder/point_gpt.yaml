@@ -1,0 +1,4 @@
+name: point_gpt_position_encoder
+_target_: models.pos_encoder.PointGPTCartesianPosEncoder
+_partial_: True  # requires embed_dim
+temperature: 10000
