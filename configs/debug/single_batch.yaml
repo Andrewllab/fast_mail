@@ -34,3 +34,8 @@ data:
   dataset:
     load_subset: 0.05  # load only 5% of the training data
     # debug_preprocess: True  # prepend preprocess transforms to cpu transforms
+    overwrite_preprocessed: True  # don't worry about overwriting the preprocessed data since we are using a small subset
+
+# since we load a small subset of the data, store preprocessed data in another folder
+paths:
+  preprocessed_dir: ${paths.debug_preprocessed_dir}

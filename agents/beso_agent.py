@@ -87,7 +87,9 @@ class BesoAgent(BaseAgent):
         target = (action - c_skip * noised_input) / c_out
         loss = (model_output - target).pow(2).mean()
 
-        self.log_dict({"loss": loss}, on_epoch=True, prog_bar=True)
+        metrics = {"loss": loss}
+
+        self.log_dict(metrics, on_epoch=True, prog_bar=True, batch_size=batch.shape[0])
 
         return loss
 
@@ -125,7 +127,7 @@ class BesoAgent(BaseAgent):
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         actions = self.predict_step(batch, batch_idx)
 
-        metrics = {"actions": actions}
+        metrics = {}
 
         if "success" in batch:
             metrics["success"] = batch["success"]
@@ -135,6 +137,11 @@ class BesoAgent(BaseAgent):
             loss = ((actions - batch["action"]) ** 2).mean()
             metrics["loss"] = loss
 
+        self.log_dict(metrics, on_epoch=True, prog_bar=True, batch_size=batch.shape[0])
+
+        # don't log the actions, just return them in case we want to write them
+        # back to the environment
+        metrics["actions"] = actions
         return metrics
 
     # validation and testing are identical

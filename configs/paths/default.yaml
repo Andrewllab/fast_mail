@@ -5,6 +5,7 @@ data_dir: ${paths.root_dir}/datasets
 
 # preprocessed data directory
 preprocessed_dir: ${paths.root_dir}/preprocessed_datasets
+debug_preprocessed_dir: ${paths.root_dir}/debug_preprocessed_datasets
 
 # path to logging directory
 log_dir: ${paths.root_dir}/logs

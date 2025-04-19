@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import os
+import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Iterator, Literal, Sequence, TypeVar
@@ -225,6 +226,7 @@ class TrajectoryDataset(Dataset, ABC):
                     f"{preprocessed_dir}. Overwriting preprocessed data."
                 )
                 log.debug(f"Saved:\n{old_transforms_cfg}\n\nNew:\n{transforms_cfg}")
+                shutil.rmtree(preprocessed_dir)
                 self.preprocess(preprocess_transforms, preprocessed_dir)
                 return
 

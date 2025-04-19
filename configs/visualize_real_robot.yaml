@@ -22,12 +22,5 @@ data:
       color: True
 
 trainer:
-  accelerator: gpu
-  devices: 1
-  # precision: 16-true
   default_root_dir: ${paths.output_dir}
   enable_progress_bar: False
-  precision: null  # disable bf16-mixed precision
-
-torch:
-  set_float32_matmul_precision: medium

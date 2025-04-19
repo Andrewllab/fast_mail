@@ -1,5 +1,5 @@
 defaults:
-  - /models/pos_encoder@position_encoder: point_gpt
+  - /models/pos_encoder@position_encoder: point_mae
 
 name: pointpatch_tokenizer
 _target_: transforms.pointpatchrl_tokenizer.PointPatchTokenizer

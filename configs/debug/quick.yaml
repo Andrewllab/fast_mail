@@ -15,7 +15,12 @@ trainer:
 data:
   dataset:
     load_subset: 0.05  # load only 5% of the training data
+    overwrite_preprocessed: True  # don't worry about overwriting the preprocessed data since we are using a small subset
 
 callbacks:
   model_checkpoint:
     every_n_epochs: 1  # save a checkpoint every epoch
+
+# since we load a small subset of the data, store preprocessed data in another folder
+paths:
+  preprocessed_dir: ${paths.debug_preprocessed_dir}
