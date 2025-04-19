@@ -22,13 +22,13 @@ env_dataset:
       port: 50054
     cameras:
       left_cam:
-        _target_: environments.real_robot.hardware.hardware_realsense.RealSense
-        serial_number: 243322073029
+        _target_: environments.real_robot.hardware.hardware_zed.Zed # hardware_realsense.RealSense
+        serial_number: 15544393
       right_cam:
-        _target_: environments.real_robot.hardware.hardware_realsense.RealSense
-        serial_number: 944622073668
+        _target_: environments.real_robot.hardware.hardware_zed.Zed # hardware_realsense.RealSense
+        serial_number: 11185595
       gripper_cam:
         _target_: environments.real_robot.hardware.hardware_realsense.RealSense
         serial_number: 218622270040
   action_horizon: 5
-  fps: 30  # inference should probably be around 10fps on the real robot
+  fps: 5  # inference should probably be around 10fps on the real robot

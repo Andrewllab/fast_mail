@@ -34,6 +34,7 @@ class DiscreteCamera(DiscreteDevice):
         self,
         device_id: str,
         name: Optional[str] = None,
+        resolution: Optional[str] = None,  # Handling of Zeds
         height: int = 512,
         width: int = 512,
         start_frame_latency: int = 0,

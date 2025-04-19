@@ -1,8 +1,22 @@
 # Original Author: Marcel Ruehle
+import logging
 import time
+from typing import Sequence
+
+import cv2
+import numpy as np
 import pyzed.sl as sl
 
 from environments.real_robot.hardware.hardware_cameras import DiscreteCamera
+from environments.specs import (
+    CameraSpec,
+    DepthStream,
+    ImageStream,
+    PinholeCameraIntrinsic,
+    RGBStream,
+)
+
+log = logging.getLogger(__name__)
 
 
 class Zed(DiscreteCamera):
@@ -14,19 +28,22 @@ class Zed(DiscreteCamera):
 
     def __init__(
         self,
-        device_id,
-        name=None,
-        resolution = "VGA",
+        serial_number: int | str,
+        name: str | None = None,
+        resolution: str = "HD720",
+        depth_mode: str = "QUALITY",
         fps=30,
+        extrinsics: Sequence[Sequence[float]] | None = None,
+        warm_start=30,
         start_frame_latency=0,
     ):
         super().__init__(
-            device_id,
-            name if name else f"ZED_{device_id}",
-            resolution,
-            fps,
-            start_frame_latency,
+            device_id=str(serial_number),
+            name=name if name else f"Zed_{serial_number}",
+            resolution=resolution,
+            start_frame_latency=start_frame_latency,
         )
+
         if resolution == "VGA":
             self.resolution = sl.RESOLUTION.VGA
         elif resolution == "HD720":
@@ -35,22 +52,74 @@ class Zed(DiscreteCamera):
             self.resolution = sl.RESOLUTION.HD1080
         elif resolution == "HD2K":
             self.resolution = sl.RESOLUTION.HD2K
+        else:
+            self.resolution = sl.RESOLUTION.HD720
+            log.warning(f"Resolution {resolution} not detected. Set to default: HD720")
+
+        if depth_mode == "QUALITY":
+            self.depth_mode = sl.DEPTH_MODE.QUALITY
+        elif depth_mode == "ULTRA":
+            self.depth_mode = sl.DEPTH_MODE.ULTRA
+        elif depth_mode == "NONE":
+            self.depth_mode = sl.DEPTH_MODE.NONE
+        elif depth_mode == "NEURAL":
+            self.depth_mode = sl.DEPTH_MODE.NEURAL
+        elif depth_mode == "PERFORMANCE":
+            self.depth_mode = sl.DEPTH_MODE.PERFORMANCE
+        else:
+            self.depth_mode = sl.DEPTH_MODE.QUALITY
+            log.warning(
+                f"Depth_Mode {depth_mode} not detected. Set to default: QUALITY"
+            )
 
         self.fps = fps
+        self._extrinsics = (
+            np.asarray(extrinsics).reshape(4, 4) if extrinsics is not None else None
+        )
+        self.warm_start = warm_start
         self.pipe = None
+
+        self._spec = None
+
+    def connect(self) -> bool:
+        """
+        Connects to this instance.
+
+        Returns:
+        --------
+        - `success` (bool): Indicates a successful connection.
+        """
+        log.info(f"Connecting to Zed {self.name}...")
+        try:
+            self._setup_connect()
+            log.info(f"Connection to Zed {self.name} successful.")
+            return True
+
+        except Exception as e:
+            log.exception(f"Connection to Zed {self.name} failed.")
+
+        log.info(f"Resetting Zed {self.name}...")
+        devices = sl.Camera.get_device_list()
+        for device in devices:
+            if device.get_camera_information().serial_number == self.device_id:
+                device.zed.close()  # TODO: Is there a better reset command? close() might be unnecessary, because the connection never estabishes!
+        log.info(f"Retrying connection to Zed {self.name}...")
+        self._setup_connect()
+        log.info(f"Connection to Zed {self.name} successful.")
+        return True
 
     def _setup_connect(self):
         self.zed = sl.Camera()
 
         init_params = sl.InitParameters()
-        init_params.camera_resolution = self.resolution # Use HD720 opr HD1200 video mode, depending on camera type.
-        init_params.camera_fps = self.fps # Set fps at 30
-        #init_params.depth_mode = sl.DEPTH_MODE.PERFORMANCE # Set the depth mode to performance (fastest)
+        init_params.camera_resolution = self.resolution
+        init_params.camera_fps = self.fps
+        init_params.depth_mode = self.depth_mode
         init_params.coordinate_units = sl.UNIT.MILLIMETER
 
         err = self.zed.open(init_params)
         if err != sl.ERROR_CODE.SUCCESS:
-            print("Error {}, exit program".format(err)) # Display the error
+            print("Error {}, exit program".format(err))
             exit()
 
         self.image_left = sl.Mat()
@@ -58,18 +127,80 @@ class Zed(DiscreteCamera):
         self.depth = sl.Mat()
         self.runtime_parameters = sl.RuntimeParameters()
 
+        if self.zed.grab(self.runtime_parameters) == sl.ERROR_CODE.SUCCESS:
+            for _ in range(self.warm_start):
+                self.zed.retrieve_image(self.image_left, sl.VIEW.LEFT)
+                self.zed.retrieve_image(self.image_right, sl.VIEW.RIGHT)
+                self.zed.retrieve_measure(self.depth, sl.MEASURE.DEPTH)
+
+        image_left_np = self.image_left.get_data()  # BGRA
+        image_left_np = cv2.cvtColor(image_left_np, cv2.COLOR_BGRA2RGB)  # RGB
+        image_right_np = self.image_right.get_data()  # BGRA
+        image_right_np = cv2.cvtColor(image_right_np, cv2.COLOR_BGRA2RGB)  # RGB
+        depth_np = self.depth.get_data()
+
+        intrinsics = self.get_intrinsics_dict()
+
+        self._spec = CameraSpec(
+            streams={
+                "left": RGBStream(
+                    image_left_np.shape[0], image_left_np.shape[1], channels=3
+                ),
+                "right": RGBStream(
+                    image_right_np.shape[0], image_right_np.shape[1], channels=3
+                ),
+                "depth": DepthStream(depth_np.shape[0], depth_np.shape[1]),
+            },
+            intrinsics=PinholeCameraIntrinsic(
+                height=intrinsics["height"],
+                width=intrinsics["width"],
+                fx=intrinsics["fx"],
+                fy=intrinsics["fy"],
+                cx=intrinsics["cx"],
+                cy=intrinsics["cy"],
+            ),
+            extrinsics=self._extrinsics,
+        )
+
     def get_intrinsics_dict(self):
-        intrinsics = self.zed.get_camera_information().camera_configuration.calibration_parameters
+        intrinsics = (
+            self.zed.get_camera_information().camera_configuration.calibration_parameters
+        )
 
-        cx = intrinsics.left_cam.cx 
-        cy = intrinsics.left_cam.cy 
-        fx = intrinsics.left_cam.fx 
-        fy = intrinsics.left_cam.fy 
+        cx = intrinsics.left_cam.cx
+        cy = intrinsics.left_cam.cy
+        fx = intrinsics.left_cam.fx
+        fy = intrinsics.left_cam.fy
+        width = intrinsics.left_cam.image_size.width
+        height = intrinsics.left_cam.image_size.height
         distortion = intrinsics.left_cam.disto
-        baseline = intrinsics.stereo_transform.get_translation().get()[0]
+        baseline = intrinsics.stereo_transform.get_translation().get()[0] / 1000
 
-        return {"cx": cx, "cy": cy, "fx": fx, "fy": fy, "distortion": distortion, "baseline": baseline}
+        return {
+            "cx": cx,
+            "cy": cy,
+            "fx": fx,
+            "fy": fy,
+            "width": width,
+            "height": height,
+            "distortion": distortion,
+            "baseline": baseline,
+        }
 
+    @property
+    def spec(self) -> CameraSpec:
+        assert self._spec is not None
+        return self._spec
+
+    def __get_frames(self):
+        if not self.zed:
+            raise Exception(f"Not connected to {self.name}")
+
+        if self.zed.grab(self.runtime_parameters) == sl.ERROR_CODE.SUCCESS:
+            self.zed.retrieve_image(self.image_left, sl.VIEW.LEFT)
+            self.zed.retrieve_image(self.image_right, sl.VIEW.RIGHT)
+            self.zed.retrieve_measure(self.depth, sl.MEASURE.DEPTH)
+            # self.zed.retrieve_measure(point_cloud, sl.MEASURE.XYZRGBA)
 
     def get_sensors(self):
         """
@@ -84,35 +215,32 @@ class Zed(DiscreteCamera):
         """
         if not self.zed:
             raise Exception(f"Not connected to {self.name}")
-        
-        # image_left = sl.Mat()
-        # image_right = sl.Mat()
-        # depth = sl.Mat()
-        # #point_cloud = sl.Mat()
-        # runtime_parameters = sl.RuntimeParameters()
 
-        if self.zed.grab(self.runtime_parameters) == sl.ERROR_CODE.SUCCESS:
-            self.zed.retrieve_image(self.image_left, sl.VIEW.LEFT)
-            self.zed.retrieve_image(self.image_right, sl.VIEW.RIGHT)
-            self.zed.retrieve_measure(self.depth, sl.MEASURE.DEPTH)
-            # self.zed.retrieve_measure(point_cloud, sl.MEASURE.XYZRGBA)
-            timestamp = time.time()
+        self.__get_frames()
 
-            image_left_np = self.image_left.get_data() # BGRA
-            image_right_np = self.image_right.get_data() # BGRA
-            depth_np = self.depth.get_data()
-            # point_cloud_np = point_cloud.get_data()
+        image_left_np = self.image_left.get_data()  # BGRA
+        image_left_np = cv2.cvtColor(image_left_np, cv2.COLOR_BGRA2RGB)  # RGB
+        image_right_np = self.image_right.get_data()  # BGRA
+        image_right_np = cv2.cvtColor(image_right_np, cv2.COLOR_BGRA2RGB)  # RGB
+        depth_np = self.depth.get_data()
+        # point_cloud_np = point_cloud.get_data()
 
-        return {"time": timestamp, "left": image_left_np, "right": image_right_np, "depth": depth_np}# "point_cloud": point_cloud_np}
+        timestamp = time.time()
+
+        return {
+            "time": timestamp,
+            "rgb": image_left_np,
+            "left": image_left_np,
+            "right": image_right_np,
+            "depth": depth_np,
+        }  # , "point_cloud": point_cloud_np}
 
     def close(self):
-        self.zed.close()
-        return True
+        if self.zed:
+            self.zed.close()
 
     @staticmethod
-    def get_devices(
-        amount=-1, resolution = "VGA", **kwargs
-    ) -> list["Zed"]:
+    def get_devices(amount=-1, resolution="HD720", **kwargs) -> list["Zed"]:
         """
         Finds and returns specific amount of instances of this class.
 
@@ -127,32 +255,30 @@ class Zed(DiscreteCamera):
         --------
         - `devices` (list[RealSense]): List of found devices. If no devices are found, `[]` is returned.
         """
-        super(Zed, Zed ).get_devices(
-            amount, resolution = "VGA", type="ZED", **kwargs
-        )
-        cam_list = sl.Camera.get_device_list()
+        super(Zed, Zed).get_devices(amount, resolution="HD720", type="ZED")
+        devices = sl.Camera.get_device_list()
+        amount = amount if amount != -1 else len(devices)
 
-        init_params = sl.InitParameters()
+        cameras = [
+            Zed(
+                device.serial_number,
+                resolution=resolution,
+                **kwargs,
+            )
+            for device in devices[:amount]
+        ]
+        return cameras
 
-        print(cam_list)
-
-        cams = []
-        counter = 0
-        for i in range(len(cam_list)):
-            if amount != -1 and counter >= amount:
-                break
-            init_params.set_from_camera_id(i)
-            zed = sl.Camera()
-            err = zed.open(init_params)
-            if err == sl.ERROR_CODE.SUCCESS:
-                cam_info = zed.get_camera_information()
-            cam = Zed(device_id=cam_info.serial_number, resolution=resolution, **kwargs)
-            cams.append(cam)
-            zed.close()
-            counter += 1
-        return cams
-    
-
+    @staticmethod
+    def get_device(serial_number: int, **kwargs) -> "Zed":
+        devices = sl.Camera.get_device_list()
+        for device in devices:
+            if device.get_camera_information().serial_number == str(serial_number):
+                return Zed(
+                    device.get_camera_information().serial_number,
+                    **kwargs,
+                )
+        raise ValueError(f"RealSense with serial number {serial_number} not found.")
 
 
 if __name__ == "__main__":
