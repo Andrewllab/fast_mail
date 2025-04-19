@@ -11,13 +11,13 @@ mlp_1:
   _partial_: True  # requires in_features
   hidden_sizes: [128]
   out_features: 256
-  nonlinearity: ReLU
+  activation: ReLU
 mlp_2:
   _target_: models.mlp.MlpModel
   _partial_: True  # requires out_features
   _args_: ["${prod:2,${...mlp_1.out_features}}"]  # in_features must be 2 * out_features of mlp_1
   hidden_sizes: [512]
-  nonlinearity: ReLU
+  activation: ReLU
 patch_size: 32
 oversampling_ratio: 4.0
 fps_random_start: True

@@ -1,0 +1,21 @@
+name: dp3_tokenizer
+_target_: transforms.dp3_tokenizer.DiffusionPolicy3DTokenizer
+_partial_: True
+
+embed_dim: ${..embed_dim}
+mlp_1:
+  _target_: models.mlp.MlpModel
+  _partial_: True  # requires in_features
+  hidden_sizes: [64, 128]
+  out_features: 256
+  activation: ReLU
+  norm: LayerNorm
+  plain_last: False
+mlp_2:
+  # MLP 2 is just a linear layer and a LayerNorm
+  _target_: models.mlp.MlpModel
+  _partial_: True  # requires out_features
+  _args_: ["${...mlp_1.out_features}"]  # in_features must be out_features of mlp_1
+  activation: null
+  norm: LayerNorm
+  plain_last: False
