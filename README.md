@@ -107,17 +107,29 @@ Start training on dataset DATA (optional), for experiment EXP (optional), on pla
 python train.py data=DATA experiment=EXP platform=PLAT
 ```
 
-Open loop replay using dataset DATA:
-
-```bash
-python predict.py -cn=open_loop_replay data@agent.replay_data=DATA
-```
-
 Visualize dataset DATA (optional), after applying transforms for experiment EXP. You must also choose whether to render RGB images with render_cameras or pointcloud with render_pointcloud. Simultaneously rendering both is not possible.
 
 ```bash
 python predict.py -cn visualize_dataset "experiment=[EXP,render_cameras]" data=DATA
 python predict.py -cn visualize_dataset "experiment=[EXP,render_pointcloud]" data=DATA
+```
+
+Open loop replay on real robot using dataset DATA:
+
+```bash
+python predict.py -cn=open_loop_replay data@agent.replay_data=DATA
+```
+
+Test a trained model from wandb run with id ID on real robot:
+
+```bash
+python predict.py -cn=test_real artifact_run_name=ID
+```
+
+Visualize observations produced by vision pipeline for experiment EXP on real robot:
+
+```bash
+python predict.py -cn=visualize_real_robot experiment=EXP
 ```
 
 
