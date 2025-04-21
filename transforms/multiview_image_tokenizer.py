@@ -5,16 +5,10 @@ from typing import Callable, Literal
 
 import torch
 import torch.nn as nn
-from torch import Tensor
+from tensordict import TensorDict
 
-from environments.specs import (
-    DataSpecs,
-    DepthCameraSpec,
-    EmbedSpec,
-    RGBCameraSpec,
-    RGBDCameraSpec,
-)
-from transforms.base_transform import KeyMapping, Transform
+from environments.specs import CameraSpec, DataSpecs, DepthStream, EmbedSpec, RGBStream
+from transforms.base_transform import Transform
 from utils.nested import cat_nested
 
 log = logging.getLogger(__name__)
@@ -32,49 +26,60 @@ class MultiviewImageTokenizer(Transform, nn.Module):
         super().__init__()
 
         if image_type == "rgb":
-            allowed_type = RGBCameraSpec
+            stream_types = RGBStream
         elif image_type == "depth":
-            allowed_type = DepthCameraSpec
+            stream_types = DepthStream
         elif image_type == "rgbd":
-            allowed_type = RGBDCameraSpec
+            stream_types = (RGBStream, DepthStream)
             raise NotImplementedError
         else:
             raise ValueError(
                 f"image_type must be one of 'rgb', 'depth', or 'rgbd', but got {image_type}"
             )
         self.image_type = image_type
+        self.stream_types = stream_types
 
         input_specs = {
             key: spec
             for key, spec in specs.obs.items()
-            if isinstance(spec, allowed_type)
+            if isinstance(spec, CameraSpec)
+            and any(
+                isinstance(stream, stream_types) for stream in spec.streams.values()
+            )
         }
+        self._input_specs = input_specs
+
+        input_streams = [
+            stream
+            for spec in input_specs.values()
+            for stream in spec.streams.values()
+            if isinstance(stream, stream_types)
+        ]
+
+        if not all(stream.time == input_streams[0].time for stream in input_streams):
+            raise ValueError(
+                "All input streams must have the same time dimension."
+                f"Got {[stream.time for stream in input_streams]}"
+            )
 
         # instantiate rgb model(s)
         if shared_encoder:
-            first_key, spec = next(iter(input_specs.items()))
-            im_shape = spec.shape
-            for key, spec in input_specs.items():
-                if spec.shape != im_shape:
-                    raise ValueError(
-                        f"Input specs {first_key} and {key} have different image shapes."
-                    )
+            if not all(
+                input_stream.height_width == input_streams[0].height_width
+                for input_stream in input_streams
+            ):
+                raise ValueError(
+                    "All input streams must have the same height and width when using a shared encoder."
+                    f"Got {[stream.height_width for stream in input_streams]}"
+                )
 
             self.model = image_encoder()
         else:
             self.models = nn.ModuleDict()
             for key in input_specs:
                 self.models[key] = image_encoder()
-
-            # store the rgb_keys so we can use them in the call method
-            self._input_keys = list(input_specs.keys())
-
         self.shared_encoder = shared_encoder
 
-        # the leading dim is the number of observed time steps
-        Ts = [spec.shape[0] for spec in input_specs.values()]
-        T = Ts[0]
-        assert all(t == T for t in Ts)
         # each camera produces one token
         # if we have stereo rgb, we just take the left camera
         new_spec = EmbedSpec(embed_dim=embed_dim, n_tokens=len(input_specs))
@@ -88,41 +93,37 @@ class MultiviewImageTokenizer(Transform, nn.Module):
         obs_specs["embed"] = new_spec
         self._output_specs = specs.replace(obs=obs_specs)
 
-        # create a list of key mappings for the forward call
-        nested_keys = []
-        for key, spec in input_specs.items():
-            # if we get a stereo camera, we just take the left camera
-            if image_type == "rgb":
-                assert isinstance(spec, RGBCameraSpec)
-                subkey = spec.rgb_subkeys[0]
-            elif image_type == "depth":
-                assert isinstance(spec, DepthCameraSpec)
-                subkey = spec.depth_subkeys[0]
-            elif image_type == "rgbd":
-                assert isinstance(spec, RGBDCameraSpec)
-                raise NotImplementedError
-
-            if subkey is not None:
-                nested_keys.append(("obs", key, subkey))
-            else:
-                nested_keys.append(("obs", key))
-        self._key_mappings = [
-            KeyMapping(
-                in_keys=[("obs", "embed")] + list(nested_keys),
-                out_keys=[("obs", "embed")],
-            )
-        ]
-
-    @property
-    def key_mappings(self) -> list[KeyMapping]:
-        return self._key_mappings
-
     @property
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def _call_one(self, obs_embed, *imgs: Tensor) -> Tensor:
+    def forward(self, tensordict: TensorDict) -> TensorDict:
         default_float_dtype = torch.get_default_dtype()
+
+        imgs = []
+        for key, spec in self._input_specs.items():
+            streams = []
+            for name, stream in spec.streams.items():
+                if not isinstance(stream, self.stream_types):
+                    continue
+
+                image = tensordict["obs", key, name]
+
+                if stream.channel_order == "HWC":
+                    image = torch.movedim(image, -1, -3)
+                elif stream.channel_order == "HW":
+                    image = torch.unsqueeze(image, dim=-3)
+
+                if image.dtype != default_float_dtype:
+                    image = image.to(dtype=default_float_dtype).div(255)
+
+                streams.append(image)
+
+            if len(streams) > 1:
+                # stack rgb and depth in channel dimension
+                imgs.append(torch.cat(streams, dim=-3))
+            else:
+                imgs.append(streams[0])
 
         if self.shared_encoder:
             # pass all rgb obs to rgb model
@@ -130,11 +131,6 @@ class MultiviewImageTokenizer(Transform, nn.Module):
             # we stack and flatten rather than concatenate, to keep images from the same time step together
             # (B, T, C, H, W) -> (B, T, N, C, H, W)
             img = torch.stack(imgs, dim=-4)
-
-            if img.shape[-1] == 3:
-                img = torch.movedim(img, -1, -3)
-            if img.dtype == torch.uint8:
-                img = img.to(dtype=default_float_dtype).div(255)
 
             B, img_shape = (img.shape[0], img.shape[-3:])
             # (B, T, N, C, H, W) -> (B*T*N, C, H, W)
@@ -149,21 +145,10 @@ class MultiviewImageTokenizer(Transform, nn.Module):
         else:
             # run each rgb obs to independent models
             img = imgs[0]
-            if self.image_type == "rgb":
-                img_shape = img.shape[-3:]
-            elif self.image_type == "depth":
-                img_shape = (1,) + img.shape[-2:]  # add singleton channel dim
-            elif self.image_type == "rgbd":
-                raise NotImplementedError
-
-            B = img.shape[0]
-            if img.shape[-1] == 3:
-                imgs = tuple(torch.movedim(im, -1, -3) for im in imgs)
-            if img.dtype == torch.uint8:
-                imgs = tuple(im.to(dtype=default_float_dtype).div(255) for im in imgs)
+            B, img_shape = (img.shape[0], img.shape[-3:])
 
             features = []
-            for img, key in zip(imgs, self._input_keys):
+            for img, key in zip(imgs, self._input_specs.keys()):
                 # (B, T, C, H, W) -> (B*T, C, H, W)
                 img = img.view(-1, *img_shape)
 
@@ -171,17 +156,18 @@ class MultiviewImageTokenizer(Transform, nn.Module):
                 feature = self.models[key](img)
                 features.append(feature)
 
-            N = len(features)
             # (B*T, D) -> (B*T, N, D)
             features = torch.stack(features, dim=1)
             # (B*T, N, D) -> (B*T*N, D)
-            features = torch.flatten(features, end_dim=2)
+            features = torch.flatten(features, end_dim=1)
             # (B*T*N, D) -> (B, T*N, D)
             features = torch.unflatten(features, dim=0, sizes=(B, -1))
 
-        if obs_embed is None:
-            return features
+        if (obs_embed := tensordict["obs"].get("embed")) is not None:
+            # concatenate along N dimension of embedding
+            # obs_embed: (B, N, D)
+            features = cat_nested([obs_embed, features], dim=-2)
 
-        # concatenate along N dimension of embedding
-        # obs_embed: (B, N, D)
-        return cat_nested([obs_embed, features], dim=-2)
+        tensordict["obs", "embed"] = features
+
+        return tensordict

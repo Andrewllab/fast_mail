@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
-
 import torch
 import torchvision.transforms.functional as F
 from tensordict import TensorDict
@@ -79,7 +77,7 @@ class ResizeImage(Transform):
                 # update stream with resized shape and modified camera intrinsics
                 streams[name] = stream
 
-            obs_specs[key] = dataclasses.replace(spec, streams=streams)
+            obs_specs[key] = spec.replace(streams=streams)
         self._output_specs = specs.replace(obs=obs_specs)
 
     @property

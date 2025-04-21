@@ -477,7 +477,7 @@ def get_subset(files: Sequence[T], subset: int | float | None) -> Sequence[T]:
         # if subset is a percentage, convert it to an integer
         subset = int(len(files) * subset)
 
-    # do not index load than 1 file
+    # do not index less than 1 file
     subset = max(1, subset)
 
     log.debug(f"Loading only {subset} files out of {len(files)} total files found.")

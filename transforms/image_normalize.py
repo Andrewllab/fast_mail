@@ -1,10 +1,9 @@
-import dataclasses
-
 import torch
 import torchvision.transforms.functional as F
+from tensordict import TensorDict
 
-from environments.specs import DataSpecs, RGBCameraSpec
-from transforms.base_transform import KeyMapping, Transform
+from environments.specs import CameraSpec, DataSpecs, RGBStream
+from transforms.base_transform import Transform
 
 
 class NormalizeImage(Transform):
@@ -17,45 +16,44 @@ class NormalizeImage(Transform):
         input_specs = {
             key: spec
             for key, spec in specs.obs.items()
-            if isinstance(spec, RGBCameraSpec)
+            if isinstance(spec, CameraSpec)
+            and any(isinstance(stream, RGBStream) for stream in spec.streams.values())
         }
+        self._input_specs = input_specs
 
         # create a modified specs object for the output
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         for key, spec in input_specs.items():
-            if spec.channel_order != "CHW":
-                spec = dataclasses.replace(
-                    spec,
-                    shape=spec.shape[:-3] + spec.shape[-1:] + spec.shape[-3:-1],
-                    channel_order="CHW",
-                )
-            obs_specs[key] = spec
+            streams = dict(spec.streams)  # copy streams for local modification
+            for name, stream in streams.items():
+                stream = stream.reorder_channels("CHW")
+                streams[name] = stream
+            obs_specs[key] = spec.replace(streams=streams)
         self._output_specs = specs.replace(obs=obs_specs)
-
-        # create a list of key mappings for the forward call
-        key_mappings = []
-        for key, spec in input_specs.items():
-            for subkey in spec.rgb_subkeys:
-                nested_key = ("obs", key)
-                if subkey is not None:
-                    nested_key += (subkey,)
-                key_mappings.append(KeyMapping(in_keys=nested_key, out_keys=nested_key))
-        self._key_mappings = key_mappings
-
-    @property
-    def key_mappings(self) -> list[KeyMapping]:
-        return self._key_mappings
 
     @property
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def _call_one(self, image: torch.Tensor) -> torch.Tensor:
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
         default_float_dtype = torch.get_default_dtype()
 
-        if image.shape[-1] == 3:
-            image = torch.movedim(image, -1, -3)
-        if image.dtype != default_float_dtype:
-            image = image.to(dtype=default_float_dtype).div(255)
+        for key, spec in self._input_specs.items():
+            images = tensordict["obs", key]
+            for name, stream in spec.streams.items():
+                if not isinstance(stream, RGBStream):
+                    continue
 
-        return F.normalize(image, self.mean, self.std, inplace=True)
+                image = images[name]
+
+                if stream.channel_order == "HWC":
+                    image = torch.movedim(image, -1, -3)
+
+                if image.dtype != default_float_dtype:
+                    image = image.to(dtype=default_float_dtype).div(255)
+
+                image = F.normalize(image, self.mean, self.std, inplace=True)
+
+                images[name] = image
+
+        return tensordict

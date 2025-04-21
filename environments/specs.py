@@ -164,6 +164,9 @@ class ImageStream(ABC):
         if self.channels is None or self.channel_order == "HW":
             return self
 
+        if channel_order == self.channel_order:
+            return self
+
         return replace(self, channel_order=channel_order)
 
     def center_crop(self, new_shape: tuple[int, int]) -> ImageStream:

@@ -44,9 +44,9 @@ class TransformModuleMeta(ABCMeta):
 
     def __new__(mcls, name, bases, namespace):
         cls = super().__new__(mcls, name, bases, namespace)
-        # Check if SomeOtherClass is in the MRO
+        # Check if nn.Module is in the MRO
         if any(issubclass(base, nn.Module) for base in cls.__mro__[1:]):
-            # Override the method with the one from SomeOtherClass
+            # Override __call__ with the one from nn.Module
             cls.__call__ = nn.Module.__call__
         return cls
 

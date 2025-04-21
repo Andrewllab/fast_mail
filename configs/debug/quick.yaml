@@ -13,8 +13,9 @@ trainer:
   max_epochs: 5
 
 data:
+  batch_size: 16  # reduce batch size to ensure we have at least 1 batch
   dataset:
-    load_subset: 0.05  # load only 5% of the training data
+    load_subset: 1  # load only one trajectory
     overwrite_preprocessed: True  # don't worry about overwriting the preprocessed data since we are using a small subset
 
 callbacks:
