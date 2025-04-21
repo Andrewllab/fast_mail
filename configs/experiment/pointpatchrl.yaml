@@ -14,8 +14,8 @@ defaults:
 agent:
   obs_encoder:
     embed_dim: 256
-    t5_tokenizer:
-      patch_size: 16
+    t5-1_patching:
+      patch_size: 32
       oversampling_ratio: 4.0
 
 data:
