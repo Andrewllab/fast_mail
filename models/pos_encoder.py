@@ -118,7 +118,7 @@ class PointMAECartesianPosEncoder(nn.Module):
     """
 
     def __init__(
-        self, embed_dim: int, hidden_dim: int = 128, cartesian_dim: int = 3
+        self, embed_dim: int, cartesian_dim: int = 3, hidden_dim: int = 128
     ) -> None:
         super().__init__()
         self.model = nn.Sequential(
@@ -131,14 +131,14 @@ class PointMAECartesianPosEncoder(nn.Module):
         return self.model(pos)
 
 
-class NerfCartesianPosEncoder(nn.Module):
+class NerfPositionProjection(nn.Module):
     """Positional encoding used by NeRF.
-    Computes a positional embedding to project a 3D point into a higher
-    dimensional space, which is more suitable as input to a neural network
-    than raw xyz, as these values change very slowly. The embedding is sin/cos
-    components with frequencies increasing exponentially from
-    2*pi*scale/max_wavelength to 2*pi*scale/min_wavelength. The final embedding
-    will have 2*n_wavelengths*cartesian_dim dimensions.
+    Projects the coordinates of 3D point into a higher dimensional space, which
+    is more suitable as input to a neural network than raw xyz, as these values
+    change very slowly. The embedding is sin/cos components with frequencies
+    increasing exponentially from 2*pi*scale/max_wavelength to
+    2*pi*scale/min_wavelength. The final embedding will have
+    2*n_wavelengths*cartesian_dim dimensions.
     """
 
     frequencies: Tensor
@@ -146,11 +146,14 @@ class NerfCartesianPosEncoder(nn.Module):
     def __init__(
         self,
         n_wavelengths: int,
-        max_wavelength: float = 4.0,
-        min_wavelength: float = 0.001,
+        max_wavelength: float,
+        min_wavelength: float,
+        cartesian_dim: int = 3,
         scale: float = 1.0,
     ) -> None:
         super().__init__()
+
+        self.cartesian_dim = cartesian_dim
 
         # frequencies increase exponentially from 1/max_wavelength to 1/min_wavelength
         exponents = torch.linspace(
@@ -158,7 +161,7 @@ class NerfCartesianPosEncoder(nn.Module):
             end=math.log(min_wavelength),
             steps=n_wavelengths,
         )
-        frequencies = torch.exp(exponents)
+        frequencies = torch.exp(-exponents)
 
         frequencies = frequencies * 2 * torch.pi * scale
 
@@ -175,3 +178,13 @@ class NerfCartesianPosEncoder(nn.Module):
         embedding = torch.cat((arg.sin(), arg.cos()), dim=-1)
 
         return embedding
+
+    @property
+    def in_features(self) -> int:
+        """Returns the input size of the model."""
+        return self.cartesian_dim
+
+    @property
+    def out_features(self) -> int:
+        """Retuns the output size of the model."""
+        return self.cartesian_dim * 2 * self.frequencies.shape[-1]

@@ -22,8 +22,9 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
         self,
         specs: DataSpecs,
         embed_dim: int,
-        mlp_1: Callable[[int], nn.Module],
-        mlp_2: Callable[[int], nn.Module],
+        mlp_1: Callable[[int], nn.Linear],
+        mlp_2: Callable[[int], nn.Linear],
+        pos_projection: nn.Linear | None = None,
         pcd_key: str = "pcd",
     ):
         super().__init__()
@@ -40,8 +41,16 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
                 f"Key {pcd_key} is not a point cloud spec. Found {self._input_spec.type}"
             )
 
-        self.point_dim = 6 if self._input_spec.color else 3
-        self.mlp_1 = mlp_1(self.point_dim)
+        point_dim = 3
+
+        self.pos_projection = pos_projection
+        if self.pos_projection is not None:
+            point_dim = self.pos_projection.out_features
+
+        if self._input_spec.color:
+            point_dim += 3
+
+        self.mlp_1 = mlp_1(point_dim)
         self.aggr = MaxAggregation()
         self.mlp_2 = mlp_2(embed_dim)
 
@@ -84,6 +93,11 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
 
         # features: (B*N, 3)
         features = pos
+
+        if self.pos_projection is not None:
+            # features: (B*N, D)
+            features = self.pos_projection(features)
+
         if color is not None:
             features = torch.cat([features, color], dim=-1)
 
