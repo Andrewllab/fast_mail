@@ -8,7 +8,6 @@ import lightning as L
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader, random_split
 
-from callbacks.action_writer import ActionWriter
 from environments.collate import update_collate_fn_map
 from transforms.base_transform import init_transforms
 

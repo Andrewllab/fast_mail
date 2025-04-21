@@ -25,7 +25,7 @@ logger:
 seed: null
 
 data:
-  eval_mode: null  # "env" to validate in simulation or a float to validate on subset of data
+  eval_mode: 0.05  # "env" to validate in simulation or a float to validate on subset of data
 
 trainer:
   default_root_dir: ${paths.output_dir}

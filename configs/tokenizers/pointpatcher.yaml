@@ -1,0 +1,6 @@
+name: pointpatcher
+_target_: transforms.pointpatcher.PointPatcher
+_partial_: True
+patch_size: 32
+oversampling_ratio: 4.0
+fps_random_start: True

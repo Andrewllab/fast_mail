@@ -55,26 +55,23 @@ class PointGPTCartesianPosEncoder(nn.Module):
 
     def __init__(
         self,
+        cartesian_dim: int,
         embed_dim: int,
-        cartesian_dim: int = 3,
         temperature: float = 10000.0,
         scale: float = 1.0,
     ) -> None:
         super().__init__()
 
         self.embed_dim = embed_dim
+        self.cartesian_dim = cartesian_dim
 
         # divide the embedding dimension among the cartesian dimensions we have
-        # to encode, ensuring that the result is even
-        n_dim = embed_dim // cartesian_dim // 2 * 2
+        # to encode, dividing by 2 because we have sin and cos components
+        n_frequencies = embed_dim // cartesian_dim // 2
 
         # because of rounding down, this is the number of dimensions that our
         # encoding actually uses
-        self.non_empty_embed_dim = n_dim * cartesian_dim
-
-        # we only want half as many exponents as n_dim, because we have sin and
-        # cos components
-        n_frequencies = n_dim // 2
+        self.non_empty_embed_dim = n_frequencies * 2 * cartesian_dim
 
         # exponents from 0.0 to 1.0
         exponents = torch.linspace(start=0, end=1, steps=n_frequencies)
@@ -106,6 +103,16 @@ class PointGPTCartesianPosEncoder(nn.Module):
 
         return pos_emb
 
+    @property
+    def in_features(self) -> int:
+        """Returns the input size of the model."""
+        return self.cartesian_dim
+
+    @property
+    def out_features(self) -> int:
+        """Retuns the output size of the model."""
+        return self.embed_dim
+
 
 class PointMAECartesianPosEncoder(nn.Module):
     """Positional encoding used by PointMAE (Point Masked Autoencoder).
@@ -118,7 +125,7 @@ class PointMAECartesianPosEncoder(nn.Module):
     """
 
     def __init__(
-        self, embed_dim: int, cartesian_dim: int = 3, hidden_dim: int = 128
+        self, cartesian_dim: int, embed_dim: int, hidden_dim: int = 128
     ) -> None:
         super().__init__()
         self.model = nn.Sequential(
@@ -129,6 +136,16 @@ class PointMAECartesianPosEncoder(nn.Module):
 
     def forward(self, pos: Tensor) -> Tensor:
         return self.model(pos)
+
+    @property
+    def in_features(self) -> int:
+        """Returns the input size of the model."""
+        return self.model[0].in_features
+
+    @property
+    def out_features(self) -> int:
+        """Retuns the output size of the model."""
+        return self.model[-1].out_features
 
 
 class NerfPositionProjection(nn.Module):

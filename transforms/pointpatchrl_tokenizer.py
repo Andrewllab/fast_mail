@@ -8,7 +8,6 @@ import torch.nn as nn
 from tensordict import NonTensorData
 from torch import Tensor
 from torch_geometric.data import Batch, Data
-from torch_geometric.nn import fps, knn
 
 from environments.specs import DataSpecs, EmbedSpec, PointCloudSpec
 from transforms.base_transform import KeyMapping, Transform
@@ -22,13 +21,10 @@ class PointPatchTokenizer(Transform, nn.Module):
         self,
         specs: DataSpecs,
         embed_dim: int,
-        mlp_1: Callable[[int], nn.Module],
-        mlp_2: Callable[[int], nn.Module],
-        position_encoder: Callable[[int], nn.Module],
-        patch_size: int,
-        oversampling_ratio: float,
-        fps_random_start: bool = True,
-        padding_value: float = 0.0,
+        mlp_1: Callable[[int], nn.Linear],
+        mlp_2: Callable[[int], nn.Linear],
+        position_encoder: Callable[[int, int], nn.Linear],
+        pos_projection: nn.Linear | None = None,
         pcd_key: str = "pcd",
     ):
         super().__init__()
@@ -45,24 +41,24 @@ class PointPatchTokenizer(Transform, nn.Module):
                 f"Key {pcd_key} is not a point cloud spec. Found {self._input_spec.type}"
             )
 
-        self.point_dim = 6 if self._input_spec.color else 3
-        self.mlp_1 = mlp_1(self.point_dim)
+        point_dim = 3
+
+        self.pos_projection = pos_projection
+        if self.pos_projection is not None:
+            point_dim = self.pos_projection.out_features
+
+        self.pos_encoder = position_encoder(point_dim, embed_dim)
+
+        if self._input_spec.color:
+            point_dim += 3
+
+        self.mlp_1 = mlp_1(point_dim)
         self.mlp_2 = mlp_2(embed_dim)
-        self.pos_encoder = position_encoder(embed_dim)
 
         if self.mlp_1.out_features * 2 != self.mlp_2.in_features:
             raise ValueError(
                 f"The last layer of mlp_1 (size {self.mlp_1.out_features}) must be half the size of the first layer of mlp_2 (size {self.mlp_2.in_features})"
             )
-
-        self.patch_size = patch_size
-        # N_patches * patch_size = N_points * oversampling_ratio
-        # fps_sampling_ratio = N_patches / N_points
-        # -> fps_sampling_ratio = oversampling_ratio / patch_size
-        self.fps_sampling_ratio = oversampling_ratio / patch_size
-
-        self.fps_random_start = fps_random_start
-        self.padding_value = padding_value
 
         new_spec = EmbedSpec(embed_dim=embed_dim, fixed_shape=False)
 
@@ -92,48 +88,22 @@ class PointPatchTokenizer(Transform, nn.Module):
         data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
 
         assert isinstance(data, Batch)
-        pos, batch, color = data.pos, data.batch, data.x
-        assert pos is not None
-        assert batch is not None
+        center_pos, center_batch = data.pos, data.batch
+        patch_pos, patch_color = data.patch_pos, data.get("patch_color")
 
-        # pos: (B*N, 3)
-        # center_idxs: (B*C)
-        center_idxs = fps(
-            pos,
-            data.batch,
-            ratio=self.fps_sampling_ratio,
-            random_start=self.fps_random_start,
-            batch_size=data.batch_size,
-        )
-
-        center_points = pos[center_idxs]  # center_points: (B*C, 3)
-        center_batches = batch[center_idxs]  # center_batches: (B*C, 3)
-
-        # find the nearest k points to each center point. these groups of k
-        # points become the patches
-        # patch_idxs: (B*C*G)
-        _, patch_idxs = knn(
-            x=pos,
-            y=center_points,
-            k=self.patch_size,  # G
-            batch_x=batch,
-            batch_y=center_batches,
-            batch_size=data.batch_size,
-        )
-
-        patch_pos = pos[patch_idxs]  # patch_pos: (B*C*G, 3)
-        patch_pos = patch_pos.view(-1, self.patch_size, 3)  # patch_pos -> (B*C, G, 3)
-
-        # convert to relative coordinates around patch center
         # features: (B*C, G, 3)
-        features = patch_pos - center_points.unsqueeze(1)
+        features = patch_pos
 
-        if color is not None:
+        if self.pos_projection is not None:
+            # features -> (B*C, G, D)
+            features = self.pos_projection(features)
+            # center_pos -> (B*C, D)
+            center_pos = self.pos_projection(center_pos)
+
+        if patch_color is not None:
             # concatenate color as an additional feature to the position
-            color = color[patch_idxs]  # color -> (B*C*G, 3)
-            color = color.view(-1, self.patch_size, 3)  # color -> (B*C, G, 3)
-            color = color.to(dtype=features.dtype)
-            features = torch.cat([features, color], dim=-1)
+            patch_color = patch_color.to(dtype=features.dtype)
+            features = torch.cat([features, patch_color], dim=-1)
 
         features = self.mlp_1(features)  # features -> (B*C, G, D)
 
@@ -141,8 +111,8 @@ class PointPatchTokenizer(Transform, nn.Module):
         aggr_features = torch.max(features, dim=1, keepdim=True).values
 
         # add the neighborhood max to the original features for each node
+        aggr_features = aggr_features.expand(-1, features.shape[-2], -1)
         # features -> (B*C, G, 2*D)
-        aggr_features = aggr_features.expand(-1, self.patch_size, -1)
         features = torch.cat([aggr_features, features], dim=-1)
 
         features = self.mlp_2(features)  # features -> (B*C, G, D)
@@ -151,9 +121,9 @@ class PointPatchTokenizer(Transform, nn.Module):
         features = torch.max(features, dim=1).values  # features -> (B*C, D)
 
         # add positional encoding
-        features += self.pos_encoder(center_points)
+        features += self.pos_encoder(center_pos)
 
-        pcd_embed = pyg_to_nested_tensor(features, batch=center_batches)
+        pcd_embed = pyg_to_nested_tensor(features, batch=center_batch)
 
         if obs_embed is None:
             return pcd_embed

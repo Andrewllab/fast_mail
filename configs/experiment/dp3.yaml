@@ -4,11 +4,10 @@ defaults:
   - sim_pointclouds
 
   - /tokenizers@agent.obs_encoder.t5_tokenizer: dp3_tokenizer
+  - /models/pos_projection@agent.obs_encoder.t5_tokenizer.pos_projection: nerf_pos_projection
   
   # add tokens for the robot state
   - /tokenizers@agent.obs_encoder.t6_robot_state: linear_robot_state_tokenizer
-
-  - /models/pos_projection@agent.obs_encoder.t5_tokenizer.pos_projection: nerf_pos_projection
 
 agent:
   obs_encoder:
