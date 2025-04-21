@@ -27,6 +27,14 @@ agent:
         pretrained_weights: IMAGENET1K_V1  # null or "IMAGENET1K_V1"
         freeze_backbone: False
 
+  # increase size of transformer according to what David uses
+  noise_model:
+    decoder:
+      n_layers: 6
+      layer_module:
+        attention_module:
+          n_heads: 8
+
 data:
   dataset:
     preprocessed_dir: ${paths.preprocessed_dir}/dataset_11.04.25/multiview_image
