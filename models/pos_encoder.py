@@ -6,8 +6,6 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from einops import rearrange, repeat
-
 
 class LearnableTokenEncoder(nn.Module):
     """Embed Layer with learnable parameters.
