@@ -202,15 +202,18 @@ class TrajectoryDataset(Dataset, ABC):
         if not (transforms_file.exists() and specs_file.exists()):
             # delete the preprocessed directory if it exists and create a new one
             if preprocessed_dir.exists():
-                log.error(
-                    f"Preprocessed directory {preprocessed_dir} is not empty (perhaps an incomplete earlier preprocessing run). If you intend to overwrite it, run `rm -rf {preprocessed_dir}` and retry."
-                )
-                raise ValueError(
-                    f"Preprocessed directory {preprocessed_dir} is not empty!"
-                )
+                if not overwrite_preprocessed:
+                    raise ValueError(
+                        f"Preprocessed directory {preprocessed_dir} is not empty (perhaps an incomplete earlier preprocessing run). Set overwrite_preprocessed=True to overwrite."
+                    )
+                else:
+                    log.warning(
+                        f"Preprocessed directory {preprocessed_dir} already exists. Deleting it."
+                    )
+                    shutil.rmtree(preprocessed_dir)
+
             log.info(
-                f"{self.__class__.__name__}: Preprocessing dataset from {self.root_dir} and saving to "
-                f"{preprocessed_dir}"
+                f"Preprocessing dataset from {self.root_dir} and saving to {preprocessed_dir}"
             )
             self.preprocess(preprocess_transforms, preprocessed_dir)
             return
@@ -220,26 +223,26 @@ class TrajectoryDataset(Dataset, ABC):
         old_transforms_cfg = load_transforms_config(transforms_file)
         transforms_cfg = get_transforms_config(preprocess_transforms)
         if old_transforms_cfg != transforms_cfg:
-            if overwrite_preprocessed:
-                log.warning(
-                    f"{self.__class__.__name__}: Preprocess transforms do not match saved version in "
-                    f"{preprocessed_dir}. Overwriting preprocessed data."
+            if not overwrite_preprocessed:
+                raise ValueError(
+                    f"Preprocess transforms do not match saved version at {preprocessed_dir}. Set overwrite_preprocessed=True to overwrite."
                 )
-                log.debug(f"Saved:\n{old_transforms_cfg}\n\nNew:\n{transforms_cfg}")
-                shutil.rmtree(preprocessed_dir)
-                self.preprocess(preprocess_transforms, preprocessed_dir)
-                return
 
-            raise ValueError(
-                f"Preprocess transforms do not match saved version at {preprocessed_dir}. Set overwrite_preprocessed=True to overwrite."
+            log.warning(
+                f"Preprocess transforms do not match existing version in {preprocessed_dir}. Overwriting preprocessed data."
             )
+            log.debug(
+                f"Old config:\n{old_transforms_cfg}\n\nNew config:\n{transforms_cfg}"
+            )
+            shutil.rmtree(preprocessed_dir)
+            self.preprocess(preprocess_transforms, preprocessed_dir)
+            return
 
         # preprocessed data matches, so we can load it
         self._specs = load_specs(specs_file)
         self.processed_files = self._find_processed_files(preprocessed_dir)
         log.info(
-            f"{self.__class__.__name__}: Loading preprocessed data from {preprocessed_dir} "
-            f"({len(self.processed_files)} trajectories)."
+            f"Loading preprocessed data from {preprocessed_dir} ({len(self.processed_files)} trajectories)."
         )
 
     def preprocess(
