@@ -1,0 +1,35 @@
+defaults:
+  - data: one_leg_alr_metaquest2
+  - callbacks: eval_trajectories
+  - logger:
+  - python_logging: default
+  - paths: default
+  - hydra: default
+  - experiment: rgb_only
+  - _self_
+  - platform: default
+  - optional local: default
+  - debug: verbose
+
+# task name, determines output directory path
+job_type: test_on_dataset
+
+# either specify a complete checkpoint path...
+log_dir:
+# ...or specify the wandb run name
+artifact_run_name: gouo670e
+# project and entity are only needed if they differ from the settings in the wandb logger config
+artifact_project: 3d-sim2real
+artifact_entity: alr-3d-sim2real
+# by default, the latest version of the artifact is used
+artifact_version:
+
+data:
+  dataset:
+    action_seq_len: 10
+  eval_mode: dataset
+  # num_workers: 0  # TODO: change?
+
+trainer:
+  default_root_dir: ${paths.output_dir}
+  log_every_n_steps: 10

@@ -531,7 +531,7 @@ class DataSpecs:
 
         assert isinstance(embed_space, EmbedSpec)
         if embed_space.fixed_shape:
-            return np.prod(embed_space.shape[:2]).item()
+            return embed_space.n_tokens
         else:
             return None
 

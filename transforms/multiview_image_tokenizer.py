@@ -115,7 +115,7 @@ class MultiviewImageTokenizer(Transform, nn.Module):
                 elif stream.channel_order == "HW":
                     image = torch.unsqueeze(image, dim=-3)
 
-                if image.dtype != default_float_dtype:
+                if image.dtype == torch.uint8:
                     image = image.to(dtype=default_float_dtype).div(255)
 
                 streams.append(image)

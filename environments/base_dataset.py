@@ -45,7 +45,7 @@ class TrajectoryDataset(Dataset, ABC):
         preprocessed_dir: Path | os.PathLike | None = None,
         overwrite_preprocessed: bool = False,
         debug_preprocess: bool = False,
-        load_subset: int | float | None = None,
+        load_subset: int | float | Sequence[int] | None = None,
         # filter: Callable[[Any], bool] | None = None,
     ) -> None:
         super().__init__()
@@ -471,17 +471,28 @@ def save_tensordict(tensordict: TensorDict, file: Path, backend: str = "memmap")
     tensordict.save(str(file))
 
 
-def get_subset(files: Sequence[T], subset: int | float | None) -> Sequence[T]:
+def get_subset(
+    files: Sequence[T], subset: int | float | Sequence[int] | None
+) -> Sequence[T]:
     """Get a subset of files based on the specified subset percentage."""
     if subset is None:
         return files
 
-    if isinstance(subset, float):
-        # if subset is a percentage, convert it to an integer
-        subset = int(len(files) * subset)
+    if isinstance(subset, (int, float)):
 
-    # do not index less than 1 file
-    subset = max(1, subset)
+        if isinstance(subset, float):
+            # if subset is a percentage, convert it to an integer
+            subset = int(len(files) * subset)
 
-    log.debug(f"Loading only {subset} files out of {len(files)} total files found.")
-    return files[:subset]
+        if isinstance(subset, int):
+
+            # do not index less than 1 file
+            subset = max(1, subset)
+
+        log.debug(f"Loading only {subset} files out of {len(files)} total files found.")
+        return files[:subset]
+
+    log.debug(
+        f"Loading the following files out of {len(files)} total files found: {subset}"
+    )
+    return [files[i] for i in subset]
