@@ -6,7 +6,7 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: default
-  - experiment: pointpatchrl
+  - experiment: sim_pointclouds
   - transforms@agent.obs_encoder.t9_render: render_pointcloud
   - _self_
   - platform: default
@@ -21,7 +21,6 @@ data:
   eval_mode: dataset
   dataset:
     action_seq_len: 1
-    load_subset: 0.05
   gpu_batch_transforms:
     t1-3_to_pcd:
       color: True

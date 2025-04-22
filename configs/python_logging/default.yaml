@@ -5,4 +5,4 @@ always_log_debug_to_file: True
 # Debug messages from these modules should never be logged to file,
 # even if hydra.verbose=True. This setting overrides
 # `always_log_debug_to_file`.
-always_suppress_debug_from: ["git", "wandb", "h5py", "fsspec"]
+always_suppress_debug_from: ["git", "wandb", "h5py", "fsspec", "matplotlib", "PIL"]

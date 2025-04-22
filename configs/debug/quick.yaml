@@ -14,7 +14,6 @@ trainer:
   check_val_every_n_epoch: 1
 
 data:
-  batch_size: 16  # reduce batch size to ensure we have at least 1 batch
   dataset:
     load_subset: 1  # load only one trajectory
     overwrite_preprocessed: True  # don't worry about overwriting the preprocessed data since we are using a small subset
@@ -26,3 +25,6 @@ callbacks:
 # since we load a small subset of the data, store preprocessed data in another folder
 paths:
   preprocessed_dir: ${paths.debug_preprocessed_dir}
+
+platform:
+  batch_size: 16  # reduce batch size to ensure we have at least 1 batch
