@@ -8,19 +8,23 @@ defaults:
 # overwrite task name so debugging logs are stored in separate folder
 job_type: "debug"
 
+data:
+  dataset:
+    load_subset: [38]  # load only one trajectory
+    overwrite_preprocessed: True  # don't worry about overwriting the preprocessed data since we are using a small subset
+
 trainer:
   log_every_n_steps: 1  # since epochs are short, we need to log after every batch
   max_epochs: 500
   check_val_every_n_epoch: 50
 
-data:
-  dataset:
-    load_subset: [38]  # load only one trajectory
-    overwrite_preprocessed: True  # don't worry about overwriting the preprocessed data since we are using a small subset
+callbacks:
+  model_checkpoint:
+    every_n_epochs: 50
 
 # since we load a small subset of the data, store preprocessed data in another folder
 paths:
   preprocessed_dir: ${paths.debug_preprocessed_dir}
 
 platform:
-  batch_size: 128  # reduce batch size to ensure we have at least 1 batch
+  batch_size: 64  # reduce batch size to ensure we have at least 1 batch

@@ -9,7 +9,7 @@ defaults:
   - _self_
   - platform: default
   - optional local: default
-  - debug: verbose
+  - debug: overfit
 
 # task name, determines output directory path
 job_type: test_on_dataset
@@ -17,7 +17,7 @@ job_type: test_on_dataset
 # either specify a complete checkpoint path...
 log_dir:
 # ...or specify the wandb run name
-artifact_run_name: gouo670e
+artifact_run_name: 4o4q6g7e
 # project and entity are only needed if they differ from the settings in the wandb logger config
 artifact_project: 3d-sim2real
 artifact_entity: alr-3d-sim2real
