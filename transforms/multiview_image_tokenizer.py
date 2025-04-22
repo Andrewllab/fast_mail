@@ -26,12 +26,11 @@ class MultiviewImageTokenizer(Transform, nn.Module):
         super().__init__()
 
         if image_type == "rgb":
-            stream_types = RGBStream
+            stream_types = (RGBStream,)
         elif image_type == "depth":
-            stream_types = DepthStream
+            stream_types = (DepthStream,)
         elif image_type == "rgbd":
             stream_types = (RGBStream, DepthStream)
-            raise NotImplementedError
         else:
             raise ValueError(
                 f"image_type must be one of 'rgb', 'depth', or 'rgbd', but got {image_type}"
@@ -43,8 +42,10 @@ class MultiviewImageTokenizer(Transform, nn.Module):
             key: spec
             for key, spec in specs.obs.items()
             if isinstance(spec, CameraSpec)
-            and any(
-                isinstance(stream, stream_types) for stream in spec.streams.values()
+            # all required stream types must be present in the spec
+            and all(
+                any(isinstance(stream, stream_type) for stream in spec.streams.values())
+                for stream_type in stream_types
             )
         }
         self._input_specs = input_specs
@@ -76,7 +77,7 @@ class MultiviewImageTokenizer(Transform, nn.Module):
             self.model = image_encoder()
         else:
             self.models = nn.ModuleDict()
-            for key in input_specs:
+            for key in input_specs.keys():
                 self.models[key] = image_encoder()
         self.shared_encoder = shared_encoder
 

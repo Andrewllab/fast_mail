@@ -1,0 +1,34 @@
+# @package _global_
+
+defaults:
+  # pretrained resnet18 expects images resized to 256x256...
+  - /transforms@data.preprocess_transforms.t1_resize: image_resize
+
+  # ...and then cropped to 224x224
+  - /transforms@data.preprocess_transforms.t2_crop: image_centercrop
+  
+  # tokenize the rgb images using a ResNet
+  - /tokenizers@agent.obs_encoder.t5_resnets: resnet_image_tokenizer
+  # add tokens for the robot state
+  - /tokenizers@agent.obs_encoder.t6_robot_state: linear_robot_state_tokenizer
+
+agent:
+  obs_encoder:
+    embed_dim: 256
+    
+    t5_resnets:
+      shared_encoder: False
+      image_type: rgbd
+    
+      image_encoder:
+        # resnet18
+        input_channels: 4
+
+data:
+  batch_size: ${floor_div:${platform.batch_size},2}  # 1/2 of typical batch size
+  dataset:
+    preprocessed_dir: ${paths.preprocessed_dir}/dataset_11.04.25/multiview_image
+
+logger:
+  wandb:
+    tags: ["rgbd", "resnet18"]
