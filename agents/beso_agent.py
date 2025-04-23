@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Callable, Iterable, Type
 
 import torch
+import torch.nn.functional as F
 
 from agents.base_agent import BaseAgent
 from agents.edm_diffusion.utils import unsqueeze_to
@@ -85,11 +86,12 @@ class BesoAgent(BaseAgent):
         noised_input = action + noise * unsqueeze_to(sigma, action)
         model_output = self.model(obs, noised_input * c_in, goal, sigma)
         target = (action - c_skip * noised_input) / c_out
-        loss = (model_output - target).pow(2).mean()
+        loss = F.mse_loss(model_output, target)
 
-        metrics = {"loss": loss}
-
-        self.log_dict(metrics, on_epoch=True, prog_bar=True, batch_size=batch.shape[0])
+        # log these values per step and per epoch
+        self.log_dict(
+            {"loss": loss}, on_epoch=True, prog_bar=True, batch_size=batch.shape[0]
+        )
 
         return loss
 
@@ -125,24 +127,23 @@ class BesoAgent(BaseAgent):
         return action
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        actions = self.predict_step(batch, batch_idx)
+        action = self.predict_step(batch, batch_idx)
 
         metrics = {}
 
         if "success" in batch:
-            metrics["success"] = batch["success"]
+            metrics["val_success"] = batch["success"]
 
         if "action" in batch:
             # only if we are validating on demonstration data
-            loss = ((actions - batch["action"]) ** 2).mean()
-            metrics["loss"] = loss
+            error = F.mse_loss(action, batch["action"])
+            metrics["val_action_mse"] = error
 
-        self.log_dict(metrics, on_epoch=True, prog_bar=True, batch_size=batch.shape[0])
+        # log these values per epoch
+        self.log_dict(metrics, batch_size=batch.shape[0])
 
-        # don't log the actions, just return them in case we want to write them
-        # back to the environment
-        metrics["actions"] = actions
-        return metrics
+        # return the actions in case we want to write them back to the environment
+        return action
 
     # validation and testing are identical
     test_step = validation_step

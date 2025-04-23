@@ -17,14 +17,11 @@ defaults:
 job_type: visualize_dataset
 
 data:
-  batch_size: 1
+  batch_size: 1  # required for visualization
   eval_mode: dataset
-  dataset:
-    action_seq_len: 1
   gpu_batch_transforms:
     t1-3_to_pcd:
       color: True
-  num_workers: 0
 
 agent:
   fps: 10

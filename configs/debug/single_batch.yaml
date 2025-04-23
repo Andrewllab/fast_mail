@@ -29,9 +29,6 @@ trainer:
   fast_dev_run: true
 
 data:
-  num_workers: 0  # debuggers don't like multiprocessing
-  pin_memory: False  # disable gpu memory pin
-  batch_size: 16  # reduce batch size to ensure we have at least 1 batch
   dataset:
     load_subset: 1  # load only one trajectory
     # debug_preprocess: True  # prepend preprocess transforms to cpu transforms
@@ -40,3 +37,8 @@ data:
 # since we load a small subset of the data, store preprocessed data in another folder
 paths:
   preprocessed_dir: ${paths.debug_preprocessed_dir}
+
+platform:
+  num_workers: 0  # debuggers don't like multiprocessing
+  pin_memory: False  # disable gpu memory pin
+  batch_size: 16  # reduce batch size to ensure we have at least 1 batch
