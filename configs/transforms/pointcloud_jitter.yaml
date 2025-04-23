@@ -1,0 +1,4 @@
+# name: jitter_pointcloud
+_target_: transforms.pointcloud_jitter_points.JitterPointCloud
+_partial_: True
+translate: 0.003
