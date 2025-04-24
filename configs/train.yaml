@@ -4,6 +4,7 @@ defaults:
   - callbacks:
     - model_checkpoint
     - model_summary
+    - batch_size_finder
   - logger: 
     - wandb
   - python_logging: default
