@@ -71,10 +71,6 @@ class DecoderOnlyNoise(nn.Module):
             self.action_pos_encoder = None
             self.goal_pos_encoder = None
 
-        # linear embedding for the state
-        assert specs.obs_embed_dim is not None
-        self.state_encoder = nn.Linear(specs.obs_embed_dim, token_dim)
-
         # linear embedding for the action
         self.action_encoder = nn.Linear(specs.action_dim, token_dim)
 
