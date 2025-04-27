@@ -89,11 +89,9 @@ class GridSamplePointCloud(Transform):
                     data[key] = item.argmax(dim=-1)
                 elif key == "batch":
                     data[key] = item[perm]
-                elif key == "x":
+                else:
                     if item.dtype == torch.uint8:
                         item = item.to(default_dtype) / 255.0
-                    data[key] = scatter(item, c, dim=0, reduce="mean")
-                else:
                     data[key] = scatter(item, c, dim=0, reduce="mean")
 
         return data

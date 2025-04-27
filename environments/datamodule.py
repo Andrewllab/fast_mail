@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any, Callable, Literal
 import hydra
 import lightning as L
 from omegaconf import DictConfig
+from tensordict import NonTensorData, TensorDict, is_leaf_nontensor
+from torch import Tensor, device
 from torch.utils.data import DataLoader, random_split
 
 from environments.collate import update_collate_fn_map
@@ -241,6 +243,23 @@ class TrajectoryDataModule(L.LightningDataModule):
         elif self.eval_mode == "env":
             assert self.env_cpu_batch_transform is not None
             return self.env_cpu_batch_transform(batch)
+
+    def transfer_batch_to_device(
+        self, batch: Any, device: device, dataloader_idx: int
+    ) -> Any:
+
+        batch = super().transfer_batch_to_device(batch, device, dataloader_idx)
+
+        if isinstance(batch, TensorDict):
+            # by default, NonTensorData (such as PyG Data objects) are not
+            # moved to the GPU, so we have to do it manually
+            for key, value in batch.items(
+                include_nested=True, leaves_only=True, is_leaf=is_leaf_nontensor
+            ):
+                if isinstance(value, NonTensorData):
+                    batch[key] = value.data.to(device)
+
+        return batch
 
     def on_after_batch_transfer(self, batch: Any, dataloader_idx: int) -> Any:
         if (

@@ -7,10 +7,10 @@ import torch.nn as nn
 from tensordict import NonTensorData
 from torch_geometric.data import Batch, Data
 from torch_geometric.nn import fps, knn
-from torch_geometric.utils import scatter
 
 from environments.specs import DataSpecs, PointCloudSpec
 from transforms.base_transform import KeyMapping, Transform
+from utils.pyg import update_ptr
 
 log = logging.getLogger(__name__)
 
@@ -107,9 +107,8 @@ class PointPatcher(Transform, nn.Module):
         # directly instantiate a new Batch object
         data.pos = center_pos
         data.batch = center_batches
-        data.ptr = scatter(
-            torch.ones_like(center_batches), center_batches, dim_size=data.batch_size
-        )
+        data = update_ptr(data)
+        data.x = None  # remove, since the patches do not have a unique color
         data["patch_pos"] = patch_pos
         data["patch_color"] = color
 

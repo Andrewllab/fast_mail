@@ -1,8 +1,10 @@
 import re
+from typing import TypeVar
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor
-from torch_geometric.data import Data
+from torch_geometric.data import Batch, Data
 from torch_geometric.utils import scatter
 
 
@@ -23,14 +25,10 @@ def apply_mask(data: Data, mask: Tensor) -> Data:
 
     num_nodes = data.num_nodes
     assert num_nodes is not None
-    batch = data.batch
 
     for key, value in data.items():
         if key == "num_nodes":
             data.num_nodes = mask.sum().item()
-        elif key == "ptr":
-            assert batch is not None
-            data.ptr = scatter(mask.to(torch.int64), batch, dim_size=data.batch_size)
         elif bool(re.search("edge", key)):
             continue
         elif (
@@ -71,5 +69,52 @@ def apply_index(data: Data, index: Tensor) -> Data:
             and value.size(0) != 1
         ):
             data[key] = value[index]
+
+    return data
+
+
+T = TypeVar("T", bound=Data)
+
+
+def update_ptr(data: T) -> T:
+    """Recompute the ptr attribute of a Batch object. While the batch attribute
+    is kept up to date by transforms, the ptr attribute is usually not.
+
+    Args:
+        data (Data): The Data object.
+
+    Returns:
+        Data: The Data object with updated ptr.
+    """
+    if hasattr(data, "batch"):
+        assert isinstance(data, Batch)
+        batch = data.batch
+        assert batch is not None
+
+        lengths = scatter(torch.ones_like(batch), batch, dim_size=data.batch_size)
+        data.ptr = F.pad(lengths.cumsum(dim=0), (1, 0))
+
+    return data
+
+
+def update_batch_metadata(data: Batch) -> Batch:
+    """Recompute the ptr, _slice_dict, and _inc_dict attributes of a Batch object.
+    These may be incorrect after reducing the number of nodes in some graphs,
+    but need to be correct to reconstruct the batch elements from the batch.
+
+    Args:
+        data (Data): The Batch object.
+
+    Returns:
+        Data: The Batch object with updated metadata.
+    """
+    assert isinstance(data, Batch)
+
+    data = update_ptr(data)
+
+    # for homogenous graphs, the slice dict is the same as the ptr for each
+    # field of the data
+    for key in data._slice_dict:
+        data._slice_dict[key][...] = data.ptr
 
     return data

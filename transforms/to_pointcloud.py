@@ -1,20 +1,21 @@
 from __future__ import annotations
 
 import itertools
-from typing import TYPE_CHECKING
 
 import torch
+from tensordict import TensorDict
 from torch import Tensor
 from torch_geometric.data import Batch, Data
 
-from environments.specs import CameraSpec, DepthStream, PointCloudSpec, RGBStream
+from environments.specs import (
+    CameraSpec,
+    DataSpecs,
+    DepthStream,
+    PointCloudSpec,
+    RGBStream,
+)
 from transforms.base_transform import Transform
 from utils.math import transform_pointmap, unproject_depth
-
-if TYPE_CHECKING:
-    from tensordict import TensorDict
-
-    from environments.specs import DataSpecs
 
 
 class ToPointCloud(Transform):
@@ -78,8 +79,8 @@ class ToPointCloud(Transform):
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         # collect points, masks, and rgb from all cameras
         all_points = []
-        all_masks = [] if self.max_depth is not None else None
-        all_rgb = [] if self.color else None
+        all_masks = []  # if self.max_depth is not None, populate with masks
+        all_rgb = []  # if self.color is True, populate with rgb
 
         for key, spec in self._input_specs.items():
 
@@ -142,48 +143,48 @@ class ToPointCloud(Transform):
 
         # points: (..., H, W, 3) -> (..., N, H, W, 3)
         points_batch = torch.stack(all_points, dim=-4)
-        # here we must assert that the time dimension is a singleton, since
+
+        # here we must enforce that the time dimension is a singleton, since
         # we don't know how to handle time sequences of point clouds
-        assert points_batch.ndim == 6
-        if points_batch.shape[1] != 1:
+        if points_batch.ndim == 6 and points_batch.shape[1] != 1:
             raise ValueError(
                 f"Point cloud has time dimension {points_batch.shape[1]} (shape: {points_batch.shape}). Time sequences of point clouds are not supported."
             )
-        points_batch = points_batch.squeeze(1)
+
+        # flatten batch and time dimensions
+        # points_batch: (..., N, H, W, 3) -> (B, N, H, W, 3)
+        points_batch = torch.flatten(points_batch, end_dim=-5)
 
         if self.max_depth is not None:
             # mask: (..., H, W) -> (..., N, H, W)
             mask_batch = torch.stack(all_masks, dim=-3)
-            mask_batch = mask_batch.squeeze(1)
+            mask_batch = torch.flatten(mask_batch, end_dim=-4)
         else:
             mask_batch = None
 
         if self.color:
             # rgb: (..., H, W, 3) -> (..., N, H, W, 3)
             rgb_batch = torch.stack(all_rgb, dim=-4)
-            rgb_batch = rgb_batch.squeeze(1)
+            rgb_batch = torch.flatten(rgb_batch, end_dim=-5)
         else:
             rgb_batch = None
 
-        batch = collate_points(points_batch, mask_batch, rgb_batch)
+        batch = flatten_and_collate(points_batch, mask_batch, rgb_batch)
 
         tensordict["obs", self._out_key] = batch
         return tensordict
 
 
-def collate_points(
+def flatten_and_collate(
     points_batch: Tensor,
     mask_batch: Tensor | None = None,
     rgb_batch: Tensor | None = None,
 ) -> Batch:
-    # TODO: refactor this to create a Batch object directly instead of using
-    # Batch.from_data_list, which presumably makes a copy
-
-    mask_batch_ = mask_batch if mask_batch is not None else itertools.repeat(None)
-    rgb_batch_ = rgb_batch if rgb_batch is not None else itertools.repeat(None)
+    masks = mask_batch if mask_batch is not None else itertools.repeat(None)
+    rgbs = rgb_batch if rgb_batch is not None else itertools.repeat(None)
 
     datas = []
-    for points, mask, rgb in zip(points_batch, mask_batch_, rgb_batch_):
+    for points, mask, rgb in zip(points_batch, masks, rgbs):
         if mask is not None:
             # remove points that are beyond the max depth, flattening in the process
             points = points[mask]

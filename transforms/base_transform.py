@@ -113,6 +113,13 @@ class Transform(ABC, metaclass=TransformModuleMeta):
     # of __call__
     forward = __call__
 
+    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
+        """Transform a tensordict representing a complete trajectory (rather
+        than a batch of samples). By default, this is the same as
+        __call__/forward, but can be overridden in child classes.
+        """
+        return self(tensordict)
+
 
 class Compose:
     """Composes several transforms together. This transform does not support torchscript.
@@ -258,7 +265,7 @@ def _item_to_sort_key(item: tuple[str, Any]) -> float:
 
 def _init_transform(
     transform: Callable[[DataSpecs], Transform], specs: DataSpecs, wrap: bool = True
-) -> tuple[Callable, DataSpecs] | tuple[list[Callable], DataSpecs]:
+) -> tuple[Transform, DataSpecs] | tuple[list[Transform], DataSpecs]:
     assert isinstance(transform, functools.partial)
     log.debug(f"Instantiating transform: <{transform.func.__name__}>")
 
@@ -278,7 +285,7 @@ def init_transforms(
     transforms: TransformPartialsDict | TransformPartial | None,
     specs: DataSpecs,
     wrap: bool = True,
-) -> tuple[Callable, DataSpecs] | tuple[list[Callable], DataSpecs]:
+) -> tuple[Callable, DataSpecs] | tuple[list[Transform], DataSpecs]:
     """Instantiates a sequence of transforms from a dictionary of transform partials,
     while propagating the specs through the sequence.
 
@@ -307,7 +314,7 @@ def init_transforms(
     for key, partial in transforms.items():
 
         assert isinstance(partial, functools.partial)
-        name = key.split("_", maxsplit=1)[1]
+        name = pattern.fullmatch(key).group(3)
         log.debug(f"Instantiating transform #{i} '{name}': <{partial.func.__name__}>")
         i += 1
 

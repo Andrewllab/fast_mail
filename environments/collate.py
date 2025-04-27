@@ -1,7 +1,8 @@
 from typing import Sequence
 
-import tensordict
-from tensordict import TensorDict
+import torch
+from tensordict import NonTensorStack, TensorDict, is_leaf_nontensor
+from torch.utils.data._utils.collate import collate
 from torch_geometric.data import Batch as GeomBatch
 from torch_geometric.data import Data as GeomData
 from torch_geometric.data import HeteroData as GeomHeteroData
@@ -10,39 +11,31 @@ from torch_geometric.data.data import BaseData as GeomBaseData
 
 def collate_tensor_dict(batch: list[TensorDict], *, collate_fn_map) -> TensorDict:
     """Collate a list of TensorDicts into a single TensorDict."""
-    # tensordict.lazy_stack always produces a NonTensorStack when stacking
-    # NonTensorData, and may be more performant
-    # TODO: is this really better than torch.stack?
-    stacked: TensorDict = tensordict.stack(batch, dim=0)
+    stacked: TensorDict = torch.stack(batch, dim=0)  # type: ignore[assignment]
+
+    # try to collate any NonTensorStack objects more intelligently
+    for key, value in stacked.items(
+        include_nested=True, leaves_only=True, is_leaf=is_leaf_nontensor
+    ):
+        if isinstance(value, NonTensorStack):
+            # because the Data objects are in a list, collate returns a list
+            # a single Batch object, so we need to unpack the list
+            stacked[key] = collate(value.tolist(), collate_fn_map=collate_fn_map)[0]
 
     # recompute batch size with only a single batch dimension, since tensordict
     # eagerly increases the number of batch dims when stacking
     stacked = stacked.auto_batch_size_(batch_dims=1)
 
-    for key, value in stacked.items(include_nested=True, leaves_only=True):
-        # when NonTensorStack is accessed, it returns its contents in a list
-        # TODO: maybe call default_collate here instead?
-        if isinstance(value, list) and isinstance(value[0], GeomData):
-            torch_geom_batch = collate_torch_geom(value)
-            stacked[key] = torch_geom_batch
-
     return stacked
 
 
 def collate_torch_geom(
-    batch: Sequence[GeomData] | Sequence[GeomHeteroData],
-    *,
-    follow_batch: list[str] | None = None,
-    exclude_keys: list[str] | None = None,
+    batch: Sequence[GeomData] | Sequence[GeomHeteroData], *, collate_fn_map
 ) -> GeomBatch:
     """Collate a list of Data or HeteroData objects into a single Batch.
-    Copied from torch_geometric.loader.dataloader.Collater.__call__.
+    Modified from torch_geometric.loader.dataloader.Collater.__call__.
     """
-    return GeomBatch.from_data_list(
-        batch,
-        follow_batch=follow_batch,
-        exclude_keys=exclude_keys,
-    )
+    return GeomBatch.from_data_list(batch)
 
 
 def update_collate_fn_map():

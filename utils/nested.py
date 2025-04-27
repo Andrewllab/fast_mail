@@ -52,6 +52,6 @@ def pyg_to_nested_tensor(
         offsets = ptr
     elif batch is not None:
         lengths = scatter(torch.ones_like(batch), batch, dim_size=batch_size)
-        offsets = F.pad(lengths.cumsum(0), (1, 0))
+        offsets = F.pad(lengths.cumsum(dim=0), (1, 0))
 
     return torch.nested.nested_tensor_from_jagged(values, offsets=offsets)

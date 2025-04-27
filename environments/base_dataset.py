@@ -14,7 +14,7 @@ from tensordict import TensorDict
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from environments.specs import CameraSpec, DataSpecs, RGBStream, load_specs, save_specs
+from environments.specs import DataSpecs, load_specs, save_specs
 from transforms.base_transform import (
     TransformPartialsDict,
     get_transforms_config,
@@ -22,6 +22,7 @@ from transforms.base_transform import (
     load_transforms_config,
     save_transforms_config,
 )
+from utils.tensordict import load_tensordict, save_tensordict
 
 IndexType = slice | Tensor | Sequence
 DeviceType = Literal["disk", "gpu"] | str | torch.device
@@ -259,6 +260,7 @@ class TrajectoryDataset(Dataset, ABC):
 
         specs = self.get_specs()
         transforms, specs = init_transforms(preprocess_transforms, specs, wrap=False)
+        assert isinstance(transforms, list)
 
         processed_files = []
         for raw_file in raw_files:
@@ -275,15 +277,14 @@ class TrajectoryDataset(Dataset, ABC):
 
             for traj, filename in zip(trajs, filenames):
                 # TODO: handle the case where multiple trajectories are created
-                # TODO: implement batching here
+                # TODO: implement multiprocessing and optionally running on GPU
                 for transform in transforms:
-                    traj = transform(traj)
+                    traj = transform.call_trajectory(traj)
 
                 specs.action.update_stats(traj["action"])
                 specs.append_length(int(traj.batch_size[0]))
 
-                traj = compress_rgb_images(traj, specs)
-                save_tensordict(traj, filename)
+                save_tensordict(traj, filename, specs)
                 processed_files.append(filename)
 
         # save the specs and transforms to the preprocessed directory to
@@ -407,68 +408,6 @@ class TrajectorySlices:
         end = start + self.window_size
 
         return traj_idx, start, end
-
-
-def load_tensordict(
-    file: Path,
-    start: int | None = None,
-    stop: int | None = None,
-    backend: str = "memmap",
-) -> TensorDict:
-    """Load a tensordict from a file. If the file is a directory, it is
-    assumed to be a memory-mapped tensordict and the start and stop
-    indices are used to slice it.
-
-    Args:
-        file (Path): The file to load.
-        start (int | None): The start index to slice the tensordict.
-        stop (int | None): The stop index to slice the tensordict.
-
-    Returns:
-        TensorDict: The loaded tensordict.
-    """
-    assert file.is_dir()
-    # this is a memory-mapped tensordict
-    trajectory = TensorDict.load(file)
-
-    if start is not None or stop is not None:
-        # slice the tensordict
-        trajectory = trajectory[start:stop]
-
-    return trajectory
-
-
-def compress_rgb_images(tensordict: TensorDict, specs: DataSpecs) -> TensorDict:
-    for key, spec in specs.obs.items():
-        if not isinstance(spec, CameraSpec):
-            continue
-
-        for name, stream in spec.streams.items():
-            if isinstance(stream, RGBStream):
-
-                image = tensordict["obs", key, name]
-                if image.dtype != torch.uint8:
-                    image = image.mul(255).clamp(0, 255).to(torch.uint8)
-                    tensordict["obs", key, name] = image
-
-                # if the stream is RGB, we need to convert it to uint8
-                tensordict["obs", key, name] = tensordict["obs", key, name].to(
-                    dtype=torch.uint8
-                )
-
-    return tensordict
-
-
-def save_tensordict(tensordict: TensorDict, file: Path, backend: str = "memmap"):
-    """Save a tensordict to a file. If the file is a directory, it is
-    assumed to be a memory-mapped tensordict and the tensordict is saved
-    to the directory.
-
-    Args:
-        tensordict (TensorDict): The tensordict to save.
-        file (Path): The file to save to.
-    """
-    tensordict.save(str(file))
 
 
 def get_subset(
