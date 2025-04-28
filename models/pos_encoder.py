@@ -215,12 +215,14 @@ class NerfPositionProjection(nn.Module):
         n_wavelengths: int,
         max_wavelength: float,
         min_wavelength: float,
+        cat_cartesian_coordinates: bool = False,
         cartesian_dim: int = 3,
         scale: float = 1.0,
     ) -> None:
         super().__init__()
 
         self.cartesian_dim = cartesian_dim
+        self.cat_cartesian_coordinates = cat_cartesian_coordinates
 
         # frequencies increase exponentially from 1/max_wavelength to 1/min_wavelength
         exponents = torch.linspace(
@@ -241,10 +243,14 @@ class NerfPositionProjection(nn.Module):
         arg = pos.unsqueeze(-1) * self.frequencies
         arg = torch.flatten(arg, start_dim=-2)
 
-        # take sin and code of each argument, and concatenate
-        embedding = torch.cat((arg.sin(), arg.cos()), dim=-1)
+        # take sin and code of each argument
+        features = (arg.sin(), arg.cos())
 
-        return embedding
+        if self.cat_cartesian_coordinates:
+            # concatenate the original coordinates with the sin/cos components
+            features = (pos, *features)
+
+        return torch.cat(features, dim=-1)
 
     @property
     def in_features(self) -> int:
@@ -254,4 +260,9 @@ class NerfPositionProjection(nn.Module):
     @property
     def out_features(self) -> int:
         """Retuns the output size of the model."""
-        return self.cartesian_dim * 2 * self.frequencies.shape[-1]
+        return self.cartesian_dim * (
+            # sin and cos components for each frequency
+            2 * self.frequencies.shape[-1]
+            # add 1 for the original coordinates if we are concatenating them
+            + (1 if self.cat_cartesian_coordinates else 0)
+        )
