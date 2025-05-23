@@ -5,7 +5,7 @@ import logging
 import hydra
 from lightning import Callback
 from lightning.pytorch.loggers import Logger
-from omegaconf import DictConfig, open_dict
+from omegaconf import DictConfig, open_dict, OmegaConf
 
 from loggers.wandb import init_wandb_logger
 
@@ -87,6 +87,7 @@ def instantiate_datamodule(datamodule_cfg: DictConfig) -> "TrajectoryDataModule"
     # do not instantiate env_dataset recursively, as it may import simulation
     # modules that are not available in the current environment
     with open_dict(datamodule_cfg):
+        datamodule_cfg.env_dataset = OmegaConf.to_container(datamodule_cfg.env_dataset, resolve=True, throw_on_missing=True)
         env_cfg = datamodule_cfg.pop("env_dataset", None)
         datamodule_cfg = hydra.utils.instantiate(datamodule_cfg, _convert_="all")
         datamodule_cfg["env_dataset"] = env_cfg

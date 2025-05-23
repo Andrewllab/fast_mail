@@ -10,3 +10,5 @@ __pycache__/
 
 # models downloaded from WandB
 /artifacts
+
+recordings/

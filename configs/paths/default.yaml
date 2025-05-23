@@ -14,3 +14,6 @@ log_dir: ${paths.root_dir}/logs
 # path generation pattern is specified in `configs/hydra/default.yaml`
 # use it to store all files generated during the run, like ckpts and metrics
 output_dir: ${hydra:runtime.output_dir}
+
+# path for storing videos for validation in simulation 
+recording_dir: ${paths.root_dir}/recordings

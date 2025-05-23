@@ -1,0 +1,32 @@
+defaults:
+  - env
+
+env_dataset:
+  env:
+    _target_: environments.simulation.utils.build_env.make
+    task_name: Isaac-Insert-One-Leg-Franka-RGBD-IK-Rel-v0
+    device: "cuda"
+    num_envs: 1
+    render_mode: rgb_array
+    cli_args:
+      # always enable cameras, no effect if there are no cameras objects in the environment config
+      enable_cameras: True
+      # run Isaac-Sim with GUI
+      headless: False
+    wrapper_cfgs:
+      # record_video:
+      #   # if recording is desired, add it first [RecordVideo]
+      #   # names: [RecordVideo]
+      #   video_folder: ${paths.recording_dir}
+      #   # In case not entire episodes needs to be recorded, activate the recorder only every n steps
+      #   #   _target_: environments.simulation.utils.triggers.interval_trigger
+      #   #   step_interval: ???
+      #   episode_trigger:
+      #     _target_: environments.simulation.utils.triggers.episode_trigger
+      #     # record every episode
+      #     episode_interval: 1
+      #   fps: 30
+      #   disable_logger: True
+      pre_process:
+        obs_seq_len: 1
+  action_horizon: 10

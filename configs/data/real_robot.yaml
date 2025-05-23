@@ -6,8 +6,7 @@ defaults:
 
 env_dataset:
   env:
-    _target_: environments.real_robot.real_robot_env.RealRobotEnv
-    _partial_: True
+    _target_: environments.real_robot.real_robot_env.make_env
     robot_arm:
       _target_: environments.real_robot.hardware.hardware_franka.FrankaArm
       _partial_: True

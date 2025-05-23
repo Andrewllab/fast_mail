@@ -1,6 +1,6 @@
 task: 
 task_suite: 
-dataset: ???
+dataset: null
 batch_size: ${platform.batch_size}
 device: disk  # by default, assume it dataset doesn't fit in memory
 env_dataset: null

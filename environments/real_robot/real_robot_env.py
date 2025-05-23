@@ -3,7 +3,6 @@ import logging
 from typing import Mapping
 
 import gymnasium as gym
-import numpy as np
 import torch
 
 from environments.real_robot.hardware.hardware_cameras import DiscreteCamera
@@ -99,13 +98,12 @@ class RealRobotEnv(gym.Env):
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def step(self, action_np: np.ndarray):
+    def step(self, action: torch.Tensor):
 
-        action_np /= 1.0  # reverse scaling applied in recording demos
+        action /= 1.0  # reverse scaling applied in recording demos
 
-        # log.debug(f"Action: {action_np}")
+        # log.debug(f"Action: {action}")
 
-        action = torch.from_numpy(action_np)
         wxyz = action[3:7]
         xyzw = torch.cat((wxyz[-3:], wxyz[:-3]), dim=0)
 
@@ -140,9 +138,9 @@ class RealRobotEnv(gym.Env):
 
     def _get_obs(self):
         gripper_width = self.robot_hand.get_sensors() * GRIPPER_POS_SCALE
-        robot_state = np.concatenate(
+        robot_state = torch.cat(
             (
-                self.robot_arm.get_state().joint_pos.numpy(),  # 7
+                self.robot_arm.get_state().joint_pos,  # 7
                 gripper_width,
                 -gripper_width,
             ),
@@ -154,7 +152,7 @@ class RealRobotEnv(gym.Env):
         pos, xyzw = robot_arm_ee_pose[:3], robot_arm_ee_pose[3:]
         wxyz = torch.cat((xyzw[3:], xyzw[:3]), dim=0)
         rot = quaternion_to_matrix(wxyz)
-        gripper_cam_transform = make_pose(pos, rot).numpy()
+        gripper_cam_transform = make_pose(pos, rot)
 
         obs_dict = {
             "robot_state": robot_state,
@@ -165,7 +163,36 @@ class RealRobotEnv(gym.Env):
 
         obs_dict.update(images)
 
+        # TODO: convert to TensorDict once SyncVectorEnv has been removed
         return obs_dict
 
     def _get_info(self):
         return {}
+
+
+from functools import partial
+
+from gymnasium.vector import AutoresetMode, SyncVectorEnv
+
+from environments.wrappers import VectorToTorchWrapper
+
+
+def make_env(**kwargs) -> gym.Env:
+
+    env = partial(RealRobotEnv, **kwargs)
+
+    # we need to disable automatic resets, since the agent predicts action
+    # sequences
+    env = SyncVectorEnv([env], copy=False, autoreset_mode=AutoresetMode.DISABLED)
+
+    # gymnasium's VectorEnv converts Tensors to numpy arrays, so we need to
+    # convert them back to Tensors
+    env = VectorToTorchWrapper(env)
+
+    # VecEnvs return a tuple of results whenever an attribute is accessed
+    one_step_specs: DataSpecs = env.get_attr("specs")[0]
+
+    # assign as new attribute so that GymEnvDataset can access it
+    env.specs = one_step_specs
+
+    return env

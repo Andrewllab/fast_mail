@@ -1,13 +1,8 @@
-import dataclasses
-import functools
 import logging
-from typing import Callable
 
 import gymnasium as gym
-import numpy as np
 import pygame
 import torch
-from gymnasium.vector import AutoresetMode, SyncVectorEnv
 from tensordict import TensorDict
 from torch.utils.data import IterableDataset
 
@@ -19,37 +14,22 @@ log = logging.getLogger(__name__)
 class GymEnvDataset(IterableDataset):
     def __init__(
         self,
-        env: Callable[[], gym.Env],
+        env: gym.Env,
         num_envs: int = 1,
         num_episodes: int | None = 10,
         obs_seq_len: int = 1,
         action_horizon: int | None = None,
         fps: float | None = None,
     ):
-        if not isinstance(env, functools.partial):
-            raise ValueError(
-                "GymEnvDataset requires a callable that returns a gym.Env instance. Set _partial_ to True in the env config."
-            )
+        self.env = env
 
-        # we need to disable automatic resets, since the agent predicts action
-        # sequences
-        self.env = SyncVectorEnv(
-            [env] * num_envs, copy=False, autoreset_mode=AutoresetMode.DISABLED
-        )
-
-        try:
-            # VecEnvs return a tuple of results whenever an attribute is accessed
-            one_step_specs: DataSpecs = self.env.get_attr("specs")[0]
-
-        except AttributeError:
-            log.error("Gym environment does not define specs.")
-            raise
-
+        one_step_specs: DataSpecs = env.specs
         specs = one_step_specs.set_obs_seq_len(obs_seq_len)
         # if the action horizon is None, all predicted actions are executed
         specs = specs.set_action_seq_len(action_horizon if action_horizon else 1)
         self._specs = specs
 
+        # TODO: infer from data
         self.num_envs = num_envs
         self.num_episodes = num_episodes
         self.action_horizon = action_horizon
@@ -87,16 +67,17 @@ class GymEnvDataset(IterableDataset):
                 )
             self._next_action = None
 
-            reward = np.zeros(self.num_envs, dtype=np.float32)
-            terminated = np.zeros(self.num_envs, dtype=bool)
-            truncated = np.zeros(self.num_envs, dtype=bool)
+            # obs is either a Tensor or a TensorDict, so either way supports `.device`
+            device = obs.device or "cpu"
+            reward = torch.zeros(self.num_envs, dtype=torch.float32, device=device)
+            terminated = torch.zeros(self.num_envs, dtype=torch.bool, device=device)
+            truncated = torch.zeros(self.num_envs, dtype=torch.bool, device=device)
             infos = []
             # actions: [num_envs, action_horizon, action_dim]
             # therefore we need to unbind the actions along the time dimension
 
             actions = actions.transpose(0, 1)[: self.action_horizon]
-            actions_np = actions.cpu().numpy()
-            for action in actions_np:
+            for action in actions:
                 if self.fps is not None:
                     self.clock.tick(self.fps)
 
@@ -108,8 +89,8 @@ class GymEnvDataset(IterableDataset):
                 # we only ever need the last observation, since stacking
                 # observations is done by the FrameStackObservation wrapper
                 reward += step_reward
-                terminated = np.logical_or(terminated, step_terminated)
-                truncated = np.logical_or(truncated, step_truncated)
+                terminated = torch.logical_or(terminated, step_terminated)
+                truncated = torch.logical_or(truncated, step_truncated)
                 infos.append(step_info)
 
             time += 1
@@ -117,12 +98,13 @@ class GymEnvDataset(IterableDataset):
             # we stack in axis=1 because the first dimension is the batch,
             # and the second dimension is the time dimension
             info = {
-                key: np.stack([info[key] for info in infos], axis=1) for key in infos[0]
+                key: torch.stack([info[key] for info in infos], axis=1)
+                for key in infos[0]
             }
 
             # reset the envs that are done
-            done = np.logical_or(terminated, truncated)
-            num_episodes += np.sum(done)
+            done = torch.logical_or(terminated, truncated)
+            num_episodes += done.sum().item()
             if done.any():
                 obs, reset_info = self.env.reset(options={"mask": done})
                 info |= reset_info
@@ -144,10 +126,10 @@ class GymEnvDataset(IterableDataset):
 
 
 def step_return_to_tensor_dict(
-    obs: np.ndarray,
+    obs: torch.Tensor | dict[str, torch.Tensor],
     info: dict,
-    reward: np.ndarray | None = None,
-    done: np.ndarray | None = None,
+    reward: torch.Tensor | None = None,
+    done: torch.Tensor | None = None,
 ) -> TensorDict:
     """Convert step return to TensorDict."""
     tensordict = TensorDict({"obs": obs})  # type: ignore
@@ -156,13 +138,16 @@ def step_return_to_tensor_dict(
     tensordict.auto_batch_size_(batch_dims=1)
 
     if reward is None:
-        reward = np.zeros(tensordict.shape[0], dtype=np.float32)
+        reward = torch.zeros(tensordict.shape[0], dtype=torch.float32)
     if done is None:
-        done = np.zeros(tensordict.shape[0], dtype=bool)
+        done = torch.zeros(tensordict.shape[0], dtype=torch.bool)
 
-    success = info.pop("success", None) or info.pop("is_success", None)
-    if success is None:
-        success = np.zeros(tensordict.shape[0], dtype=bool)
+    for key in ("success", "is_success", "Episode_Termination/success"):
+        if key in info:
+            success = info.pop(key)
+            break
+    else:
+        success = torch.zeros(tensordict.shape[0], dtype=torch.bool)
 
     info["reward"] = reward
     tensordict.update(

@@ -159,3 +159,47 @@ def resolve_checkpoint(
 
     else:
         return None
+
+
+def get_existing_table(artifact_run_name, key="evaluation"):
+    api = wandb.Api()
+    print(f"ARTIFACT RUN NAME: {artifact_run_name}")
+    run = api.run(artifact_run_name)
+    print(f"WHAT IS RUN ?????", run)
+    for f in run.files():
+        if f.name.startswith(key) and f.name.endswith(".table.json"):
+            f.download(replace=True)
+            return wandb.Table.read_json(f.name)
+    return None
+
+
+def update_wandb_table(cfg):
+    # wandb.init(
+    #     project=cfg.artifact_project,
+    #     entity=cfg.artifact_entity,
+    #     id=cfg.artifact_run_name,  # This is the original run ID from training
+    #     resume="must"
+    # )version
+    checkpoint_version = cfg.get("artifact_version", "latest") or "latest"
+
+    # recording_dir = Path(cfg.paths.recording_dir + version)
+    recording_dir = Path(cfg.paths.recording_dir)
+    recording_paths = [
+        str(p.resolve()) for p in recording_dir.rglob("*.mp4")
+    ]
+
+    # process all evaluation videos in a dict.
+    episodes_by_ckpt = {f"{checkpoint_version}": []}
+    for recording_path in recording_paths:
+        episodes_by_ckpt[checkpoint_version].append(wandb.Video(recording_path, fps=30, format="mp4"))
+
+    # Create evaluation table only the first time and get it for all subsequent model checkpoints
+    table = get_existing_table(cfg.artifact_run_name)
+    if table is None:
+        table = wandb.Table(columns=["checkpoint_version", "video"])
+
+    for version, video_list in sorted(episodes_by_ckpt.items()):
+        table.add_data(version, video_list)
+
+    wandb.log({"evaluation": table})
+    wandb.finish()

@@ -1,9 +1,7 @@
 import logging
 
 import hydra
-import numpy as np
 import rootutils
-import torch
 from lightning import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
@@ -12,7 +10,7 @@ from omegaconf import DictConfig
 rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
 
 from environments.datamodule import TrajectoryDataModule
-from loggers.wandb import resolve_checkpoint
+from loggers.wandb import resolve_checkpoint, update_wandb_table
 from utils.conf import (
     delete_keys_recursively,
     patch_load_from_checkpoint,
@@ -47,7 +45,8 @@ def main(cfg: DictConfig) -> None:
     # manually run prepare data and setup so we can use dataset specs for model creation
     log.debug("Instantiating datamodule...")
     datamodule.prepare_data()
-    datamodule.setup(stage="test")
+    # TODO: change to test later when trained.test error resolved
+    datamodule.setup(stage="predict")
 
     # instantiate agent
     log.debug("Instantiating agent...")
@@ -75,11 +74,56 @@ def main(cfg: DictConfig) -> None:
         cfg.trainer, _target_=Trainer, callbacks=callbacks, logger=logger
     )
 
-    log.info("Starting testing")
-    trainer.test(agent, datamodule=datamodule)
+    log.info("Starting prediction loop")
+    # TODO: Resolve the bug when using trainer.test
+    trainer.predict(agent, datamodule=datamodule)
+    log.info("Prediction loop completed")
 
-    log.info("Testing completed")
 
+    # TODO: Make uploading evaluation videos to wandb optional
+    log.info("Starting uploading evaluation videos to wandb.")
+    update_wandb_table(cfg=cfg)
+    log.info("Uploading evaluation videos to wandb completed.")
+
+
+    # version = cfg.get("artifact_version", "latest") or "latest"
+    # wandb.init(
+    #     project=cfg.artifact_project,
+    #     entity=cfg.artifact_entity,
+    #     id=cfg.artifact_run_name,  # This is the original run ID from training
+    #     resume="must"
+    # )
+    # recording_dir = Path(cfg.paths.recording_dir)
+    # recording_paths = [
+    #     str(p.resolve()) for p in recording_dir.rglob("*.mp4")
+    # ]
+
+    # episodes_by_ckpt = defaultdict(list)
+    # for recording_path in recording_paths:
+    #     # parts = path.stem.split("-")  # e.g., ['eval', 'v2', 'ep3']
+    #     # if len(parts) < 3:
+    #     #     continue
+    #     # _, version, _ = parts
+    #     episodes_by_ckpt[version].append(wandb.Video(recording_path, fps=30, format="mp4"))
+
+
+    # # Check all logged history keys (metrics, tables, etc.)
+    # keys = run.history_keys
+    # print(keys)
+
+    # # Or, more directly check if a specific key exists
+    # if "evaluation" in keys:
+    #     print("Table already exists!")
+
+
+    # # TODO: this rewrites every time the table. Check if it exist and then only update it to prevent removing information from previous versions tests.
+    # table = wandb.Table(columns=["checkpoint_version", "episodes"])
+
+    # for version, video_list in sorted(episodes_by_ckpt.items()):
+    #     table.add_data(version, video_list)
+        
+    # wandb.log({"evaluation": table})
+    # wandb.finish()
 
 if __name__ == "__main__":
     setup_resolvers()
