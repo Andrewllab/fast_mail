@@ -11,6 +11,7 @@ from . import (
     insert_one_leg_ik_rel_rgbd_env_cfg,
     insert_one_leg_rgbd_env_cfg,
     insert_one_leg_joint_pos_env_cfg,
+    insert_one_leg_test_11_04_25_ik_rel_rgbd_env_cfg,
 )
 
 ##
@@ -59,6 +60,16 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
         "env_cfg_entry_point": insert_one_leg_ik_rel_rgbd_env_cfg.FrankaInsertOneLegEnvCfg,
+        "robomimic_bc_cfg_entry_point": os.path.join(agents.__path__[0], "robomimic/bc_rnn_low_dim.json"),
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-Insert-One-Leg-Franka-Test_11_04_25_RGBD-IK-Rel",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": insert_one_leg_test_11_04_25_ik_rel_rgbd_env_cfg.FrankaInsertOneLegEnvCfg,
         "robomimic_bc_cfg_entry_point": os.path.join(agents.__path__[0], "robomimic/bc_rnn_low_dim.json"),
     },
     disable_env_checker=True,
