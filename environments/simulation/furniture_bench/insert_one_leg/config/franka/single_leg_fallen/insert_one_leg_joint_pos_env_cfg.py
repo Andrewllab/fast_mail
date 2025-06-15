@@ -172,21 +172,21 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
 
         # Setup all static and dynamic objects, including their properties
         rigid_body_properties = RigidBodyPropertiesCfg(
-            solver_position_iteration_count=64,
+            solver_position_iteration_count=100,
             solver_velocity_iteration_count=1,
             max_angular_velocity=1000.0,
-            max_linear_velocity=3666.0,
-            max_depenetration_velocity=5000.0,
+            max_linear_velocity=1000.0,
+            max_depenetration_velocity=5.0,
             disable_gravity=False,
-            max_contact_impulse=1000.0,
-            linear_damping=0.0,
-            angular_damping=0.0,
+            max_contact_impulse=1.0,
+            linear_damping=1.0, 
+            angular_damping=1.0, 
         )
 
         collision_props_table_parts=sim_utils.CollisionPropertiesCfg(
             collision_enabled=True,
             contact_offset=0.005,
-            rest_offset=0.0,
+            rest_offset=0.005,
         )
 
         # increasing the actual object's masses seems to imporve simulation stability.
