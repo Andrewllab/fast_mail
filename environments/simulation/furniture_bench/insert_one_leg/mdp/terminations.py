@@ -49,7 +49,6 @@ def success(
         # calculate Euclidean distance
         position_dist_leg_assembly_slot = torch.linalg.vector_norm(square_table_top_assembly_slot_1_target_pos - square_table_leg_tip_pos, dim=1).squeeze(0) 
 
-        # print(f"NORM_DIST: {position_dist_leg_assembly_slot}")
         # TODO: in case of vectorized-environments do not squeeze and check the following conditions for each environment instance separately. 
         # Currently, the environment is used only for imitation learning where only one environment instance is enough.
         # TODO: Currently, the environment logic supports only one of the four assembly slots, but any leg is possible to be assembled
