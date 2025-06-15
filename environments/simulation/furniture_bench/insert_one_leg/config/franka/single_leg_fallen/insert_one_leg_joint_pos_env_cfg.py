@@ -20,7 +20,7 @@ from isaaclab_tasks.manager_based.manipulation.stack.mdp import franka_stack_eve
 import isaaclab.sim as sim_utils
 
 from ....furniture_bench_table_env_cfg import InsertOneLegEnvCfg
-from ....mdp.events import reset_table_parts_poses, randomize_object_position_from_predefined_area, randomize_light_intensity, bind_physics_materials
+from ....mdp.events import reset_table_parts_poses, randomize_object_position_from_predefined_area, randomize_light_intensity
 from ....mdp.terminations import success
 
 ##
