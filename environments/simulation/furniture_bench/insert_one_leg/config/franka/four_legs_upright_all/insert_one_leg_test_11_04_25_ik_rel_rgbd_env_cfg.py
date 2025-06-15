@@ -7,16 +7,16 @@ from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.utils import configclass
 
-from . import insert_one_leg_rgbd_env_cfg
+from . import insert_one_leg_test_11_04_25_rgbd_env_cfg
 
 ##
 # Pre-defined configs
 ##
-from ...assets.franka import FRANKA_PANDA_HIGH_PD_CFG, FRANKA_MIMIC_PANDA_IMU_GRIPPERS_HIGH_PD_CFG
+from ....assets.franka import FRANKA_PANDA_HIGH_PD_CFG
 
 
 @configclass
-class FrankaInsertOneLegEnvCfg(insert_one_leg_rgbd_env_cfg.FrankaInsertOneLegEnvCfg):
+class FrankaInsertOneLegEnvCfg(insert_one_leg_test_11_04_25_rgbd_env_cfg.FrankaInsertOneLegEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()

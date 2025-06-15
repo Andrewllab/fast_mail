@@ -5,18 +5,17 @@
 
 import os
 from pathlib import Path
-from collections import defaultdict
 from typing import Literal
 import torch 
 import yaml
 
 from isaaclab.assets import RigidObjectCfg
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformerCfg
+from isaaclab.sensors import CameraCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
@@ -24,23 +23,20 @@ from isaaclab.utils import configclass
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab_tasks.manager_based.manipulation.stack import mdp
 from isaaclab_tasks.manager_based.manipulation.stack.mdp import franka_stack_events
-from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 import isaaclab.sim as sim_utils
-from isaaclab.sensors import CameraCfg
 import isaaclab.utils.math as math_utils
 
-from ...furniture_bench_table_env_cfg import InsertOneLegEnvCfg
-from ...mdp.events import reset_table_parts_poses, randomize_object_position, randomize_light_intensity
-from ...mdp.terminations import success
+from ....furniture_bench_table_env_cfg import InsertOneLegEnvCfg
+from ....mdp.events import reset_table_parts_poses, randomize_light_intensity
+from ....mdp.terminations import success
 
 ##
 # Pre-defined configs
 ##
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
-from ...assets.franka import FRANKA_PANDA_CFG
+from ....assets.franka import FRANKA_PANDA_CFG
 
-BASE_PATH = Path(__file__).parent.parent.parent
+BASE_PATH = Path(__file__).parent.parent.parent.parent
 
 
 def get_camera_parameters(file_path: str, parameter_type: str = Literal["intrinsics", "extrinsics"], height=480, width=640):
@@ -171,7 +167,16 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
         # Set the reward function as a termination term (and not as a reward) as we currently do only imitation learning
         self.terminations.success = None
         self.terminations.success = DoneTerm(func=success, 
-                                params={"xy_threshold": 0.0004, "height_threshold": 0.00025}, # figured out through a lot of experimentation 
+                                params={"xy_threshold": 0.0003, 
+                                        "height_threshold": 0.0002,
+                                        "leg_target_frames": 
+                                            [   
+                                                "square_table_leg1_target_positions_frame",
+                                                "square_table_leg2_target_positions_frame",
+                                                "square_table_leg3_target_positions_frame",
+                                                "square_table_leg4_target_positions_frame",
+                                            ],
+                                        },
                                 time_out=True) 
 
         # Set Franka as robot
@@ -192,8 +197,8 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
             data_types=["rgb", "distance_to_image_plane"],
             spawn=sim_utils.PinholeCameraCfg.from_intrinsic_matrix(
                 intrinsic_matrix=wrist_cam_intrinsics_matrix,
-                width=640,
                 height=480,
+                width=640,
                 clipping_range=(0.01, 1.0e5),
             ),
             offset=CameraCfg.OffsetCfg(
