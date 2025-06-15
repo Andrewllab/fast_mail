@@ -150,7 +150,7 @@ class InsertOneLegEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         # correspond to the number of simulation sub-steps between envionment steps
-        self.decimation = 3
+        self.decimation = 4
         self.seed = 42 # set seed here for deterministic environments
         # self.sim.physx.use_gpu = False
         # Make it high to prevent environment reset when collection demonstrations
