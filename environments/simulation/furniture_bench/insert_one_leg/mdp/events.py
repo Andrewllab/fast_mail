@@ -15,6 +15,9 @@ import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation, AssetBase
 from isaaclab.managers import SceneEntityCfg
 
+from pxr import UsdPhysics, UsdShade, Sdf, Tf
+import omni
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
@@ -101,6 +104,43 @@ def randomize_object_position(
                 if all(math.dist([new_x, new_y], [px, py]) > min_separation for px, py, _ in new_xy_positions.values()):
                     new_xy_positions[asset_name] = torch.tensor([new_x, new_y, ref_z], device=env.device)
                     break
+
+        # set the chosen randomized asset xy-positions
+        for asset_name, asset_cfg in asset_cfgs.items():
+            asset = env.scene[asset_cfg.name]
+
+            # take original orientation
+            orientation = torch.tensor(reference_poses[asset_name]["orientation"], device=env.device)
+            # Write pose to simulation
+            asset.write_root_pose_to_sim(
+                torch.cat([new_xy_positions[asset_name], orientation], dim=-1), env_ids=torch.tensor([cur_env], device=env.device)
+            )
+            asset.write_root_velocity_to_sim(
+                torch.zeros(1, 6, device=env.device), env_ids=torch.tensor([cur_env], device=env.device)
+            )
+
+
+def randomize_object_position_from_predefined_area(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    asset_cfgs: dict[str, SceneEntityCfg],
+    reference_poses: dict[str, dict], 
+    predefined_areas: list[dict[float]],
+):
+    if env_ids is None:
+        return
+    
+    pos_boundaries = random.choice(predefined_areas)
+
+    new_xy_positions = {}
+    # Randomize poses in each environment independently
+    for cur_env in env_ids.tolist():
+        for asset_name, asset_pose in reference_poses.items(): 
+            new_x = random.uniform(pos_boundaries["x_min"], pos_boundaries["x_max"])
+            new_y = random.uniform(pos_boundaries["y_min"], pos_boundaries["y_max"])
+            ref_z = asset_pose["position"][2]
+
+            new_xy_positions[asset_name] = torch.tensor([new_x, new_y, ref_z], device=env.device)
 
         # set the chosen randomized asset xy-positions
         for asset_name, asset_cfg in asset_cfgs.items():
