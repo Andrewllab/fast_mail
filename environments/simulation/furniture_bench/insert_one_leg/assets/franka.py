@@ -5,6 +5,8 @@ The following configurations are available:
 
 * :obj:`FRANKA_PANDA_CFG`: Franka Emika Panda robot with Panda hand
 * :obj:`FRANKA_PANDA_HIGH_PD_CFG`: Franka Emika Panda robot with Panda hand with stiffer PD control
+* :obj:`FRANKA_MIMIC_PANDA_UMI_GRIPPERS_CFG`: Replica of the Real Franka Emika Panda robot with modified Panda hand using the UMI grippers
+* :obj:`FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG`: Replica of the Real Franka Emika Panda robot with modified Panda hand, using the UMI grippers and stiffer PD control
 
 Reference: https://github.com/frankaemika/franka_ros
 """
@@ -89,7 +91,7 @@ from pathlib import Path
 # Get current config directory
 BASE_PATH = Path(__file__).parent.parent
 
-FRANKA_MIMIC_PANDA_IMU_GRIPPERS_CFG = ArticulationCfg(
+FRANKA_MIMIC_PANDA_UMI_GRIPPERS_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=os.path.join(BASE_PATH, "assets/franka_mimic_umi_grippers.usd"),
         activate_contact_sensors=False,
@@ -142,12 +144,12 @@ FRANKA_MIMIC_PANDA_IMU_GRIPPERS_CFG = ArticulationCfg(
 """Configuration of Franka Emika Panda robot."""
 
 
-FRANKA_MIMIC_PANDA_IMU_GRIPPERS_HIGH_PD_CFG = FRANKA_MIMIC_PANDA_IMU_GRIPPERS_CFG.copy()
-FRANKA_MIMIC_PANDA_IMU_GRIPPERS_HIGH_PD_CFG.spawn.rigid_props.disable_gravity = True
-FRANKA_MIMIC_PANDA_IMU_GRIPPERS_HIGH_PD_CFG.actuators["panda_shoulder"].stiffness = 400.0
-FRANKA_MIMIC_PANDA_IMU_GRIPPERS_HIGH_PD_CFG.actuators["panda_shoulder"].damping = 80.0
-FRANKA_MIMIC_PANDA_IMU_GRIPPERS_HIGH_PD_CFG.actuators["panda_forearm"].stiffness = 400.0
-FRANKA_MIMIC_PANDA_IMU_GRIPPERS_HIGH_PD_CFG.actuators["panda_forearm"].damping = 80.0
+FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG = FRANKA_MIMIC_PANDA_UMI_GRIPPERS_CFG.copy()
+FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.spawn.rigid_props.disable_gravity = True
+FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_shoulder"].stiffness = 400.0
+FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_shoulder"].damping = 80.0
+FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_forearm"].stiffness = 400.0
+FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_forearm"].damping = 80.0
 """Configuration of Franka Emika Panda robot with stiffer PD control.
 
 This configuration is useful for task-space control using differential IK.
