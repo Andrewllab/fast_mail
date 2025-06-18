@@ -339,6 +339,8 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 "normalize": False,
             },
         )
+        # add orthogonal ("distance_to_image_plane") depth images to obs
+        # https://isaac-sim.github.io/IsaacLab/main/source/overview/core-concepts/sensors/camera.html#depth-and-distances
         self.observations.front_right_cam.depth = ObsTerm(
             func=mdp.image,
             params={
