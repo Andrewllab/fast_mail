@@ -102,6 +102,8 @@ def extract_camera_parameters(env, camera_name: str, parameter_type: Literal["in
 
 @configclass
 class CameraObsGroupCfg(ObsGroup):
+    """An observation group acting as a container for all relevant information per camera."""
+
     def __post_init__(self):
         self.enable_corruption = False
         self.concatenate_terms = False
@@ -213,72 +215,72 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
         # When storing them into a dict (e.g. self.scene.cameras["gripper_camera"]), IsaacLab throws an error: "ValueError: Unknown asset config type for cameras"
 
         # Gripper camera
-        wrist_cam_intrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/realsense_d405.yaml"), parameter_type="intrinsics", height=480, width=640)
-        wrist_cam_extrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/realsense_d405.yaml"), parameter_type="extrinsics")
+        gripper_cam_intrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/realsense_d405.yaml"), parameter_type="intrinsics", height=480, width=640)
+        gripper_cam_extrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/realsense_d405.yaml"), parameter_type="extrinsics")
         self.scene.gripper_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/panda_hand/gripper_cam",
             height=480,
             width=640,
             data_types=["rgb", "distance_to_image_plane"],
             spawn=sim_utils.PinholeCameraCfg.from_intrinsic_matrix(
-                intrinsic_matrix=wrist_cam_intrinsics_matrix,
+                intrinsic_matrix=gripper_cam_intrinsics_matrix,
                 height=480,
                 width=640,
                 clipping_range=(0.01, 1.0e5),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos=wrist_cam_extrinsics_matrix["pos"], 
-                rot=wrist_cam_extrinsics_matrix['rot'], 
+                pos=gripper_cam_extrinsics_matrix["pos"], 
+                rot=gripper_cam_extrinsics_matrix['rot'], 
                 convention="opengl" # manually adapted since eef of the real robot not known
             ),
         )
 
-        # Static right camera
-        static_right_cam_intrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/static_right_realsense_d435.yaml"), parameter_type="intrinsics", height=480, width=640)
-        static_right_cam_extrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/static_right_realsense_d435.yaml"), parameter_type="extrinsics")
-        self.scene.right_cam = CameraCfg(
-            prim_path="{ENV_REGEX_NS}/right_cam",
+        # Static front right camera
+        static_front_right_cam_intrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/static_right_realsense_d435.yaml"), parameter_type="intrinsics", height=480, width=640)
+        static_front_right_cam_extrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/static_right_realsense_d435.yaml"), parameter_type="extrinsics")
+        self.scene.front_right_cam = CameraCfg(
+            prim_path="{ENV_REGEX_NS}/front_right_cam",
             height=480,
             width=640,
             data_types=["rgb", "distance_to_image_plane"],
             spawn=sim_utils.PinholeCameraCfg.from_intrinsic_matrix(
-                intrinsic_matrix=static_right_cam_intrinsics_matrix,
+                intrinsic_matrix=static_front_right_cam_intrinsics_matrix,
                 height=480,
                 width=640,
                 clipping_range=(0.01, 1.0e5),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos = static_right_cam_extrinsics_matrix["pos"],
-                rot = static_right_cam_extrinsics_matrix["rot"],
+                pos = static_front_right_cam_extrinsics_matrix["pos"],
+                rot = static_front_right_cam_extrinsics_matrix["rot"],
                 convention="ros",
             )
         )
 
-        # Static left camera
-        static_left_cam_intrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/static_left_realsense_d435.yaml"), parameter_type="intrinsics", height=480, width=640)
-        rel_static_left_cam_extrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/static_left_realsense_d435.yaml"), parameter_type="extrinsics")
+        # Static front left camera
+        static_front_left_cam_intrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/static_left_realsense_d435.yaml"), parameter_type="intrinsics", height=480, width=640)
+        rel_static_front_left_cam_extrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/static_left_realsense_d435.yaml"), parameter_type="extrinsics")
         # currently, the left cam extrinsics are relative to the right (leader) camera.
         # Thus, compute the world-frame pose of the left cam using the relative pose to the right (leader) camera and the right (leader) camera pose in world frame.
-        static_left_cam_pos, stat_left_cam_rot = math_utils.combine_frame_transforms(
-            static_right_cam_extrinsics_matrix["pos"],
-            static_right_cam_extrinsics_matrix["rot"],
-            rel_static_left_cam_extrinsics_matrix["pos"],
-            rel_static_left_cam_extrinsics_matrix["rot"],
+        static_front_left_cam_pos, static_front_left_cam_rot = math_utils.combine_frame_transforms(
+            static_front_right_cam_extrinsics_matrix["pos"],
+            static_front_right_cam_extrinsics_matrix["rot"],
+            rel_static_front_left_cam_extrinsics_matrix["pos"],
+            rel_static_front_left_cam_extrinsics_matrix["rot"],
         )
-        self.scene.left_cam = CameraCfg(
-            prim_path="{ENV_REGEX_NS}/left_cam",
+        self.scene.front_left_cam = CameraCfg(
+            prim_path="{ENV_REGEX_NS}/front_left_cam",
             height=480,
             width=640,
             data_types=["rgb", "distance_to_image_plane"],
             spawn=sim_utils.PinholeCameraCfg.from_intrinsic_matrix(
-                intrinsic_matrix=static_left_cam_intrinsics_matrix,
+                intrinsic_matrix=static_front_left_cam_intrinsics_matrix,
                 height=480,
                 width=640,
                 clipping_range=(0.01, 1.0e5),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos = static_left_cam_pos,
-                rot = stat_left_cam_rot,
+                pos = static_front_left_cam_pos,
+                rot = static_front_left_cam_rot,
                 convention="ros",
             ),
         )
@@ -332,12 +334,33 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                                                                     }
                                                                 )
 
-        # Left static cam observations
-        self.observations.left_cam = CameraObsGroupCfg()
-        self.observations.left_cam.rgb = ObsTerm(
+        # Front right static cam observations
+        self.observations.front_right_cam = CameraObsGroupCfg()
+        self.observations.front_right_cam.rgb = ObsTerm(
             func=mdp.image,
             params={
-                "sensor_cfg": SceneEntityCfg("left_cam"),
+                "sensor_cfg": SceneEntityCfg("front_right_cam"),
+                "data_type": "rgb",
+                "convert_perspective_to_orthogonal": False,
+                "normalize": False,
+            },
+        )
+        self.observations.front_right_cam.depth = ObsTerm(
+            func=mdp.image,
+            params={
+                "sensor_cfg": SceneEntityCfg("front_right_cam"),
+                "data_type": "distance_to_image_plane",
+                "convert_perspective_to_orthogonal": True,
+                "normalize": False,
+            },
+        )
+
+        # Front left static cam observations
+        self.observations.front_left_cam = CameraObsGroupCfg()
+        self.observations.front_left_cam.rgb = ObsTerm(
+            func=mdp.image,
+            params={
+                "sensor_cfg": SceneEntityCfg("front_left_cam"),
                 "data_type": "rgb",
                 "convert_perspective_to_orthogonal": False,
                 "normalize": False,
@@ -345,31 +368,10 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
         )
         # add orthogonal ("distance_to_image_plane") depth images to obs
         # https://isaac-sim.github.io/IsaacLab/main/source/overview/core-concepts/sensors/camera.html#depth-and-distances
-        self.observations.left_cam.depth = ObsTerm(
+        self.observations.front_left_cam.depth = ObsTerm(
             func=mdp.image,
             params={
-                "sensor_cfg": SceneEntityCfg("left_cam"),
-                "data_type": "distance_to_image_plane",
-                "convert_perspective_to_orthogonal": True,
-                "normalize": False,
-            },
-        )
-
-        # Right static cam observations
-        self.observations.right_cam = CameraObsGroupCfg()
-        self.observations.right_cam.rgb = ObsTerm(
-            func=mdp.image,
-            params={
-                "sensor_cfg": SceneEntityCfg("right_cam"),
-                "data_type": "rgb",
-                "convert_perspective_to_orthogonal": False,
-                "normalize": False,
-            },
-        )
-        self.observations.right_cam.depth = ObsTerm(
-            func=mdp.image,
-            params={
-                "sensor_cfg": SceneEntityCfg("right_cam"),
+                "sensor_cfg": SceneEntityCfg("front_left_cam"),
                 "data_type": "distance_to_image_plane",
                 "convert_perspective_to_orthogonal": True,
                 "normalize": False,
