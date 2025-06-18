@@ -207,9 +207,7 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
         self.scene.robot.spawn.semantic_tags = [("class", "robot")]
 
         # Set cameras
-        # TODO: Find a way to wrap all cameras into one data structure. 
-        # When storing them into a dict (e.g. self.scene.cameras["gripper_camera"]), IsaacLab throws an error: "ValueError: Unknown asset config type for cameras"
-
+        
         # Gripper camera
         gripper_cam_intrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/realsense_d405.yaml"), parameter_type="intrinsics", height=480, width=640)
         gripper_cam_extrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/realsense_d405.yaml"), parameter_type="extrinsics")
