@@ -75,7 +75,7 @@ def get_camera_parameters(file_path: str, parameter_type: str = Literal["intrins
     return camera_params
 
 
-def extract_camera_parameters(env, camera_name: str, parameter_type: Literal["intrinsics", "extrinsics"]):
+def extract_camera_parameters(env, camera_name: str, parameter_type: Literal["intrinsics", "extrinsics"], convention: Literal["world", "opengl", "ros"]):
     """Extract intrinsic/extrinsic camera parameters and preprocess them for recording."""
 
     match parameter_type:
@@ -88,11 +88,16 @@ def extract_camera_parameters(env, camera_name: str, parameter_type: Literal["in
             cam = env.scene[camera_name]
             cam_data = cam.data  # triggers update
             pos_world_frame = cam_data.pos_w.clone()
-            # orientation_world_frame = cam_data.quat_w_world.clone()
-            rot_world_frame = cam_data.quat_w_world.clone()
-            rot_world_frame_matrix = math_utils.matrix_from_quat(rot_world_frame)
+            match convention:
+                case "world":
+                    rot = cam_data.quat_w_world.clone()
+                case "opengl":
+                    rot = cam_data.quat_w_opengl.clone()
+                case "ros":
+                    rot = cam_data.quat_w_ros.clone()
+            rot_matrix = math_utils.matrix_from_quat(rot)
             # create a pose as a homogenious matrix
-            camera_parameters = math_utils.make_pose(pos=pos_world_frame, rot=rot_world_frame_matrix)
+            camera_parameters = math_utils.make_pose(pos=pos_world_frame, rot=rot_matrix)
 
         case _:
             raise ValueError(f"Invalid parameter_type '{parameter_type}'. Expected 'intrinsics' or 'extrinsics'.")
@@ -324,7 +329,8 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
         self.observations.gripper_cam.extrinsics = ObsTerm(func=extract_camera_parameters, 
                                                                  params={
                                                                      "camera_name": "gripper_cam",
-                                                                     "parameter_type": "extrinsics"
+                                                                     "parameter_type": "extrinsics",
+                                                                     "convention": "ros",
                                                                     }
                                                                 )
 
