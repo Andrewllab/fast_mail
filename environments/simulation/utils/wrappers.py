@@ -73,7 +73,7 @@ class IsaacLabPreProcess(gym.Wrapper):
                     camera_cfg["extrinsics"] = extrinsic_matrix
 
                     # extract camera intrinsics
-                    camera_cfg["intrinsics"] = self.env.unwrapped.scene[obs_group_name]._data.intrinsic_matrices.squeeze(0).cpu() # remove environment dimensions as PinholeCameraIntrinsic.from_intrinsic_matrix expects 2d-tensor
+                    camera_cfg["intrinsics"] = self.env.unwrapped.scene[obs_group_name].data.intrinsic_matrices.squeeze(0).cpu() # remove environment dimensions as PinholeCameraIntrinsic.from_intrinsic_matrix expects 2d-tensor
  
                     # create the final CameraSpec
                     obs_spec[obs_group_name] = CameraSpec(
@@ -87,6 +87,8 @@ class IsaacLabPreProcess(gym.Wrapper):
                         extrinsics=camera_cfg["extrinsics"],
                     )
 
+        # set gripper_cam's extrinsics to the identity matrix at environment initialization, then at runtime read the dynamically-changing extrinsics for pointmap calculation.  
+        # For more details check: transforms/to_pointcloud.py
         obs_spec["gripper_cam"] = obs_spec["gripper_cam"].replace(dynamic_pose_obs_key=("gripper_cam", "extrinsics"), extrinsics=torch.eye(4))
 
         self.specs = DataSpecs(
