@@ -216,8 +216,6 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
         self.scene.robot.spawn.semantic_tags = [("class", "robot")]
 
         # Set cameras
-        # TODO: Find a way to wrap all cameras into one data structure. 
-        # When storing them into a dict (e.g. self.scene.cameras["gripper_camera"]), IsaacLab throws an error: "ValueError: Unknown asset config type for cameras"
 
         # Gripper camera
         gripper_cam_intrinsics_matrix = get_camera_parameters(file_path=os.path.join(BASE_PATH, "config/camera_params/realsense_d405.yaml"), parameter_type="intrinsics", height=480, width=640)
@@ -234,10 +232,10 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 clipping_range=(0.01, 1.0e5),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos=gripper_cam_extrinsics_matrix["pos"], 
-                rot=gripper_cam_extrinsics_matrix['rot'], 
-                convention="opengl" # manually adapted since eef of the real robot not known
-            ),
+                pos=gripper_cam_extrinsics_matrix["pos"],
+                rot=gripper_cam_extrinsics_matrix["rot"],
+                convention="ros",
+            )
         )
 
         # Static front right camera
@@ -255,8 +253,8 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 clipping_range=(0.01, 1.0e5),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos = static_front_right_cam_extrinsics_matrix["pos"],
-                rot = static_front_right_cam_extrinsics_matrix["rot"],
+                pos=static_front_right_cam_extrinsics_matrix["pos"],
+                rot=static_front_right_cam_extrinsics_matrix["rot"],
                 convention="ros",
             )
         )
@@ -284,8 +282,8 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 clipping_range=(0.01, 1.0e5),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos = static_front_left_cam_pos,
-                rot = static_front_left_cam_rot,
+                pos=static_front_left_cam_pos,
+                rot=static_front_left_cam_rot,
                 convention="ros",
             ),
         )

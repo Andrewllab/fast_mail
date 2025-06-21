@@ -207,10 +207,10 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 clipping_range=(0.01, 1.0e5),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos=gripper_cam_extrinsics_matrix["pos"], 
-                rot=gripper_cam_extrinsics_matrix['rot'], 
-                convention="opengl" # manually adapted since eef of the real robot not known
-            ),
+                pos=gripper_cam_extrinsics_matrix["pos"],
+                rot=gripper_cam_extrinsics_matrix["rot"],
+                convention="ros",
+            )
         )
 
         # Static right camera
@@ -228,8 +228,8 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 clipping_range=(0.01, 1.0e5),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos = static_front_right_cam_extrinsics_matrix["pos"],
-                rot = static_front_right_cam_extrinsics_matrix["rot"],
+                pos=static_front_right_cam_extrinsics_matrix["pos"],
+                rot=static_front_right_cam_extrinsics_matrix["rot"],
                 convention="ros",
             )
         )
@@ -257,8 +257,8 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 clipping_range=(0.01, 1.0e5),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos = static_front_left_cam_pos,
-                rot = static_front_left_cam_rot,
+                pos=static_front_left_cam_pos,
+                rot=static_front_left_cam_rot,
                 convention="ros",
             ),
         )
