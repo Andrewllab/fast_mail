@@ -17,14 +17,12 @@ class IsaacLabPreProcess(gym.Wrapper):
         super().__init__(env)
 
         # import it here, otherwise not possible to import before Isaac-Sim starts
-        from isaaclab.utils.math import matrix_from_quat, make_pose   
+        from isaaclab.utils.math import matrix_from_quat, make_pose
 
         self._obs_seq_len = obs_seq_len
 
         # IK-Rel-controll uses 6d-delta pose + 1 gripper dim, but the model output 8d (3d-pos, 4d-quat, 1d-gripper)
         action_spec = ActionSpec(action_dim=self.env.unwrapped.single_action_space.shape[-1] + 1, time=1)
-
-        self.env.reset()
 
         # prepare the observation structure to match the input structure all models expects.
         obs_spec = {}
@@ -68,10 +66,10 @@ class IsaacLabPreProcess(gym.Wrapper):
 
                     # extract camera extrinsics
                     pos_w = self.env.unwrapped.scene[obs_group_name].data.pos_w.clone()
-                    rot_quat_w = self.env.unwrapped.scene[obs_group_name].data.quat_w_ros.clone()
-                    rot_matrix_w = matrix_from_quat(rot_quat_w)
-                    # current dataset preprocessing pipeline expects flattened homogenious matrices
-                    extrinsic_matrix = make_pose(pos=pos_w, rot=rot_matrix_w).squeeze(0).cpu() # remove environment dim
+                    rot_quat_w_ros = self.env.unwrapped.scene[obs_group_name].data.quat_w_ros.clone()
+                    rot_matrix = matrix_from_quat(rot_quat_w_ros)
+                    # current dataset preprocessing-pipeline expects flattened homogenious matrices
+                    extrinsic_matrix = make_pose(pos=pos_w, rot=rot_matrix).squeeze(0).cpu() # remove environment dim
                     camera_cfg["extrinsics"] = extrinsic_matrix
 
                     # extract camera intrinsics
