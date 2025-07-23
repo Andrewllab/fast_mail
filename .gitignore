@@ -12,3 +12,6 @@ __pycache__/
 /artifacts
 
 recordings/
+
+# pretrained and compiled FoundationStereo models
+foundation_stereo_models/
