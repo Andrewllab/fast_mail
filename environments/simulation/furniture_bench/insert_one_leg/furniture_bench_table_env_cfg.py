@@ -109,9 +109,9 @@ class ObservationsCfg:
         joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel) # all realtive joint positions except the grippers
         joint_vel = ObsTerm(func=mdp.joint_vel) # all joint velocities except the grippers
         joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel) # all relative joint velocities except the grippers
-        eef_pos = ObsTerm(func=mdp.ee_frame_pos) # ee_frame position w.r.t world frame (which is identical with the robot base frame) 
-        eef_quat = ObsTerm(func=mdp.ee_frame_quat) # ee_frame orientation w.r.t. world frame.
-        gripper_pos = ObsTerm(func=mdp.gripper_pos) # the degree to which the grippers are closed.
+        eef_pos_w = ObsTerm(func=mdp.ee_frame_pos_w) # ee_frame position w.r.t world frame (which is identical with the robot base frame) 
+        eef_quat_w = ObsTerm(func=mdp.ee_frame_quat_w) # ee_frame orientation w.r.t. world frame.
+        gripper_closure = ObsTerm(func=mdp.gripper_closure) # the degree to which the grippers are closed.
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -151,15 +151,16 @@ class InsertOneLegEnvCfg(ManagerBasedRLEnvCfg):
         # general settings
         # correspond to the number of simulation sub-steps between envionment steps
         self.decimation = 4
-        self.seed = 42 # set seed here for deterministic environments
+        # self.seed = 42 # set seed here for deterministic environments
         # self.sim.physx.use_gpu = False
         # Make it high to prevent environment reset when collection demonstrations
         # For training, set a lower value
-        self.episode_length_s = 20.0
+        self.episode_length_s = 10.0
         # simulation settings
-        # WARNING: sim.dt != env.step_size/rendering step_size
-        # environment step_size = sim.dt / decimation !!!
-        self.sim.dt = 0.01  # 100Hz 
+        # WARNING: sim.dt != env.step_size/sim.render_interval
+        # environment env.step_size = sim.render_interval = sim.dt * decimation !!!
+        # In this case render frequency is 30Hz.
+        self.sim.dt = 1.0 / 120.0  # 120Hz simulation frequency
         self.sim.render_interval = self.decimation
         # GUI viewer perspective location
         # self.viewer.eye = (0.82762, 0.24943, 0.28195) # suitable for analyzing the area near the table assembly slots
@@ -186,9 +187,12 @@ class InsertOneLegEnvCfg(ManagerBasedRLEnvCfg):
         # The following MaterialCfg configures the defaults physic's material that PhyX is going to use per-default for all objects that don't have pre-defined physic's material
         # In this case, this affects all environment assets. 
         # If different physic's properties are desired, consider using the pre-defined event function "bind_physics_materials" as an event with mode "pre-startup".
+        # Simulating a more stable grasping represented by the black tape placed on the UMI grippers (https://umi-gripper.github.io/) of the real Franka, we set the friction (both static and dynamic) of the UMI gripper in simulation very high.
+        # Since the friction happens always on pair of object materials, we also need to adapt the friction combine mode, in this case just take the high friction values: https://forums.developer.nvidia.com/t/physics-material-with-robot-friction/246686
         self.sim.physics_material = RigidBodyMaterialCfg(
             static_friction=0.5, 
             dynamic_friction=0.5,
+            friction_combine_mode="max", # to simulate the effect of the black tape used on the UMI grippers of the real-world Franka
             compliant_contact_damping=0.5,
             compliant_contact_stiffness=0.5,
         )

@@ -75,7 +75,28 @@ gym.register(
     disable_env_checker=True,
 )
 
+##
+# Inverse Kinematics - Absolute Pose Control
+##
+gym.register(
+    id="Isaac-Insert-One-Leg-Franka-UprightFour-IK-Abs-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": four_legs_upright_all.insert_one_leg_ik_abs_env_cfg.FrankaInsertOneLegEnvCfg,
+        "robomimic_bc_cfg_entry_point": os.path.join(agents.__path__[0], "robomimic/bc_rnn_low_dim.json"),
+    },
+    disable_env_checker=True,
+)
 
+gym.register(
+    id="Isaac-Insert-One-Leg-Franka-RGBD-UprightFour-IK-Abs-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": four_legs_upright_all.insert_one_leg_ik_abs_rgbd_env_cfg.FrankaInsertOneLegEnvCfg,
+        "robomimic_bc_cfg_entry_point": os.path.join(agents.__path__[0], "robomimic/bc_rnn_low_dim.json"),
+    },
+    disable_env_checker=True,
+)
 
 # A simplified version of the task Inser-One-Leg from Furniture-Bench: https://clvrai.github.io/furniture-bench/
 # The simplification consists of initializing only one leg fallen, but randomly positioned each time. 
@@ -122,6 +143,30 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
         "env_cfg_entry_point": single_leg_fallen.insert_one_leg_ik_rel_rgbd_env_cfg.FrankaInsertOneLegEnvCfg,
+        "robomimic_bc_cfg_entry_point": os.path.join(agents.__path__[0], "robomimic/bc_rnn_low_dim.json"),
+    },
+    disable_env_checker=True,
+)
+
+##
+# Inverse Kinematics - Absolute Pose Control
+##
+
+gym.register(
+    id="Isaac-Insert-One-Leg-Franka-SingleFallen-IK-Abs-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": single_leg_fallen.insert_one_leg_ik_abs_env_cfg.FrankaInsertOneLegEnvCfg,
+        "robomimic_bc_cfg_entry_point": os.path.join(agents.__path__[0], "robomimic/bc_rnn_low_dim.json"),
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-Insert-One-Leg-Franka-RGBD-SingleFallen-IK-Abs-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": single_leg_fallen.insert_one_leg_ik_abs_rgbd_env_cfg.FrankaInsertOneLegEnvCfg,
         "robomimic_bc_cfg_entry_point": os.path.join(agents.__path__[0], "robomimic/bc_rnn_low_dim.json"),
     },
     disable_env_checker=True,

@@ -21,7 +21,6 @@ from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils import configclass
 from isaaclab.managers import TerminationTermCfg as DoneTerm
-from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab_tasks.manager_based.manipulation.stack import mdp
 from isaaclab_tasks.manager_based.manipulation.stack.mdp import franka_stack_events
 import isaaclab.sim as sim_utils
@@ -161,22 +160,7 @@ class EventCfg:
                 -0.6007,
                 0.0400,
                 0.0400,
-            ],  # corresponds to the default initial posed which is also used for the real-world setup
-        },
-    )
-
-    # set Franka gripper's dynamic and static frictions higher to simulate the black tape in the real world Franka's setup
-    # instead of duplicating code, just reuse the existing function from IsaacLab (originally used for randomizing the friction properties) by setting the same upper and lower boundary values.
-    # for more details: https://github.com/isaac-sim/IsaacLab/blob/1f0be3d2cc75c5019750d7873bb16845f9a4184c/source/isaaclab/isaaclab/envs/mdp/events.py#L148
-    physics_material = EventTerm(
-        func=mdp.randomize_rigid_body_material,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="panda_.*finger"),
-            "static_friction_range": (1.5, 1.5),
-            "dynamic_friction_range": (1.5, 1.5),
-            "restitution_range": (0.0, 0.0),
-            "num_buckets": 64,
+            ],  # an approximation of the real-world initial franka-pose
         },
     )
 
@@ -244,24 +228,6 @@ class EventCfg:
 
 
 @configclass
-class RewardsCfg:
-    """Reward terms for the MDP."""
-
-    # success function used as a sparse reward function
-    success = RewTerm(
-        func=success,
-        params={
-            "xy_threshold": 0.0003,
-            "height_threshold": 0.0002,
-            "leg_target_frames": [
-                "square_table_leg1_target_positions_frame",
-            ],
-        },
-        weight=1.0,
-    )
-
-
-@configclass
 class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
     def __post_init__(self):
         # post init of parent
@@ -284,9 +250,6 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
             time_out=True,
         )
 
-        # in this case, use the success function as a sparse reward
-        self.rewards: RewardsCfg = RewardsCfg()
-
         # Set Franka as robot
         self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.semantic_tags = [("class", "robot")]
@@ -294,6 +257,8 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
         # Set cameras
 
         # Gripper camera
+        # hom_matrix = math_utils.matrix_from_quat(torch.tensor([0.6533,  0.2706, -0.2706, -0.6533]))
+
         gripper_cam_intrinsics_matrix = get_camera_parameters(
             file_path=os.path.join(
                 BASE_PATH, "config/camera_params/realsense_d405.yaml"
@@ -308,6 +273,13 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
             ),
             parameter_type="extrinsics",
         )
+        # print(f"Gripper extracted extrinsics{gripper_cam_extrinsics_matrix}")
+        # print(f"NEW HOM_MATRIX: {hom_matrix}")
+        # back_to_quat = math_utils.quat_from_matrix(hom_matrix)
+        # unique_back_to_quat = math_utils.quat_unique(back_to_quat)
+        # old_pos = gripper_cam_extrinsics_matrix["pos"]
+        # print(f"NEW POSE: {math_utils.make_pose(pos=old_pos, rot=hom_matrix).flatten()}")
+        # print(f"BACKWARD COMPUTE SANITY CHECK: {unique_back_to_quat}")
         self.scene.gripper_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/panda_hand/gripper_cam",
             height=480,
@@ -319,6 +291,12 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 width=640,
                 clipping_range=(0.01, 1.0e5),
             ),
+            # offset=CameraCfg.OffsetCfg(
+            #     pos=(0.1300,  0.0000, -0.0100),
+            #     # rot= (-0.2706, 0.65328, -0.65328, 0.2706), # 180 x, 45 y, 90 z in opengl-convention
+            #     rot= (0.6533,  0.2706, -0.2706, -0.6533), # 180 x, 45 y, 90 z in ros-convention
+            #     convention="ros",
+            # ),
             offset=CameraCfg.OffsetCfg(
                 pos=gripper_cam_extrinsics_matrix["pos"],
                 rot=gripper_cam_extrinsics_matrix["rot"],
@@ -537,9 +515,7 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
             asset_name="robot",
             joint_names=["panda_finger.*"],
             open_command_expr={"panda_finger_.*": 0.04},
-            close_command_expr={
-                "panda_finger_.*": -0.02
-            },  # further decreasing the value further leads to very aggressive controller reaction and penetrations with all objects because of very large forces
+            close_command_expr={"panda_finger_.*": 0.0},
         )
 
         # Setup all static and dynamic objects, including their properties
@@ -572,15 +548,6 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
         static_body_properties = RigidBodyPropertiesCfg(
             rigid_body_enabled=True,
             kinematic_enabled=True,
-            solver_position_iteration_count=100,
-            solver_velocity_iteration_count=1,
-            max_angular_velocity=1000.0,
-            max_linear_velocity=1000.0,
-            max_depenetration_velocity=5.0,
-            disable_gravity=False,
-            max_contact_impulse=1.0,
-            linear_damping=1.0,
-            angular_damping=1.0,
         )
         #  front
         self.scene.obstacle_front = RigidObjectCfg(
@@ -662,12 +629,11 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                     prim_path="{ENV_REGEX_NS}/Robot/panda_hand",
                     name="end_effector",
                     offset=OffsetCfg(
-                        # pos=[0.0, 0.0, 0.1034], # corresponds to the middle point of the gripper knobs
                         pos=[
                             0.0,
                             0.0,
-                            0.209,
-                        ],  # corresponds to the middle point of the UMI gripper knobs
+                            0.1034,
+                        ],  # corresponds to the middle point of the gripper knobs
                     ),
                 ),
             ],

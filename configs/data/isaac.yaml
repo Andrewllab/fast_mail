@@ -4,7 +4,7 @@ defaults:
 env_dataset:
   env:
     _target_: environments.simulation.utils.build_env.make
-    task_name: Isaac-Insert-One-Leg-Franka-RGBD-IK-Rel-v0
+    task_name: Isaac-Insert-One-Leg-Franka-RGBD-SingleFallen-IK-Abs-v0
     device: "cuda"
     num_envs: 1
     render_mode: rgb_array

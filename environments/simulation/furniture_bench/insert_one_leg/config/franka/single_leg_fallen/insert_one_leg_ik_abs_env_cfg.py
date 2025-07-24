@@ -7,7 +7,7 @@ from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.utils import configclass
 
-from . import insert_one_leg_rgbd_env_cfg
+from . import insert_one_leg_joint_pos_env_cfg
 
 ##
 # Pre-defined configs
@@ -16,7 +16,7 @@ from ....assets.franka import FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG
 
 
 @configclass
-class FrankaInsertOneLegEnvCfg(insert_one_leg_rgbd_env_cfg.FrankaInsertOneLegEnvCfg):
+class FrankaInsertOneLegEnvCfg(insert_one_leg_joint_pos_env_cfg.FrankaInsertOneLegEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
@@ -31,7 +31,7 @@ class FrankaInsertOneLegEnvCfg(insert_one_leg_rgbd_env_cfg.FrankaInsertOneLegEnv
             asset_name="robot",
             joint_names=["panda_joint.*"],
             body_name="panda_hand",
-            controller=DifferentialIKControllerCfg(command_type="pose", use_relative_mode=True, ik_method="dls"),
+            controller=DifferentialIKControllerCfg(command_type="pose", use_relative_mode=False, ik_method="dls"),
             scale=1.0,
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.209]), # correponds to the tip point of the UMI grippers knobs
             # body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.1034]), # correponds to the tip point of the original grippers knobs

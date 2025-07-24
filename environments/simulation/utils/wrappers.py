@@ -32,7 +32,7 @@ class IsaacLabPreProcess(gym.Wrapper):
                 # pre-process only relevant robot state information
                 case "proprioception":
                     joint_pos_dim = self.env.unwrapped.single_observation_space[obs_group_name]["joint_pos"].shape[-1]
-                    gripper_pos_dim = self.env.unwrapped.single_observation_space[obs_group_name]["gripper_pos"].shape[-1]
+                    gripper_pos_dim = self.env.unwrapped.single_observation_space[obs_group_name]["gripper_closure"].shape[-1]
                     obs_spec["robot_state"] = ObsSpec(elem_shape=(joint_pos_dim + gripper_pos_dim,), time=1)
 
                 # extract all camera information
@@ -117,7 +117,7 @@ class IsaacLabPreProcess(gym.Wrapper):
 
                 case "proprioception":
                     joint_pos = obs_group["joint_pos"]
-                    gripper_pos = obs_group["gripper_pos"]
+                    gripper_pos = obs_group["gripper_closure"]
                     pre_processed_obs["robot_state"] = torch.cat((joint_pos, gripper_pos), dim=1)
                     
                 

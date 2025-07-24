@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
 
 
-def ee_frame_rel_pos(env: ManagerBasedRLEnv, ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame")) -> torch.Tensor:
+def ee_frame_rel_robot_base_pos(env: ManagerBasedRLEnv, ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame")) -> torch.Tensor:
     """The End-effector position relative to the world base frame. 
     Usually, the world base frame matches the robot's base frame unless the initial robot pose is explicitly changed."""
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
@@ -24,7 +24,7 @@ def ee_frame_rel_pos(env: ManagerBasedRLEnv, ee_frame_cfg: SceneEntityCfg = Scen
 
     return ee_frame_pos
 
-def ee_frame_pos(env: ManagerBasedRLEnv, ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame")) -> torch.Tensor:
+def ee_frame_pos_w(env: ManagerBasedRLEnv, ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame")) -> torch.Tensor:
     """The End-effector position relative to the world base frame. 
     Usually, the world base frame matches the robot's base frame unless the initial robot pose is explicitly changed."""
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
@@ -33,7 +33,7 @@ def ee_frame_pos(env: ManagerBasedRLEnv, ee_frame_cfg: SceneEntityCfg = SceneEnt
     return ee_frame_pos
 
 
-def ee_frame_quat(env: ManagerBasedRLEnv, ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame")) -> torch.Tensor:
+def ee_frame_quat_w(env: ManagerBasedRLEnv, ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame")) -> torch.Tensor:
     """The end-effector orientation in the world coordinate frame."""
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
     ee_frame_quat = ee_frame.data.target_quat_w[:, 0, :]
@@ -41,7 +41,7 @@ def ee_frame_quat(env: ManagerBasedRLEnv, ee_frame_cfg: SceneEntityCfg = SceneEn
     return ee_frame_quat
 
 
-def gripper_pos(env: ManagerBasedRLEnv, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def gripper_closure(env: ManagerBasedRLEnv, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Computes the degree to which the grippers are closed.
     A value of ±0.04 indicates the grippers are fully open (positive or negative depending on the gripper side),
     while a value of 0.0 corresponds to fully closed grippers. 

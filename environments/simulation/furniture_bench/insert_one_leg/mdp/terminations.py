@@ -47,17 +47,19 @@ def success(
         square_table_leg_tip_pos = env.scene[leg_target_frame].data.target_pos_w
 
         # calculate Euclidean distance
-        position_dist_leg_assembly_slot = torch.linalg.vector_norm(square_table_top_assembly_slot_1_target_pos - square_table_leg_tip_pos, dim=1).squeeze(0) 
+        position_dist_leg_assembly_slot = torch.linalg.vector_norm(square_table_top_assembly_slot_1_target_pos - square_table_leg_tip_pos, dim=1)
+        
 
         # TODO: in case of vectorized-environments do not squeeze and check the following conditions for each environment instance separately. 
         # Currently, the environment is used only for imitation learning where only one environment instance is enough.
         # TODO: Currently, the environment logic supports only one of the four assembly slots, but any leg is possible to be assembled
 
         # check if a leg is insterted
-        xy_leg_inserted = torch.logical_and(position_dist_leg_assembly_slot[0] <= xy_threshold, 
-                                            position_dist_leg_assembly_slot[1] <= xy_threshold)
+        xy_leg_inserted = torch.logical_and(position_dist_leg_assembly_slot[:, 0] <= xy_threshold, 
+                                            position_dist_leg_assembly_slot[:, 1] <= xy_threshold)
+
         xyz_leg_inserted = torch.logical_and(xy_leg_inserted, 
-                                        position_dist_leg_assembly_slot[2] <= height_threshold)
+                                        position_dist_leg_assembly_slot[:, 2] <= height_threshold)
 
         # check if at least one leg is inserted
         one_leg_inserted |= xyz_leg_inserted

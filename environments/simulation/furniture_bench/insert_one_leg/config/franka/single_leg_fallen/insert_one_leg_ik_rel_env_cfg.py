@@ -12,7 +12,7 @@ from . import insert_one_leg_joint_pos_env_cfg
 ##
 # Pre-defined configs
 ##
-from ....assets.franka import FRANKA_PANDA_HIGH_PD_CFG
+from ....assets.franka import FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG
 
 
 @configclass
@@ -23,7 +23,7 @@ class FrankaInsertOneLegEnvCfg(insert_one_leg_joint_pos_env_cfg.FrankaInsertOneL
 
         # Set Franka as robot
         # We switch here to a stiffer PD controller for IK tracking to be better.
-        self.scene.robot = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
         # Set actions for the specific robot type (franka)
         # Disable gravity for easier control
@@ -33,6 +33,6 @@ class FrankaInsertOneLegEnvCfg(insert_one_leg_joint_pos_env_cfg.FrankaInsertOneL
             body_name="panda_hand",
             controller=DifferentialIKControllerCfg(command_type="pose", use_relative_mode=True, ik_method="dls"),
             scale=1.0,
-            # body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.209]), # correponds to the tip point of the UMI grippers knobs
-            body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.1034]), # correponds to the tip point of the original grippers knobs
+            body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.209]), # correponds to the tip point of the UMI grippers knobs
+            # body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.1034]), # correponds to the tip point of the original grippers knobs
         )
