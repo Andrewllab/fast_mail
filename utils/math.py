@@ -397,7 +397,7 @@ def _axis_angle_rotation(
     return torch.stack(R_flat, -1).reshape(angle.shape + (3, 3))
 
 
-def matrix_from_euler(euler_angles: torch.Tensor, convention: str) -> torch.Tensor:
+def euler_to_matrix(euler_angles: torch.Tensor, convention: str) -> torch.Tensor:
     """
     Convert rotations given as Euler angles in radians to rotation matrices.
 
@@ -431,7 +431,7 @@ def matrix_from_euler(euler_angles: torch.Tensor, convention: str) -> torch.Tens
 
 
 @torch.jit.script
-def euler_xyz_from_quat(
+def quaternion_to_euler_xyz(
     quat: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Convert rotations given as quaternions to Euler angles in radians.
@@ -1558,7 +1558,7 @@ def convert_camera_frame_orientation_convention(
         rotm = quaternion_to_matrix(orientation)
         rotm = torch.matmul(
             rotm,
-            matrix_from_euler(
+            euler_to_matrix(
                 torch.tensor([math.pi / 2, -math.pi / 2, 0], device=orientation.device),
                 "XYZ",
             ),
@@ -1580,7 +1580,7 @@ def convert_camera_frame_orientation_convention(
         rotm = quaternion_to_matrix(quat_gl)
         rotm = torch.matmul(
             rotm,
-            matrix_from_euler(
+            euler_to_matrix(
                 torch.tensor([math.pi / 2, -math.pi / 2, 0], device=orientation.device),
                 "XYZ",
             ).T,

@@ -1,5 +1,5 @@
 defaults:
-  - data: one_leg_alr_metaquest2
+  - data: one_leg_alr_20250724
   - agent: null_agent
   - callbacks: null
   - logger: null

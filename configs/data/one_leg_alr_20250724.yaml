@@ -1,0 +1,25 @@
+# recorded with rate limit 50fps, sim_dt = 0.01, decimation = 2
+
+defaults:
+  - default
+  - isaac
+  # # since this dataset was recorded at 50 fps, subsample by a factor of 4
+  # - /transforms@preprocess_transforms.t0_subsample: time_subsample
+
+task_suite: furniture_bench
+task: one_leg
+name: 2025-07-24_metaquest3
+
+dataset:
+  _target_: environments.datasets.furniture_bench_alr_v4.AlrFurnitureBenchDataset
+  _partial_: True  # requires transforms at runtime
+  root_dir: ${paths.data_dir}/insert_one_leg/isaac_sim/metaquest3_2025-07-24
+  preprocessed_dir: ${paths.preprocessed_dir}/metaquest3_2025-07-24/base
+  action_seq_len: 50
+  obs_seq_len: 1
+
+# preprocess_transforms:
+#   t0_subsample:
+#     factor: 4
+
+device: cpu  # this dataset is maybe small enough to fit in memory
