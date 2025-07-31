@@ -1,75 +1,77 @@
 import dataclasses
 import logging
-from typing import Mapping
+import time
+from typing import Literal, Mapping
 
 import gymnasium as gym
 import torch
+from polymetis import GripperInterface, RobotInterface
+from torchcontrol.policies import CartesianImpedanceControl, HybridJointImpedanceControl
 
-from environments.real_robot.hardware.hardware_cameras import DiscreteCamera
-from environments.real_robot.hardware.hardware_franka import ControlType
-from environments.real_robot.hardware.hardware_robot import RobotArm, RobotHand
+from environments.real_robot.hardware.base_camera import BaseCamera
 from environments.specs import ActionSpec, DataSpecs, ObsSpec, specs_to_spaces
 from utils.math import make_pose, quaternion_to_matrix
 
+ObsType = dict[str, torch.Tensor | dict[str, torch.Tensor]]
+InfoType = dict[str, torch.Tensor]
+
 log = logging.getLogger(__name__)
 
-# set initial pose!
-DEFAULT_RESET_POSE = [
-    0.0511338,
-    -0.186824,
-    -0.106011,
-    -2.51019,
-    -0.0180571,
-    2.37377,
-    0.739364,
-]
-CONTROL_TYPE = ControlType.HYBRID_JOINT_IMPEDANCE_CONTROL_V2
-# ControlType.HYBRID_JOINT_IMPEDANCE_CONTROL_V2
 GRIPPER_POS_SCALE = 0.04 / 0.07886763662099838
 
 
 class RealRobotEnv(gym.Env):
     def __init__(
         self,
-        robot_arm: RobotArm,
-        robot_hand: RobotHand,
-        cameras: Mapping[str, DiscreteCamera],
-        use_delta: bool = True,
+        robot: Mapping,
+        cameras: Mapping[str, BaseCamera],
+        control_type: Literal["cartesian", "hybrid_joint"] = "cartesian",
     ):
-        self.use_delta = use_delta
+        self.control_type = control_type
 
-        self.robot_arm = robot_arm(
-            control_type=CONTROL_TYPE,
-            default_reset_pose=DEFAULT_RESET_POSE,
+        self.arm = RobotInterface(
+            name=robot.name,
+            ip_address=robot.ip_address,
+            port=robot.arm_port,
+            enforce_version=False,
         )
-        self.robot_hand = robot_hand
+        log.info(
+            f'Connected to robot "{robot.name}" arm at {robot.ip_address}:{robot.arm_port}'
+        )
 
-        self.cameras = cameras
-        for cam in cameras.values():
-            assert isinstance(cam, DiscreteCamera), f"Invalid camera type: {type(cam)}"
-            cam.connect()
+        self.gripper = GripperInterface(
+            ip_address=robot.ip_address,
+            port=robot.gripper_port,
+        )
+        log.info(
+            f'Connected to "{robot.name}" gripper at {robot.ip_address}:{robot.gripper_port}'
+        )
 
-        assert self.robot_arm.connect(), f"Connection to {self.robot_arm.name} failed"
-        assert self.robot_hand.connect(), f"Connection to {self.robot_hand.name} failed"
+        self.gripper_speed = robot.get("gripper_speed", 0.1)
+        self.gripper_force = robot.get("gripper_force", 0.1)
+        self.gripper_max_width = self.gripper.metadata.max_width
+        assert self.gripper_max_width > 0, "Gripper max width must be greater than 0"
+        log.debug(f"Gripper speed: {self.gripper_speed}")
+        log.debug(f"Gripper force: {self.gripper_force}")
+        log.debug(f"Gripper max width: {self.gripper_max_width}")
 
-        self.devices = [
-            self.robot_arm,
-            self.robot_hand,
-        ] + list(self.cameras.values())
+        if (home_pose := robot.get("home_pose", None)) is not None:
+            log.info(f"Setting home pose: {home_pose}")
+            self.arm.set_home_pose(torch.tensor(home_pose))
 
-        # robot state
-        # we concatenate joint_pos and gripper_pos to get a shape of (T, 9)
-        robot_state = ObsSpec(elem_shape=(9,))
-
-        # gripper_cam_transform
-        gripper_cam_transform = ObsSpec(elem_shape=(4, 4))
+        self.cameras: Mapping[str, BaseCamera] = cameras
 
         obs_specs = {
-            "robot_state": robot_state,
-            "gripper_cam_transform": gripper_cam_transform,
+            # we concatenate joint_pos and gripper_pos to get a shape of (T, 9)
+            "robot_state": ObsSpec(elem_shape=(9,)),
+            # xyz + wxyz quaternion
+            "ee_pose": ObsSpec(elem_shape=(7,)),
+            "target_ee_pose": ObsSpec(elem_shape=(7,)),
+            # gripper_cam_transform
+            "gripper_cam_transform": ObsSpec(elem_shape=(4, 4)),
         }
 
-        camera_specs = {key: camera.spec for key, camera in cameras.items()}
+        camera_specs = {key: camera.spec for key, camera in self.cameras.items()}
 
         # add the dynamic_pose_obs_key to the gripper_cam if we have it
         # this is needed for the complete extrinsics of the moving gripper cam
@@ -81,7 +83,7 @@ class RealRobotEnv(gym.Env):
 
         obs_specs.update(camera_specs)
 
-        # actions
+        # absolute target pose (xyz + wxyz quaternion) + binary gripper command
         action = ActionSpec(action_dim=8)
 
         self._specs = DataSpecs(
@@ -91,82 +93,143 @@ class RealRobotEnv(gym.Env):
 
         self.observation_space, self.action_space = specs_to_spaces(self._specs)
 
-        # self.ee_positions = []
-        # self.ee_quaternions = []
-
     @property
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def step(self, action: torch.Tensor):
-
-        action /= 1.0  # reverse scaling applied in recording demos
-
-        # log.debug(f"Action: {action}")
-
+    def step(self, action: torch.Tensor) -> tuple[ObsType, float, bool, bool, InfoType]:
+        pos = action[:3]
         wxyz = action[3:7]
+        gripper_command = action[7]
         xyzw = torch.cat((wxyz[-3:], wxyz[:-3]), dim=0)
 
-        ee_pos, ee_quat = self.robot_arm.apply_ee(
-            position=action[:3],
-            orientation=xyzw,
-            delta=self.use_delta,
-        )
+        if self.control_type == "cartesian":
+            self.arm.update_current_policy(
+                {"ee_pos_desired": pos, "ee_quat_desired": xyzw}
+            )
+        elif self.control_type == "hybrid_joint":
+            self.arm.update_desired_ee_pose(position=pos, orientation=xyzw)
 
-        self.robot_hand.apply_commands(action[-1])
+        if gripper_command < 0:
+            # close gripper
+            self.gripper.grasp(
+                speed=self.gripper_speed, force=self.gripper_force, blocking=False
+            )
+        else:
+            # open gripper
+            self.gripper.goto(
+                self.gripper_max_width,
+                speed=self.gripper_speed,
+                force=self.gripper_force,
+                blocking=False,
+            )
 
         obs = self._get_obs()
+        obs["target_ee_pose"] = action[:7]  # xyz + wxyz quaternion
         info = self._get_info()
-        info["current_ee_pos"] = ee_pos
-        info["current_ee_rot"] = ee_quat
 
         return obs, 0, False, False, info
 
-    def reset(self, *, seed=None, options=None):
-        self.robot_arm.reset()
-        self.robot_hand.reset()
+    def reset(self, *, seed=None, options=None) -> tuple[ObsType, InfoType]:
+        # open gripper and go home simultaneously
+        self.gripper.goto(
+            self.gripper_max_width,
+            speed=self.gripper_speed,
+            force=self.gripper_force,
+            blocking=False,
+        )
+        self.arm.go_home()
+
+        # open and close gripper
+        self.gripper.grasp(
+            speed=self.gripper_speed, force=self.gripper_force, blocking=True
+        )
+        time.sleep(1.0)  # wait for the gripper to close
+        self.gripper.goto(
+            self.gripper_max_width,
+            speed=self.gripper_speed,
+            force=self.gripper_force,
+            blocking=True,
+        )
+
+        # start the continuouos control policy
+        if self.control_type == "cartesian":
+            policy = CartesianImpedanceControl(
+                joint_pos_current=self.arm.get_joint_positions(),
+                Kp=self.arm.Kx_default,
+                Kd=self.arm.Kxd_default,
+                robot_model=self.arm.robot_model,
+                ignore_gravity=self.arm.use_grav_comp,
+            )
+        elif self.control_type == "hybrid_joint":
+            policy = HybridJointImpedanceControl(
+                joint_pos_current=self.arm.get_joint_positions(),
+                Kq=self.arm.Kq_default,
+                Kqd=self.arm.Kqd_default,
+                Kx=self.arm.Kx_default,
+                Kxd=self.arm.Kxd_default,
+                robot_model=self.arm.robot_model,
+                ignore_gravity=self.arm.use_grav_comp,
+            )
+        else:
+            raise ValueError(f"Unknown control type: {self.control_type}")
+
+        # do not block until finished, since we want continuous control
+        self.arm.send_torch_policy(policy, blocking=False)
 
         obs = self._get_obs()
+        obs["target_ee_pose"] = obs["ee_pose"]
         info = self._get_info()
 
         return obs, info
 
     def close(self):
-        for device in self.devices:
-            if not device.close():
-                log.warning(f"Failed to close {device.name}")
+        # # TODO: close the connections to the robot once polymetis supports it
+        # self.arm.close()
+        # self.gripper.close()
+        self.arm.terminate_current_policy()
 
-    def _get_obs(self):
-        gripper_width = self.robot_hand.get_sensors() * GRIPPER_POS_SCALE
+        for camera in self.cameras.values():
+            camera.close()
+
+    def _get_obs(self) -> ObsType:
+        gripper_width = torch.tensor([self.gripper.get_state().width])
+        # gripper in isaaclab and in the real world have different maximum widths
+        gripper_width *= GRIPPER_POS_SCALE
+
+        state = self.arm.get_robot_state()
+        joint_pos = torch.tensor(state.joint_positions)
+
         robot_state = torch.cat(
             (
-                self.robot_arm.get_state().joint_pos,  # 7
-                gripper_width,
-                -gripper_width,
+                joint_pos,  # 7
+                gripper_width,  # 1
+                -gripper_width,  # 1
             ),
-            axis=-1,
+            dim=-1,
         )
 
-        robot_arm_ee_pose = self.robot_arm.get_state().ee_pos
-
-        pos, xyzw = robot_arm_ee_pose[:3], robot_arm_ee_pose[3:]
-        wxyz = torch.cat((xyzw[3:], xyzw[:3]), dim=0)
-        rot = quaternion_to_matrix(wxyz)
-        gripper_cam_transform = make_pose(pos, rot)
+        ee_pos, ee_xyzw = self.arm.robot_model.forward_kinematics(joint_pos)
+        ee_wxyz = torch.cat((ee_xyzw[3:], ee_xyzw[:3]), dim=0)
+        ee_rot = quaternion_to_matrix(ee_wxyz)
+        ee_pose = torch.cat((ee_pos, ee_wxyz), dim=0)
+        gripper_cam_transform = make_pose(ee_pos, ee_rot)
 
         obs_dict = {
-            "robot_state": robot_state,
-            "gripper_cam_transform": gripper_cam_transform,
+            key: camera.get_observation() for key, camera in self.cameras.items()
         }
 
-        images = {key: camera.get_sensors() for key, camera in self.cameras.items()}
-
-        obs_dict.update(images)
+        obs_dict |= {
+            "robot_state": robot_state,
+            "ee_pose": ee_pose,
+            # target_ee_pose is added in step/reset methods
+            "gripper_cam_transform": gripper_cam_transform,
+        }
 
         # TODO: convert to TensorDict once SyncVectorEnv has been removed
         return obs_dict
 
-    def _get_info(self):
+    def _get_info(self) -> InfoType:
         return {}
 
 

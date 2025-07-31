@@ -1,0 +1,15 @@
+name: panda4
+ip_address: 141.3.53.154
+arm_port: 50053
+gripper_port: 50054
+home_pose: [  # [x, y, z, qx, qy, qz, qw]
+  0.0511338,
+  -0.186824,
+  -0.106011,
+  -2.51019,
+  -0.0180571,
+  2.37377,
+  0.739364,
+]
+gripper_speed: 0.1
+gripper_force: 0.1

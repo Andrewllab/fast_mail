@@ -1,0 +1,2 @@
+_target_: environments.real_robot.hardware.realsense.RealSense
+serial_number: 243322073029

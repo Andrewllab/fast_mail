@@ -114,6 +114,7 @@ class ObsSpec(Spec):
             return (self.time, *self.elem_shape)
 
 
+RGBChannelOrderType = Literal["HWC", "CHW"]
 ChannelOrderType = Literal["HWC", "CHW", "HW"]
 
 
@@ -198,7 +199,7 @@ class RGBStream(ImageStream):
     """RGB image stream. By convention, the dtype is uint8."""
 
     channels: int = 3
-    channel_order: ChannelOrderType = "HWC"
+    channel_order: RGBChannelOrderType = "HWC"
 
 
 @dataclass(frozen=True)
@@ -226,6 +227,7 @@ class CameraSpec(Spec):
     # the key (within the obs dict) with the dynamic pose information for the camera
     # e.g. a wrist camera would have extrinsics relative to the end effector pose
     dynamic_pose_obs_key: str | tuple[str, ...] | None = None
+    baseline: float | None = None
 
     def __init__(
         self,
@@ -234,6 +236,7 @@ class CameraSpec(Spec):
         intrinsics: PinholeCameraIntrinsic | None = None,
         extrinsics: torch.Tensor | None = None,
         dynamic_pose_obs_key: str | tuple[str, ...] | None = None,
+        baseline: float | None = None,
     ):
         streams = {
             key: replace(
@@ -250,6 +253,7 @@ class CameraSpec(Spec):
         object.__setattr__(self, "intrinsics", intrinsics)
         object.__setattr__(self, "extrinsics", extrinsics)
         object.__setattr__(self, "dynamic_pose_obs_key", dynamic_pose_obs_key)
+        object.__setattr__(self, "baseline", baseline)
 
     @property
     def shape(self) -> tuple[int, ...]:

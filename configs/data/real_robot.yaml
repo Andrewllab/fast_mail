@@ -1,33 +1,22 @@
 defaults:
   - env
-  - /calibration@env_dataset.env.cameras.left_cam: left_cam1
-  - /calibration@env_dataset.env.cameras.right_cam: right_cam1
-  - /calibration@env_dataset.env.cameras.gripper_cam: gripper_cam1
+  - /cameras@env_dataset.env.cameras.left_cam: zed_mini_15544393
+  - /cameras@env_dataset.env.cameras.right_cam: zed_mini_11185595
+  - /cameras@env_dataset.env.cameras.gripper_cam: realsense_d405_218622270040
+  - /cameras/calibration@env_dataset.env.cameras: old
+  - /robot@env_dataset.env.robot: panda4
+  - _self_
 
 env_dataset:
   env:
     _target_: environments.real_robot.real_robot_env.make_env
-    robot_arm:
-      _target_: environments.real_robot.hardware.hardware_franka.FrankaArm
-      _partial_: True
-      name: p4 arm
-      ip_address: 141.3.53.154
-      port: 50053
-      use_delta: True
-    robot_hand:
-      _target_: environments.real_robot.hardware.hardware_frankahand.FrankaHand
-      name: p4 gripper
-      ip_address: 141.3.53.154
-      port: 50054
+    control_type: hybrid_joint
     cameras:
       left_cam:
-        _target_: environments.real_robot.hardware.hardware_zed.Zed # hardware_realsense.RealSense
-        serial_number: 15544393
+        name: left_cam
       right_cam:
-        _target_: environments.real_robot.hardware.hardware_zed.Zed # hardware_realsense.RealSense
-        serial_number: 11185595
+        name: right_cam
       gripper_cam:
-        _target_: environments.real_robot.hardware.hardware_realsense.RealSense
-        serial_number: 218622270040
+        name: gripper_cam
   action_horizon: 5
   fps: 5  # inference should probably be around 10fps on the real robot
