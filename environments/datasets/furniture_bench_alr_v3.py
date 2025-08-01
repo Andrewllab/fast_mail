@@ -65,12 +65,10 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             )
             self._load_specs(traj)
 
-        gripper_pos = traj["obs", "proprioception", "gripper_closure"]
-        gripper_width = gripper_pos[..., 0] - gripper_pos[..., 1]
         robot_state = torch.cat(
             (
                 traj["obs", "proprioception", "joint_pos"],  # shape: (T, 7)
-                gripper_width.unsqueeze(-1),  # shape: (T, 1)
+                traj["obs", "proprioception", "gripper_closure"],  # shape: (T, 2)
             ),
             dim=-1,
         )
@@ -219,9 +217,8 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         gripper_pos = data["obs", "proprioception", "gripper_closure"]
         assert gripper_pos.ndim == 2
         assert gripper_pos.shape[-1] == 2
-        # we compute the gripper width from the gripper position and
-        # concatenate joint_pos and gripper_width to get a shape of (T, 8)
-        robot_state = ObsSpec(elem_shape=(8,), time=self.obs_seq_len)
+        # we concatenate joint_pos and gripper_pos to get a shape of (T, 9)
+        robot_state = ObsSpec(elem_shape=(9,), time=self.obs_seq_len)
 
         # end-effector pose
         ee_pos = data["obs", "proprioception", "eef_pos_w"]
