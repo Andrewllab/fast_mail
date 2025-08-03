@@ -30,7 +30,9 @@ def set_default_joint_pose(
 ):
     # Set the default pose for robots in all envs
     asset = env.scene[asset_cfg.name]
-    asset.data.default_joint_pos = torch.tensor(default_pose, device=env.device).repeat(env.num_envs, 1)
+    asset.data.default_joint_pos = torch.tensor(default_pose, device=env.device).repeat(
+        env.num_envs, 1
+    )
 
 
 def randomize_light_intensity(
@@ -58,7 +60,10 @@ def sample_object_poses(
     pose_range: dict[str, tuple[float, float]] = {},
     max_sample_tries: int = 5000,
 ):
-    range_list = [pose_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+    range_list = [
+        pose_range.get(key, (0.0, 0.0))
+        for key in ["x", "y", "z", "roll", "pitch", "yaw"]
+    ]
     pose_list = []
 
     for i in range(num_objects):
@@ -71,7 +76,9 @@ def sample_object_poses(
                 break
 
             # Check if pose of object is sufficiently far away from all other objects
-            separation_check = [math.dist(sample[:3], pose[:3]) > min_separation for pose in pose_list]
+            separation_check = [
+                math.dist(sample[:3], pose[:3]) > min_separation for pose in pose_list
+            ]
             if False not in separation_check:
                 pose_list.append(sample)
                 break
@@ -83,7 +90,7 @@ def randomize_object_position(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
     asset_cfgs: dict[str, SceneEntityCfg],
-    reference_poses: dict[str, dict], 
+    reference_poses: dict[str, dict],
     variation: float,
     min_separation: float = 0.1,
     max_sample_tries: int = 5000,
@@ -94,15 +101,20 @@ def randomize_object_position(
     new_xy_positions = {}
     # Randomize poses in each environment independently
     for cur_env in env_ids.tolist():
-        for asset_name, asset_pose in reference_poses.items(): 
-            for _ in range (max_sample_tries):
+        for asset_name, asset_pose in reference_poses.items():
+            for _ in range(max_sample_tries):
                 ref_x, ref_y, ref_z = asset_pose["position"][:3]
                 new_x = random.uniform(ref_x - variation, ref_x + variation)
                 new_y = random.uniform(ref_y - variation, ref_y + variation)
 
                 # check for collisitions between new object positions
-                if all(math.dist([new_x, new_y], [px, py]) > min_separation for px, py, _ in new_xy_positions.values()):
-                    new_xy_positions[asset_name] = torch.tensor([new_x, new_y, ref_z], device=env.device)
+                if all(
+                    math.dist([new_x, new_y], [px, py]) > min_separation
+                    for px, py, _ in new_xy_positions.values()
+                ):
+                    new_xy_positions[asset_name] = torch.tensor(
+                        [new_x, new_y, ref_z], device=env.device
+                    )
                     break
 
         # set the chosen randomized asset xy-positions
@@ -110,13 +122,17 @@ def randomize_object_position(
             asset = env.scene[asset_cfg.name]
 
             # take original orientation
-            orientation = torch.tensor(reference_poses[asset_name]["orientation"], device=env.device)
+            orientation = torch.tensor(
+                reference_poses[asset_name]["orientation"], device=env.device
+            )
             # Write pose to simulation
             asset.write_root_pose_to_sim(
-                torch.cat([new_xy_positions[asset_name], orientation], dim=-1), env_ids=torch.tensor([cur_env], device=env.device)
+                torch.cat([new_xy_positions[asset_name], orientation], dim=-1),
+                env_ids=torch.tensor([cur_env], device=env.device),
             )
             asset.write_root_velocity_to_sim(
-                torch.zeros(1, 6, device=env.device), env_ids=torch.tensor([cur_env], device=env.device)
+                torch.zeros(1, 6, device=env.device),
+                env_ids=torch.tensor([cur_env], device=env.device),
             )
 
 
@@ -124,36 +140,42 @@ def randomize_object_position_from_predefined_area(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
     asset_cfgs: dict[str, SceneEntityCfg],
-    reference_poses: dict[str, dict], 
+    reference_poses: dict[str, dict],
     predefined_areas: list[dict[float]],
 ):
     if env_ids is None:
         return
-    
+
     pos_boundaries = random.choice(predefined_areas)
 
     new_xy_positions = {}
     # Randomize poses in each environment independently
     for cur_env in env_ids.tolist():
-        for asset_name, asset_pose in reference_poses.items(): 
+        for asset_name, asset_pose in reference_poses.items():
             new_x = random.uniform(pos_boundaries["x_min"], pos_boundaries["x_max"])
             new_y = random.uniform(pos_boundaries["y_min"], pos_boundaries["y_max"])
             ref_z = asset_pose["position"][2]
 
-            new_xy_positions[asset_name] = torch.tensor([new_x, new_y, ref_z], device=env.device)
+            new_xy_positions[asset_name] = torch.tensor(
+                [new_x, new_y, ref_z], device=env.device
+            )
 
         # set the chosen randomized asset xy-positions
         for asset_name, asset_cfg in asset_cfgs.items():
             asset = env.scene[asset_cfg.name]
 
             # take original orientation
-            orientation = torch.tensor(reference_poses[asset_name]["orientation"], device=env.device)
+            orientation = torch.tensor(
+                reference_poses[asset_name]["orientation"], device=env.device
+            )
             # Write pose to simulation
             asset.write_root_pose_to_sim(
-                torch.cat([new_xy_positions[asset_name], orientation], dim=-1), env_ids=torch.tensor([cur_env], device=env.device)
+                torch.cat([new_xy_positions[asset_name], orientation], dim=-1),
+                env_ids=torch.tensor([cur_env], device=env.device),
             )
             asset.write_root_velocity_to_sim(
-                torch.zeros(1, 6, device=env.device), env_ids=torch.tensor([cur_env], device=env.device)
+                torch.zeros(1, 6, device=env.device),
+                env_ids=torch.tensor([cur_env], device=env.device),
             )
 
 
@@ -168,17 +190,23 @@ def reset_table_parts_poses(
 
     # Set poses in each environment independently
     for cur_env in env_ids.tolist():
-        # Extract asset and its initial pose  
+        # Extract asset and its initial pose
         for name, asset_cfg in asset_cfgs.items():
             asset = env.scene[asset_cfg.name]
 
             # Write asset pose to simulation
-            position_tensor = torch.tensor([initial_poses[name]["position"]], device=env.device)
-            orientation_tensor = torch.tensor([initial_poses[name]["orientation"]], device=env.device)
-            asset.write_root_pose_to_sim(
-                torch.cat([position_tensor, orientation_tensor], dim=-1), env_ids=torch.tensor([cur_env], device=env.device)
+            position_tensor = torch.tensor(
+                [initial_poses[name]["position"]], device=env.device
             )
-            # set velocity to zero, otherwise they get carried from the previous episode 
+            orientation_tensor = torch.tensor(
+                [initial_poses[name]["orientation"]], device=env.device
+            )
+            asset.write_root_pose_to_sim(
+                torch.cat([position_tensor, orientation_tensor], dim=-1),
+                env_ids=torch.tensor([cur_env], device=env.device),
+            )
+            # set velocity to zero, otherwise they get carried from the previous episode
             asset.write_root_velocity_to_sim(
-                torch.zeros(1, 6, device=env.device), env_ids=torch.tensor([cur_env], device=env.device)
+                torch.zeros(1, 6, device=env.device),
+                env_ids=torch.tensor([cur_env], device=env.device),
             )

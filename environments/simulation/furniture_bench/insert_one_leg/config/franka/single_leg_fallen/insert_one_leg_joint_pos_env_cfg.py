@@ -2,8 +2,6 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-import os
-from pathlib import Path
 
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -26,15 +24,13 @@ from ....mdp.events import (
     randomize_light_intensity,
 )
 from ....mdp.terminations import success
+from .....insert_one_leg import assets
 
 ##
 # Pre-defined configs
 ##
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 from ....assets.franka import FRANKA_PANDA_CFG
-
-# Get current config directory
-BASE_PATH = Path(__file__).parent.parent.parent.parent
 
 
 @configclass
@@ -260,7 +256,7 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 pos=[0.61, 0, 0.01], rot=[0.707, 0, 0, 0.707]
             ),
             spawn=UsdFileCfg(
-                usd_path=os.path.join(BASE_PATH, "assets/obstacle_front.usd"),
+                usd_path=assets.get_absolute_path("obstacle_front.usd"),
                 rigid_props=static_body_properties,
                 mass_props=obstacle_mass,
                 semantic_tags=[("class", "obstacle_front")],
@@ -273,7 +269,7 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 pos=[0.535, 0.185, 0.01], rot=[0.707, 0, 0, 0.707]
             ),
             spawn=UsdFileCfg(
-                usd_path=os.path.join(BASE_PATH, "assets/obstacle_side.usd"),
+                usd_path=assets.get_absolute_path("obstacle_side.usd"),
                 rigid_props=static_body_properties,
                 mass_props=obstacle_mass,
             ),
@@ -285,7 +281,7 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 pos=[0.535, -0.185, 0.01], rot=[0.707, 0, 0, 0.707]
             ),
             spawn=UsdFileCfg(
-                usd_path=os.path.join(BASE_PATH, "assets/obstacle_side.usd"),
+                usd_path=assets.get_absolute_path("obstacle_side.usd"),
                 rigid_props=static_body_properties,
                 mass_props=obstacle_mass,
             ),
@@ -298,7 +294,7 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 pos=[0.515, 0.092, 0.05], rot=[0, 0, 0.7071068, 0.7071068]
             ),
             spawn=UsdFileCfg(
-                usd_path=os.path.join(BASE_PATH, "assets/square_table_top.usd"),
+                usd_path=assets.get_absolute_path("square_table_top.usd"),
                 rigid_props=rigid_body_properties,
                 collision_props=collision_props_table_parts,
                 mass_props=table_top_mass,
@@ -312,7 +308,7 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 pos=[0.3, 0.0, 0.05], rot=[0.7071068, 0, 0, -0.7071068]
             ),
             spawn=UsdFileCfg(
-                usd_path=os.path.join(BASE_PATH, "assets/square_table_leg1.usd"),
+                usd_path=assets.get_absolute_path("square_table_leg1.usd"),
                 rigid_props=rigid_body_properties,
                 collision_props=collision_props_table_parts,
                 mass_props=leg_mass,

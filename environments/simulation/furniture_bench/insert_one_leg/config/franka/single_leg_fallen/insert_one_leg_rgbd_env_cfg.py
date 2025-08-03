@@ -3,11 +3,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-import os
-from pathlib import Path
 from typing import Literal
 import torch
-import yaml
 
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -34,18 +31,17 @@ from ....mdp.events import (
     randomize_light_intensity,
 )
 from ....mdp.terminations import success
+from ....config import camera_params
+from .....insert_one_leg import assets
 
 ##
 # Pre-defined configs
 ##
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
-from ....assets.franka import FRANKA_PANDA_CFG
-
-BASE_PATH = Path(__file__).parent.parent.parent.parent
 
 
 def get_camera_parameters(
-    file_path: str,
+    file_name: str,
     parameter_type: str = Literal["intrinsics", "extrinsics"],
     height=480,
     width=640,
@@ -60,8 +56,7 @@ def get_camera_parameters(
         Tensor shape is (9,) for the intrinsics and dict("pos": (3,), "rot_quat": (4,)) for the extrinsics.
     """
 
-    with open(file_path, "r") as f:
-        cfg = yaml.safe_load(f)
+    cfg = camera_params.load(file_name)
 
     match parameter_type:
 
@@ -72,17 +67,19 @@ def get_camera_parameters(
             )  # create a homogenious matrix from the flattened vector
             # Split the homogenious matrix into position and rotation (as a quaternion) parts.
             # This way, the environment config files remains cleaner.
-            camera_params = {"pos": None, "rot": None}
-            camera_params["pos"], camera_params["rot"] = math_utils.unmake_pose(
+            camera_parameters = {"pos": None, "rot": None}
+            camera_parameters["pos"], camera_parameters["rot"] = math_utils.unmake_pose(
                 extrinsic_params
             )
-            camera_params["rot"] = math_utils.quat_from_matrix(camera_params["rot"])
-            camera_params["rot"] = math_utils.quat_unique(
-                camera_params["rot"]
+            camera_parameters["rot"] = math_utils.quat_from_matrix(
+                camera_parameters["rot"]
+            )
+            camera_parameters["rot"] = math_utils.quat_unique(
+                camera_parameters["rot"]
             )  # orientation representation as a quaternion is not unique (+q, -q)
 
         case "intrinsics":
-            camera_params = cfg["intrinsics"]["resolution"][
+            camera_parameters = cfg["intrinsics"]["resolution"][
                 f"{height}x{width}"
             ]  # IsaacLab already expects a flattened list
 
@@ -91,7 +88,7 @@ def get_camera_parameters(
                 f"Required data type '{unsupported}' is not supported. Supported data types: extrinsics, intrinsics."
             )
 
-    return camera_params
+    return camera_parameters
 
 
 def extract_camera_parameters(
@@ -288,25 +285,22 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
         self.rewards: RewardsCfg = RewardsCfg()
 
         # Set Franka as robot
-        self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = assets.franka.FRANKA_PANDA_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/Robot"
+        )
         self.scene.robot.spawn.semantic_tags = [("class", "robot")]
 
         # Set cameras
 
         # Gripper camera
         gripper_cam_intrinsics_matrix = get_camera_parameters(
-            file_path=os.path.join(
-                BASE_PATH, "config/camera_params/realsense_d405.yaml"
-            ),
+            file_name="realsense_d405.yaml",
             parameter_type="intrinsics",
             height=480,
             width=640,
         )
         gripper_cam_extrinsics_matrix = get_camera_parameters(
-            file_path=os.path.join(
-                BASE_PATH, "config/camera_params/realsense_d405.yaml"
-            ),
-            parameter_type="extrinsics",
+            file_name="realsense_d405.yaml", parameter_type="extrinsics"
         )
         self.scene.gripper_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/panda_hand/gripper_cam",
@@ -328,18 +322,13 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
 
         # Static front right camera
         static_front_right_cam_intrinsics_matrix = get_camera_parameters(
-            file_path=os.path.join(
-                BASE_PATH, "config/camera_params/static_right_realsense_d435.yaml"
-            ),
+            file_name="static_right_realsense_d435.yaml",
             parameter_type="intrinsics",
             height=480,
             width=640,
         )
         static_front_right_cam_extrinsics_matrix = get_camera_parameters(
-            file_path=os.path.join(
-                BASE_PATH, "config/camera_params/static_right_realsense_d435.yaml"
-            ),
-            parameter_type="extrinsics",
+            file_name="static_right_realsense_d435.yaml", parameter_type="extrinsics"
         )
         self.scene.front_right_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/front_right_cam",
@@ -361,18 +350,13 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
 
         # Static front left camera
         static_front_left_cam_intrinsics_matrix = get_camera_parameters(
-            file_path=os.path.join(
-                BASE_PATH, "config/camera_params/static_left_realsense_d435.yaml"
-            ),
+            file_name="static_left_realsense_d435.yaml",
             parameter_type="intrinsics",
             height=480,
             width=640,
         )
         rel_static_front_left_cam_extrinsics_matrix = get_camera_parameters(
-            file_path=os.path.join(
-                BASE_PATH, "config/camera_params/static_left_realsense_d435.yaml"
-            ),
-            parameter_type="extrinsics",
+            file_name="static_left_realsense_d435.yaml", parameter_type="extrinsics"
         )
         # currently, the left cam extrinsics are relative to the right (leader) camera.
         # Thus, compute the world-frame pose of the left cam using the relative pose to the right (leader) camera and the right (leader) camera pose in world frame.
@@ -589,7 +573,7 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 pos=[0.61, 0, 0.01], rot=[0.707, 0, 0, 0.707]
             ),
             spawn=UsdFileCfg(
-                usd_path=os.path.join(BASE_PATH, "assets/obstacle_front.usd"),
+                usd_path=assets.get_absolute_path("obstacle_front.usd"),
                 rigid_props=static_body_properties,
                 mass_props=obstacle_mass,
                 semantic_tags=[("class", "obstacle_front")],
@@ -602,7 +586,7 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 pos=[0.535, 0.185, 0.01], rot=[0.707, 0, 0, 0.707]
             ),
             spawn=UsdFileCfg(
-                usd_path=os.path.join(BASE_PATH, "assets/obstacle_side.usd"),
+                usd_path=assets.get_absolute_path("obstacle_side.usd"),
                 rigid_props=static_body_properties,
                 mass_props=obstacle_mass,
             ),
@@ -614,7 +598,7 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 pos=[0.535, -0.185, 0.01], rot=[0.707, 0, 0, 0.707]
             ),
             spawn=UsdFileCfg(
-                usd_path=os.path.join(BASE_PATH, "assets/obstacle_side.usd"),
+                usd_path=assets.get_absolute_path("obstacle_side.usd"),
                 rigid_props=static_body_properties,
                 mass_props=obstacle_mass,
             ),
@@ -627,7 +611,7 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 pos=[0.515, 0.092, 0.05], rot=[0, 0, 0.7071068, 0.7071068]
             ),
             spawn=UsdFileCfg(
-                usd_path=os.path.join(BASE_PATH, "assets/square_table_top.usd"),
+                usd_path=assets.get_absolute_path("square_table_top.usd"),
                 rigid_props=rigid_body_properties,
                 collision_props=collision_props_table_parts,
                 mass_props=table_top_mass,
@@ -641,7 +625,7 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 pos=[0.3, 0.0, 0.05], rot=[0.7071068, 0, 0, -0.7071068]
             ),
             spawn=UsdFileCfg(
-                usd_path=os.path.join(BASE_PATH, "assets/square_table_leg1.usd"),
+                usd_path=assets.get_absolute_path("square_table_leg1.usd"),
                 rigid_props=rigid_body_properties,
                 collision_props=collision_props_table_parts,
                 mass_props=leg_mass,

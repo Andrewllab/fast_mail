@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from dataclasses import MISSING
-import os
 
 import isaaclab.sim as sim_utils
 from isaaclab.sim.spawners.materials.physics_materials_cfg import RigidBodyMaterialCfg
@@ -17,9 +16,10 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
 from isaaclab.utils import configclass
-from . import mdp
 
-BASE_PATH = os.path.dirname(__file__)
+from . import mdp
+from . import assets
+
 
 ##
 # Scene definition
@@ -43,19 +43,25 @@ class FurnitureBenchTableSceneCfg(InteractiveSceneCfg):
     #     spawn=UsdFileCfg(usd_path=os.path.join(BASE_PATH, "assets/real_world_table_approximation.usd")),
     # )
     # PROBLEM: real_world_table_approximation is better approximation, but MetaQuest3 throws errors.
-        # Current workaround: Wrap the original franka table with an appropriate material
-        # TODO: Find a way to load this with MetaQuest3.
+    # Current workaround: Wrap the original franka table with an appropriate material
+    # TODO: Find a way to load this with MetaQuest3.
     table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0, 0], rot=[0.707, 0, 0, 0.707]),
-        spawn=UsdFileCfg(usd_path=os.path.join(BASE_PATH, "assets/real_world_table_approximation_2.usd")),
+        init_state=AssetBaseCfg.InitialStateCfg(
+            pos=[0.5, 0, 0], rot=[0.707, 0, 0, 0.707]
+        ),
+        spawn=UsdFileCfg(
+            usd_path=assets.get_absolute_path("real_world_table_approximation_2.usd")
+        ),
     )
 
     # Background
     background = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Background",
         init_state=AssetBaseCfg.InitialStateCfg(pos=[-0.5, 0, 0.0]),
-        spawn=UsdFileCfg(usd_path=os.path.join(BASE_PATH, "assets/black_background_flattened.usd")),
+        spawn=UsdFileCfg(
+            usd_path=assets.get_absolute_path("black_background_flattened.usd")
+        ),
     )
 
     # plane
@@ -85,6 +91,7 @@ class FurnitureBenchTableSceneCfg(InteractiveSceneCfg):
         ),
     )
 
+
 ##
 # MDP settings
 ##
@@ -105,13 +112,27 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Observations for policy group with state values."""
 
-        joint_pos = ObsTerm(func=mdp.joint_pos) # all joint positions except the grippers
-        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel) # all realtive joint positions except the grippers
-        joint_vel = ObsTerm(func=mdp.joint_vel) # all joint velocities except the grippers
-        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel) # all relative joint velocities except the grippers
-        eef_pos_w = ObsTerm(func=mdp.ee_frame_pos_w) # ee_frame position w.r.t world frame (which is identical with the robot base frame) 
-        eef_quat_w = ObsTerm(func=mdp.ee_frame_quat_w) # ee_frame orientation w.r.t. world frame.
-        gripper_closure = ObsTerm(func=mdp.gripper_closure) # the degree to which the grippers are closed.
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos
+        )  # all joint positions except the grippers
+        joint_pos_rel = ObsTerm(
+            func=mdp.joint_pos_rel
+        )  # all realtive joint positions except the grippers
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel
+        )  # all joint velocities except the grippers
+        joint_vel_rel = ObsTerm(
+            func=mdp.joint_vel_rel
+        )  # all relative joint velocities except the grippers
+        eef_pos_w = ObsTerm(
+            func=mdp.ee_frame_pos_w
+        )  # ee_frame position w.r.t world frame (which is identical with the robot base frame)
+        eef_quat_w = ObsTerm(
+            func=mdp.ee_frame_quat_w
+        )  # ee_frame orientation w.r.t. world frame.
+        gripper_closure = ObsTerm(
+            func=mdp.gripper_closure
+        )  # the degree to which the grippers are closed.
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -133,7 +154,9 @@ class InsertOneLegEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the stacking environment."""
 
     # Scene settings
-    scene: FurnitureBenchTableSceneCfg = FurnitureBenchTableSceneCfg(num_envs=1, env_spacing=2.5, replicate_physics=False)
+    scene: FurnitureBenchTableSceneCfg = FurnitureBenchTableSceneCfg(
+        num_envs=1, env_spacing=2.5, replicate_physics=False
+    )
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -164,35 +187,47 @@ class InsertOneLegEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
         # GUI viewer perspective location
         # self.viewer.eye = (0.82762, 0.24943, 0.28195) # suitable for analyzing the area near the table assembly slots
-        self.viewer.eye = (1.67569, 0.51437, 0.68258) # suitable when recording videos for validation
+        self.viewer.eye = (
+            1.67569,
+            0.51437,
+            0.68258,
+        )  # suitable when recording videos for validation
         # GUI viewer focus point
         # self.viewer.lookat = (0.0, 0.0, -0.2) # suitable for analyzing the area near the table assembly slots
-        self.viewer.lookat = (0.0, 0.0, 0.15) # suitable when recording videos for validation
+        self.viewer.lookat = (
+            0.0,
+            0.0,
+            0.15,
+        )  # suitable when recording videos for validation
 
         # inspired from https://github.com/isaac-sim/IsaacLab/blob/3c3103f637f8193a363c4774781089baa19d0465/source/isaaclab_tasks/isaaclab_tasks/direct/factory/factory_env_cfg.py#L101
         # General solver recommendations: https://docs.omniverse.nvidia.com/extensions/latest/ext_physics/simulation-control/physics-settings.html#physics-solver
-        self.sim.physx.solver_type = 1  # TGS solver (seems more stable and faster converging than PGS)
-        self.sim.physx.bounce_threshold_velocity = 0.2 # m/s
+        self.sim.physx.solver_type = (
+            1  # TGS solver (seems more stable and faster converging than PGS)
+        )
+        self.sim.physx.bounce_threshold_velocity = 0.2  # m/s
         self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
         self.sim.physx.gpu_total_aggregate_pairs_capacity = 16 * 1024
         self.sim.physx.friction_correlation_distance = 0.00625
-        self.sim.max_position_iteration_count = 192 # Important to avoid interpenetration.
+        self.sim.max_position_iteration_count = (
+            192  # Important to avoid interpenetration.
+        )
         self.sim.max_velocity_iteration_count = 1
         self.sim.gpu_max_rigid_contact_count = 2**30
         self.sim.gpu_max_rigid_patch_count = 2**30
-        self.sim.gpu_max_num_partitions = 1 # Important for stable simulation.
+        self.sim.gpu_max_num_partitions = 1  # Important for stable simulation.
 
         # The following fricition values seems to be the best trade-off between reaslism and simulation stability gains.
-        # Increasing both friction types leads to more stable simulation (in some edge-cases, e.g. when twisting the leg in the assembly slot further than necessary), but the objects starts become too sticky, which increases the sim-2-real gap! 
+        # Increasing both friction types leads to more stable simulation (in some edge-cases, e.g. when twisting the leg in the assembly slot further than necessary), but the objects starts become too sticky, which increases the sim-2-real gap!
         # The following MaterialCfg configures the defaults physic's material that PhyX is going to use per-default for all objects that don't have pre-defined physic's material
-        # In this case, this affects all environment assets. 
+        # In this case, this affects all environment assets.
         # If different physic's properties are desired, consider using the pre-defined event function "bind_physics_materials" as an event with mode "pre-startup".
         # Simulating a more stable grasping represented by the black tape placed on the UMI grippers (https://umi-gripper.github.io/) of the real Franka, we set the friction (both static and dynamic) of the UMI gripper in simulation very high.
         # Since the friction happens always on pair of object materials, we also need to adapt the friction combine mode, in this case just take the high friction values: https://forums.developer.nvidia.com/t/physics-material-with-robot-friction/246686
         self.sim.physics_material = RigidBodyMaterialCfg(
-            static_friction=0.5, 
+            static_friction=0.5,
             dynamic_friction=0.5,
-            friction_combine_mode="max", # to simulate the effect of the black tape used on the UMI grippers of the real-world Franka
+            friction_combine_mode="max",  # to simulate the effect of the black tape used on the UMI grippers of the real-world Franka
             compliant_contact_damping=0.5,
             compliant_contact_stiffness=0.5,
         )

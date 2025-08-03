@@ -7,9 +7,15 @@ import gymnasium as gym
 from isaaclab.app import AppLauncher
 
 # Parse CLI arguments
-parser = argparse.ArgumentParser(description="Run random agent in IsaacLab environment.")
-parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to spawn.")
-parser.add_argument("--task", type=str, default="Isaac-Insert-One-Leg-Franka-v0", help="Task name.")
+parser = argparse.ArgumentParser(
+    description="Run random agent in IsaacLab environment."
+)
+parser.add_argument(
+    "--num_envs", type=int, default=1, help="Number of environments to spawn."
+)
+parser.add_argument(
+    "--task", type=str, default="Isaac-Insert-One-Leg-Franka-v0", help="Task name."
+)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -17,12 +23,13 @@ args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
-# Import all isaaclab related features after the simulation has started 
+# Import all isaaclab related features after the simulation has started
 from isaaclab_tasks.utils import parse_env_cfg
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import env registration module so envs are known to Gym
 import furniture_bench
+
 
 # Now start actual logic
 def main():
@@ -35,7 +42,9 @@ def main():
     )
 
     # Create the IsaacLab environment
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="human", num_envs=args_cli.num_envs).unwrapped
+    env = gym.make(
+        args_cli.task, cfg=env_cfg, render_mode="human", num_envs=args_cli.num_envs
+    ).unwrapped
 
     # Reset env
     env.reset()
@@ -58,6 +67,7 @@ def main():
         env.sim.render()  # or rate_limiter.sleep() if you're throttling
 
     env.close()
+
 
 if __name__ == "__main__":
     main()
