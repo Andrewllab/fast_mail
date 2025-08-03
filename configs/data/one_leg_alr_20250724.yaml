@@ -11,7 +11,7 @@ task: one_leg
 name: 2025-07-24_metaquest3
 
 dataset:
-  _target_: environments.datasets.furniture_bench_alr_v4.AlrFurnitureBenchDataset
+  _target_: environments.datasets.furniture_bench_alr_v3.AlrFurnitureBenchDataset
   _partial_: True  # requires transforms at runtime
   root_dir: ${paths.data_dir}/insert_one_leg/isaac_sim/metaquest3_2025-07-24
   preprocessed_dir: ${paths.preprocessed_dir}/metaquest3_2025-07-24/base

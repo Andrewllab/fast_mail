@@ -98,6 +98,7 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
                     },
                     "robot_state": robot_state,
                     "ee_pose": ee_pose,
+                    "target_ee_pose": traj["actions", "action"][..., :7],
                     "gripper_cam_transform": traj[
                         "obs", "gripper_cam", "homogenious_matrix"
                     ].view(-1, 4, 4),
@@ -229,6 +230,7 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         assert ee_quat.shape[-1] == 4
         # we concatenate ee_pos and ee_quat to get a shape of (T, 7)
         ee_pose = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
+        target_ee_pose = ObsSpec(elem_shape=(7,), time=self.action_seq_len)
 
         # gripper_cam_transform
         transform = data["obs", "gripper_cam", "homogenious_matrix"]
@@ -248,6 +250,7 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
                 "gripper_cam": gripper_cam,
                 "robot_state": robot_state,
                 "ee_pose": ee_pose,
+                "target_ee_pose": target_ee_pose,
                 "gripper_cam_transform": gripper_cam_transform,
             },
             action=action,
