@@ -26,6 +26,7 @@ simulation_app = app_launcher.app
 # Import all isaaclab related features after the simulation has started
 from isaaclab_tasks.utils import parse_env_cfg
 
+# TODO: remove the nasty hack of solving the ModuleNotFoundError
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import env registration module so envs are known to Gym
 import furniture_bench

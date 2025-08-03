@@ -6,6 +6,7 @@
 """Script to run a keyboard teleoperation with Isaac Lab manipulation environments."""
 
 """Launch Isaac Sim Simulator first."""
+from typing import Union
 
 import argparse
 import os
@@ -15,12 +16,12 @@ from isaaclab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(
-    description="Keyboard teleoperation for Isaac Lab environments."
+    description="Keyboard teleoperation for IsaacLab environments."
 )
 parser.add_argument(
     "--task",
     type=str,
-    default="Isaac-Insert-One-Leg-Franka-IK-Rel-v0",
+    default="Isaac-Insert-One-Leg-Franka-SingleFallen-IK-Rel-v0",
     help="Name of the task.",
 )
 parser.add_argument(
@@ -35,7 +36,7 @@ parser.add_argument(
 parser.add_argument(
     "--teleop_device",
     type=str,
-    default="gamepad",
+    default="keyboard",
     help="Device for interacting with environment.",
 )
 parser.add_argument(
@@ -45,11 +46,9 @@ parser.add_argument(
     "--simpub",
     action="store_true",
     default=False,
-    help="Enable SimPub to control the robot using MetaQuest3.",
+    help="Enable SimPub.",
 )
-parser.add_argument(
-    "--step_hz", type=int, default=30, help="Environment stepping rate in Hz."
-)
+parser.add_argument("--step_hz", type=int, help="Environment stepping rate in Hz.")
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -72,30 +71,42 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import time
-
 import gymnasium as gym
 import omni.log  # noqa: F401
 import torch
-import numpy as np
+
 from isaaclab.devices import Se3Gamepad, Se3Keyboard, Se3SpaceMouse
 from isaaclab.envs import ViewerCfg
 from isaaclab.envs.ui import ViewportCameraController
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab_tasks.utils import parse_env_cfg
 
+# TODO: remove the nasty hack of solving the ModuleNotFoundError
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import furniture_bench  # noqa: F401
+import furniture_bench
 
 
-def pre_process_actions(
-    delta_pose: torch.Tensor, gripper_command: bool
-) -> torch.Tensor:
-    """Pre-process actions for the environment."""
-    # resolve gripper command
-    gripper_vel = torch.zeros(delta_pose.shape[0], 1, device=delta_pose.device)
-    gripper_vel[:] = -1.0 if gripper_command else 1.0
-    # compute actions
-    return torch.concat([delta_pose, gripper_vel], dim=1)
+# from evdev import InputDevice, list_devices
+# import hid  # this is the hidapi backend used by IsaacLab
+# # required to find the spacemouse device
+# def patched_find_device(self):
+#     devices = [InputDevice(path) for path in list_devices()]
+#     for device in devices:
+#         if any(name in device.name for name in ["Space", "Navigator", "3Dconnexion"]):
+#             print(f"[Patched] Found SpaceMouse-like device: {device.name} @ {device.path}")
+#             self._input_device = device
+
+#             # Now find the HID device matching vendor and product ID
+#             for d in hid.enumerate():
+#                 if (d["vendor_id"] == 0x046d and d["product_id"] in [0xc626, 0xc62b]):  # Logitech / 3Dconnexion
+#                     self._device = hid.device()
+#                     self._device.open_path(d["path"])
+#                     print(f"[Patched] HID device opened: {d['product_string']}")
+#                     return
+
+#     raise OSError("No compatible HID device found for SpaceMouse. (patched version)")
+# # Patch the method
+# Se3SpaceMouse._find_device = patched_find_device
 
 
 class RateLimiter:
@@ -126,6 +137,34 @@ class RateLimiter:
                 self.last_time += self.sleep_duration
 
 
+def pre_process_actions(
+    teleop_output: Union[dict, tuple], device: str, num_envs: int
+) -> torch.Tensor:
+    """Pre-process actions for the environment."""
+
+    match teleop_output:
+        case dict():
+            raw_action = teleop_output["action"]
+            gripper_command = teleop_output["gripper"]
+            action = raw_action.repeat(num_envs, 1)
+        case tuple():
+            raw_action, gripper_command = teleop_output
+            # convert to torch
+            action = torch.tensor(raw_action, dtype=torch.float, device=device).repeat(
+                num_envs, 1
+            )
+        case _:
+            raise ValueError(
+                f"Unsupported teleoperation output type'{type(teleop_output)}'. Supported: 'dict', 'tuple'."
+            )
+
+    # resolve gripper command
+    gripper_vel = torch.zeros(action.shape[0], 1, device=action.device)
+    gripper_vel[:] = -1.0 if gripper_command else 1.0
+    # compute actions
+    return torch.concat([action, gripper_vel], dim=1)
+
+
 def main():
     """Running keyboard teleoperation with Isaac Lab manipulation environment."""
 
@@ -143,8 +182,8 @@ def main():
         num_envs=args_cli.num_envs,
         use_fabric=not args_cli.disable_fabric,
     )
-
     # remove timeout
+    # WARNING: this attribute does not exist for non-manager-based envs
     env_cfg.terminations.time_out = None
 
     # reset teleop if env is reset
@@ -156,6 +195,11 @@ def main():
     # create environment
     env = gym.make(args_cli.task, cfg=env_cfg).unwrapped
 
+    print(
+        f"Teleop-interface action: Action: {env.action_manager._action, env.action_manager._prev_action, env.action_space, env.action_manager.action_term_dim}"
+    )
+
+    # TODO: do we still need to call this???
     env.setup_manager_visualizers()
     # add teleoperation key for env reset
     should_reset_recording_instance = False
@@ -171,48 +215,81 @@ def main():
         and env.unwrapped.sim.stage is not None
     ):
         print("parsing usd stage...")
-        IsaacSimPublisher(host="192.168.0.103", stage=env.unwrapped.sim.stage)
+        # WARNING: Change to your PC's IP!!!
+        IsaacSimPublisher(host="192.168.0.110", stage=env.unwrapped.sim.stage)
 
-    # create controller
-    if args_cli.teleop_device.lower() == "keyboard":
-        teleop_interface = Se3Keyboard(
-            pos_sensitivity=0.1 * args_cli.sensitivity,
-            rot_sensitivity=0.8 * args_cli.sensitivity,
-        )
-        teleop_interface.add_callback("R", reset_recording_instance)
-    elif args_cli.teleop_device.lower() == "spacemouse":
-        teleop_interface = Se3SpaceMouse(
-            pos_sensitivity=0.1 * args_cli.sensitivity,
-            rot_sensitivity=0.8 * args_cli.sensitivity,
-        )
-    elif args_cli.teleop_device.lower() == "gamepad":
-        from carb.input import GamepadInput
+    match args_cli.teleop_device.lower():
 
-        teleop_interface = Se3Gamepad(
-            pos_sensitivity=0.1 * args_cli.sensitivity,
-            rot_sensitivity=0.1 * args_cli.sensitivity,
-            dead_zone=0.2,
-        )
-        teleop_interface.add_callback(GamepadInput.B, reset_recording_instance)
-    elif args_cli.teleop_device.lower() == "handtracking":
-        from isaacsim.xr.openxr import OpenXRSpec
+        case "keyboard":
+            teleop_interface = Se3Keyboard(
+                pos_sensitivity=0.1 * args_cli.sensitivity,
+                rot_sensitivity=0.8 * args_cli.sensitivity,
+            )
+            teleop_interface.add_callback("R", reset_recording_instance)
 
-        teleop_interface = Se3HandTracking(
-            OpenXRSpec.XrHandEXT.XR_HAND_RIGHT_EXT, False, True
-        )
-        teleop_interface.add_callback("RESET", reset_recording_instance)
-        viewer = ViewerCfg(
-            eye=(-0.25, -0.3, 0.5), lookat=(0.6, 0, 0), asset_name="viewer"
-        )
-        ViewportCameraController(env, viewer)
-    elif args_cli.teleop_device.lower() == "simpub":
-        teleop_interface = Se3SimPubHandTrackingRel()
-        # teleop_interface.add_callback("Y", reset_recording_instance)
-        # teleop_interface.add_callback("X", reset_recording_instance)
-    else:
-        raise ValueError(
-            f"Invalid device interface '{args_cli.teleop_device}'. Supported: 'keyboard', 'spacemouse''handtracking'."
-        )
+        case "spacemouse":
+            teleop_interface = Se3SpaceMouse(
+                pos_sensitivity=0.1 * args_cli.sensitivity,
+                rot_sensitivity=0.8 * args_cli.sensitivity,
+            )
+
+        case "gamepad":
+            from carb.input import GamepadInput
+
+            teleop_interface = Se3Gamepad(
+                pos_sensitivity=0.1 * args_cli.sensitivity,
+                rot_sensitivity=0.1 * args_cli.sensitivity,
+                dead_zone=0.2,
+            )
+            teleop_interface.add_callback(GamepadInput.B, reset_recording_instance)
+
+        case "handtracking":
+            from isaacsim.xr.openxr import OpenXRSpec
+
+            teleop_interface = Se3HandTracking(
+                OpenXRSpec.XrHandEXT.XR_HAND_RIGHT_EXT, False, True
+            )
+            teleop_interface.add_callback("RESET", reset_recording_instance)
+            viewer = ViewerCfg(
+                eye=(-0.25, -0.3, 0.5), lookat=(0.6, 0, 0), asset_name="viewer"
+            )
+            ViewportCameraController(env, viewer)
+
+        case "simpub":
+            from simpub.sim.isaacsim_publisher import IsaacSimPublisher
+
+            # infer the mode automatically depending on the task name
+            controller_mode = (
+                "relative" if "rel" in args_cli.task.lower() else "absolute"
+            )
+            teleop_interface = Se3IKSimPubHandTracking(
+                hand="right",
+                delta_pos_scale_factor=1.0,
+                delta_rot_scale_factor=1.0,
+                controller_mode=controller_mode,
+                eef_pos_offset=torch.tensor(
+                    [[0.0, 0.0, 0.2034]]
+                ),  # NOTE: add a small positional offset along the z-axis, avoiding the overlap between the motion controller required to be exactly at the eef's pose.
+                device_name="ALRMetaQuest3",  # NOTE: change if you use a different MetaQuest3 device
+            )
+            env.reset()
+            # use the current eef pose from simulation
+            #   ik-abs: as the target eef's pose at the very beginning where there is no data comming from the motion controller
+            #   ik-rel: as debugging data
+            cur_eef_pos = (
+                env.scene["ee_frame"].data.target_pos_w.clone().cpu().squeeze(0)
+            )
+            cur_eef_rot_quat_w = (
+                env.scene["ee_frame"].data.target_quat_w.clone().cpu().squeeze(0)
+            )  # (w, x, y, z) https://github.com/isaac-sim/IsaacLab/blob/f22b5eb80172199fc4c25d34e01eb09acdff08b6/source/isaaclab/isaaclab/sensors/frame_transformer/frame_transformer_data.py#L40C11-L41C15
+            teleop_interface.update_eef_pose(
+                cur_eef_pos=cur_eef_pos, cur_eef_rot_quat_w=cur_eef_rot_quat_w
+            )
+
+        case _:
+            raise ValueError(
+                f"Invalid device interface '{args_cli.teleop_device}'. Supported: 'keyboard', 'spacemouse', 'handtracking', 'simpub'."
+            )
 
     print(teleop_interface)
 
@@ -223,15 +300,25 @@ def main():
     while simulation_app.is_running():
         # run everything in inference mode
         with torch.inference_mode():
-            # get keyboard command
-            delta_pose, gripper_command = teleop_interface.advance()
-            delta_pose = delta_pose.astype("float32")
-            # convert to torch
-            delta_pose = torch.tensor(delta_pose, device=env.device).repeat(
-                env.num_envs, 1
-            )
+            if args_cli.teleop_device.lower() == "simpub":
+                # use the current eef pose from simulation
+                #   ik-abs: as the target eef's pose at the very beginning where there is no data comming from the motion controller
+                #   ik-rel: as debugging data
+                cur_eef_pos = (
+                    env.scene["ee_frame"].data.target_pos_w.clone().cpu().squeeze(0)
+                )
+                cur_eef_rot_quat_w = (
+                    env.scene["ee_frame"].data.target_quat_w.clone().cpu().squeeze(0)
+                )  # (w, x, y, z) https://github.com/isaac-sim/IsaacLab/blob/f22b5eb80172199fc4c25d34e01eb09acdff08b6/source/isaaclab/isaaclab/sensors/frame_transformer/frame_transformer_data.py#L40C11-L41C15
+                teleop_interface.update_eef_pose(
+                    cur_eef_pos=cur_eef_pos, cur_eef_rot_quat_w=cur_eef_rot_quat_w
+                )
+            # get teleop-device command
+            teleop_output = teleop_interface.advance()
             # pre-process actions
-            actions = pre_process_actions(delta_pose, gripper_command)
+            actions = pre_process_actions(
+                teleop_output, device=env.device, num_envs=env.num_envs
+            )
 
             # apply actions
             env.step(actions)
@@ -239,6 +326,10 @@ def main():
             if should_reset_recording_instance:
                 env.reset()
                 should_reset_recording_instance = False
+
+            # check that simulation is stopped or not
+            if env.sim.is_stopped():
+                break
 
             if rate_limiter:
                 rate_limiter.sleep(env)
