@@ -7,20 +7,20 @@ defaults:
 
   - /transforms@data.gpu_batch_transforms.t3_to_pcd: to_pointcloud
 
-  - /transforms@data.gpu_batch_transforms.t4-1_crop: pointcloud_crop
+  - /transforms@data.gpu_batch_transforms.t4-1_crop_pcd: pointcloud_crop
 
   - /transforms@data.gpu_batch_transforms.t4-2_table: pointcloud_crop_table
 
-  - /transforms@data.gpu_batch_transforms.t4-3_voxel_downsample: pointcloud_downsample_voxel
+  - /transforms@data.gpu_batch_transforms.t5_voxel_downsample: pointcloud_downsample_voxel
 
-  - /transforms@data.gpu_batch_transforms.t4-4_denoise: pointcloud_denoise
+  - /transforms@data.gpu_batch_transforms.t6_denoise: pointcloud_denoise
 
 
 data:
   gpu_batch_transforms:
     t2_resize:
       shape: 256
-    t4-1_crop:
+    t4-1_crop_pcd:
       x_range: [0.1, 1.0]  # crop the robot base out of the observation
       y_range: [-0.30, 0.25]  # crop out the curtains
       z_range: [-0.05, 0.4]  # only remove things below the table, the table is removed by pointcloud_crop_table
@@ -29,8 +29,8 @@ data:
       ransac_n: 3
       num_iterations: 100
       crop_threshold: 0.01
-    t4-3_voxel_downsample:
+    t5_voxel_downsample:
       size: 0.006
-    t4-4_denoise:
+    t6_denoise:
       nb_points: 5
       radius: 0.01

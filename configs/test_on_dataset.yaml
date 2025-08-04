@@ -1,11 +1,12 @@
 defaults:
-  - data: one_leg_alr_metaquest2
+  - data: one_leg_alr_20250724
   - callbacks: eval_trajectories
   - logger:
   - python_logging: default
   - paths: default
   - hydra: default
-  - experiment: rgb_only
+  - obs_modality: rgbd_imagenet
+  - obs_encoder: rgb_resnet18
   - _self_
   - platform: default
   - optional local: default

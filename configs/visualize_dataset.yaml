@@ -1,3 +1,6 @@
+# Render the first trajectory in the dataset, either as RGB images or point clouds.
+# usage: python predict.py -cn visualize_dataset
+
 defaults:
   - data: one_leg_alr_20250724
   - agent: null_agent
@@ -6,12 +9,12 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: default
-  - experiment: sim_pointclouds
-  - transforms@agent.obs_encoder.t9_render: render_pointcloud
+  - obs_modality: rgbd_imagenet
+  - transforms@agent.obs_encoder.t9_render: render_cameras
   - _self_
   - platform: default
   - optional local: default
-  - debug: quick
+  - debug: quick  # cannot use single_batch here, because we want to visualize the whole trajectory
 
 # task name, determines output directory path
 job_type: visualize_dataset
@@ -20,14 +23,26 @@ data:
   batch_size: 1  # required for visualization
   eval_mode: dataset
   dataset:
-    action_seq_len: 1
-    load_subset: 0.05
+    action_seq_len: 1  # no action chunks, because only the first frame is rendered
+    debug_preprocess: True  # prepend preprocess transforms to cpu transforms
+
+  preprocess_transforms:
+    t1_resize:
+      shape: 512  # increase resolution for better visualization
+    
+    t2_crop: null  # disable cropping, because we want to visualize the whole image
+    
+    t3_to_pcd:
+      color: True  # add colors to pointclouds, in case we render pointclouds
+
   gpu_batch_transforms:
-    t1-3_to_pcd:
-      color: True
+    t3_norm: null  # disable imagenet normalization of colors
+
+    t5_voxel_downsample:
+      size: 0.004  # increase resolution for better visualization
 
 agent:
-  fps: 10
+  fps: 30
 
 trainer:
   default_root_dir: ${paths.output_dir}

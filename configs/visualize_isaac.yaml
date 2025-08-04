@@ -6,8 +6,8 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: default
-  - experiment: sim_pointclouds
-  - transforms@agent.obs_encoder.t5_render: render_pointcloud
+  - obs_modality: sim_pointclouds
+  - transforms@agent.obs_encoder.t9_render: render_pointcloud
   - _self_
   - platform: default
   - optional local: default

@@ -1,20 +1,18 @@
 # @package _global_
 
 defaults:
-  - sim_pointclouds
-
   # patch the pointcloud and tokenize the patches
-  - /tokenizers@agent.obs_encoder.t5-1_patching: pointpatcher
-  - /tokenizers@agent.obs_encoder.t5-2_tokenizer: pointpatchrl_tokenizer
-  - /models/pos_projection@agent.obs_encoder.t5-2_tokenizer.pos_projection: nerf_pos_projection
+  - /tokenizers@agent.obs_encoder.t10_patching: pointpatcher
+  - /tokenizers@agent.obs_encoder.t11_tokenizer: pointpatchrl_tokenizer
+  - /models/pos_projection@agent.obs_encoder.t12_tokenizer.pos_projection: nerf_pos_projection
 
   # add tokens for the robot state
-  - /tokenizers@agent.obs_encoder.t6_robot_state: linear_robot_state_tokenizer
+  - /tokenizers@agent.obs_encoder.t20_robot_state: linear_robot_state_tokenizer
 
 agent:
   obs_encoder:
     embed_dim: 256
-    t5-1_patching:
+    t10_patching:
       patch_size: 32
       oversampling_ratio: 4.0
 

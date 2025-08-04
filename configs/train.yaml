@@ -1,5 +1,5 @@
 defaults:
-  - data: one_leg_alr_metaquest2
+  - data: one_leg_alr_20250724
   - agent: beso_agent
   - callbacks:
     - model_checkpoint
@@ -11,7 +11,9 @@ defaults:
   - paths: default
   - hydra: default
   - _self_
-  - experiment: rgb_only
+  - obs_modality: rgbd_imagenet
+  - obs_encoder: rgb_resnet18
+  - experiment: null
   - platform: default
   - optional local: default
   - debug: single_batch

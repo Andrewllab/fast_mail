@@ -1,0 +1,15 @@
+# @package _global_
+
+defaults:
+  # pretrained resnet18 expects images resized to 256x256...
+  - /transforms@data.preprocess_transforms.t1_resize: image_resize
+
+  # ...and then cropped to 224x224
+  - /transforms@data.preprocess_transforms.t2_crop: image_centercrop
+  
+  # apply ImageNet normalization
+  - /transforms@data.gpu_batch_transforms.t3_norm: imagenet_norm
+
+data:
+  dataset:
+    preprocessed_dir: ${paths.preprocessed_dir}/dataset_11.04.25/multiview_image

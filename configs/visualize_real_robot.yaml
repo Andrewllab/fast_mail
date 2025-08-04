@@ -6,8 +6,8 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: default
-  - experiment: real_pointclouds
-  - transforms@agent.obs_encoder.t5_render: render_pointcloud
+  - obs_modality: real_pointclouds
+  - transforms@agent.obs_encoder.t9_render: render_pointcloud
   - _self_
   - platform: default
   - optional local: default
@@ -18,7 +18,7 @@ job_type: visualize_real_robot
 
 data:
   gpu_batch_transforms:
-    t2_to_pcd:
+    t3_to_pcd:
       color: True
 
 trainer:

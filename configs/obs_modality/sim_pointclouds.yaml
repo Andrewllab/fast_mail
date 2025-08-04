@@ -1,0 +1,29 @@
+# @package _global_
+
+defaults:
+  # downsample the RGBD images to avoid excessive memory usage
+  - /transforms@data.preprocess_transforms.t2_resize: image_resize
+
+  - /transforms@data.preprocess_transforms.t3_to_pcd: to_pointcloud
+  
+  - /transforms@data.preprocess_transforms.t4_crop_pcd: pointcloud_crop
+
+  - /transforms@data.gpu_batch_transforms.t5_voxel_downsample: pointcloud_downsample_voxel
+
+  # we don't need to normalize the pointclouds because they are already sort of
+  # within the range [0, 1] after cropping
+  # - /transforms@data.gpu_batch_transforms.t5_normalize: pointcloud_normalize
+
+data:
+  preprocess_transforms:
+    t2_resize:
+      shape: 128
+    t4_crop_pcd:
+      x_range: [0.1, 1.0]  # crop the robot base out of the observation
+      y_range: [-0.4, 0.4]
+      z_range: [0.004, 0.4]  # just high enough to remove the table
+  gpu_batch_transforms:
+    t5_voxel_downsample:
+      size: 0.006
+  dataset:
+    preprocessed_dir: ${paths.preprocessed_dir}/dataset_11.04.25/pointclouds

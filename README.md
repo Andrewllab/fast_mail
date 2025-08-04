@@ -162,8 +162,10 @@ python train.py data=DATA experiment=EXP platform=PLAT
 Visualize dataset DATA (optional), after applying transforms for experiment EXP. You must also choose whether to render RGB images with render_cameras or pointcloud with render_pointcloud. Simultaneously rendering both is not possible.
 
 ```bash
-python predict.py -cn visualize_dataset "experiment=[EXP,render_cameras]" data=DATA
-python predict.py -cn visualize_dataset "experiment=[EXP,render_pointcloud]" data=DATA
+# to render images:
+python predict.py -cn visualize_dataset obs_modality=rgbd_imagenet transforms@agent.obs_encoder.t9_render=render_cameras data=DATA
+# to render point clouds:
+python predict.py -cn visualize_dataset obs_modality=sim_pointclouds transforms@agent.obs_encoder.t9_render=render_pointcloud data=DATA
 ```
 
 Open loop replay on real robot using dataset DATA:
