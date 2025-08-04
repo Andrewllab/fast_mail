@@ -14,7 +14,6 @@ from environments.specs import (
     PinholeCameraIntrinsic,
     RGBStream,
 )
-from utils.math import euler_xyz_to_quaternion
 
 log = logging.getLogger(__name__)
 
@@ -132,12 +131,12 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         height, width, channels = rgb_shape[1:]
         intrinsics = data["obs", "front_left_cam", "intrinsic_matrix"].reshape(3, 3)
         extrinsics = data["obs", "front_left_cam", "homogenious_matrix"].reshape(4, 4)
-        # correct extrinsics by adding conversion from ROS to WORLD camera convention
-        # we right-multiply, since we first need to transform the points
-        # into the WORLD convention, and then apply the extrinsics
-        extrinsics[:3, :3] = extrinsics[:3, :3] @ torch.tensor(
-            ROS_TO_WORLD, dtype=extrinsics.dtype
-        )
+        # # correct extrinsics by adding conversion from ROS to WORLD camera convention
+        # # we right-multiply, since we first need to transform the points
+        # # into the WORLD convention, and then apply the extrinsics
+        # extrinsics[:3, :3] = extrinsics[:3, :3] @ torch.tensor(
+        #     ROS_TO_WORLD, dtype=extrinsics.dtype
+        # )
         left_cam = CameraSpec(
             streams={
                 "rgb": RGBStream(height, width, channels, channel_order="HWC"),
@@ -161,12 +160,12 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         height, width, channels = rgb_shape[1:]
         intrinsics = data["obs", "front_right_cam", "intrinsic_matrix"].reshape(3, 3)
         extrinsics = data["obs", "front_right_cam", "homogenious_matrix"].reshape(4, 4)
-        # correct extrinsics by adding conversion from ROS to WORLD camera convention
-        # we right-multiply, since we first need to transform the points
-        # into the WORLD convention, and then apply the extrinsics
-        extrinsics[:3, :3] = extrinsics[:3, :3] @ torch.tensor(
-            ROS_TO_WORLD, dtype=extrinsics.dtype
-        )
+        # # correct extrinsics by adding conversion from ROS to WORLD camera convention
+        # # we right-multiply, since we first need to transform the points
+        # # into the WORLD convention, and then apply the extrinsics
+        # extrinsics[:3, :3] = extrinsics[:3, :3] @ torch.tensor(
+        #     ROS_TO_WORLD, dtype=extrinsics.dtype
+        # )
         right_cam = CameraSpec(
             streams={
                 "rgb": RGBStream(height, width, channels, channel_order="HWC"),
@@ -191,12 +190,12 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         intrinsics = data["obs", "gripper_cam", "intrinsic_matrix"].reshape(3, 3)
         # gripper_cam_transform provides complete transform to camera
         extrinsics = torch.eye(4, dtype=torch.float32)
-        # correct extrinsics by adding conversion from ROS to WORLD camera convention
-        # we right-multiply, since we first need to transform the points
-        # into the WORLD convention, and then apply the extrinsics
-        extrinsics[:3, :3] = extrinsics[:3, :3] @ torch.tensor(
-            ROS_TO_WORLD, dtype=extrinsics.dtype
-        )
+        # # correct extrinsics by adding conversion from ROS to WORLD camera convention
+        # # we right-multiply, since we first need to transform the points
+        # # into the WORLD convention, and then apply the extrinsics
+        # extrinsics[:3, :3] = extrinsics[:3, :3] @ torch.tensor(
+        #     ROS_TO_WORLD, dtype=extrinsics.dtype
+        # )
         gripper_cam = CameraSpec(
             streams={
                 "rgb": RGBStream(height, width, channels, channel_order="HWC"),
