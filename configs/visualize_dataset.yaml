@@ -24,19 +24,23 @@ data:
   eval_mode: dataset
   dataset:
     action_seq_len: 1  # no action chunks, because only the first frame is rendered
-    debug_preprocess: True  # prepend preprocess transforms to cpu transforms
+    # # disabled `debug_preprocess` because some transforms only work in preprocessing
+    # debug_preprocess: True  # prepend preprocess transforms to cpu transforms
 
   preprocess_transforms:
-    t1_resize:
+    t2_resize:
       shape: 512  # increase resolution for better visualization
+
+    t2_resize_for_pcd:
+      shape: 256  # increase resolution for better visualization (but not too high, due to memory constraints)
     
-    t2_crop: null  # disable cropping, because we want to visualize the whole image
+    t3_crop_image: null  # disable cropping, because we want to visualize the whole image
     
     t3_to_pcd:
       color: True  # add colors to pointclouds, in case we render pointclouds
 
   gpu_batch_transforms:
-    t3_norm: null  # disable imagenet normalization of colors
+    t4_norm_image: null  # disable imagenet normalization of colors
 
     t5_voxel_downsample:
       size: 0.004  # increase resolution for better visualization

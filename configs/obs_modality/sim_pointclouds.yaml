@@ -2,7 +2,7 @@
 
 defaults:
   # downsample the RGBD images to avoid excessive memory usage
-  - /transforms@data.preprocess_transforms.t2_resize: image_resize
+  - /transforms@data.preprocess_transforms.t2_resize_for_pcd: image_resize
 
   - /transforms@data.preprocess_transforms.t3_to_pcd: to_pointcloud
   
@@ -16,7 +16,7 @@ defaults:
 
 data:
   preprocess_transforms:
-    t2_resize:
+    t2_resize_for_pcd:
       shape: 128
     t4_crop_pcd:
       x_range: [0.1, 1.0]  # crop the robot base out of the observation

@@ -2,13 +2,13 @@
 
 defaults:
   # pretrained resnet18 expects images resized to 256x256...
-  - /transforms@data.preprocess_transforms.t1_resize: image_resize
+  - /transforms@data.preprocess_transforms.t2_resize: image_resize
 
   # ...and then cropped to 224x224
-  - /transforms@data.preprocess_transforms.t2_crop: image_centercrop
+  - /transforms@data.preprocess_transforms.t3_crop_image: image_centercrop
   
   # apply ImageNet normalization
-  - /transforms@data.gpu_batch_transforms.t3_norm: imagenet_norm
+  - /transforms@data.gpu_batch_transforms.t4_norm_image: imagenet_norm
 
 data:
   dataset:

@@ -57,6 +57,9 @@ class TrajectoryDataset(Dataset, ABC):
         self.load_subset = load_subset
 
         if debug_preprocess and preprocess_transforms is not None:
+            # TODO: implement this by running preprocessing in memory instead of saving to disk
+            raise NotImplementedError
+
             log.debug(
                 "`debug_preprocess` activated. Prepending preprocess transforms to cpu transforms."
             )
