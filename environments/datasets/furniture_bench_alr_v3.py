@@ -42,9 +42,7 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
 
     def find_raw_files(self) -> list[Path]:
         # e.g. insert_one_leg_1[_recovery].hdf5
-        files = list(
-            sorted(self.root_dir.glob("*.hdf5"), key=lambda p: p.stem.split("_")[3])
-        )
+        files = list(self.root_dir.glob("*.hdf5"))
 
         if not files:
             raise FileNotFoundError(

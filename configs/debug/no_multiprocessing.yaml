@@ -1,0 +1,12 @@
+# @package _global_
+
+# runs normal training but with verbosity and without multiprocessing
+
+defaults:
+  - verbose
+
+trainer:
+  devices: 1 # debuggers don't like multiprocessing
+
+platform:
+  num_workers: 0  # debuggers don't like multiprocessing

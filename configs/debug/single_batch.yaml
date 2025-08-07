@@ -17,8 +17,7 @@ logger: null
 #   verbose: True
 
 python_logging:
-  always_log_debug_to_file: True  # if True, debug messages are always logged to file
-  always_suppress_debug_from: null  # use this to disable logging from specific modules
+  always_suppress_debug_from: null  # show debug logs from all modules
 
 trainer:
   max_epochs: 1

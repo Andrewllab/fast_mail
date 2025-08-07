@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import os
+import re
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -340,17 +341,17 @@ class TrajectoryDataset(Dataset, ABC):
     def _find_raw_files(self) -> list[Path]:
         files = self.find_raw_files()
 
+        files = sorted(files, key=keyfunc)
+
         return get_subset(files, self.load_subset)
 
     def _find_processed_files(self, preprocessed_dir: Path) -> list[Path]:
         """Find all processed files in the preprocessed directory."""
         # this handles the case where the processed files are actually
         # directories because memory-mapped tensordicts are saved as directories
-        files = [
-            path
-            for path in sorted(preprocessed_dir.iterdir())
-            if path.name not in (SPECS_FILE, TRANSFORMS_FILE)
-        ]
+        files = [path for path in preprocessed_dir.iterdir() if path.suffix == ""]
+
+        files = sorted(files, key=keyfunc)
 
         return files
 
@@ -361,6 +362,14 @@ class TrajectoryDataset(Dataset, ABC):
     def __repr__(self) -> str:
         arg_repr = str(len(self)) if len(self) > 1 else ""
         return f"{self.__class__.__name__}({arg_repr})"
+
+
+def keyfunc(path: Path) -> list[str | int]:
+    """Key function for natural sorting of Path objects by filename."""
+    return [
+        int(part) if part.isdigit() else part.lower()
+        for part in re.split(r"(\d+)", path.stem)
+    ]
 
 
 class TrajectorySlices:
