@@ -129,6 +129,14 @@ class RealSense(BaseCamera):
             self.fps,
         )
         self.profile = self.pipe.start(config)
+
+        # disable IR emitter so as not to interfere with other cameras
+        device = self.profile.get_device()
+        depth_sensor = device.query_sensors()[0]
+        if depth_sensor.supports(rs.option.emitter_enabled):
+            log.debug(f"Disabling IR emitter for RealSense {self.name}.")
+            depth_sensor.set_option(rs.option.emitter_enabled, 0)
+
         self.align = rs.align(rs.stream.color)
 
         # double check the connection by actually getting some frames
