@@ -4,7 +4,7 @@ from pathlib import Path
 import torch
 from tensordict import TensorDict
 
-from environments.base_dataset import TrajectoryDataset
+from environments.base_dataset import TrajectoryDataset, keyfunc
 from environments.specs import (
     ActionSpec,
     CameraSpec,
@@ -48,6 +48,8 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             raise FileNotFoundError(
                 f"No raw files found in {self.root_dir}. Please check the path."
             )
+
+        files = list(sorted(files, key=keyfunc))
         return files
 
     def load_from_raw_file(self, filepath: Path) -> TensorDict | list[TensorDict]:

@@ -341,7 +341,7 @@ class TrajectoryDataset(Dataset, ABC):
     def _find_raw_files(self) -> list[Path]:
         files = self.find_raw_files()
 
-        files = sorted(files, key=keyfunc)
+        files = list(sorted(files, key=keyfunc))
 
         return get_subset(files, self.load_subset)
 
