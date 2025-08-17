@@ -10,11 +10,11 @@ from torch.nn import Module
 from torch.optim.lr_scheduler import LRScheduler
 from torch.optim.optimizer import Optimizer
 
-from agents.utils.scaler import Scaler
-from callbacks.action_writer import ActionWriter
 from environments.datamodule import TrajectoryDataModule
 from environments.specs import DataSpecs
 from transforms.base_transform import (
+    Compose,
+    Sequential,
     TransformPartial,
     TransformPartialsDict,
     init_transforms,
@@ -30,14 +30,24 @@ class BaseAgent(L.LightningModule):
         obs_encoder: TransformPartialsDict,
         optimizer: Callable[[Iterable[Tensor]], Optimizer],
         lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
-        scaler: Callable[[DataSpecs], Scaler],
-        goal_encoder: TransformPartial | None,
         specs: DataSpecs,
         ema_decay: float = 0.0,
+        goal_encoder: TransformPartial | None = None,
+        normalizer: Sequential | None = None,
+        reverse_transform: Compose | None = None,
     ):
         super().__init__()
 
-        self.save_hyperparameters("specs")
+        # save the specs and reversible and normalizing transforms to the checkpoints
+        # TODO: do not instantiate noise model beforehand, and then save all inputs
+        self.save_hyperparameters(
+            "specs",
+            "normalizer",
+            "reverse_transform",
+            # don't send these objects to the logger since they are not
+            # serializable and they are in every checkpoint anyway
+            logger=False,
+        )
 
         # maybe instantiate goal encoder (e.g. clip)
         self.goal_encoder, specs = init_transforms(goal_encoder, specs)
@@ -47,13 +57,14 @@ class BaseAgent(L.LightningModule):
 
         self._model = model(specs)
 
-        # TODO: scaler should return modified specs like transforms
-        self.scaler = scaler(specs)
-
-        self._specs = specs
         self._optimizer_func = optimizer
         self._lr_scheduler_func = lr_scheduler
+        self._specs = specs
         self.ema_decay = ema_decay
+        self.reverser = (
+            reverse_transform if reverse_transform is not None else Compose()
+        )
+        self.normalizer = normalizer if normalizer is not None else Compose()
 
     @property
     def model(self) -> Module:
@@ -109,12 +120,13 @@ class BaseAgent(L.LightningModule):
         else:
             callbacks = [callbacks]
 
-        if (
-            hasattr(self.trainer, "datamodule")
-            and isinstance(self.trainer.datamodule, TrajectoryDataModule)
-            and self.trainer.datamodule.env is not None
-        ):
-            callbacks.append(ActionWriter(self.trainer.datamodule.env))
+        try:
+            if isinstance(self.trainer.datamodule, TrajectoryDataModule):
+                callbacks.extend(self.trainer.datamodule.get_callbacks())
+        except AttributeError:
+            # if trainer does not have a datamodule
+            pass
+
         return callbacks
 
     def optimizer_step(

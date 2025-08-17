@@ -5,6 +5,7 @@ from typing import Literal, Mapping
 
 import gymnasium as gym
 import torch
+from omegaconf import DictConfig
 from polymetis import GripperInterface, RobotInterface
 from torchcontrol.policies import CartesianImpedanceControl, HybridJointImpedanceControl
 
@@ -23,8 +24,8 @@ GRIPPER_POS_SCALE = 0.04 / 0.07886763662099838
 class RealRobotEnv(gym.Env):
     def __init__(
         self,
-        robot: Mapping,
-        cameras: Mapping[str, BaseCamera],
+        robot: DictConfig,
+        cameras: Mapping[str, BaseCamera] | None = None,
         control_type: Literal["cartesian", "hybrid_joint"] = "cartesian",
     ):
         self.control_type = control_type
@@ -36,7 +37,7 @@ class RealRobotEnv(gym.Env):
             enforce_version=False,
         )
         log.info(
-            f'Connected to robot "{robot.name}" arm at {robot.ip_address}:{robot.arm_port}'
+            f'Connected to "{robot.name}" robot arm at {robot.ip_address}:{robot.arm_port}'
         )
 
         self.gripper = GripperInterface(
@@ -59,7 +60,10 @@ class RealRobotEnv(gym.Env):
             log.info(f"Setting home pose: {home_pose}")
             self.arm.set_home_pose(torch.tensor(home_pose))
 
-        self.cameras: Mapping[str, BaseCamera] = cameras
+        # default (None) uses _adaptive_time_to_go
+        self.reset_duration = robot.get("reset_duration", 1.0)
+
+        self.cameras: Mapping[str, BaseCamera] = cameras or {}
 
         obs_specs = {
             # we concatenate joint_pos and gripper_pos to get a shape of (T, 9)
@@ -98,6 +102,7 @@ class RealRobotEnv(gym.Env):
         return self._specs
 
     def step(self, action: torch.Tensor) -> tuple[ObsType, float, bool, bool, InfoType]:
+        action = action.cpu()
         pos = action[:3]
         wxyz = action[3:7]
         gripper_command = action[7]
@@ -138,7 +143,12 @@ class RealRobotEnv(gym.Env):
             force=self.gripper_force,
             blocking=False,
         )
-        self.arm.go_home()
+
+        options = options or {}
+        if "home_pose" in options:
+            self.arm.set_home_pose(torch.tensor(options["home_pose"]))
+
+        self.arm.go_home(time_to_go=self.reset_duration)
 
         # open and close gripper
         self.gripper.grasp(
@@ -253,7 +263,7 @@ def make_env(**kwargs) -> gym.Env:
     env = VectorToTorchWrapper(env)
 
     # VecEnvs return a tuple of results whenever an attribute is accessed
-    one_step_specs: DataSpecs = env.get_attr("specs")[0]
+    one_step_specs: DataSpecs = env.unwrapped.get_attr("specs")[0]
 
     # assign as new attribute so that GymEnvDataset can access it
     env.specs = one_step_specs

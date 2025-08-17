@@ -56,10 +56,6 @@ class RealSense(BaseCamera):
         """
         return self.RECORDING_HEIGHT, self.RECORDING_WIDTH
 
-    @property
-    def spec(self) -> CameraSpec:
-        return self._spec
-
     def _connect(self):
         """
         Connects to this instance.

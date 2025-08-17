@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import Sequence
 
+import hydra
 import pygame
 import torch
 from omegaconf import DictConfig, open_dict
+from torch import Tensor
 
 from agents.base_agent import BaseAgent
+from environments.datamodule import TrajectoryDataModule
+from environments.specs import DataSpecs
+from transforms.base_transform import Compose, Sequential, TransformPartialsDict
 from utils.instantiators import instantiate_datamodule
-
-if TYPE_CHECKING:
-    from torch import Tensor
-
-    from environments.datamodule import TrajectoryDataModule
-    from transforms.base_transform import TransformPartialsDict
 
 log = logging.getLogger(__name__)
 
@@ -22,21 +21,28 @@ log = logging.getLogger(__name__)
 class NullAgent(BaseAgent):
     """The name of the class makes it sound super cool but actually this agent just does nothing."""
 
+    null_action: torch.Tensor
+
     def __init__(
         self,
-        specs,
         obs_encoder: TransformPartialsDict,
+        specs: DataSpecs,
         fps: float | None = 30.0,
+        null_action: Sequence[float] | None = None,
         replay_data: DictConfig | None = None,
+        normalizer: Sequential | None = None,
+        reverse_transform: Compose | None = None,
     ):
+        obs_encoder = hydra.utils.instantiate(obs_encoder)
+
         super().__init__(
             model=lambda specs: None,
             obs_encoder=obs_encoder,
             optimizer=None,
             lr_scheduler=None,
-            scaler=lambda specs: None,
-            goal_encoder=None,
             specs=specs,
+            normalizer=normalizer,
+            reverse_transform=reverse_transform,
         )
 
         if replay_data is not None:
@@ -47,17 +53,28 @@ class NullAgent(BaseAgent):
                 replay_data.pin_memory = False
 
             log.debug("Instantiating replay dataset...")
-            self.datamodule: TrajectoryDataModule = instantiate_datamodule(replay_data)
-            self.datamodule.prepare_data()
-            self.datamodule.setup(stage="predict")
+            datamodule: TrajectoryDataModule = instantiate_datamodule(replay_data)
+            datamodule.prepare_data()
+            datamodule.setup(stage="predict")
 
-            if self.datamodule.specs.action.shape != self.specs.action.shape:
+            if datamodule.specs.action.action_dim != specs.action.action_dim:
                 raise ValueError(
-                    "Replay dataset action shape does not match agent action shape."
+                    "Replay dataset action dims do not match agent action dims."
                 )
 
-            self.data_it = iter(self.datamodule.predict_dataloader())
+            self.datamodule = datamodule
+            self.replay_normalizer = (
+                datamodule.normalizer if datamodule.normalizer else Compose()
+            )
+            self.replay_reverser = (
+                datamodule.reverse_transform
+                if datamodule.reverse_transform
+                else Compose()
+            )
+            # note: predict_dataloader does not shuffle the data
+            self.data_it = iter(datamodule.predict_dataloader())
         else:
+            self.register_buffer("null_action", torch.tensor(null_action))
             self.datamodule = None
 
         self.clock = pygame.time.Clock()
@@ -69,33 +86,41 @@ class NullAgent(BaseAgent):
         )
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
-        # just run any transforms on the batch
-        batch = self.obs_encoder(batch)
+        batch = self.normalizer(batch)  # in most cases this is a no-op
+        batch = self.obs_encoder(batch)  # e.g. maybe render the observation
 
         if self.datamodule is not None:
             try:
-                data = next(self.data_it)
                 log.debug(f"Fetching action for timestep {batch_idx}...")
+                data = next(self.data_it)
             except StopIteration:
                 # gracefully terminate the program
                 log.debug(
                     f"Replay dataset exhausted after {batch_idx} timesteps. Exiting..."
                 )
                 raise KeyboardInterrupt
-            actions = data["action"]
+
+            # TODO: right now we don't use the replay normalizer or reverser for anything.
+            # It's unclear if they should be used. What's the use case?
+
+            # simulate an agent that predicts the action, then reverse the transforms
+            # using the reverser
+            batch["prediction"] = data["action"]
 
         else:
-            # TODO: add definition of zero action
             actions = torch.zeros(
                 (batch.shape[0], *self.specs.action.shape), device=batch.device
             )
-            # the real part of the quaternion should be 1.0 for a no-op rotation
-            actions[..., 3] = 1.0
+            actions[...] = self.null_action  # broadcasts over leading dimensions
+            batch["prediction"] = actions
+
+        # reverse transforms as if during normal prediction
+        batch = self.reverser.reverse(batch)
 
         if self.fps is not None:
             self.clock.tick(self.fps)
 
-        return actions
+        return batch["prediction"]
 
     # reuse predict_step for test_step
     test_step = predict_step

@@ -1,13 +1,12 @@
 defaults:
   - _self_
   - noise_model: decoder_only
-  - optimizer: adamw
-  - lr_scheduler: none
-  - scaler: minmax
-  - goal_encoder: none
-  - sampler: ddim
   - noise_distribution: loglogistic
   - noise_schedule: exponential
+  - sampler: ddim
+  - optimizer: adamw
+  - lr_scheduler: none
+  - goal_encoder: none
 
 _target_: agents.beso_agent.BesoAgent
 

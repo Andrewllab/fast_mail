@@ -1,0 +1,25 @@
+# usage: scripts/robot_shake_ee_pose.py
+
+defaults:
+  - robot: panda4
+  - debug: verbose
+  - _self_
+
+# are the waypoints relative or absolute?
+relative: True
+
+waypoints_euler_xyz_deg:
+  - [0.0, 0.0, 0.0]
+  - [15.0, 0.0, 0.0]
+  - [-15.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 15.0, 0.0]
+  - [0.0, -15.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 15.0]
+  - [0.0, 0.0, -15.0]
+  - [0.0, 0.0, 0.0]
+
+time_to_go: 2.0
+wait_after: 0.5
+loop_waypoints: True

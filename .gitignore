@@ -250,11 +250,17 @@ pyrightconfig.json
 __pycache__/
 
 # log folders
-/logs
-/wandb
+/logs/
+/wandb/
+
+# hydra output folders
+/outputs/
+/multirun/
 
 # training and validation data
-/datasets
+/datasets/
+/preprocessed_datasets/
+/debug_preprocessed_datasets/
 
 # models downloaded from WandB
 /artifacts

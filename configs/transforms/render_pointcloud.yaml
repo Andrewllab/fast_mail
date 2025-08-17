@@ -1,3 +1,5 @@
 _target_: transforms.render_pointcloud.RenderPointCloud
 _partial_: True
-render_coordinate_frames: True
+render_camera_poses: True
+render_ee_pose: True
+pose_frame_size: 0.1

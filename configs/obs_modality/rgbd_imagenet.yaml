@@ -12,4 +12,4 @@ defaults:
 
 data:
   dataset:
-    preprocessed_dir: ${paths.preprocessed_dir}/dataset_11.04.25/multiview_image
+    preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/multiview_image

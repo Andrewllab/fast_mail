@@ -72,7 +72,6 @@ class GymEnvDataset(IterableDataset):
             reward = torch.zeros(self.num_envs, dtype=torch.float32, device=device)
             terminated = torch.zeros(self.num_envs, dtype=torch.bool, device=device)
             truncated = torch.zeros(self.num_envs, dtype=torch.bool, device=device)
-            infos = []
             # actions: [num_envs, action_horizon, action_dim]
             # therefore we need to unbind the actions along the time dimension
 
@@ -81,26 +80,21 @@ class GymEnvDataset(IterableDataset):
                 if self.fps is not None:
                     self.clock.tick(self.fps)
 
-                obs, step_reward, step_terminated, step_truncated, step_info = (
-                    self.env.step(action)
+                obs, step_reward, step_terminated, step_truncated, info = self.env.step(
+                    action
                 )
 
                 # accumulate the return values over time
-                # we only ever need the last observation, since stacking
+                # we drop all observations except the last, since stacking
                 # observations is done by the FrameStackObservation wrapper
+                # we also only keep the last info dict, mainly because there
+                # is no clear way to accumulate the information over time
+                # while also handling the reset info
                 reward += step_reward
                 terminated = torch.logical_or(terminated, step_terminated)
                 truncated = torch.logical_or(truncated, step_truncated)
-                infos.append(step_info)
 
             time += 1
-
-            # we stack in axis=1 because the first dimension is the batch,
-            # and the second dimension is the time dimension
-            info = {
-                key: torch.stack([info[key] for info in infos], axis=1)
-                for key in infos[0]
-            }
 
             # reset the envs that are done
             done = torch.logical_or(terminated, truncated)
@@ -126,40 +120,50 @@ class GymEnvDataset(IterableDataset):
 
 
 def step_return_to_tensor_dict(
-    obs: torch.Tensor | dict[str, torch.Tensor],
-    info: dict,
+    obs: TensorDict,
+    info: TensorDict,
     reward: torch.Tensor | None = None,
     done: torch.Tensor | None = None,
 ) -> TensorDict:
     """Convert step return to TensorDict."""
-    tensordict = TensorDict({"obs": obs})  # type: ignore
-    # we expect the first dimension to be the batch dimension resulting from
-    # the vectorized environment stacking the observations from all envs
-    tensordict.auto_batch_size_(batch_dims=1)
 
+    # obs and info should only have one leading dimension corresponding to
+    # the batch resulting from the vectorized environment stacking the
+    # observations from all envs
+    assert obs.ndim == 1
+    assert info.ndim == 1
+    assert obs.shape == info.shape
+
+    # reward, done, and success
     if reward is None:
-        reward = torch.zeros(tensordict.shape[0], dtype=torch.float32)
+        reward = torch.zeros(obs.shape, dtype=torch.float32)
     if done is None:
-        done = torch.zeros(tensordict.shape[0], dtype=torch.bool)
+        done = torch.zeros(obs.shape, dtype=torch.bool)
 
     for key in ("success", "is_success", "Episode_Termination/success"):
         if key in info:
             success = info.pop(key)
             break
     else:
-        success = torch.zeros(tensordict.shape[0], dtype=torch.bool)
+        success = torch.zeros(obs.shape, dtype=torch.bool)
 
-    info["reward"] = reward
-    tensordict.update(
+    tensordict = TensorDict(
         {
+            "obs": obs,
             "done": done,
             "success": success,
+            "reward": reward,
             "info": info,
-        },  # type: ignore
+        }  # type: ignore
     )
-    # unsqueeze to add singleton time dimension
+
+    # the final batch should have only a single leading dimension for the batch
+    # but we also have to unsqueeze to add a singleton time dimension
+    # the only way we can unsqueeze the tensordict is like this:
+    tensordict.auto_batch_size_(batch_dims=1)
     tensordict = tensordict.unsqueeze(dim=1)
     tensordict.auto_batch_size_(batch_dims=1)
+
     return tensordict
 
 

@@ -1,16 +1,23 @@
+# usage: predict.py -cn open_loop_replay
+
 defaults:
   - data: real_robot
-  - data@agent.replay_data: one_leg_alr_metaquest
   - agent: null_agent
+  - data@agent.replay_data: one_leg_alr_20250724
+  # convert incoming relative actions to absolute in the reference frame of the first ee_pose
+  - /transforms@data.cpu_batch_transforms.t1_relative_actions: action_abs_to_relative
   - callbacks:
   - logger:
   - python_logging: default
   - paths: default
   - hydra: default
-  - _self_
   - platform: default
   - optional local: default
   - debug: verbose
+  - _self_
+  # instead of converting to relative action chunks, we transform the entire
+  # trajectory into the reference frame of the first action
+  - override transforms@agent.replay_data.preprocess_transforms.t0-3_relative_actions: action_abs_to_relative
 
 # task name, determines output directory path
 job_type: open_loop_replay
@@ -19,9 +26,36 @@ agent:
   replay_data:
     dataset:
       action_seq_len: 1  # action chunking unnecessary for open-loop replay
-      load_subset: 0.1
-  fps: 20
+      load_subset: [0]  # load selected trajectory
+      overwrite_preprocessed: True  # don't worry about overwriting the preprocessed data since we are using a small subset
+
+    preprocess_transforms:
+      t0-3_relative_actions:
+        reference: first_action  # use the first action as the reference frame to convert to relative
+
+  fps: 5
+
+data:
+  env_dataset:
+    env:
+      cameras: null  # we don't need cameras for open-loop replay
+    action_horizon: null  # execute all incoming actions
+  
+  cpu_batch_transforms:
+    t1_relative_actions:
+      reference: first_ee_pose  # use the first ee_pose as the reference frame to convert back to absolute
+
+callbacks:
+  sync_initial_robot_pose:
+    _target_: callbacks.sync_initial_robot_pose.SyncInitialRobotPose
+    space: task  # sync initial task space positions
+    # cartesian_offset: [0.1, 0.0, 0.1]
+
+# since we load a small subset of the data, store preprocessed data in another folder
+paths:
+  preprocessed_dir: ${paths.debug_preprocessed_dir}
 
 trainer:
   default_root_dir: ${paths.output_dir}
   enable_progress_bar: False
+  accelerator: cpu  # no need for GPU

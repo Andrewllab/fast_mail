@@ -21,6 +21,7 @@ data:
 callbacks:
   model_checkpoint:
     every_n_epochs: 1  # save a checkpoint every epoch
+  batch_size_finder: null  # disable batch size finder callback
 
 # since we load a small subset of the data, store preprocessed data in another folder
 paths:

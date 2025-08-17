@@ -1,3 +1,5 @@
+# usage: python train.py
+
 defaults:
   - data: one_leg_alr_20250724
   - agent: beso_agent
@@ -5,7 +7,7 @@ defaults:
     - model_checkpoint
     - model_summary
     - batch_size_finder
-  - logger: 
+  - logger:
     - wandb
   - python_logging: default
   - paths: default

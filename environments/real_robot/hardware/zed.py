@@ -66,10 +66,6 @@ class Zed(BaseCamera):
         """
         return self._height_width
 
-    @property
-    def spec(self) -> CameraSpec:
-        return self._spec
-
     def _connect(self):
         """
         Connects to this instance.

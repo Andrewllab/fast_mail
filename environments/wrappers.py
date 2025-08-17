@@ -32,7 +32,13 @@ class VectorToTorchWrapper(VectorWrapper):
 
     def step(self, action):
         obs, reward, terminated, truncated, info = super().step(action)
-        return self._convert(obs), reward, terminated, truncated, self._convert(info)
+        return (
+            self._convert(obs),
+            self._convert(reward),
+            self._convert(terminated),
+            self._convert(truncated),
+            self._convert(info),
+        )
 
     def _convert(self, value):
         if isinstance(value, dict):

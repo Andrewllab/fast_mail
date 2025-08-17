@@ -3,6 +3,7 @@
 # runs 1 train, 1 validation and 1 test step
 
 defaults:
+  - no_multiprocessing
   - verbose
 
 # overwrite task name so debugging logs are stored in separate folder
@@ -21,8 +22,6 @@ python_logging:
 
 trainer:
   max_epochs: 1
-  accelerator: gpu  # run using gpu to test handling of device
-  devices: 1 # debuggers don't like multiprocessing
   # # disabled `detect_anomaly` because it's not compatible with jagged tensor
   # detect_anomaly: true # raise exception if NaN or +/-inf is detected in any tensor
   fast_dev_run: true
@@ -39,6 +38,5 @@ paths:
   preprocessed_dir: ${paths.debug_preprocessed_dir}
 
 platform:
-  num_workers: 0  # debuggers don't like multiprocessing
   pin_memory: False  # disable gpu memory pin
   batch_size: 16  # reduce batch size to ensure we have at least 1 batch

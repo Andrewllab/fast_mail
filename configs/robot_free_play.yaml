@@ -1,0 +1,11 @@
+# usage: scripts/robot_free_play.py
+
+defaults:
+  - robot: panda4
+  - debug: verbose
+  - _self_
+
+go_home: False
+fps: 2
+print_precision: 6
+print_linewidth: 120

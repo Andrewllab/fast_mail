@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 import torch
+from torch import Tensor, device, dtype
 
 from agents.edm_diffusion.gc_sampling import get_sigmas_exponential
 
-if TYPE_CHECKING:
-    from torch import Tensor, device, dtype
+ShapeType = tuple[int, ...]
+DeviceType = device | str | int
 
-    ShapeType = tuple[int, ...]
-    DeviceType = device | str | int
 
-    class NoiseDistributionType(Protocol):
-        def __call__(self, shape: ShapeType, device: DeviceType) -> Tensor: ...
+class NoiseDistributionType(Protocol):
+    def __call__(self, shape: ShapeType, device: DeviceType) -> Tensor: ...
 
 
 def rand_log_normal(
