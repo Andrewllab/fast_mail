@@ -1,37 +1,38 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
 import numpy as np
 import torch
 import torchsde
 from scipy import integrate
-from torch import nn
+from torch import Tensor, device, nn
 from tqdm.auto import tqdm, trange
 
 from . import utils
 
-if TYPE_CHECKING:
-    from torch import Tensor, device
+DeviceType = device | str | int
 
-    from agents.utils.scaler import Scaler
 
-    DeviceType = device | str | int
+class NoiseScheduleType(Protocol):
+    def __call__(self, n: int, device: device) -> Tensor: ...
 
-    class NoiseScheduleType(Protocol):
-        def __call__(self, n: int, device: device) -> Tensor: ...
 
-    class SamplerType(Protocol):
-        def __call__(
-            self,
-            model: nn.Module,
-            state: Tensor,
-            action: Tensor,
-            goal: Any,
-            sigmas: Tensor,
-            scaler: Scaler | None = None,
-        ) -> Tensor: ...
+class SamplerType(Protocol):
+    def __call__(
+        self,
+        model: nn.Module,
+        state: Tensor,
+        action: Tensor,
+        goal: Any,
+        sigmas: Tensor,
+        scaler: ScalerType | None = None,
+    ) -> Tensor: ...
+
+
+class ScalerType(Protocol):
+    def clip_output(self, action: Tensor) -> Tensor: ...
 
 
 """

@@ -6,7 +6,7 @@ import rootutils
 import torch
 from lightning import Callback, LightningModule, Trainer, seed_everything
 from lightning.pytorch.loggers import Logger
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 # enables importing local modules regardless of where the script is run
 rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
@@ -27,10 +27,12 @@ log = logging.getLogger(__name__)
 
 @hydra.main(version_base=None, config_path="configs", config_name="train")
 def main(cfg: DictConfig) -> None:
+    # resolve the entire config to catch any errors early
+    OmegaConf.resolve(cfg)
+
     configure_logging(cfg.python_logging)
 
     # init wandb first so we can log any info or errors from instantiating dataset and model
-    # this also resolves all interpolated values, catching any errors early
     log.debug("Instantiating loggers...")
     logger: list[Logger] = instantiate_loggers(cfg)
 
@@ -57,7 +59,10 @@ def main(cfg: DictConfig) -> None:
     # we want these to be saved to WandB but we don't want them for instantiation
     delete_keys_recursively(cfg.agent, ["name"])
     agent: LightningModule = hydra.utils.instantiate(
-        cfg.agent, specs=datamodule.specs, _convert_="all"
+        cfg.agent,
+        specs=datamodule.specs,
+        normalizer=datamodule.normalizer,
+        reverse_transform=datamodule.reverse_transform,
     )
 
     log.debug("Instantiating callbacks...")
@@ -68,10 +73,10 @@ def main(cfg: DictConfig) -> None:
         cfg.trainer, _target_=Trainer, callbacks=callbacks, logger=logger
     )
 
-    log.info("Starting training")
+    log.info("Starting training...")
     trainer.fit(agent, datamodule=datamodule)
 
-    log.info("Training done")
+    log.info("Training completed.")
 
 
 if __name__ == "__main__":

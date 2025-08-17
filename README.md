@@ -136,7 +136,7 @@ pip install -r requirements_test.txt  # for running tests, etc.
 
 To download the original furniture bench dataset, please follow the [furniture bench documentation](https://clvrai.github.io/furniture-bench/docs/tutorials/dataset.html).
 
-Our custom datasets are located on the lsdf. Consider mounting the lsdf using sshfs and just linking the data where you want it to be available.
+Our custom datasets are located on the lsdf. For best performance, download the dataset to prevent repeatedly accessing the data over the network. If you're short on disk space, you can mount the lsdf using sshfs and just link the data where you want it to be available.
 
 By default, the training data should be located in a subfolder called `datasets`. However, this can be modified by creating a local override config. For example, create a file at `configs/local/default.yaml`, and add the following:
 
@@ -145,56 +145,82 @@ By default, the training data should be located in a subfolder called `datasets`
 
 # path to data directory
 paths:
-  data_dir: ${oc.env:HOME}/datasets
+  data_dir: ${oc.env:HOME}/datasets/3d-sim2real
+  preprocessed_dir: ${oc.env:HOME}/preprocessed_data
+  debug_preprocessed_dir: ${oc.env:HOME}/.cache/debug_preprocessed_data
 
 ```
 
-# Usage
+# Useful Commands
 
-## Useful Commands
+## Training
+
+Start training with default settings for everything:
+
+```bash
+python train.py ~debug
+```
 
 Start training on dataset DATA (optional), for experiment EXP (optional), on platform PLAT (optional):
 
 ```bash
-python train.py data=DATA experiment=EXP platform=PLAT
+python train.py data=DATA experiment=EXP platform=PLAT ~debug
 ```
+
+Start training without logging to wandb and without saving model checkpoints:
+
+```bash
+python train.py debug="[no_wandb,no_model_checkpoints]"
+```
+
+## Testing
+
+Test a trained model (from local log_dir PATH) by computing MSE against held-out demonstration data:
+
+```bash
+python test.py --config-name=test_on_dataset log_dir=PATH
+```
+
+Test a trained model (from wandb run with id ID) on real robot:
+
+```bash
+python predict.py --config-name=test_real artifact_run_name=ID
+```
+
+Test a trained model (from wandb run with id ID) on an IsaacLab environment: 
+```bash 
+python predict.py --config-name=test_isaac_lab artifact_run_name=ID
+```
+
+Test a trained model (from wandb run with id ID) on an IsaacLab environment and record a video of each episode: 
+```bash 
+python predict.py --config-name=test_isaac_lab artifact_run_name=ID data.env_dataset.env.wrapper_cfgs.names="[RecordVideo,IsaacLabPreProcess]"
+```
+
+## Misc
 
 Visualize dataset DATA (optional), after applying transforms for experiment EXP. You must also choose whether to render RGB images with render_cameras or pointcloud with render_pointcloud. Simultaneously rendering both is not possible.
 
 ```bash
 # to render images:
-python predict.py -cn visualize_dataset obs_modality=rgbd_imagenet transforms@agent.obs_encoder.t9_render=render_cameras data=DATA
+python predict.py --config-name=visualize_dataset obs_modality=rgbd_imagenet transforms@agent.obs_encoder.t9_render=render_cameras data=DATA
 # to render point clouds:
-python predict.py -cn visualize_dataset obs_modality=sim_pointclouds transforms@agent.obs_encoder.t9_render=render_pointcloud data=DATA
+python predict.py --config-name=visualize_dataset obs_modality=sim_pointclouds transforms@agent.obs_encoder.t9_render=render_pointcloud data=DATA
 ```
 
 Open loop replay on real robot using dataset DATA:
 
 ```bash
-python predict.py -cn=open_loop_replay data@agent.replay_data=DATA
-```
-
-Test a trained model from wandb run with id ID on real robot:
-
-```bash
-python predict.py -cn=test_real artifact_run_name=ID
+python predict.py --config-name=open_loop_replay data@agent.replay_data=DATA
 ```
 
 Visualize observations produced by vision pipeline for experiment EXP on real robot:
 
 ```bash
-python predict.py -cn=visualize_real_robot experiment=EXP
+python predict.py --config-name=visualize_real_robot experiment=EXP
 ```
 
-Test a trained model on an IsaacLab environment using the wandb-id: 
-  ```bash 
-  python predict.py --cn test_isaac_lab artifact_run_name: 47v5jb3c
-  ```
 
-Test a trained model on an IsaacLab environment using the wandb-id and record a video of each episode: 
-  ```bash 
-  python predict.py --cn test_isaac_lab data.env_dataset.env.wrapper_cfgs.names=[RecordVideo,IsaacLabPreProcess] artifact_run_name: 47v5jb3c
-  ```
 In case there is a problem about using a determinisic environment set: CUBLAS_WORKSPACE_CONFIG=:4096:8
 
 Control the robot with teleoperation with e.g. keyboard in IsaacLab environment: 

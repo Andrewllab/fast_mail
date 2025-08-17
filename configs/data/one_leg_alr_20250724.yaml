@@ -1,25 +1,33 @@
-# recorded with rate limit 50fps, sim_dt = 0.01, decimation = 2
+# recorded with rate limit 30fps, sim_dt = 0.01, decimation = 2
 
 defaults:
   - default
   - isaac
-  # # since this dataset was recorded at 50 fps, subsample by a factor of 4
-  # - /transforms@preprocess_transforms.t0_subsample: time_subsample
+  # # trim idle frames from the start of each demonstration
+  # - /transforms@preprocess_transforms.t0-1_trim_idle: action_trim_idle
+  # # since this dataset was recorded at 30 fps, subsample by a factor of 3
+  # - /transforms@preprocess_transforms.t0-2_subsample: time_subsample
+  # convert actions to chunks of absolute target poses relative to the current frame
+  - /transforms@preprocess_transforms.t0-3_relative_actions: action_abs_to_relative_chunk
+  # normalize relative actions so that the max magnitude of each action dimension is 1.0
+  - /transforms@preprocess_transforms.t0-4_normalize_actions: action_norm_max
 
 task_suite: furniture_bench
 task: one_leg
-name: 2025-07-24_metaquest3
+name: metaquest3_2025-07-24
 
 dataset:
   _target_: environments.datasets.furniture_bench_alr_v3.AlrFurnitureBenchDataset
   _partial_: True  # requires transforms at runtime
   root_dir: ${paths.data_dir}/insert_one_leg/isaac_sim/metaquest3_2025-07-24
-  preprocessed_dir: ${paths.preprocessed_dir}/metaquest3_2025-07-24/base
+  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
   action_seq_len: 30
   obs_seq_len: 1
 
-# preprocess_transforms:
-#   t0_subsample:
-#     factor: 4
+preprocess_transforms:
+  t0-2_subsample:
+    factor: 2
+  t0-3_relative_actions:
+    reference: current_ee_pose
 
 device: cpu  # this dataset is maybe small enough to fit in memory

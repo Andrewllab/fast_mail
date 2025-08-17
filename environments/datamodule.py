@@ -1,23 +1,30 @@
 from __future__ import annotations
 
+import itertools
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import Any, Callable, Literal
 
 import hydra
 import lightning as L
+import torch.nn as nn
 from omegaconf import DictConfig
 from tensordict import NonTensorData, TensorDict, is_leaf_nontensor
-from torch import Tensor, device
-from torch.utils.data import DataLoader, random_split
+from torch import device
+from torch.utils.data import DataLoader, Subset, random_split
 
+from callbacks.action_writer import ActionWriter
+from environments.base_dataset import DeviceType, TrajectoryDataset
 from environments.collate import update_collate_fn_map
-from transforms.base_transform import init_transforms
-
-if TYPE_CHECKING:
-    from environments.base_dataset import DeviceType, TrajectoryDataset
-    from environments.gym_env_dataset import GymEnvDataset
-    from environments.specs import DataSpecs
-    from transforms.base_transform import TransformPartialsDict
+from environments.gym_env_dataset import GymEnvDataset
+from environments.specs import DataSpecs
+from transforms.base_transform import (
+    Compose,
+    NormalizingTransform,
+    ReversibleTransform,
+    Sequential,
+    TransformPartialsDict,
+    init_transforms,
+)
 
 log = logging.getLogger(__name__)
 
@@ -59,13 +66,11 @@ class TrajectoryDataModule(L.LightningDataModule):
                 f"CPU transforms are not supported when dataset is stored on GPU."
             )
 
-        self.dataset = None
-        self.eval_dataset = None
-        self.cpu_batch_transform = None
-        self.gpu_batch_transform = None
-        self._specs = None
+        self.dataset: TrajectoryDataset | Subset | None = None
+        self.eval_dataset: TrajectoryDataset | Subset | None = None
+        self._specs: DataSpecs | None = None
 
-        self.env = None
+        self.env: GymEnvDataset | None = None
 
     def setup(self, stage: str) -> None:
 
@@ -115,12 +120,13 @@ class TrajectoryDataModule(L.LightningDataModule):
             if self._dataset is None:
                 raise ValueError("Dataset is not specified. Please provide a dataset.")
             log.debug("Instantiating dataset...")
-            self.dataset: TrajectoryDataset = self._dataset(
+            self.dataset = self._dataset(
                 device=self.device,
                 transforms=self._cpu_transforms,
                 preprocess_transforms=self._preprocess_transforms,
             )
             specs = self.dataset.specs
+            # TODO: save preprocess_transforms directly to datamodule
 
             log.debug("Instantiating cpu batch transforms...")
             self.cpu_batch_transform, specs = init_transforms(
@@ -145,22 +151,18 @@ class TrajectoryDataModule(L.LightningDataModule):
                 )
             log.debug("Instantiating environment...")
             # padding DictConfig avoids importing simulation modules until they are needed
-            self.env: GymEnvDataset = hydra.utils.instantiate(
-                self._env, _partial_=False
-            )
+            self.env = hydra.utils.instantiate(self._env, _partial_=False)
             specs = self.env.specs
 
-            pretransforms = self._preprocess_transforms
-            if self._cpu_transforms is not None:
-                if pretransforms is not None:
-                    pretransforms = {**pretransforms, **self._cpu_transforms}
-                else:
-                    pretransforms = self._cpu_transforms
-
+            # TODO: actually just drop preprocessing and cpu transforms
+            # preprocessing allows for transforms that should only be reversed
+            # cpu transforms cannot be applied after collating, so just drop them
+            preprocess = self._preprocess_transforms or {}
+            cpu_transforms = self._cpu_transforms or {}
+            pretransforms = {**preprocess, **cpu_transforms}
             cpu_batch_transforms = self._cpu_batch_transforms
-            gpu_batch_transforms = self._gpu_batch_transforms
 
-            if pretransforms is not None:
+            if pretransforms:
                 if cpu_batch_transforms is not None:
                     log.debug(
                         "Prepending preprocess and cpu transforms to cpu batch transforms for gym environment..."
@@ -169,19 +171,11 @@ class TrajectoryDataModule(L.LightningDataModule):
                         **pretransforms,
                         **cpu_batch_transforms,
                     }
-                elif gpu_batch_transforms is not None:
-                    log.debug(
-                        "Prepending preprocess and cpu transforms to gpu batch transforms for gym environment..."
-                    )
-                    gpu_batch_transforms = {
-                        **pretransforms,
-                        **gpu_batch_transforms,
-                    }
                 else:
                     log.debug(
-                        "Using preprocess and cpu transforms as gpu batch transforms for gym environment..."
+                        "Using preprocess and cpu transforms as cpu batch transforms for gym environment..."
                     )
-                    gpu_batch_transforms = pretransforms
+                    cpu_batch_transforms = pretransforms
 
             log.debug("Instantiating cpu batch transforms for environment...")
             self.env_cpu_batch_transform, specs = init_transforms(
@@ -189,7 +183,7 @@ class TrajectoryDataModule(L.LightningDataModule):
             )
             log.debug("Instantiating gpu batch transforms for environment...")
             self.env_gpu_batch_transform, specs = init_transforms(
-                gpu_batch_transforms, specs
+                self._gpu_batch_transforms, specs
             )
 
             # if we have both a dataset and an environment, we need to check if
@@ -208,6 +202,67 @@ class TrajectoryDataModule(L.LightningDataModule):
                 "Specs are not available until the datamodule has been set up."
             )
         return self._specs
+
+    @property
+    def normalizer(self) -> Sequential | None:
+        if (dataset := self.dataset) is not None:
+            if isinstance(dataset, Subset):
+                dataset = dataset.dataset
+            assert isinstance(dataset, TrajectoryDataset)
+
+            # we only check the preprocess transforms, because normalizers must be
+            # in preprocessing so they can collect stats about the whole dataset
+            normalizers = [
+                t
+                for t in dataset.preprocess_transforms
+                if isinstance(t, NormalizingTransform)
+            ]
+            # normalizers have state, therefore they must inherit from nn.Module, so
+            # we have to use Sequential and not Compose
+            return Sequential(*normalizers) if normalizers else None
+        else:
+            return None
+
+    @property
+    def reverse_transform(self) -> Compose | None:
+        if (dataset := self.dataset) is not None:
+            if isinstance(dataset, Subset):
+                dataset = dataset.dataset
+            assert isinstance(dataset, TrajectoryDataset)
+
+            transforms = itertools.chain(
+                dataset.preprocess_transforms,
+                dataset.transform,
+                self.cpu_batch_transform,
+                self.gpu_batch_transform,
+            )
+
+        elif self.env is not None:
+            # if we have an environment, we also need to reverse the transforms
+            # applied to the environment dataset
+            transforms = itertools.chain(
+                self.env_cpu_batch_transform,
+                self.env_gpu_batch_transform,
+            )
+
+        # note: this isinstance check also includes any normalizing transforms,
+        # which also need to be reversed
+        reversible_transforms = [
+            t for t in transforms if isinstance(t, ReversibleTransform)
+        ]
+
+        cls = (
+            Sequential
+            if any(isinstance(t, nn.Module) for t in reversible_transforms)
+            else Compose
+        )
+
+        return cls(*reversible_transforms) if reversible_transforms else None
+
+    def get_callbacks(self) -> list[L.Callback]:
+        if self.env is not None:
+            return [ActionWriter(self.env)]
+        return []
 
     def train_dataloader(self) -> Any:
         log.debug("Creating new training dataloader...")
@@ -238,10 +293,8 @@ class TrajectoryDataModule(L.LightningDataModule):
             or self.eval_mode == "dataset"
             or isinstance(self.eval_mode, float)
         ):
-            assert self.cpu_batch_transform is not None
             return self.cpu_batch_transform(batch)
         elif self.eval_mode == "env":
-            assert self.env_cpu_batch_transform is not None
             return self.env_cpu_batch_transform(batch)
 
     def transfer_batch_to_device(
@@ -267,10 +320,8 @@ class TrajectoryDataModule(L.LightningDataModule):
             or self.eval_mode == "dataset"
             or isinstance(self.eval_mode, float)
         ):
-            assert self.gpu_batch_transform is not None
             return self.gpu_batch_transform(batch)
         elif self.eval_mode == "env":
-            assert self.env_gpu_batch_transform is not None
             return self.env_gpu_batch_transform(batch)
 
     def _evaluation_dataloader(self, stage: str):
@@ -290,6 +341,7 @@ class TrajectoryDataModule(L.LightningDataModule):
                 num_workers=0,  # this is the default, but we set it explicitly
             )
         elif self.eval_mode == "dataset" or isinstance(self.eval_mode, float):
+            assert self.eval_dataset is not None
             return DataLoader(
                 self.eval_dataset,
                 batch_size=self.batch_size,

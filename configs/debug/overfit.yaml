@@ -10,7 +10,7 @@ job_type: "debug"
 
 data:
   dataset:
-    load_subset: [38]  # load only one trajectory
+    load_subset: [38]  # load selected trajectory
     overwrite_preprocessed: True  # don't worry about overwriting the preprocessed data since we are using a small subset
 
 trainer:

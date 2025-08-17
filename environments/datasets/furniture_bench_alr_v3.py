@@ -106,9 +106,6 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             },  # type: ignore
         )
 
-        # set batch_size in TensorDict, otherwise it can't be indexed
-        traj.auto_batch_size_(batch_dims=1)
-
         return traj
 
     def _load_specs(self, data: TensorDict | None = None) -> None:

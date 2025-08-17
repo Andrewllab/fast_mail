@@ -1,13 +1,20 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+from environments.specs import CameraSpec
+
 
 class BaseCamera(ABC):
     _name: str
+    _spec: CameraSpec
 
     @property
     def name(self) -> str:
         return self._name
+
+    @property
+    def spec(self) -> CameraSpec:
+        return self._spec
 
     @property
     def height_width(self) -> tuple[int, int]:

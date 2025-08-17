@@ -15,12 +15,15 @@ from tensordict import TensorDict
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from environments.specs import DataSpecs, load_specs, save_specs
+from environments.specs import DataSpecs
 from transforms.base_transform import (
+    Compose,
     TransformPartialsDict,
     get_transforms_config,
     init_transforms,
+    load_transforms,
     load_transforms_config,
+    save_transforms,
     save_transforms_config,
 )
 from utils.tensordict import load_tensordict, save_tensordict
@@ -31,11 +34,14 @@ T = TypeVar("T")
 
 log = logging.getLogger(__name__)
 
-SPECS_FILE = "specs.pkl"
-TRANSFORMS_FILE = "transforms.yaml"
+TRANSFORMS_CFG_FILE = "transforms_cfg.yaml"
+TRANSFORMS_PKL_FILE = "transforms.pkl"
 
 
 class TrajectoryDataset(Dataset, ABC):
+    preprocess_transforms: Compose
+    transform: Compose
+
     def __init__(
         self,
         root_dir: os.PathLike,
@@ -79,7 +85,11 @@ class TrajectoryDataset(Dataset, ABC):
         if preprocessed_dir is not None:
             preprocessed_dir = Path(preprocessed_dir)
 
-        if preprocess_transforms is not None:
+        # strip any config nodes that aren't going to get instantiated, and
+        # see if there are any transforms left
+        if preprocess_transforms is not None and get_transforms_config(
+            preprocess_transforms
+        ):
             if preprocessed_dir is None:
                 raise ValueError(
                     "preprocessed_dir must be specified if preprocess_transforms is not None"
@@ -96,34 +106,29 @@ class TrajectoryDataset(Dataset, ABC):
 
         else:
             if self.device != "disk":
+                # trajectories all fit into memory, so we can load them all at once
+                # then we just need to get the specs and collect trajectory lengths
                 raw_files = self._find_raw_files()
 
                 log.info(
-                    f"{self.__class__.__name__}: Loading dataset from {self.root_dir} into memory ({len(raw_files)} trajectories)."
+                    f"{self.__class__.__name__}: Loading dataset from {self.root_dir} into memory ({len(raw_files)} files)."
                 )
                 # load all trajectories into memory
                 trajectories = [
-                    self.load_from_raw_file(filepath) for filepath in raw_files
+                    traj
+                    for filepath in raw_files
+                    for traj in self._load_from_raw_file(filepath)
                 ]
-                if isinstance(trajectories[0], list):
-                    trajectories = [
-                        traj for sublist in trajectories for traj in sublist
-                    ]
                 self.trajectories = trajectories
 
                 self._specs = self.get_specs()
 
-                # collect these statistics we need for TrajectorySlices and
-                # action spec
-                all_actions = torch.cat(
-                    [traj["action"] for traj in self.trajectories], dim=0
-                )
-                self.specs.action.update_stats(all_actions)
-
+                # collect trajectory lengths we need for TrajectorySlices
                 trajectory_lengths = [
-                    int(traj.batch_size[0]) for traj in self.trajectories
+                    traj["obs"].batch_size[0] for traj in self.trajectories
                 ]
                 self.specs.extend_lengths(trajectory_lengths)
+                self.preprocess_transforms = Compose()
 
             else:
                 # cannot load all trajectories into memory, so we need to
@@ -143,15 +148,20 @@ class TrajectoryDataset(Dataset, ABC):
         log.debug(
             f"Dataset trajectories have the following lengths:\n{self._specs.lengths}"
         )
-        # window size is the number of time steps in a sample from the beginning
-        # of the observation to the action of the actions
-        window_size = action_seq_len + obs_seq_len - 1
-        self.slices = TrajectorySlices(self.specs.lengths, window_size)
+        # TODO: add this info to the action specs
+        prechunked = self.trajectories[0]["action"].ndim == 3
+        self.slices = TrajectorySlices(
+            self.specs.lengths,
+            obs_seq_len=obs_seq_len,
+            action_seq_len=action_seq_len,
+            actions_prechunked=prechunked,
+        )
         log.debug(f"Dataset contains {len(self.slices)} samples in total.")
 
         log.debug("Instantiating cpu transforms...")
         self.transform, self._specs = init_transforms(transforms, self._specs)
 
+        # TODO: only update if not pre-chunked, otherwise the action_seq_len is fixed
         # TODO: also update obs_seq_len
         action_spec = self._specs.action
         self._specs = self._specs.replace(
@@ -199,12 +209,12 @@ class TrajectoryDataset(Dataset, ABC):
         In all 3 cases, self.processed_files and self.specs have been set, but
         self.trajectories has not.
         """
-        transforms_file = preprocessed_dir / TRANSFORMS_FILE
-        specs_file = preprocessed_dir / SPECS_FILE
+        transforms_cfg_file = preprocessed_dir / TRANSFORMS_CFG_FILE
+        transforms_pkl_file = preprocessed_dir / TRANSFORMS_PKL_FILE
 
         # If these files don't exist, we assume that preprocessing has not been
         # done yet
-        if not (transforms_file.exists() and specs_file.exists()):
+        if not (transforms_cfg_file.exists() and transforms_pkl_file.exists()):
             # delete the preprocessed directory if it exists and create a new one
             if preprocessed_dir.exists():
                 if not overwrite_preprocessed:
@@ -225,7 +235,8 @@ class TrajectoryDataset(Dataset, ABC):
 
         # Some preprocessed data found, so we need to check if it matches the current
         # preprocess_transforms
-        old_transforms_cfg = load_transforms_config(transforms_file)
+        # TODO: also check dataset config, e.g. action_seq_len (only if actions prechunked), and subset
+        old_transforms_cfg = load_transforms_config(transforms_cfg_file)
         transforms_cfg = get_transforms_config(preprocess_transforms)
         if old_transforms_cfg != transforms_cfg:
             if not overwrite_preprocessed:
@@ -244,14 +255,16 @@ class TrajectoryDataset(Dataset, ABC):
             return
 
         # preprocessed data matches, so we can load it
-        self._specs = load_specs(specs_file)
+        self.preprocess_transforms = load_transforms(transforms_pkl_file)
+        assert isinstance(self.preprocess_transforms, Compose)
+        self._specs = self.preprocess_transforms[-1].specs
         self.processed_files = self._find_processed_files(preprocessed_dir)
         log.info(
-            f"Loading preprocessed data from {preprocessed_dir} ({len(self.processed_files)} trajectories)."
+            f"Loaded preprocessed data from {preprocessed_dir} ({len(self.processed_files)} trajectories)."
         )
 
     def preprocess(
-        self, preprocess_transforms: TransformPartialsDict, preprocessed_dir: Path
+        self, preprocess_partials: TransformPartialsDict, preprocessed_dir: Path
     ) -> None:
         """Runs the preprocessing transforms on the raw data and saves the
         resulting TensorDicts to disk. This method also sets self.specs and
@@ -263,41 +276,56 @@ class TrajectoryDataset(Dataset, ABC):
         raw_files = self._find_raw_files()
 
         specs = self.get_specs()
-        transforms, specs = init_transforms(preprocess_transforms, specs, wrap=False)
-        assert isinstance(transforms, list)
+        preprocess_transforms, specs = init_transforms(preprocess_partials, specs)
+        assert isinstance(preprocess_transforms, Compose)
+        assert specs == preprocess_transforms[-1].specs
 
+        # TODO: implement multiprocessing and optionally running on GPU
         processed_files = []
         for raw_file in raw_files:
-            trajs = self.load_from_raw_file(raw_file)
+            trajs = self._load_from_raw_file(raw_file)
             log.debug(f"Preprocessing trajectories from file {raw_file}")
-            if isinstance(trajs, list):
+            if not isinstance(trajs, list):
+                # if we have a single trajectory, we need to wrap it in a list
+                trajs = [trajs]
+
+            # apply the transforms in order to the trajectories, handling the
+            # case where a transform returns multiple trajectories for each
+            # input trajectory
+            for transform in preprocess_transforms:
+                next_trajs = []
+                for traj in trajs:
+                    # apply the transform to each trajectory
+                    traj = transform.call_trajectory(traj)
+                    if isinstance(traj, list):
+                        next_trajs.extend(traj)
+                    else:
+                        next_trajs.append(traj)
+
+                trajs = next_trajs
+
+            if len(trajs) == 1:
+                filenames = [preprocessed_dir / f"{raw_file.stem}"]
+            else:
                 filenames = [
                     preprocessed_dir / f"{raw_file.stem}_{i:03d}"
                     for i in range(len(trajs))
                 ]
-            else:
-                trajs = [trajs]
-                filenames = [preprocessed_dir / f"{raw_file.stem}"]
 
             for traj, filename in zip(trajs, filenames):
-                # TODO: handle the case where multiple trajectories are created
-                # TODO: implement multiprocessing and optionally running on GPU
-                for transform in transforms:
-                    traj = transform.call_trajectory(traj)
-
-                specs.action.update_stats(traj["action"])
-                specs.append_length(int(traj.batch_size[0]))
+                specs.append_length(traj["obs"].batch_size[0])
 
                 save_tensordict(traj, filename, specs)
                 processed_files.append(filename)
 
         # save the specs and transforms to the preprocessed directory to
         # to indicate that preprocessing completed successfully
-        transforms_file = preprocessed_dir / TRANSFORMS_FILE
-        specs_file = preprocessed_dir / SPECS_FILE
-        save_transforms_config(preprocess_transforms, transforms_file)
-        save_specs(specs, specs_file)
+        transforms_cfg_file = preprocessed_dir / TRANSFORMS_CFG_FILE
+        transforms_pkl_file = preprocessed_dir / TRANSFORMS_PKL_FILE
+        save_transforms_config(preprocess_partials, transforms_cfg_file)
+        save_transforms(preprocess_transforms, transforms_pkl_file)
 
+        self.preprocess_transforms = preprocess_transforms
         self._specs = specs
         self.processed_files = processed_files
 
@@ -305,7 +333,7 @@ class TrajectoryDataset(Dataset, ABC):
         return len(self.slices)
 
     def __getitem__(self, idx: int) -> TensorDict:
-        traj_idx, start, end = self.slices(idx)
+        traj_idx, obs_idx, action_idx = self.slices(idx)
 
         if self.device != "disk":
             # if dataset fits into memory, we can just index a list
@@ -314,20 +342,17 @@ class TrajectoryDataset(Dataset, ABC):
         else:
             # if dataset does not fit into memory, then we have a preprocessed
             # version that we can load from disk
-            trajectory = load_tensordict(self.processed_files[traj_idx], start, end)
+            # TODO: optimize by loading only the relevant slice
+            trajectory = load_tensordict(self.processed_files[traj_idx])
             # since we have already sliced the tensordict, adjust start and end
-            start, end = 0, None
+            obs_idx, action_idx = None, None
 
         # create new TensorDict because we cannot inherit batch_size from
         # trajectory, as obs and action have different leading dims
         data = TensorDict(
             {
-                # index `obs_seq_len` many observations at the start of the
-                # window
-                "obs": trajectory["obs"][start : start + self.obs_seq_len],
-                # actions start at the last observation and stop at the end
-                # of the window
-                "action": trajectory["action"][start + self.obs_seq_len - 1 : end],
+                "obs": trajectory["obs"][obs_idx],
+                "action": trajectory["action"][action_idx],
             }
         )
         if "goal" in trajectory:
@@ -338,12 +363,26 @@ class TrajectoryDataset(Dataset, ABC):
         data = self.transform(data)
         return data
 
-    def _find_raw_files(self) -> list[Path]:
+    def _find_raw_files(self) -> Sequence[Path]:
         files = self.find_raw_files()
 
         files = list(sorted(files, key=keyfunc))
 
         return get_subset(files, self.load_subset)
+
+    def _load_from_raw_file(self, filepath: Path) -> list[TensorDict]:
+        trajectories = self.load_from_raw_file(filepath)
+        if not isinstance(trajectories, list):
+            trajectories = [trajectories]
+
+        # obs TensorDict needs to have a batch dimension so we can index it in __getitem__
+        # trajectory TensorDict should probably have no batch dimension, in case
+        # we prechunk the actions and they have a different leading dimension
+        for traj in trajectories:
+            traj.auto_batch_size_(batch_dims=0)
+            traj["obs"].auto_batch_size_(batch_dims=1)
+
+        return trajectories
 
     def _find_processed_files(self, preprocessed_dir: Path) -> list[Path]:
         """Find all processed files in the preprocessed directory."""
@@ -386,9 +425,24 @@ class TrajectorySlices:
             the observation sequence length.
     """
 
-    def __init__(self, traj_lengths: Sequence[int], window_size: int):
+    # TODO: either restore compatibility with batches of indices or ensure
+    # that only a single index is passed to __call__
+
+    def __init__(
+        self,
+        traj_lengths: Sequence[int],
+        obs_seq_len: int,
+        action_seq_len: int,
+        actions_prechunked: bool = False,
+    ) -> None:
         self.traj_lengths = traj_lengths
-        self.window_size = window_size
+        self.obs_seq_len = obs_seq_len
+        self.action_seq_len = action_seq_len
+        self.actions_prechunked = actions_prechunked
+
+        # window size is the number of time steps in a sample from the beginning
+        # of the observation to the action of the actions
+        self.window_size = obs_seq_len + action_seq_len - 1
 
         self._samples_per_traj = [
             traj_length - self.window_size + 1
@@ -410,16 +464,33 @@ class TrajectorySlices:
 
     def __call__(
         self, idx: int | Sequence[int]
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, slice | np.ndarray, slice | np.ndarray]:
         # find which trajectory the idx belongs to by sorting into upper bounds
         traj_idx = np.searchsorted(self._upper_bounds, idx, side="right")
 
         # find offset within the trajectory by subtracting the lower bound
-        start = idx - self._lower_bounds[traj_idx]
+        obs_start = idx - self._lower_bounds[traj_idx]
 
-        end = start + self.window_size
+        # index `obs_seq_len` many observations at the start of the window
+        # we always need a slice because we always expect a time dimension
+        # even if we only have one observation
+        obs_idx = slice(obs_start, obs_start + self.obs_seq_len)
 
-        return traj_idx, start, end
+        if self.actions_prechunked:
+            # if actions are prechunked, we can just return the action indices
+            action_idx = obs_start + self.obs_seq_len - 1
+        else:
+            # if actions are not prechunked, we need to return a slice
+            # actions start at the last observation and stop at the end of the window
+            action_idx = slice(
+                obs_start + self.obs_seq_len - 1,
+                obs_start + self.window_size,
+            )
+
+        return traj_idx, obs_idx, action_idx
+
+    def __repr__(self) -> str:
+        return f"TrajectorySlices(traj_lengths={self.traj_lengths}, obs_seq_len={self.obs_seq_len}, action_seq_len={self.action_seq_len})"
 
 
 def get_subset(

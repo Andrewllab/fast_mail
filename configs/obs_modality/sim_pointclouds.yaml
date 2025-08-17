@@ -26,4 +26,4 @@ data:
     t5_voxel_downsample:
       size: 0.006
   dataset:
-    preprocessed_dir: ${paths.preprocessed_dir}/dataset_11.04.25/pointclouds
+    preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/pointclouds

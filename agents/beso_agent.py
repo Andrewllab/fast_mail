@@ -1,26 +1,26 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Callable, Iterable, Type
+from typing import Callable, Iterable
 
 import torch
 import torch.nn.functional as F
+from torch import Tensor
+from torch.nn import Module
+from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.optimizer import Optimizer
 
 from agents.base_agent import BaseAgent
+from agents.edm_diffusion.gc_sampling import NoiseScheduleType, SamplerType
+from agents.edm_diffusion.noise_distributions import NoiseDistributionType
 from agents.edm_diffusion.utils import unsqueeze_to
-
-if TYPE_CHECKING:
-    from torch import Tensor
-    from torch.nn import Module
-    from torch.optim.lr_scheduler import LRScheduler
-    from torch.optim.optimizer import Optimizer
-
-    from agents.edm_diffusion.gc_sampling import NoiseScheduleType, SamplerType
-    from agents.edm_diffusion.noise_distributions import NoiseDistributionType
-    from agents.utils.scaler import Scaler
-    from environments.specs import DataSpecs
-    from transforms.base_transform import TransformPartial, TransformPartialsDict
-
+from environments.specs import DataSpecs
+from transforms.base_transform import (
+    Compose,
+    Sequential,
+    TransformPartial,
+    TransformPartialsDict,
+)
 
 log = logging.getLogger(__name__)
 
@@ -35,24 +35,26 @@ class BesoAgent(BaseAgent):
         obs_encoder: TransformPartialsDict,
         optimizer: Callable[[Iterable[Tensor]], Optimizer],
         lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
-        scaler: Type[Scaler],
-        goal_encoder: TransformPartial | None,
         specs: DataSpecs,
         num_sampling_steps: int,
         sigma_data: float,
         sigma_min: float,
         sigma_max: float,
         ema_decay: float = 0.0,
+        goal_encoder: TransformPartial | None = None,
+        normalizer: Sequential | None = None,
+        reverse_transform: Compose | None = None,
     ):
         super().__init__(
             model=noise_model,
             obs_encoder=obs_encoder,
             optimizer=optimizer,
             lr_scheduler=lr_scheduler,
-            scaler=scaler,
-            goal_encoder=goal_encoder,
             specs=specs,
             ema_decay=ema_decay,
+            goal_encoder=goal_encoder,
+            normalizer=normalizer,
+            reverse_transform=reverse_transform,
         )
 
         self.noise_distribution = noise_distribution
@@ -70,13 +72,13 @@ class BesoAgent(BaseAgent):
         """
         Computes the score matching loss given the perceptual embedding, latent goal, and desired actions.
         """
+        batch = self.normalizer(batch)
         batch = self.goal_encoder(batch)
         batch = self.obs_encoder(batch)
 
         obs, goal = batch["obs", "embed"], batch.get(("goal", "embed"), None)
         action = batch["action"]
 
-        action = self.scaler.normalize(action)
         sigma = self.noise_distribution(shape=(len(action),), device=self.device)
         noise = torch.randn_like(action)
 
@@ -97,6 +99,7 @@ class BesoAgent(BaseAgent):
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
         """Denoise the next sequence of actions"""
+        batch = self.normalizer(batch)  # maybe normalize reference actions
         batch = self.goal_encoder(batch)
         batch = self.obs_encoder(batch)
 
@@ -114,7 +117,7 @@ class BesoAgent(BaseAgent):
         )
 
         action = self.sampler(
-            model=self,
+            model=self,  # call self.forward to evaluate the model
             state=obs,
             action=x,
             goal=goal,
@@ -122,12 +125,14 @@ class BesoAgent(BaseAgent):
             scaler=None,  # scalar only used for clipping actions
         )
 
-        action = self.scaler.unnormalize(action)
+        batch["prediction"] = action
 
-        return action
+        batch = self.reverser.reverse(batch)
+
+        return batch["prediction"]
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        action = self.predict_step(batch, batch_idx)
+        prediction = self.predict_step(batch, batch_idx)
 
         metrics = {}
 
@@ -136,14 +141,15 @@ class BesoAgent(BaseAgent):
 
         if "action" in batch:
             # only if we are validating on demonstration data
-            error = F.mse_loss(action, batch["action"])
+            # TODO: are both actions unnormalized here? (especially for relative actions)
+            error = F.mse_loss(prediction, batch["action"])
             metrics["val_action_mse"] = error
 
         # log these values per epoch
         self.log_dict(metrics, batch_size=batch.shape[0])
 
-        # return the actions in case we want to write them back to the environment
-        return action
+        # return the prediction in case we want to write it back to the environment
+        return prediction
 
     # validation and testing are identical
     test_step = validation_step

@@ -21,7 +21,7 @@ class SubsampleTime(Transform):
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def __call__(self, tensordict: TensorDict) -> TensorDict:
+    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
         # convert delta ee pose actions to a trajectory of desired end effector
         # poses
         delta_ee_pose = tensordict["action"][..., :-1]

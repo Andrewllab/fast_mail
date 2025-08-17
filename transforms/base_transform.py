@@ -3,11 +3,12 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import pickle
 import re
 from abc import ABC, ABCMeta, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 import torch.nn as nn
 from omegaconf import ListConfig, OmegaConf
@@ -71,7 +72,7 @@ class Transform(ABC, metaclass=TransformModuleMeta):
         """
         return self._mapping_idx
 
-    def __call__(self, tensordict: TensorDict) -> Any:
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
 
         try:
             for idx, key_mapping in enumerate(self.key_mappings):
@@ -113,15 +114,80 @@ class Transform(ABC, metaclass=TransformModuleMeta):
     # of __call__
     forward = __call__
 
-    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
+    def call_trajectory(
+        self, tensordict: TensorDict
+    ) -> TensorDict | Sequence[TensorDict]:
         """Transform a tensordict representing a complete trajectory (rather
-        than a batch of samples). By default, this is the same as
-        __call__/forward, but can be overridden in child classes.
+        than a batch of samples). This is used during preprocessing, as it
+        gives the transform more freedom to modify the data.
+
+        By default, call_trajectory is the same as __call__/forward, but can
+        be overridden in child classes.
         """
         return self(tensordict)
 
 
-class Compose:
+class ReversibleTransform(Transform):
+    @property
+    def reverse_key_mappings(self) -> list[KeyMapping]:
+        # TODO: add nice default that replace "action" with "prediction"
+        raise NotImplementedError
+
+    def reverse(self, tensordict: TensorDict) -> TensorDict:
+
+        try:
+            for idx, key_mapping in enumerate(self.reverse_key_mappings):
+                self._mapping_idx = idx
+
+                in_keys = key_mapping.in_keys
+                if not isinstance(in_keys, list):
+                    in_keys = [in_keys]
+
+                # we get the inputs with a default value of None, allowing
+                # support for missing keys
+                inputs = (tensordict.get(key, None) for key in in_keys)
+                outputs = self._reverse_one(*inputs, *key_mapping.args)
+
+                out_keys = key_mapping.out_keys
+                if out_keys == "_":
+                    # if out_keys is "_", no writeback is performed
+                    continue
+                if not isinstance(outputs, tuple):
+                    outputs = (outputs,)
+                if not isinstance(out_keys, list):
+                    out_keys = [out_keys]
+                for out_key, output in zip(out_keys, outputs):
+                    tensordict.set(out_key, output)
+
+            return tensordict
+
+        except NotImplementedError as e:
+            raise NotImplementedError(
+                "A transform must either define a key_mappings property or implement __call__."
+            ) from e
+
+    def _reverse_one(self, *args: Any, **kwargs: Any) -> Any:
+        """Reverses the transformation applied by this transform for a single key mapping."""
+        raise NotImplementedError(
+            "ReversibleTransform must implement reverse_one method to reverse the transformation for a single key mapping."
+        )
+
+
+class NormalizingTransform(ReversibleTransform):
+    """A normalizing transform is one that executes in 3 different contexts.
+    It implements call_trajectory to collect dataset statistics during
+    preprocessing. Its __call__ (or _call_one) method normalizes the data, and
+    its reverse (or _reverse_one) method un-normalizes the data.
+
+    A normalization that doesn't require dataset statistics can be implemented
+    as a simple ReversibleTransform, which doesn't need to save state or run
+    during preprocessing.
+    """
+
+    pass
+
+
+class Compose(ReversibleTransform):
     """Composes several transforms together. This transform does not support torchscript.
     Please, see the note below.
 
@@ -150,42 +216,93 @@ class Compose:
     Modified from: https://github.com/pytorch/vision/blob/main/torchvision/transforms/transforms.py#L60
     """
 
-    def __init__(self, *transforms: Callable | Mapping[str, Callable]):
-        self._transforms: dict[str, Callable] = {}  # similar to nn.Module._modules
+    def __init__(
+        self,
+        *transforms: Transform | Mapping[str, Transform],
+        specs: DataSpecs | None = None,
+    ):
+        self._transforms: dict[str, Transform] = {}  # similar to nn.Module._modules
 
         if len(transforms) == 1 and isinstance(transforms[0], Mapping):
-            for key, module in transforms[0].items():
-                self._transforms[key] = module
+            for key, transform in transforms[0].items():
+                self._transforms[key] = transform
         else:
-            for idx, module in enumerate(transforms):
-                self._transforms[str(idx)] = module
+            for idx, transform in enumerate(transforms):
+                assert isinstance(transform, Transform)
+                key = str(idx)
+                self._transforms[key] = transform
+
+        self._specs = specs
+
+    @property
+    def specs(self) -> DataSpecs:
+        if self._transforms:
+            return list(self._transforms.values())[
+                -1
+            ].specs  # specs of the last transform
+        else:
+            if self._specs is None:
+                raise RuntimeError(
+                    "This Compose transform is empty, but no specs were provided. Please provide them on initialization."
+                )
+            return self._specs
+
+    def __getitem__(self, idx: int | str | slice) -> Transform | list[Transform]:
+        if isinstance(idx, str):
+            return self._transforms[idx]
+        elif isinstance(idx, (int, slice)):
+            return list(self._transforms.values())[idx]
+        else:
+            raise TypeError(f"Expected idx to be an int, str or slice, got {type(idx)}")
+
+    def __len__(self) -> int:
+        return len(self._transforms)
+
+    def __iter__(self) -> Iterator[Transform]:
+        return iter(self._transforms.values())
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         for t in self._transforms.values():
             tensordict = t(tensordict)
         return tensordict
 
+    def reverse(self, tensordict: TensorDict) -> TensorDict:
+        # apply transforms in reverse order
+        for t in reversed(self._transforms.values()):
+            if not isinstance(t, ReversibleTransform):
+                raise TypeError(
+                    f"Cannot reverse {t} as it is not a ReversibleTransform."
+                )
+            tensordict = t.reverse(tensordict)
+        return tensordict
+
     def __repr__(self) -> str:
-        format_string = self.__class__.__name__ + "("
-        for t in self._transforms:
-            format_string += "\n"
-            format_string += f"    {t}"
-        format_string += "\n)"
-        return format_string
+        if not self._transforms:
+            return f"{self.__class__.__name__}()"
+
+        parts = [self.__class__.__name__ + "("]
+        for name, t in self._transforms.items():
+            parts.append(f"    {name}: {t}")
+        parts.append(")")
+        return "\n".join(parts)
 
 
-class Sequential(nn.Module):
+class Sequential(nn.Module, Compose):
     """This class slightly modifies the torch.nn.Sequential class to allow for
     inputs that are not nn.Module.
 
     Modified from: https://github.com/pytorch/pytorch/blob/main/torch/nn/modules/container.py#L54
     """
 
-    def __init__(self, *transforms: Callable | Mapping[str, Callable]):
-        super().__init__()
+    def __init__(
+        self,
+        *transforms: Transform | Mapping[str, Transform],
+        specs: DataSpecs | None = None,
+    ):
+        super().__init__()  # nn.Module.__init__
 
         # similar to nn.Module._modules, but not only for nn.Module instances
-        self._transforms: dict[str, Callable] = {}
+        self._transforms: dict[str, Transform] = {}
 
         if len(transforms) == 1 and isinstance(transforms[0], Mapping):
             for key, transform in transforms[0].items():
@@ -193,23 +310,12 @@ class Sequential(nn.Module):
                 setattr(self, key, transform)  # handles Module registration
         else:
             for idx, transform in enumerate(transforms):
+                assert isinstance(transform, Transform)
                 key = str(idx)
                 self._transforms[key] = transform
                 setattr(self, key, transform)  # handles Module registration
 
-    def __getitem__(self, idx: slice | int) -> Sequential | Callable:
-        if isinstance(idx, slice):
-            return self.__class__(dict(list(self._transforms.items())[idx]))
-        else:
-            return list(self._transforms.values())[idx]
-
-    def __setitem__(self, idx: int, transform: Callable) -> None:
-        key: str = list(self._transforms.keys())[idx]
-        self._transforms[key] = transform
-        return setattr(self, key, transform)
-
-    def __len__(self) -> int:
-        return len(self._transforms)
+        self._specs = specs
 
     def __dir__(self):
         keys = super().__dir__()
@@ -217,21 +323,13 @@ class Sequential(nn.Module):
         keys = [key for key in keys if not key.isdigit()]
         return keys
 
-    def __iter__(self) -> Iterator[Callable]:
-        return iter(self._transforms.values())
+    # nn.Module's __repr__ shadows Compose's __repr__, so we need to explicitly assign it
+    __repr__ = Compose.__repr__
 
-    def forward(self, input):
+    def forward(self, input: TensorDict) -> TensorDict:
         for module in self:
             input = module(input)
         return input
-
-    def __repr__(self) -> str:
-        format_string = self.__class__.__name__ + "("
-        for t in self._transforms:
-            format_string += "\n"
-            format_string += f"    {t}"
-        format_string += "\n)"
-        return format_string
 
 
 TransformPartial = Callable[[DataSpecs], Transform]
@@ -263,41 +361,19 @@ def _item_to_sort_key(item: tuple[str, Any]) -> float:
         )
 
 
-def _init_transform(
-    transform: Callable[[DataSpecs], Transform], specs: DataSpecs, wrap: bool = True
-) -> tuple[Transform, DataSpecs] | tuple[list[Transform], DataSpecs]:
-    assert isinstance(transform, functools.partial)
-    log.debug(f"Instantiating transform: <{transform.func.__name__}>")
-
-    # instantiate the transform
-    transform_instance = transform(specs)
-    assert isinstance(transform_instance, Transform)
-    # update the specs
-    specs = transform_instance.specs
-
-    if not wrap:
-        return [transform_instance], specs
-
-    return transform_instance, specs
-
-
 def init_transforms(
-    transforms: TransformPartialsDict | TransformPartial | None,
+    transforms: TransformPartialsDict | None,
     specs: DataSpecs,
-    wrap: bool = True,
-) -> tuple[Callable, DataSpecs] | tuple[list[Transform], DataSpecs]:
+) -> tuple[Compose, DataSpecs]:
     """Instantiates a sequence of transforms from a dictionary of transform partials,
     while propagating the specs through the sequence.
 
-    :param transforms: A mapping containing transforms, where the first part of the key
+    :param transforms: A mapping containing transform partials, where the first part of the key
     (before the "_") acts as the sort key.
     :return: The instantiated transforms wrapped in a TensorDictSequential, and the final specs.
     """
     if transforms is None:
-        return lambda x: x, specs
-
-    if callable(transforms):
-        return _init_transform(transforms, specs, wrap=wrap)
+        return Compose(specs=specs), specs
 
     # filter out any values that are not partials
     transforms = {
@@ -325,36 +401,34 @@ def init_transforms(
         specs = transform.specs
         transform_instances[name] = transform
 
-    if not wrap:
-        return list(transform_instances.values()), specs
-
     cls = (
         Sequential
         if any(isinstance(t, nn.Module) for t in transform_instances.values())
         else Compose
     )
 
-    return cls(transform_instances), specs
+    return cls(transform_instances, specs=specs), specs
 
 
-def get_transforms_config(transforms: TransformPartialsDict) -> ListConfig:
+def get_transforms_config(transform_partials: TransformPartialsDict) -> ListConfig:
     """Converts a dictionary of transform partials to a minimal config. The
     returned config is a ListConfig, where metadata such as transform names
     or non-partial items have been filtered out.
 
-    :param transforms: A mapping containing transforms, where the first part of the key
+    :param transform_partials: A mapping containing transform_partials, where
+        the first part of the key (before the "_") acts as the sort key
     """
 
     # filter out any values that are not partials
-    transforms = {
-        k: v for k, v in transforms.items() if isinstance(v, functools.partial)
+    transform_partials = {
+        k: v for k, v in transform_partials.items() if isinstance(v, functools.partial)
     }
 
-    # sort dictionary of transforms by the first part of the key, which should be a number
-    transforms = dict(sorted(transforms.items(), key=_item_to_sort_key))
+    # sort dictionary of transform_partials by the first part of the key, which should be a number
+    transform_partials = dict(sorted(transform_partials.items(), key=_item_to_sort_key))
 
     cfg = []
-    for partial in transforms.values():
+    for partial in transform_partials.values():
         cfg.append(
             {
                 "name": partial.func.__name__,
@@ -369,9 +443,9 @@ def get_transforms_config(transforms: TransformPartialsDict) -> ListConfig:
 
 
 def save_transforms_config(
-    transforms: TransformPartialsDict, path: os.PathLike
+    transform_partials: TransformPartialsDict, path: os.PathLike
 ) -> None:
-    cfg = get_transforms_config(transforms)
+    cfg = get_transforms_config(transform_partials)
     with open(path, "w") as f:
         OmegaConf.save(cfg, f)
 
@@ -384,3 +458,16 @@ def load_transforms_config(path: os.PathLike) -> ListConfig:
     if not isinstance(cfg, ListConfig):
         raise ValueError(f"Expected a ListConfig, got {type(cfg)}")
     return cfg
+
+
+def save_transforms(transforms: Transform, path: os.PathLike) -> None:
+    """Saves the transforms to a file."""
+    with open(path, "wb") as f:
+        pickle.dump(transforms, f)
+
+
+def load_transforms(path: os.PathLike) -> Transform:
+    with open(path, "rb") as f:
+        transforms = pickle.load(f)
+
+    return transforms

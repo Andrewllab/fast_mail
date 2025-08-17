@@ -34,6 +34,7 @@ class ActionWriter(BasePredictionWriter):
 
     # add a modified version of on_predict_batch_end to handle validation and
     # testing, where the action is unpacked from the outputs dict
+    # TODO: why is this needed again?
     @override
     def on_validation_batch_end(
         self,
@@ -49,7 +50,7 @@ class ActionWriter(BasePredictionWriter):
         batch_indices = trainer.predict_loop.current_batch_indices
 
         assert isinstance(outputs, dict)
-        action = outputs["action"]
+        action = outputs["prediction"]
 
         self.write_on_batch_end(
             trainer, pl_module, action, batch_indices, batch, batch_idx, dataloader_idx

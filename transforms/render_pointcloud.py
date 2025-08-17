@@ -8,6 +8,7 @@ from torch_geometric.data import Data
 
 from environments.specs import CameraSpec, DataSpecs, PointCloudSpec
 from transforms.base_transform import KeyMapping, Transform
+from utils.math import quaternion_to_matrix
 
 
 class RenderPointCloud(Transform):
@@ -16,7 +17,9 @@ class RenderPointCloud(Transform):
         specs: DataSpecs,
         width: int = 1024,
         height: int = 768,
-        render_coordinate_frames: bool = False,
+        render_camera_poses: bool = False,
+        render_ee_pose: bool = False,
+        pose_frame_size: float = 0.1,
         pcd_key: str = "pcd",
     ) -> None:
 
@@ -37,17 +40,26 @@ class RenderPointCloud(Transform):
         self.vis = vis
 
         self.geometries = {}
+        self.frame_size = pose_frame_size
 
+        # add an extra large coordinate frame at the origin
         origin = o3d.geometry.TriangleMesh.create_coordinate_frame(
-            size=0.3, origin=[0, 0, 0]
+            size=self.frame_size * 3, origin=[0, 0, 0]
         )
         self.vis.add_geometry(origin)
         self.geometries["origin"] = origin
 
-        if render_coordinate_frames:
+        if render_camera_poses:
             # add coordinate frames for cameras
             for key, spec in specs.obs.items():
-                if not isinstance(spec, CameraSpec) or spec.extrinsics is None:
+                if (
+                    not isinstance(spec, CameraSpec)
+                    or spec.extrinsics is None
+                    or spec.dynamic_pose_obs_key is not None
+                ):
+                    # we only need to render cameras that have extrinsics
+                    # for moving cameras, we create a new coordinate frame in
+                    # each loop iteration, so skip it here
                     continue
 
                 key = f"{key}_origin"
@@ -55,15 +67,16 @@ class RenderPointCloud(Transform):
                 rotation = extrinsics[:3, :3]
                 translation = extrinsics[:3, 3]
 
-                camera = o3d.geometry.TriangleMesh.create_coordinate_frame(
-                    size=0.1,
+                camera_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                    size=self.frame_size,
                     origin=translation,
                 )
-                camera.rotate(rotation, center=translation)
+                camera_frame.rotate(rotation, center=translation)
 
-                self.vis.add_geometry(camera)
-                self.geometries[key] = camera
-        self._render_coordinate_frames = render_coordinate_frames
+                self.vis.add_geometry(camera_frame)
+                self.geometries[key] = camera_frame
+        self.render_camera_poses = render_camera_poses
+        self.render_ee_pose = render_ee_pose
 
         self._output_specs = specs
 
@@ -82,6 +95,7 @@ class RenderPointCloud(Transform):
         points, color = data_to_o3d(data)
 
         if "pcd" not in self.geometries:
+            # on first call
             pcd = o3d.geometry.PointCloud(points)
             if color is not None:
                 pcd.colors = color
@@ -97,7 +111,7 @@ class RenderPointCloud(Transform):
 
             self.vis.update_geometry(pcd)
 
-        if self._render_coordinate_frames:
+        if self.render_camera_poses:
             for key, spec in self._output_specs.obs.items():
                 if (
                     not isinstance(spec, CameraSpec)
@@ -116,23 +130,49 @@ class RenderPointCloud(Transform):
                 # chain the dynamic extrinsics with the static extrinsics
                 assert spec.extrinsics is not None
                 extrinsics = dynamic_extrinsics @ spec.extrinsics
-                extrinsics = extrinsics.numpy()
+                extrinsics = extrinsics.cpu().numpy()
                 rotation = extrinsics[:3, :3]
                 translation = extrinsics[:3, 3]
 
                 # since we can't set an absolute pose, remove the old coordinate
                 # frame and add a new one with the correct pose
-                camera = self.geometries[key]
-                self.vis.remove_geometry(camera, reset_bounding_box=False)
+                try:
+                    camera_frame = self.geometries[key]
+                    self.vis.remove_geometry(camera_frame, reset_bounding_box=False)
+                except KeyError:
+                    pass
 
-                camera = o3d.geometry.TriangleMesh.create_coordinate_frame(
-                    size=0.1,
+                camera_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                    size=self.frame_size,
                     origin=translation,
                 )
-                camera.rotate(rotation, center=translation)
+                camera_frame.rotate(rotation, center=translation)
 
-                self.vis.add_geometry(camera, reset_bounding_box=False)
-                self.geometries[key] = camera
+                self.vis.add_geometry(camera_frame, reset_bounding_box=False)
+                self.geometries[key] = camera_frame
+
+        if self.render_ee_pose:
+            ee_pose = tensordict["obs", "ee_pose"].cpu()
+            # remove the batch dimension and index the last element
+            translation = ee_pose[0, -1, :3].numpy()
+            # `quaternion_to_matrix` requires a batch dimension, so leave it in
+            rotation = quaternion_to_matrix(ee_pose[0, -1:, 3:])
+            rotation = rotation.squeeze(dim=0).numpy()
+
+            try:
+                ee_pose_frame = self.geometries["ee_pose"]
+                self.vis.remove_geometry(ee_pose_frame, reset_bounding_box=False)
+            except KeyError:
+                pass
+
+            ee_pose_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                size=self.frame_size,
+                origin=translation,
+            )
+            ee_pose_frame.rotate(rotation, center=translation)
+
+            self.vis.add_geometry(ee_pose_frame, reset_bounding_box=False)
+            self.geometries["ee_pose"] = ee_pose_frame
 
         self.vis.poll_events()
         self.vis.update_renderer()

@@ -1,2 +1,5 @@
 _target_: agents.null_agent.NullAgent
+_recursive_: False  # datamodule should not be recursively instantiated, if given
 obs_encoder: null
+# [x, y, z, qw, qx, qy, qz, gripper open]
+null_action: [0, 0, 0, 1, 0, 0, 0, 1]

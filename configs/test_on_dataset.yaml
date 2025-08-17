@@ -1,6 +1,8 @@
+# usage: python test.py -cn test_on_dataset
+
 defaults:
   - data: one_leg_alr_20250724
-  - callbacks: eval_trajectories
+  - callbacks: null  # TODO: test eval_trajectories
   - logger:
   - python_logging: default
   - paths: default
@@ -10,7 +12,7 @@ defaults:
   - _self_
   - platform: default
   - optional local: default
-  - debug: overfit
+  - debug: verbose
 
 # task name, determines output directory path
 job_type: test_on_dataset
@@ -18,7 +20,7 @@ job_type: test_on_dataset
 # either specify a complete checkpoint path...
 log_dir:
 # ...or specify the wandb run name
-artifact_run_name: 4o4q6g7e
+artifact_run_name:
 # project and entity are only needed if they differ from the settings in the wandb logger config
 artifact_project: 3d-sim2real
 artifact_entity: alr-3d-sim2real
@@ -26,10 +28,9 @@ artifact_entity: alr-3d-sim2real
 artifact_version:
 
 data:
-  dataset:
-    action_seq_len: 10
+  # dataset:
+  #   action_seq_len: 10  # you may need to reprocess the dataset if you enable this
   eval_mode: dataset
-  # num_workers: 0  # TODO: change?
 
 trainer:
   default_root_dir: ${paths.output_dir}

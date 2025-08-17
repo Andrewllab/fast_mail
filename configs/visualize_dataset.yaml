@@ -11,10 +11,10 @@ defaults:
   - hydra: default
   - obs_modality: rgbd_imagenet
   - transforms@agent.obs_encoder.t9_render: render_cameras
-  - _self_
   - platform: default
   - optional local: default
   - debug: quick  # cannot use single_batch here, because we want to visualize the whole trajectory
+  - _self_
 
 # task name, determines output directory path
 job_type: visualize_dataset
@@ -23,6 +23,7 @@ data:
   batch_size: 1  # required for visualization
   eval_mode: dataset
   dataset:
+    load_subset: [0]  # load selected trajectory
     action_seq_len: 1  # no action chunks, because only the first frame is rendered
     # # disabled `debug_preprocess` because some transforms only work in preprocessing
     # debug_preprocess: True  # prepend preprocess transforms to cpu transforms
@@ -39,6 +40,11 @@ data:
     t3_to_pcd:
       color: True  # add colors to pointclouds, in case we render pointclouds
 
+    t4_crop_pcd:
+      x_range: [0.0, 1.0]  # increase to keep robot base in view
+      y_range: [-0.4, 0.4]
+      z_range: [0.004, 0.5]  # increase to keep robot arm in view
+
   gpu_batch_transforms:
     t4_norm_image: null  # disable imagenet normalization of colors
 
@@ -46,7 +52,7 @@ data:
       size: 0.004  # increase resolution for better visualization
 
 agent:
-  fps: 30
+  fps: 15
 
 trainer:
   default_root_dir: ${paths.output_dir}

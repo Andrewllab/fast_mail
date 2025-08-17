@@ -330,6 +330,8 @@ class ActionSpec(Spec):
     a_max: torch.Tensor | None = None
     n_actions: int = 0
 
+    # TODO: remove action statistics from the ActionSpec
+
     def __init__(
         self,
         action_dim: int,
@@ -564,8 +566,6 @@ def save_specs(specs: DataSpecs, path: os.PathLike) -> None:
     with open(path, "wb") as f:
         pickle.dump(specs, f)
 
-    log.debug(f"Specs saved to {path}")
-
 
 def load_specs(path: os.PathLike) -> DataSpecs:
     if not os.path.exists(path):
@@ -574,7 +574,6 @@ def load_specs(path: os.PathLike) -> DataSpecs:
     with open(path, "rb") as f:
         specs = pickle.load(f)
 
-    log.debug(f"Specs loaded from {path}")
     return specs
 
 

@@ -18,5 +18,15 @@ env_dataset:
         name: right_cam
       gripper_cam:
         name: gripper_cam
+    robot:
+      home_pose: [  # joint positions
+        0.005649,
+        -0.099542,
+        -0.118758,
+        -2.201725,
+        -0.009681,
+        2.159746,
+        -0.908100,
+      ]
   action_horizon: 5
   fps: 5  # inference should probably be around 10fps on the real robot
