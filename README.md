@@ -12,8 +12,8 @@ git clone --recursive git@github.com:balazsgyenes/fast_mail.git
 
 Create a conda/mamba environment with **Python 3.10** (required for IsaacLab):
 ```bash
-conda create -p ./.env python=3.10
-conda activate ./.env
+mamba create -p ./.env python=3.10
+mamba activate ./.env
 ```
 
 ## Torch
@@ -28,12 +28,21 @@ Install the additional libraries for torch geometric for your specific torch and
 
 ```bash
 python -c "import torch; print(torch.__version__)"
-# >>> 2.6.0
-# TORCH=2.6.0
+# >>> 2.8.0+cu128
 
-python -c "import torch; print(torch.version.cuda)"
-# >>> 12.6
-# CUDA=cu126
+TORCH_PLUS_CUDA=$(python -c "import torch; print(torch.__version__)")
+pip install torch_cluster -f https://data.pyg.org/whl/torch-${TORCH_PLUS_CUDA}.html
+pip install torch_scatter -f https://data.pyg.org/whl/torch-${TORCH_PLUS_CUDA}.html
+```
+
+### Horeka
+
+Horeka only supports CUDA versions 12.4 and 12.9, whereas the default is 12.8, so run the following:
+
+```bash
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu129
+
+module load devel/cuda/12.9
 
 TORCH_PLUS_CUDA=$(python -c "import torch; print(torch.__version__)")
 pip install torch_cluster -f https://data.pyg.org/whl/torch-${TORCH_PLUS_CUDA}.html

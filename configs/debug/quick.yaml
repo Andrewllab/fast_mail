@@ -6,7 +6,7 @@ defaults:
   - verbose
 
 # overwrite task name so debugging logs are stored in separate folder
-job_type: "debug"
+job_type: quick
 
 trainer:
   log_every_n_steps: 1  # since epochs are short, we need to log after every batch

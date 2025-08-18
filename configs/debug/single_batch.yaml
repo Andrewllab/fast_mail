@@ -7,7 +7,7 @@ defaults:
   - verbose
 
 # overwrite task name so debugging logs are stored in separate folder
-job_type: "debug"
+job_type: debug
 
 # disable callbacks and loggers during debugging
 callbacks: null

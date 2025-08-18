@@ -1,12 +1,12 @@
 # @package _global_
 
-# uses only 10% of the training data
+# overfits on a single trajectory, allowing for testing of the learning algorithm itself
 
 defaults:
   - verbose
 
 # overwrite task name so debugging logs are stored in separate folder
-job_type: "debug"
+job_type: overfit
 
 data:
   dataset:

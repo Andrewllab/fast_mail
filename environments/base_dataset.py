@@ -455,7 +455,7 @@ class TrajectorySlices:
         self._upper_bounds = np.cumsum(self._samples_per_traj)
         # this array defines the lower bound of indices that correspond to each
         # trajectory
-        self._lower_bounds = np.concat(([0], self._upper_bounds[:-1]))
+        self._lower_bounds = np.concatenate(([0], self._upper_bounds[:-1]))
 
     def __len__(self) -> int:
         # with a window size of W, each trajectory gives us T-W+1 samples, as long
