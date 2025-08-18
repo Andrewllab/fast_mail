@@ -83,11 +83,11 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         traj = TensorDict(
             {
                 "obs": {
-                    "left_cam": {
+                    "front_left_cam": {
                         "rgb": traj["obs", "front_left_cam", "rgb"],
                         "depth": traj["obs", "front_left_cam", "depth"].squeeze(-1),
                     },
-                    "right_cam": {
+                    "front_right_cam": {
                         "rgb": traj["obs", "front_right_cam", "rgb"],
                         "depth": traj["obs", "front_right_cam", "depth"].squeeze(-1),
                     },
@@ -241,8 +241,8 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
 
         self._specs = DataSpecs(
             obs={
-                "left_cam": left_cam,
-                "right_cam": right_cam,
+                "front_left_cam": left_cam,
+                "front_right_cam": right_cam,
                 "gripper_cam": gripper_cam,
                 "robot_state": robot_state,
                 "ee_pose": ee_pose,
