@@ -14,19 +14,20 @@ env_dataset:
       # run Isaac-Sim with GUI
       headless: False
     wrapper_cfgs:
-      # record_video:
-      #   # if recording is desired, add it first [RecordVideo]
-      #   # names: [RecordVideo]
-      #   video_folder: ${paths.recording_dir}
-      #   # In case not entire episodes needs to be recorded, activate the recorder only every n steps
-      #   #   _target_: environments.simulation.utils.triggers.interval_trigger
-      #   #   step_interval: ???
-      #   episode_trigger:
-      #     _target_: environments.simulation.utils.triggers.episode_trigger
-      #     # record every episode
-      #     episode_interval: 1
-      #   fps: 30
-      #   disable_logger: True
       pre_process:
         obs_seq_len: 1
+      record_video:
+        # if recording is desired, add it first [RecordVideo]
+        # names: [RecordVideo]
+        video_folder: ${paths.recording_dir}
+        # In case not entire episodes needs to be recorded, activate the recorder only every n steps
+        #   _target_: environments.simulation.utils.triggers.interval_trigger
+        #   step_interval: ???
+        episode_trigger:
+          _target_: environments.simulation.utils.triggers.episode_trigger
+          # record every episode
+          episode_interval: 1
+        fps: 30
+        disable_logger: True
+    enabled_wrappers: [pre_process]
   action_horizon: 10
