@@ -193,6 +193,15 @@ class IsaacLabPreProcess(gym.Wrapper):
                                     0
                                 )  # Current convetion: Depth images does not have a channel dim. Also, gym_env_dataset.step_return_to_tensor_dict() adds additional batch dims
 
+        ee_pose = torch.cat(
+            (
+                pre_processed_obs["proprioception"]["eef_pos_w"],  # shape: (T, 3)
+                pre_processed_obs["proprioception"]["eef_quat_w"],  # shape: (T, 4)
+            ),
+            dim=-1,
+        )
+        pre_processed_obs["ee_pose"] = ee_pose
+
         return TensorDict(
             pre_processed_obs,
             device=self.env.unwrapped.device,
