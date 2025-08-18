@@ -44,6 +44,10 @@ class ActionNormMaxMagnitude(NormalizingTransform, nn.Module):
         return [KeyMapping(in_keys="action", out_keys="action")]
 
     def _call_one(self, action: Tensor) -> Tensor:
+        if action is None:
+            # TODO: remove this once we suppor optional key mappings
+            return action
+
         if (self.max_actions == 0.0).any():
             log.warning(
                 "Some dimensions of the action space have a max magnitude of zero. This will cause NaN values after action normalization."
