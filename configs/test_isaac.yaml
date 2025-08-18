@@ -1,5 +1,5 @@
 defaults:
-  - data: isaac
+  - data: one_leg_alr_20250724
   - callbacks:
   - logger:
   - python_logging: default
@@ -7,13 +7,12 @@ defaults:
   - hydra: default
   - transforms@agent.obs_encoder.t3_render: render_cameras
   - _self_
-  - experiment: pointpatchrl
   - platform: default
   - optional local: default
   - debug: verbose
 
 # task name, determines output directory path
-job_type: test_real
+job_type: test_sim
 
 logger:
   wandb:
