@@ -2,13 +2,13 @@ from omegaconf import DictConfig
 from typing import Optional, List
 import gymnasium as gym
 
-from environments.simulation.utils.factories import env_cfg_factory
+from environments.simulation.utils.factories import launch_sim_and_prepare_env_cfg
 from environments.simulation.utils.wrappers import IsaacLabPreProcess
 
 
-def apply_wrappers(env, wrapper_cfgs: DictConfig = None):
+def apply_wrappers(env, enabled_wrappers: List[str], wrapper_cfgs: DictConfig = None):
 
-    for wrapper_name in wrapper_cfgs.keys():
+    for wrapper_name in enabled_wrappers:
         match wrapper_name:
 
             case "record_video":
@@ -31,18 +31,21 @@ def make(
     task_name: str,
     device: str,
     num_envs: int,
-    render_mode: str = None,
-    cli_args: Optional[DictConfig] = None,
-    wrapper_cfgs: List[dict] = [],
+    render_mode: str,
+    cli_args: Optional[DictConfig],
+    wrapper_cfgs: List[dict],
+    enabled_wrappers: List[str],
 ):
 
-    base_env_cfg = env_cfg_factory(task_name, device, num_envs, cli_args)
+    sim_launcher, base_env_cfg = launch_sim_and_prepare_env_cfg(
+        task_name, device, num_envs, cli_args
+    )
 
     env = gym.make(
         id=task_name, cfg=base_env_cfg, num_envs=num_envs, render_mode=render_mode
     )
 
     if wrapper_cfgs:
-        env = apply_wrappers(env, wrapper_cfgs=wrapper_cfgs)
+        env = apply_wrappers(env, enabled_wrappers, wrapper_cfgs)
 
     return env

@@ -4,15 +4,20 @@ from typing import Optional
 from isaaclab.app import AppLauncher
 
 
-def env_cfg_factory(
-    task_name: str, device: str, num_envs: int, cli_args: Optional[DictConfig] = None
-):
-
+def launch_sim(cli_args: Optional[DictConfig] = None) -> AppLauncher:
     # Launch Isaac Sim through the AppLauncher simulation application
     # One could split the simulation start into a separate function and then call it, but making a separate function for one line is over-engineering.
     app_launcher = AppLauncher(cli_args)
 
-    # Import necessary isaac-modules only after starting the simulators since various dependency modules of Isaac Sim are only available after the simulation app is running
+    return app_launcher
+
+
+def resolve_env_cfg(
+    task_name: str,
+    device: str,
+    num_envs: int,
+):
+    # NOTE: Import necessary isaac-modules only after starting the simulator since various dependency modules of Isaac Sim are only available after the simulation app is running
     # For more details: https://isaac-sim.github.io/IsaacLab/main/source/tutorials/00_sim/create_empty.html
     from isaaclab_tasks.utils import parse_env_cfg
 
@@ -26,3 +31,18 @@ def env_cfg_factory(
         device=device,
         num_envs=num_envs,
     )
+
+
+def launch_sim_and_prepare_env_cfg(
+    task_name: str,
+    device: str,
+    num_envs: int,
+    cli_args: Optional[DictConfig] = None,
+):
+    """
+    Launch the simulator and return (launcher, env_cfg).
+    """
+    app_launcher = launch_sim(cli_args)
+    env_cfg = resolve_env_cfg(task_name, device, num_envs)
+
+    return app_launcher, env_cfg
