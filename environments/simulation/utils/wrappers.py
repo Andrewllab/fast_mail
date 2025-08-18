@@ -196,6 +196,7 @@ class IsaacLabPreProcess(gym.Wrapper):
         return TensorDict(
             pre_processed_obs,
             device=self.env.unwrapped.device,
+            batch_size=pre_processed_obs[obs_group_name][obs_element_name].shape[0],
         )
 
     def _preprocess_info(self, info, device, batch_dim):
@@ -211,7 +212,7 @@ class IsaacLabPreProcess(gym.Wrapper):
                 v = v.view(batch_dim, -1)
             pre_processed_info[k] = v
 
-        return TensorDict(pre_processed_info)
+        return TensorDict(pre_processed_info, batch_size=batch_dim)
 
     def _detect_ctrl_mode(self) -> str:
         """Extract the controller and its mode from the environment nam."""
