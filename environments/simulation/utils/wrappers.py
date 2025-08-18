@@ -214,6 +214,10 @@ class IsaacLabPreProcess(gym.Wrapper):
         """
 
         pre_processed_info = info["log"].copy()
+        # !!!TODO: fix this in the environment config!!!
+        pre_processed_info["Episode_Reward/success"] = pre_processed_info[
+            "Episode_Reward/success"
+        ].int()
         for k, v in pre_processed_info.items():
             if not isinstance(v, torch.Tensor):
                 v = torch.tensor(v, device=device)
