@@ -40,3 +40,7 @@ paths:
 platform:
   pin_memory: False  # disable gpu memory pin
   batch_size: 16  # reduce batch size to ensure we have at least 1 batch
+
+torch:
+  print_options:
+    threshold: 10000  # print even large tensors without summarizing
