@@ -805,7 +805,7 @@ def combine_frame_transforms(
     r"""Combine transformations between two reference frames into a stationary frame.
 
     It performs the following transformation operation: :math:`T_{02} = T_{01} \times T_{12}`,
-    where :math:`T_{AB}` is the homogeneous transformation matrix from frame A to B.
+    where :math:`T_{AB}` is the homogeneous transformation matrix from frame B to A.
 
     Args:
         t01: Position of frame 1 w.r.t. frame 0. Shape is (N, 3).
@@ -843,7 +843,7 @@ def subtract_frame_transforms(
     r"""Subtract transformations between two reference frames into a stationary frame.
 
     It performs the following transformation operation: :math:`T_{12} = T_{01}^{-1} \times T_{02}`,
-    where :math:`T_{AB}` is the homogeneous transformation matrix from frame A to B.
+    where :math:`T_{AB}` is the homogeneous transformation matrix from frame B to A.
 
     Args:
         t01: Position of frame 1 w.r.t. frame 0. Shape is (N, 3).
@@ -869,6 +869,36 @@ def subtract_frame_transforms(
     else:
         t12 = quat_apply(q10, -t01)
     return t12, q12
+
+
+@torch.jit.script
+def subtract_frame_transforms2(
+    t12: torch.Tensor,
+    q12: torch.Tensor,
+    t02: torch.Tensor,
+    q02: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    r"""Subtract transformations between two reference frames into a stationary frame.
+
+    It performs the following transformation operation: :math:`T_{01} = T_{02} \times T_{12}^{-1}`,
+    where :math:`T_{AB}` is the homogeneous transformation matrix from frame B to A.
+
+    Args:
+    t12: Position of frame 2 w.r.t. frame 1. Shape is (N, 3).
+    q12: Quaternion orientation of frame 2 w.r.t. frame 1 in (w, x, y, z). Shape is (N, 4).
+    t02: Position of frame 2 w.r.t. frame 0. Shape is (N, 3).
+    q02: Quaternion orientation of frame 2 w.r.t. frame 0 in (w, x, y, z). Shape is (N, 4).
+
+    Returns:
+        A tuple containing the position and orientation of frame 1 w.r.t. frame 0.
+        Shape of the tensors are (N, 3) and (N, 4) respectively.
+    """
+    # compute orientation
+    q21 = quat_inv(q12)
+    q01 = quat_mul(q02, q21)
+    # compute translation
+    t01 = t02 - quat_apply(q01, t12)
+    return t01, q01
 
 
 # @torch.jit.script
