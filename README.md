@@ -212,9 +212,9 @@ Visualize dataset DATA (optional), after applying transforms for experiment EXP.
 
 ```bash
 # to render images:
-python predict.py --config-name=visualize_dataset obs_modality=rgbd_imagenet transforms@agent.obs_encoder.t9_render=render_cameras data=DATA
+python predict.py --config-name=visualize_dataset +transforms@agent.obs_encoder.t9_render=render_cameras
 # to render point clouds:
-python predict.py --config-name=visualize_dataset obs_modality=sim_pointclouds transforms@agent.obs_encoder.t9_render=render_pointcloud data=DATA
+python predict.py --config-name=visualize_dataset obs_modality=sim_pointclouds +transforms@agent.obs_encoder.t9_render_pcd=render_pointcloud
 ```
 
 Open loop replay on real robot using dataset DATA:

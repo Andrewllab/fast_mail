@@ -10,7 +10,9 @@ defaults:
   - paths: default
   - hydra: default
   - obs_modality: rgbd_imagenet
-  - transforms@agent.obs_encoder.t9_render: render_cameras
+  # - transforms@agent.obs_encoder.t9_render: render_cameras
+  # - obs_modality: sim_pointclouds
+  # - transforms@agent.obs_encoder.t9_render_pcd: render_pointcloud
   - platform: default
   - optional local: default
   - debug: quick  # cannot use single_batch here, because we want to visualize the whole trajectory
@@ -53,6 +55,11 @@ data:
 
 agent:
   fps: 15
+  obs_encoder:
+    t9_render_pcd:
+      render_camera_poses: False
+      render_ee_pose: True
+      render_action: True
 
 trainer:
   default_root_dir: ${paths.output_dir}

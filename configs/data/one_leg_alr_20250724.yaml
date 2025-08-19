@@ -7,10 +7,10 @@ defaults:
   # - /transforms@preprocess_transforms.t0-1_trim_idle: action_trim_idle
   # # since this dataset was recorded at 30 fps, subsample by a factor of 3
   # - /transforms@preprocess_transforms.t0-2_subsample: time_subsample
-  # convert actions to chunks of absolute target poses relative to the current frame
-  - /transforms@preprocess_transforms.t0-3_relative_actions: action_abs_to_relative_chunk
-  # normalize relative actions so that the max magnitude of each action dimension is 1.0
-  - /transforms@preprocess_transforms.t0-4_normalize_actions: action_norm_max
+  # # convert actions to chunks of absolute target poses relative to the current frame
+  # - /transforms@preprocess_transforms.t0-3_relative_actions: action_abs_to_relative_chunk
+  # # normalize relative actions so that the max magnitude of each action dimension is 1.0
+  # - /transforms@preprocess_transforms.t0-4_normalize_actions: action_norm_max
 
 task_suite: furniture_bench
 task: one_leg

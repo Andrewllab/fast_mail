@@ -19,6 +19,7 @@ class RenderPointCloud(Transform):
         height: int = 768,
         render_camera_poses: bool = False,
         render_ee_pose: bool = False,
+        render_action: bool = False,
         pose_frame_size: float = 0.1,
         pcd_key: str = "pcd",
     ) -> None:
@@ -75,8 +76,10 @@ class RenderPointCloud(Transform):
 
                 self.vis.add_geometry(camera_frame)
                 self.geometries[key] = camera_frame
+
         self.render_camera_poses = render_camera_poses
         self.render_ee_pose = render_ee_pose
+        self.render_action = render_action
 
         self._output_specs = specs
 
@@ -159,6 +162,8 @@ class RenderPointCloud(Transform):
             rotation = quaternion_to_matrix(ee_pose[0, -1:, 3:])
             rotation = rotation.squeeze(dim=0).numpy()
 
+            # since we can't set an absolute pose, remove the old coordinate
+            # frame and add a new one with the correct pose
             try:
                 ee_pose_frame = self.geometries["ee_pose"]
                 self.vis.remove_geometry(ee_pose_frame, reset_bounding_box=False)
@@ -173,6 +178,31 @@ class RenderPointCloud(Transform):
 
             self.vis.add_geometry(ee_pose_frame, reset_bounding_box=False)
             self.geometries["ee_pose"] = ee_pose_frame
+
+        if self.render_action:
+            action = tensordict["action"].cpu()
+            # remove the batch dimension and index the last element
+            translation = action[0, -1, :3].numpy()
+            # `quaternion_to_matrix` requires a batch dimension, so leave it in
+            rotation = quaternion_to_matrix(action[0, -1:, 3:7])
+            rotation = rotation.squeeze(dim=0).numpy()
+
+            # since we can't set an absolute pose, remove the old coordinate
+            # frame and add a new one with the correct pose
+            try:
+                action_frame = self.geometries["action"]
+                self.vis.remove_geometry(action_frame, reset_bounding_box=False)
+            except KeyError:
+                pass
+
+            action_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                size=self.frame_size,
+                origin=translation,
+            )
+            action_frame.rotate(rotation, center=translation)
+
+            self.vis.add_geometry(action_frame, reset_bounding_box=False)
+            self.geometries["action"] = action_frame
 
         self.vis.poll_events()
         self.vis.update_renderer()
