@@ -99,7 +99,8 @@ class BesoAgent(BaseAgent):
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
         """Denoise the next sequence of actions"""
-        batch = self.normalizer(batch)  # maybe normalize reference actions
+        # normalization is probably redundant here, since the actions get overwritten later
+        batch = self.normalizer(batch)
         batch = self.goal_encoder(batch)
         batch = self.obs_encoder(batch)
 
@@ -125,11 +126,11 @@ class BesoAgent(BaseAgent):
             scaler=None,  # scalar only used for clipping actions
         )
 
-        batch["prediction"] = action
+        batch["action"] = action
 
         batch = self.reverser.reverse(batch)
 
-        return batch["prediction"]
+        return batch["action"]
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         prediction = self.predict_step(batch, batch_idx)
@@ -139,10 +140,9 @@ class BesoAgent(BaseAgent):
         if "success" in batch:
             metrics["val_success"] = batch["success"]
 
-        if "action" in batch:
+        if "ref_action" in batch:
             # only if we are validating on demonstration data
-            # TODO: are both actions unnormalized here? (especially for relative actions)
-            error = F.mse_loss(prediction, batch["action"])
+            error = F.mse_loss(prediction, batch["ref_action"])
             metrics["val_action_mse"] = error
 
         # log these values per epoch

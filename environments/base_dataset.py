@@ -155,7 +155,8 @@ class TrajectoryDataset(Dataset, ABC):
             self.specs.lengths,
             obs_seq_len=obs_seq_len,
             action_seq_len=action_seq_len,
-            actions_prechunked=prechunked,
+            # TODO: maybe remove this from TrajectorySlices?
+            actions_prechunked=False,
         )
         log.debug(f"Dataset contains {len(self.slices)} samples in total.")
 
@@ -353,9 +354,22 @@ class TrajectoryDataset(Dataset, ABC):
         data = TensorDict(
             {
                 "obs": trajectory["obs"][obs_idx],
-                "action": trajectory["action"][action_idx],
             }
         )
+
+        action = trajectory["action"]
+        assert isinstance(action_idx, slice)
+        if action.ndim == 3:
+            # prechunked
+            action = action[action_idx.start]
+        else:
+            assert action.ndim == 2
+            action = action[action_idx]
+        data["action"] = action
+
+        # ref action is never prechunked
+        data["ref_action"] = trajectory["ref_action"][action_idx]
+
         if "goal" in trajectory:
             # this implicitly unwraps any NonTensorData used for storing goal
             data["goal"] = trajectory["goal"]
@@ -376,12 +390,16 @@ class TrajectoryDataset(Dataset, ABC):
         if not isinstance(trajectories, list):
             trajectories = [trajectories]
 
-        # obs TensorDict needs to have a batch dimension so we can index it in __getitem__
-        # trajectory TensorDict should probably have no batch dimension, in case
-        # we prechunk the actions and they have a different leading dimension
         for traj in trajectories:
+            # obs TensorDict needs to have a batch dimension so we can index it in __getitem__
+            # trajectory TensorDict should probably have no batch dimension, in case
+            # we prechunk the actions and they have a different leading dimension
             traj.auto_batch_size_(batch_dims=0)
             traj["obs"].auto_batch_size_(batch_dims=1)
+
+            # store an untransformed, unnormalized copy of the action to use as ground truth when
+            # evaluating using held-out demonstration data
+            traj["ref_action"] = traj["action"].clone()
 
         return trajectories
 

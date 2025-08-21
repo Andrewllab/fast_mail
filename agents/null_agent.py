@@ -105,14 +105,14 @@ class NullAgent(BaseAgent):
 
             # simulate an agent that predicts the action, then reverse the transforms
             # using the reverser
-            batch["prediction"] = data["action"]
+            batch["action"] = data["action"]
 
         else:
             actions = torch.zeros(
                 (batch.shape[0], *self.specs.action.shape), device=batch.device
             )
             actions[...] = self.null_action  # broadcasts over leading dimensions
-            batch["prediction"] = actions
+            batch["action"] = actions
 
         # reverse transforms as if during normal prediction
         batch = self.reverser.reverse(batch)
@@ -120,7 +120,7 @@ class NullAgent(BaseAgent):
         if self.fps is not None:
             self.clock.tick(self.fps)
 
-        return batch["prediction"]
+        return batch["action"]
 
     # reuse predict_step for test_step
     test_step = predict_step

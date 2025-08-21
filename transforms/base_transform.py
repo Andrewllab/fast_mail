@@ -75,35 +75,36 @@ class Transform(ABC, metaclass=TransformModuleMeta):
     def __call__(self, tensordict: TensorDict) -> TensorDict:
 
         try:
-            for idx, key_mapping in enumerate(self.key_mappings):
-                self._mapping_idx = idx
-
-                in_keys = key_mapping.in_keys
-                if not isinstance(in_keys, list):
-                    in_keys = [in_keys]
-
-                # we get the inputs with a default value of None, allowing
-                # support for missing keys
-                inputs = (tensordict.get(key, None) for key in in_keys)
-                outputs = self._call_one(*inputs, *key_mapping.args)
-
-                out_keys = key_mapping.out_keys
-                if out_keys == "_":
-                    # if out_keys is "_", no writeback is performed
-                    continue
-                if not isinstance(outputs, tuple):
-                    outputs = (outputs,)
-                if not isinstance(out_keys, list):
-                    out_keys = [out_keys]
-                for out_key, output in zip(out_keys, outputs):
-                    tensordict.set(out_key, output)
-
-            return tensordict
-
+            key_mappings = self.key_mappings
         except NotImplementedError as e:
             raise NotImplementedError(
                 "A transform must either define a key_mappings property or implement __call__."
             ) from e
+
+        for idx, key_mapping in enumerate(key_mappings):
+            self._mapping_idx = idx
+
+            in_keys = key_mapping.in_keys
+            if not isinstance(in_keys, list):
+                in_keys = [in_keys]
+
+            # we get the inputs with a default value of None, allowing
+            # support for missing keys
+            inputs = (tensordict.get(key, None) for key in in_keys)
+            outputs = self._call_one(*inputs, *key_mapping.args)
+
+            out_keys = key_mapping.out_keys
+            if out_keys == "_":
+                # if out_keys is "_", no writeback is performed
+                continue
+            if not isinstance(outputs, tuple):
+                outputs = (outputs,)
+            if not isinstance(out_keys, list):
+                out_keys = [out_keys]
+            for out_key, output in zip(out_keys, outputs):
+                tensordict.set(out_key, output)
+
+        return tensordict
 
     def _call_one(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError
@@ -130,41 +131,48 @@ class Transform(ABC, metaclass=TransformModuleMeta):
 class ReversibleTransform(Transform):
     @property
     def reverse_key_mappings(self) -> list[KeyMapping]:
-        # TODO: add nice default that replace "action" with "prediction"
-        raise NotImplementedError
+        return [
+            KeyMapping(
+                in_keys=key_mapping.out_keys,
+                out_keys=key_mapping.in_keys,
+                args=key_mapping.args,
+            )
+            for key_mapping in self.key_mappings
+        ]
 
     def reverse(self, tensordict: TensorDict) -> TensorDict:
 
         try:
-            for idx, key_mapping in enumerate(self.reverse_key_mappings):
-                self._mapping_idx = idx
-
-                in_keys = key_mapping.in_keys
-                if not isinstance(in_keys, list):
-                    in_keys = [in_keys]
-
-                # we get the inputs with a default value of None, allowing
-                # support for missing keys
-                inputs = (tensordict.get(key, None) for key in in_keys)
-                outputs = self._reverse_one(*inputs, *key_mapping.args)
-
-                out_keys = key_mapping.out_keys
-                if out_keys == "_":
-                    # if out_keys is "_", no writeback is performed
-                    continue
-                if not isinstance(outputs, tuple):
-                    outputs = (outputs,)
-                if not isinstance(out_keys, list):
-                    out_keys = [out_keys]
-                for out_key, output in zip(out_keys, outputs):
-                    tensordict.set(out_key, output)
-
-            return tensordict
-
+            key_mappings = self.reverse_key_mappings
         except NotImplementedError as e:
             raise NotImplementedError(
                 "A transform must either define a key_mappings property or implement __call__."
             ) from e
+
+        for idx, key_mapping in enumerate(key_mappings):
+            self._mapping_idx = idx
+
+            in_keys = key_mapping.in_keys
+            if not isinstance(in_keys, list):
+                in_keys = [in_keys]
+
+            # we get the inputs with a default value of None, allowing
+            # support for missing keys
+            inputs = (tensordict.get(key, None) for key in in_keys)
+            outputs = self._reverse_one(*inputs, *key_mapping.args)
+
+            out_keys = key_mapping.out_keys
+            if out_keys == "_":
+                # if out_keys is "_", no writeback is performed
+                continue
+            if not isinstance(outputs, tuple):
+                outputs = (outputs,)
+            if not isinstance(out_keys, list):
+                out_keys = [out_keys]
+            for out_key, output in zip(out_keys, outputs):
+                tensordict.set(out_key, output)
+
+        return tensordict
 
     def _reverse_one(self, *args: Any, **kwargs: Any) -> Any:
         """Reverses the transformation applied by this transform for a single key mapping."""

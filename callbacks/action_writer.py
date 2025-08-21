@@ -50,7 +50,7 @@ class ActionWriter(BasePredictionWriter):
         batch_indices = trainer.predict_loop.current_batch_indices
 
         assert isinstance(outputs, dict)
-        action = outputs["prediction"]
+        action = outputs["action"]
 
         self.write_on_batch_end(
             trainer, pl_module, action, batch_indices, batch, batch_idx, dataloader_idx

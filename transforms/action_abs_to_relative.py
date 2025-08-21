@@ -85,7 +85,7 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
 
     def reverse(self, tensordict: TensorDict) -> TensorDict:
 
-        rel_action = tensordict["prediction"]
+        rel_action = tensordict["action"]
         B, action_seq_len = rel_action.shape[:2]
 
         # since combine_frame_transforms can only handle one leading dimension, flatten
@@ -118,7 +118,7 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
         abs_action_flat = torch.cat((abs_pos, abs_quat, gripper_command), dim=-1)
         abs_action = abs_action_flat.unflatten(dim=0, sizes=(B, action_seq_len))
 
-        tensordict["prediction"] = abs_action
+        tensordict["action"] = abs_action
 
         return tensordict
 
@@ -208,7 +208,7 @@ class AbsoluteActionToRelative(ReversibleTransform, nn.Module):
             self.ref_pose[...] = ref[0, 0]
             self.first = False
 
-        rel_action = tensordict["prediction"]
+        rel_action = tensordict["action"]
         assert rel_action.ndim == 3  # [B, T, 8]
         assert rel_action.shape[0] == 1
         assert rel_action.shape[2] == 8
@@ -237,6 +237,6 @@ class AbsoluteActionToRelative(ReversibleTransform, nn.Module):
         gripper_command = rel_action[..., 7:]
         abs_action = torch.cat((abs_pos, abs_quat, gripper_command), dim=-1)
         abs_action = abs_action.unflatten(dim=0, sizes=leading_dims)
-        tensordict["prediction"] = abs_action
+        tensordict["action"] = abs_action
 
         return tensordict
