@@ -1,3 +1,4 @@
+# this environment variable is set by rootutils.setup_root in every script
 root_dir: ${oc.env:PROJECT_ROOT}
 
 # path to data directory
@@ -6,6 +7,7 @@ data_dir: ${paths.root_dir}/datasets
 # preprocessed data directory
 preprocessed_dir: ${paths.root_dir}/preprocessed_datasets
 debug_preprocessed_dir: ${paths.root_dir}/debug_preprocessed_datasets
+zipped_preprocessed_dir: ${paths.root_dir}/zipped_preprocessed_datasets
 
 # path to logging directory
 log_dir: ${paths.root_dir}/logs

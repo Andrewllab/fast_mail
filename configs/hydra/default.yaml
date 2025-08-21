@@ -14,7 +14,9 @@ sweep:
 job:
   config:
     override_dirname:
+      kv_sep: "-"
       item_sep: _
+      exclude_keys: [platform,debug]
 
 job_logging:
   handlers:

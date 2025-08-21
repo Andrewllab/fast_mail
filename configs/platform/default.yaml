@@ -1,9 +1,13 @@
 # @package _global_
 
+# Instead of setting values (e.g. batch_size) directly in other parts of the
+# config (e.g. data.dataset.batch_size), we put these values here and allow
+# other configs to interpolate them. This gives us more flexibility to compose
+# configs, e.g. from the obs_modality, experiments, debug settings, etc.
 platform:
   name: workstation
-  num_workers: 4  # make available for any config to use
-  batch_size: 256  # make available e.g. for experiment configs to modify
+  num_workers: 4
+  batch_size: 256
   pin_memory: False  # test if True is faster, but it might not be
   prefetch_factor: 1  # reduce memory usage for on-disk datasets
 

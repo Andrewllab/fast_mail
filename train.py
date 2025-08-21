@@ -12,7 +12,8 @@ from omegaconf import DictConfig, OmegaConf
 rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
 
 from environments.datamodule import TrajectoryDataModule
-from utils.conf import delete_keys_recursively, setup_resolvers
+from loggers.wandb import update_wandb_config
+from utils.conf import delete_keys_recursively, log_slurm_job_id, setup_resolvers
 from utils.instantiators import (
     instantiate_callbacks,
     instantiate_datamodule,
@@ -29,12 +30,14 @@ log = logging.getLogger(__name__)
 def main(cfg: DictConfig) -> None:
     # resolve the entire config to catch any errors early
     OmegaConf.resolve(cfg)
+    log_slurm_job_id(cfg)
 
     configure_logging(cfg.python_logging)
 
     # init wandb first so we can log any info or errors from instantiating dataset and model
     log.debug("Instantiating loggers...")
-    logger: list[Logger] = instantiate_loggers(cfg)
+    logger: list[Logger] = instantiate_loggers(cfg.get("logger"))
+    update_wandb_config(cfg)
 
     # configure torch, e.g. set_float32_matmul_precision
     configure_torch(cfg.get("torch"))
