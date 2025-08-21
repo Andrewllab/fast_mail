@@ -1,0 +1,42 @@
+# @package _global_
+
+defaults:
+  - default
+  - override /hydra/launcher: submitit_slurm
+  - slurm
+  - _self_
+
+platform:
+  name: horeka
+  num_workers: 36  # horeka node has 152 cores = 38 cores per GPU
+
+paths:
+  # $TMP, not ${oc.env:TMP}, so it gets resolved inside the job, not on the login node
+  preprocessed_dir: $TMP/preprocessed_data
+  debug_preprocessed_dir: $TMP/debug_preprocessed_data
+
+hydra:
+  mode: MULTIRUN
+  launcher:
+    account: hk-project-p0022253
+    timeout_min: 2880
+    partition: accelerated
+    gres: gpu:1
+    cpus_per_task: 38
+    setup:
+      # unzip training data onto fast, job-local storage: https://www.nhr.kit.edu/userdocs/horeka/filesystems/#tmpdir
+
+      # get the relative path inside the preprocessed_dir where the dataset expects the preprocessed data
+      # (e.g. PREPROCESS_PATH="metaquest3_2025-07-24/multiview_image")
+      - PREPROCESS_NAME=$(realpath --canonicalize-missing --no-symlinks --relative-to=${paths.preprocessed_dir} ${data.dataset.preprocessed_dir})
+      - echo "PREPROCESS_NAME=$PREPROCESS_NAME"
+
+      # Note: this path gets resolved twice. First hydra resolves ${paths.preprocessed_dir} on the login node, then
+      # bash resolves $TMP inside the job
+      - mkdir -pv ${data.dataset.preprocessed_dir}
+      - echo "$(date '+%F_%H:%M:%S') - Extracting ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst to ${data.dataset.preprocessed_dir}..."
+      - tar -I "zstd -T0" -xvf ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst -C ${data.dataset.preprocessed_dir}
+      - echo "$(date '+%F_%H:%M:%S') - Done."
+
+      # ensure wandb isn't disabled by accident
+      - wandb enabled

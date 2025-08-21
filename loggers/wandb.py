@@ -28,22 +28,16 @@ class WandbLogger(LightningWandbLogger):
         wandb.finish()
 
 
-def init_wandb_logger(logger: LightningWandbLogger, cfg: DictConfig) -> None:
-    wandb_cfg = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
+def update_wandb_config(cfg: DictConfig) -> None:
+    if wandb.run is not None:
+        wandb_cfg = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
 
-    # remove notes from config before logging it to wandb, as it is not useful for sorting/filtering
-    wandb_cfg["logger"]["wandb"].pop("notes", None)  # type: ignore
+        # remove notes from config before logging it to wandb, as it is not useful for sorting/filtering
+        wandb_cfg.get("logger", {}).get("wandb", {}).pop("notes", None)  # type: ignore
 
-    # don't remove tags from config, as this enables sorting/filtering by tags
+        # don't remove tags from config, as this enables sorting/filtering by tags
 
-    # save the rest of the config to wandb
-    logger.experiment.config.update(wandb_cfg)
-
-    # set root_dir in WandBLogger so it can access the hydra output folder
-    # e.g. when saving hyperparameters
-    # we can't do this before instantiating the logger, as this would also
-    # set the wandb directory
-    logger._save_dir = cfg.paths.output_dir
+        wandb.config.update(wandb_cfg, allow_val_change=True)
 
 
 def resolve_checkpoint(

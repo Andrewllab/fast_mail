@@ -26,6 +26,7 @@ from transforms.base_transform import (
     save_transforms,
     save_transforms_config,
 )
+from utils.conf import resolve_path
 from utils.tensordict import load_tensordict, save_tensordict
 
 IndexType = slice | Tensor | Sequence
@@ -58,7 +59,7 @@ class TrajectoryDataset(Dataset, ABC):
     ) -> None:
         super().__init__()
 
-        self.root_dir = Path(root_dir)
+        self.root_dir = resolve_path(root_dir)
         self.action_seq_len = action_seq_len
         self.obs_seq_len = obs_seq_len
         self.load_subset = load_subset
@@ -83,7 +84,7 @@ class TrajectoryDataset(Dataset, ABC):
         self.device = device
 
         if preprocessed_dir is not None:
-            preprocessed_dir = Path(preprocessed_dir)
+            preprocessed_dir = resolve_path(preprocessed_dir)
 
         # strip any config nodes that aren't going to get instantiated, and
         # see if there are any transforms left

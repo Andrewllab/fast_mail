@@ -44,7 +44,7 @@ class BaseAgent(L.LightningModule):
             "specs",
             "normalizer",
             "reverse_transform",
-            # don't send these objects to the logger since they are not
+            # don't send these objects to the (WandB) logger since they are not
             # serializable and they are in every checkpoint anyway
             logger=False,
         )

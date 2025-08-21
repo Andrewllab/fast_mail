@@ -18,7 +18,7 @@ defaults:
   - experiment: null
   - platform: default
   - optional local: default
-  - debug: single_batch
+  - debug: verbose
 
 # task name, determines output directory path
 job_type: train

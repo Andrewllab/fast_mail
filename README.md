@@ -92,6 +92,38 @@ Install the remaining requirements:
 pip install -r requirements.txt
 ```
 
+Depending on your use case, there may also be additional pip requirements to install:
+
+### Horeka
+
+Horeka requires the submitit launcher for hydra.
+
+```bash
+pip install -r requirements_horeka.txt
+```
+
+### Real Robot
+
+The real robot requires some additional hardware drivers and opencv.
+
+```bash
+pip install -r requirements_robot.txt
+```
+
+Also don't forget to install the pyzed using the following command:
+
+```bash
+python /usr/local/zed/get_python_api.py
+```
+
+### Testing
+
+Some testing code and mockups require pytest or other packages.
+
+```bash
+pip install -r requirements_test.txt
+```
+
 ## IsaacLab
 
 Users with Ubuntu 22.04 can simply install IsaacSim and IsaacLab with pip:
@@ -133,14 +165,6 @@ pip install source/isaaclab
 pip install source/isaaclab_tasks
 ```
 
-## Optional dependencies
-
-Other (optional) dependencies can be installed as follows:
-```bash
-pip install -r requirements_robot.txt  # for execution on the real robot
-pip install -r requirements_test.txt  # for running tests, etc.
-```
-
 # Data
 
 To download the original furniture bench dataset, please follow the [furniture bench documentation](https://clvrai.github.io/furniture-bench/docs/tutorials/dataset.html).
@@ -157,8 +181,45 @@ paths:
   data_dir: ${oc.env:HOME}/datasets/3d-sim2real
   preprocessed_dir: ${oc.env:HOME}/preprocessed_data
   debug_preprocessed_dir: ${oc.env:HOME}/.cache/debug_preprocessed_data
-
 ```
+
+## Horeka
+
+Horeka can be very very slow when it comes to file I/O. The fastest way to get data into a training run on the cluster is to do the preprocessing locally, compress it, transfer the archive, and then only uncompress inside the job itself.
+
+1. On your local machine, run training (or just start training) to ensure that your data is preprocessed as you want it.
+1. On horeka, create a file at `configs/local/default.yaml`, and add the following (or something similar):
+    ```yaml
+    # @package _global_
+
+    # path to data directory
+    paths:
+      zipped_preprocessed_dir: ${oc.env:HOME}/zipped_preprocessed_datasets
+    ```
+1. On your local machine, compress the preprocessed dataset using tar and zstd (this uses all your cores, unlike gzip). Ensure that the internal paths are relative to the root folder of the preprocessed dataset and the archive name is the folder name of the dataset. Below is an example for the `metaquest3_2025-07-24` dataset with `multiview_image` preprocessing.
+    ```bash
+    mkdir -pv ~/zipped_preprocessed_datasets/metaquest3_2025-07-24
+    # -C is the folder that internal paths should be relative to
+    # -f is the output archive
+    tar -I "zstd -T0" -cv \
+      -f ~/zipped_preprocessed_datasets/metaquest3_2025-07-24/multiview_image.tar.zst \
+      -C ~/.cache/debug_preprocessed_data/metaquest3_2025-07-24/multiview_image .
+    ```
+1. From your local machine, use rsync (or similar) to transfer the data to horeka into the ${paths.zipped_preprocessed_data} folder you defined in the config file above:
+    ```bash
+    # first make sure this folder exists on the remote system
+    ssh horeka "mkdir -pv ~/zipped_preprocessed_datasets/metaquest3_2025-07-24"
+    rsync -hP \
+      ~/zipped_preprocessed_datasets/metaquest3_2025-07-24/multiview_image.tar.zst \
+      horeka:zipped_preprocessed_datasets/metaquest3_2025-07-24/
+    ```
+1. To start training on horeka, just modify the platform config like so:
+    ```bash
+    python train.py debug=verbose platform=horeka
+    ```
+
+**Tip**: If you use `less` like I do, use `less -R` to look at slurm logs on horeka, otherwise ANSI escape sequences (for colored output) will not be displayed properly.
+
 
 # Useful Commands
 

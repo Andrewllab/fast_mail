@@ -1,11 +1,7 @@
-# job ID as seen in squeue
-slurm_job_id: ${oc.env:SLURM_ARRAY_JOB_ID,${oc.env:SLURM_JOB_ID}}
+# @package _global_
 
-# if part of an array job (i.e. a sweep), the id of this task
-slurm_array_task_id: ${oc.env:SLURM_ARRAY_TASK_ID,none}
-
-callbacks:
-  model_summary: null  # reduce clutter in the log
+data:
+  eval_mode: 0.05  # we don't want to run IsaacSim on the cluster
 
 trainer:
-  enable_progress_bar: False  # reduce clutter in the log
+  enable_progress_bar: False  # doesn't get captured correctly, making the log hard to read

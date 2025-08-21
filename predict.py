@@ -12,7 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
 
 from environments.datamodule import TrajectoryDataModule
-from loggers.wandb import resolve_checkpoint
+from loggers.wandb import resolve_checkpoint, update_wandb_config
 from utils.conf import (
     delete_keys_recursively,
     patch_load_from_checkpoint,
@@ -38,7 +38,8 @@ def main(cfg: DictConfig) -> None:
 
     # init wandb first so we can log any info or errors from instantiating dataset and model
     log.debug("Instantiating loggers...")
-    logger: list[Logger] = instantiate_loggers(cfg)
+    logger: list[Logger] = instantiate_loggers(cfg.get("logger"))
+    update_wandb_config(cfg)
 
     # configure torch, e.g. set_float32_matmul_precision
     configure_torch(cfg.get("torch"))

@@ -43,6 +43,32 @@ def setup_resolvers(exclude: list[str] | None = None):
         OmegaConf.register_new_resolver("abspath", lambda s: osp.abspath(s))
 
 
+def resolve_path(str_path: os.PathLike) -> Path:
+    # resolve any environment variables in the first path element
+    elements = str(str_path).split("/")
+    # if first character of first element is "$"
+    if (root := elements[0]).startswith("$"):
+        elements[0] = os.environ[root[1:]]
+    path = "/".join(elements)  # not osp.join because we used str.split above
+
+    # resolve ~ to the user's home directory
+    path = Path(path).expanduser()
+    return path
+
+
+def log_slurm_job_id(cfg: DictConfig):
+    """Add slurm job ID (and potentially the array job/task ID) to the cfg
+    (under cfg.platform) where it will be logged to wandb.
+    """
+    with open_dict(cfg.platform):
+        if "SLURM_ARRAY_TASK_ID" in os.environ:
+            # if the job is part of an array job, it also has a task ID
+            cfg.platform.slurm_array_task_id = os.environ["SLURM_ARRAY_TASK_ID"]
+            cfg.platform.slurm_job_id = os.environ["SLURM_ARRAY_JOB_ID"]
+        elif "SLURM_JOB_ID" in os.environ:
+            cfg.platform.slurm_job_id = os.environ["SLURM_JOB_ID"]
+
+
 def delete_keys_recursively(
     cfg: DictConfig, keys_to_delete: Sequence[str]
 ) -> DictConfig:

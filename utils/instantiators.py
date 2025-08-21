@@ -7,8 +7,6 @@ from lightning import Callback
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig, OmegaConf, open_dict
 
-from loggers.wandb import init_wandb_logger
-
 log = logging.getLogger(__name__)
 
 
@@ -35,15 +33,12 @@ def instantiate_callbacks(callbacks_cfg: DictConfig) -> list[Callback]:
     return callbacks
 
 
-def instantiate_loggers(cfg: DictConfig) -> list[Logger]:
+def instantiate_loggers(logger_cfg: DictConfig) -> list[Logger]:
     """Instantiates loggers from config.
 
     :param logger_cfg: A DictConfig object containing logger configurations.
     :return: A list of instantiated loggers.
     """
-    from lightning.pytorch.loggers.wandb import WandbLogger
-
-    logger_cfg = cfg.get("logger", None) or {}
     logger: list[Logger] = []
 
     if not logger_cfg:
@@ -57,10 +52,6 @@ def instantiate_loggers(cfg: DictConfig) -> list[Logger]:
         if isinstance(lg_conf, DictConfig) and "_target_" in lg_conf:
             log.debug(f"Instantiating logger <{lg_conf._target_}>")
             logger.append(hydra.utils.instantiate(lg_conf))
-
-    wandb_logger = next((lg for lg in logger if isinstance(lg, WandbLogger)), None)
-    if wandb_logger is not None:
-        init_wandb_logger(wandb_logger, cfg)
 
     return logger
 
