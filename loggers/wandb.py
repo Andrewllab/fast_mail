@@ -15,6 +15,11 @@ log = logging.getLogger(__name__)
 
 
 class WandbLogger(LightningWandbLogger):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Trigger lazy creation of wandb run by accessing experiment
+        _ = self.experiment
+
     @override
     @rank_zero_only
     def finalize(self, status: str) -> None:
