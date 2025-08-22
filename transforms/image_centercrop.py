@@ -14,7 +14,7 @@ class CenterCropImage(Transform):
     def __init__(
         self,
         specs: DataSpecs,
-        shape: int | tuple[int, int] | None = None,
+        shape: int | tuple[int, int],
     ) -> None:
 
         # compute new shape of image
@@ -44,6 +44,11 @@ class CenterCropImage(Transform):
 
             obs_specs[key] = dataclasses.replace(spec, streams=streams)
         self._output_specs = specs.replace(obs=obs_specs)
+
+        self.summary = f"(shape={new_shape})"
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}{self.summary}"
 
     @property
     def specs(self) -> DataSpecs:

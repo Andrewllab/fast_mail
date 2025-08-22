@@ -4,7 +4,7 @@ dataset: null
 batch_size: ${platform.batch_size}
 device: disk  # by default, assume it dataset doesn't fit in memory
 env_dataset: null
-eval_mode: null  # "sim" to validate in simulation or a float to validate on subset of data
+eval_mode: null  # "env" to validate in the environment (sim or real) or a float to validate on subset of training data
 preprocess_transforms: null
 cpu_transforms: null
 cpu_batch_transforms: null

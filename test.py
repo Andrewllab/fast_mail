@@ -41,34 +41,45 @@ def main(cfg: DictConfig) -> None:
     logger: list[Logger] = instantiate_loggers(cfg.get("logger"))
     update_wandb_config(cfg)
 
+    agent_cfg = cfg.get("agent", {})
+    data_cfg = cfg.get("data", {})
+    if checkpoint := resolve_checkpoint(cfg, use_artifact=True):
+        # load agent config and specs from checkpoint
+        train_cfg, checkpoint_path = checkpoint
+
+        # merge the agent and data configs, with the current config taking precedence
+        agent_cfg = OmegaConf.merge(train_cfg.agent, agent_cfg)
+        data_cfg = OmegaConf.merge(train_cfg.data, data_cfg)
+
+        # modify the _target_ to point to the module's load_from_checkpoint method
+        agent_cfg = patch_load_from_checkpoint(agent_cfg, checkpoint_path)
+
     # configure torch, e.g. set_float32_matmul_precision
     configure_torch(cfg.get("torch"))
 
     # instantiate dataset
-    datamodule: TrajectoryDataModule = instantiate_datamodule(cfg.data)
+    datamodule: TrajectoryDataModule = instantiate_datamodule(data_cfg)
 
     # manually run prepare data and setup so we can use dataset specs for model creation
     log.debug("Instantiating datamodule...")
     datamodule.prepare_data()
-    datamodule.setup(stage="test")
+    datamodule.setup(stage="predict")
 
-    # instantiate agent
-    log.debug("Instantiating agent...")
-    if checkpoint := resolve_checkpoint(cfg, use_artifact=True):
-        # load agent config and specs from checkpoint
-        train_cfg, checkpoint_path = checkpoint
-        agent_cfg = train_cfg.agent
-        # modify the _target_ to point to the module's load_from_checkpoint method
-        agent_cfg = patch_load_from_checkpoint(agent_cfg, checkpoint_path)
-        datamodule_hparams = {}  # hparams are loaded from checkpoint
-    else:
-        agent_cfg = cfg.agent
+    if not checkpoint:
         # without a checkpoint, get the hparams from the datamodule like in train.py
+        # the primary use case for predicting without loading a checkpoint is
+        # open-loop replay
         datamodule_hparams = dict(
             specs=datamodule.specs,
             normalizer=datamodule.normalizer,
             reverse_transform=datamodule.reverse_transform,
         )
+    else:
+        # hparams are loaded from checkpoint
+        datamodule_hparams = {}
+
+    # instantiate agent
+    log.debug("Instantiating agent...")
     # recursively delete these fields in config dictionary
     # we want these to be saved to WandB but we don't want them for instantiation
     delete_keys_recursively(agent_cfg, ["name"])

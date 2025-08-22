@@ -3,13 +3,13 @@ _target_: transforms.multiview_image_tokenizer.MultiviewPointMapTokenizer
 _partial_: True
 
 image_encoder:
-  _target_: models.obs_encoders.resnet_encoder.beso_resnet_encoder
+  _target_: models.resnet.beso_resnet_encoder
   _partial_: True
   embed_dim: ${floor_div:${..embed_dim},2}
   use_group_norm: True
 
 pointmap_encoder:
-  _target_: models.obs_encoders.resnet_encoder.beso_resnet_encoder
+  _target_: models.resnet.beso_resnet_encoder
   _partial_: True
   embed_dim: ${floor_div:${..embed_dim},2}
   use_group_norm: True

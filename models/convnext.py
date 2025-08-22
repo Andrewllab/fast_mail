@@ -1,14 +1,11 @@
 from __future__ import annotations
+
 from functools import partial
-from typing import TYPE_CHECKING
 
 import torch.nn as nn
 import torchvision
+from torchvision.models.convnext import ConvNeXt, LayerNorm2d
 from torchvision.ops.misc import Conv2dNormActivation
-from torchvision.models.convnext import LayerNorm2d
-
-if TYPE_CHECKING:
-    from torchvision.models.convnext import ConvNeXt
 
 
 def convnext_encoder(
@@ -22,7 +19,9 @@ def convnext_encoder(
     if pretrained_weights is None:
         convnext_kwargs["num_classes"] = embed_dim
     else:
-        assert input_channels == 3, "Pretrained weights are only available for 3 input channels."
+        assert (
+            input_channels == 3
+        ), "Pretrained weights are only available for 3 input channels."
 
     model = torchvision.models.convnext_tiny(
         weights=pretrained_weights, **convnext_kwargs

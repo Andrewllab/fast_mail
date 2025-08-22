@@ -1,4 +1,4 @@
-# recorded with rate limit 30fps, sim_dt = 0.01, decimation = 2
+# recorded with rate limit 30fps, sim_dt = 1 / 120, decimation = 4
 
 defaults:
   - default
@@ -7,12 +7,14 @@ defaults:
   # - /transforms@preprocess_transforms.t0-1_trim_idle: action_trim_idle
   # # since this dataset was recorded at 30 fps, subsample by a factor of 3
   # - /transforms@preprocess_transforms.t0-2_subsample: time_subsample
-  # # convert actions to chunks of absolute target poses relative to the current frame
-  # - /transforms@preprocess_transforms.t0-3_relative_actions: action_abs_to_relative_chunk
-  # # normalize relative actions so that the max magnitude of each action dimension is 1.0
-  # - /transforms@preprocess_transforms.t0-4_normalize_actions: action_norm_max
-  # normalize absolute actions so that they lie within [-1,1]
-  - /transforms@preprocess_transforms.t0-4_normalize_actions: action_norm_minmax
+  
+  # convert actions to chunks of absolute target poses relative to the current frame
+  - /transforms@preprocess_transforms.t0-3_relative_actions: action_abs_to_relative_chunk
+  # normalize relative actions so that the max magnitude of each action dimension is 1.0
+  - /transforms@preprocess_transforms.t0-4_normalize_actions: action_norm_max
+  
+  # # normalize absolute actions so that they lie within [-1,1]
+  # - /transforms@preprocess_transforms.t0-4_normalize_actions: action_norm_minmax
 
 task_suite: furniture_bench
 task: one_leg

@@ -3,8 +3,9 @@ wandb:
   log_model: all  # all checkpoints are uploaded to wandb, even if only the last one is kept on disk
 
   # passed to wandb.init()
-  project: "3d-sim2real"
-  entity: "alr-3d-sim2real"
+  project: 3d-sim2real
+  entity: alr-3d-sim2real
+  job_type: ${oc.select:job_type,null}
   notes: null
   tags: null
   reinit: finish_previous  # required for hydra sweeps with default launcher

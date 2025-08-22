@@ -80,6 +80,16 @@ class ResizeImage(Transform):
             obs_specs[key] = spec.replace(streams=streams)
         self._output_specs = specs.replace(obs=obs_specs)
 
+        if factor is not None:
+            self.summary = f"(factor={factor})"
+        elif isinstance(shape, int):
+            self.summary = f"(shape={shape}x{shape})"
+        elif isinstance(shape, (tuple, list)):
+            self.summary = f"(shape={shape[0]}x{shape[1]})"
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}{self.summary}"
+
     @property
     def specs(self) -> DataSpecs:
         return self._output_specs

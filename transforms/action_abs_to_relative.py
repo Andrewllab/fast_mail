@@ -12,6 +12,14 @@ from utils.math import combine_frame_transforms, subtract_frame_transforms
 
 
 class AbsoluteActionToRelativeChunk(ReversibleTransform):
+    """Preprocess transforms for converting actions (target ee_poses) from
+    the world (robot base) frame into action chunks, where the actions in each
+    chunk are relative to their own reference frame. This reference frame can
+    be the current ee_pose (where current means at the first time step of the
+    chunk) or the last action (target ee_pose) (where last means the time step
+    prior to the beginning of the chunk).
+    """
+
     def __init__(
         self,
         specs: DataSpecs,
@@ -83,6 +91,12 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
 
         return tensordict
 
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        # This gets called when running with an environment, where the
+        # preprocess transforms get rolled into the cpu_batch_transforms.
+        # We don't need to do anything, since there are no actions to transform.
+        return tensordict
+
     def reverse(self, tensordict: TensorDict) -> TensorDict:
 
         rel_action = tensordict["action"]
@@ -124,6 +138,11 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
 
 
 class AbsoluteActionToRelative(ReversibleTransform, nn.Module):
+    """Preprocess transforms for converting actions (target ee_poses) from
+    the world (robot base) frame to be relative to some reference frame. This
+    reference frame can be the first ee_pose in the trajectory or the first
+    action (target ee_poses) in the trajectory.
+    """
 
     ref_pose: torch.Tensor
 
@@ -147,9 +166,9 @@ class AbsoluteActionToRelative(ReversibleTransform, nn.Module):
         return f"{self.__class__.__name__}(reference={self.reference})"
 
     def forward(self, tensordict: TensorDict) -> TensorDict:
-        # this transform should never be called in forward mode
-        # this is a here as a temporary solution
-        # TODO: remove this when preprocessing datasets in env datasets are only used as reverse transformation and dropped in the forward
+        # This gets called when running with an environment, where the
+        # preprocess transforms get rolled into the cpu_batch_transforms.
+        # We don't need to do anything, since there are no actions to transform.
         return tensordict
 
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:

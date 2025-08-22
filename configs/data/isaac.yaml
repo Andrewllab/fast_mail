@@ -5,7 +5,7 @@ env_dataset:
   env:
     _target_: environments.simulation.utils.build_env.make
     task_name: Isaac-Insert-One-Leg-Franka-RGBD-SingleFallen-IK-Abs-v0
-    device: "cuda"
+    device: cuda
     num_envs: 1
     render_mode: rgb_array
     cli_args:
@@ -30,4 +30,3 @@ env_dataset:
         fps: 30
         disable_logger: True
     enabled_wrappers: [pre_process]
-  action_horizon: 10

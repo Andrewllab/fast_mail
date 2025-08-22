@@ -1,11 +1,9 @@
 defaults:
-  - data: one_leg_alr_20250724
   - callbacks:
   - logger:
   - python_logging: default
   - paths: default
   - hydra: default
-  - transforms@agent.obs_encoder.t3_render: render_cameras
   - _self_
   - platform: default
   - optional local: default
@@ -13,10 +11,6 @@ defaults:
 
 # task name, determines output directory path
 job_type: test_sim
-
-logger:
-  wandb:
-    job_type: ${job_type}
 
 # either specify a complete checkpoint path...
 log_dir:
@@ -28,13 +22,12 @@ artifact_entity: alr-3d-sim2real
 # by default, the latest version of the artifact is used
 artifact_version:
 
+data:
+  env_dataset:
+    action_horizon: 5  # modify if desired
+  eval_mode: env
+
 trainer:
-  accelerator: gpu
-  devices: auto
-  # precision: 16-true
   default_root_dir: ${paths.output_dir}
   enable_progress_bar: False
   log_every_n_steps: 10
-
-torch:
-  set_float32_matmul_precision: medium

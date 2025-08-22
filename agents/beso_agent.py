@@ -99,8 +99,6 @@ class BesoAgent(BaseAgent):
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
         """Denoise the next sequence of actions"""
-        # normalization is probably redundant here, since the actions get overwritten later
-        batch = self.normalizer(batch)
         batch = self.goal_encoder(batch)
         batch = self.obs_encoder(batch)
 

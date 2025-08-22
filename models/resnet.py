@@ -1,11 +1,11 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Callable, TypeVar
+
+from typing import Callable, TypeVar
 
 import torch.nn as nn
 import torchvision
+from torchvision.models import ResNet
 
-if TYPE_CHECKING:
-    from torchvision.models import ResNet
 
 def beso_resnet_encoder(
     embed_dim: int,
@@ -68,7 +68,9 @@ def beso_resnet_encoder(
 
     return model
 
+
 T = TypeVar("T", bound=nn.Module)
+
 
 def replace(
     module: T,

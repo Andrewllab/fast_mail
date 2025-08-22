@@ -11,5 +11,14 @@ defaults:
   - /transforms@data.gpu_batch_transforms.t4_norm_image: imagenet_norm
 
 data:
+  # you can modify the default configuration (e.g. resolution, etc.) below:
+  preprocess_transforms:
+    t2_resize:
+      shape: 256
+    
+    t3_crop_image:
+      shape: 224
+
+  # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
   dataset:
     preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/multiview_image

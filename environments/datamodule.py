@@ -125,8 +125,10 @@ class TrajectoryDataModule(L.LightningDataModule):
                 transforms=self._cpu_transforms,
                 preprocess_transforms=self._preprocess_transforms,
             )
+            assert isinstance(self.dataset, TrajectoryDataset)
             specs = self.dataset.specs
-            # TODO: save preprocess_transforms directly to datamodule
+            self.preprocess_transforms = self.dataset.preprocess_transforms
+            self.cpu_transforms = self.dataset.transform
 
             log.debug("Instantiating cpu batch transforms...")
             self.cpu_batch_transform, specs = init_transforms(
@@ -154,33 +156,38 @@ class TrajectoryDataModule(L.LightningDataModule):
             self.env = hydra.utils.instantiate(self._env, _partial_=False)
             specs = self.env.specs
 
-            # TODO: actually just drop preprocessing and cpu transforms
-            # preprocessing allows for transforms that should only be reversed
-            # cpu transforms cannot be applied after collating, so just drop them
-            preprocess = self._preprocess_transforms or {}
-            cpu_transforms = self._cpu_transforms or {}
-            pretransforms = {**preprocess, **cpu_transforms}
-            cpu_batch_transforms = self._cpu_batch_transforms
+            # Move any transforms that would normally be in the dataset (i.e.
+            # preprocessing and cpu_transform) into cpu_batch_transforms. Any
+            # transforms that only work in preprocessing should implement a
+            # no-op __call__ method.
+            preprocess_transforms, specs = init_transforms(
+                self._preprocess_transforms, specs
+            )
+            cpu_transforms, specs = init_transforms(self._cpu_transforms, specs)
 
-            if pretransforms:
-                if cpu_batch_transforms is not None:
-                    log.debug(
-                        "Prepending preprocess and cpu transforms to cpu batch transforms for gym environment..."
-                    )
-                    cpu_batch_transforms = {
-                        **pretransforms,
-                        **cpu_batch_transforms,
-                    }
-                else:
-                    log.debug(
-                        "Using preprocess and cpu transforms as cpu batch transforms for gym environment..."
-                    )
-                    cpu_batch_transforms = pretransforms
+            # Filter out normalizing transforms, since they require running
+            # preprocessing first, but they also cannot have a no-op __call__
+            # method. The environment doesn't emit actions anyway (only
+            # observations), so we don't care.
+            preprocess_transforms = [
+                t
+                for t in preprocess_transforms
+                if not isinstance(t, NormalizingTransform)
+            ]
 
             log.debug("Instantiating cpu batch transforms for environment...")
-            self.env_cpu_batch_transform, specs = init_transforms(
-                cpu_batch_transforms, specs
+            cpu_batch_transform, specs = init_transforms(
+                self._cpu_batch_transforms, specs
             )
+
+            log.debug(
+                "Prepending preprocess and cpu transforms to cpu batch transforms for gym environment..."
+            )
+            env_cpu_batch_transform = (
+                preprocess_transforms + list(cpu_transforms) + list(cpu_batch_transform)
+            )
+            self.env_cpu_batch_transform = Compose(*env_cpu_batch_transform)
+
             log.debug("Instantiating gpu batch transforms for environment...")
             self.env_gpu_batch_transform, specs = init_transforms(
                 self._gpu_batch_transforms, specs
@@ -205,45 +212,45 @@ class TrajectoryDataModule(L.LightningDataModule):
 
     @property
     def normalizer(self) -> Sequential | None:
-        if (dataset := self.dataset) is not None:
-            if isinstance(dataset, Subset):
-                dataset = dataset.dataset
-            assert isinstance(dataset, TrajectoryDataset)
-
-            # we only check the preprocess transforms, because normalizers must be
-            # in preprocessing so they can collect stats about the whole dataset
-            normalizers = [
-                t
-                for t in dataset.preprocess_transforms
-                if isinstance(t, NormalizingTransform)
-            ]
-            # normalizers have state, therefore they must inherit from nn.Module, so
-            # we have to use Sequential and not Compose
-            return Sequential(*normalizers) if normalizers else None
-        else:
+        """Get a transform that normalizes the actions according to arbitrary
+        dataset statistics collected during preprocessing. This transform (and
+        its state) must be stored in the agent to be properly checkpointed.
+        """
+        if self.dataset is None:
+            # Only a dataset emits actions, whereas environments do not.
+            # Therefore we only need to worry about normalizing transforms on
+            # the actions when we have a dataset.
             return None
+
+        # we only check the preprocess transforms, because normalizers must be
+        # in preprocessing so they can collect stats about the whole dataset
+        normalizers = [
+            t for t in self.preprocess_transforms if isinstance(t, NormalizingTransform)
+        ]
+        # normalizers have state, therefore they must inherit from nn.Module, so
+        # we have to use Sequential and not Compose
+        return Sequential(*normalizers) if normalizers else None
 
     @property
     def reverse_transform(self) -> Compose | None:
-        if (dataset := self.dataset) is not None:
-            if isinstance(dataset, Subset):
-                dataset = dataset.dataset
-            assert isinstance(dataset, TrajectoryDataset)
+        """Get a transform that reverses any reversible transforms or
+        normalizing applied to the actions. This transform must be stored in
+        the agent to be properly checkpointed.
+        """
+        if self.dataset is None:
+            # If we are being asked for a reverse transform, that means we are
+            # not loading a checkpoint. Since we have an environment and no
+            # dataset, this probably means we're doing open-loop replay. In
+            # this case, we can't reverse any transforms because we don't know
+            # what transforms were applied to the replay dataset.
+            return None
 
-            transforms = itertools.chain(
-                dataset.preprocess_transforms,
-                dataset.transform,
-                self.cpu_batch_transform,
-                self.gpu_batch_transform,
-            )
-
-        elif self.env is not None:
-            # if we have an environment, we also need to reverse the transforms
-            # applied to the environment dataset
-            transforms = itertools.chain(
-                self.env_cpu_batch_transform,
-                self.env_gpu_batch_transform,
-            )
+        transforms = itertools.chain(
+            self.preprocess_transforms,
+            self.cpu_transforms,
+            self.cpu_batch_transform,
+            self.gpu_batch_transform,
+        )
 
         # note: this isinstance check also includes any normalizing transforms,
         # which also need to be reversed
