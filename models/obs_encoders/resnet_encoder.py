@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import logging
 from typing import TYPE_CHECKING, Callable, TypeVar
 
 import torch.nn as nn
@@ -8,10 +6,6 @@ import torchvision
 
 if TYPE_CHECKING:
     from torchvision.models import ResNet
-
-
-log = logging.getLogger(__name__)
-
 
 def beso_resnet_encoder(
     embed_dim: int,
@@ -74,9 +68,7 @@ def beso_resnet_encoder(
 
     return model
 
-
 T = TypeVar("T", bound=nn.Module)
-
 
 def replace(
     module: T,

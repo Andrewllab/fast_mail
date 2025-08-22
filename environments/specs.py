@@ -219,6 +219,24 @@ class DepthStream(ImageStream):
 
 
 @dataclass(frozen=True)
+class PointMapStream(ImageStream):
+    """2D grid of 3D points, with optional color information."""
+
+    channels: int = 3
+    color: bool = False
+    channel_order: ChannelOrderType = "HWC"
+    extrinsics: torch.Tensor | None = None
+
+    def __post_init__(self):
+        if not self.channel_order == "HWC":
+            raise ValueError("PointMapStream must have channel order HWC")
+        if self.color and self.channels != 6:
+            raise ValueError("PointMapStream with color must have channels set to 6")
+        if not self.color and self.channels != 3:
+            raise ValueError("PointMapStream without color must have channels set to 3")
+
+
+@dataclass(frozen=True)
 class CameraSpec(Spec):
     streams: frozendict[str, ImageStream]
     time: int | None = None

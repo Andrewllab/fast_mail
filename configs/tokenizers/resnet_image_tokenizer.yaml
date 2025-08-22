@@ -3,7 +3,7 @@ _target_: transforms.multiview_image_tokenizer.MultiviewImageTokenizer
 _partial_: True
 
 image_encoder:
-  _target_: models.resnet.beso_resnet_encoder
+  _target_: models.obs_encoders.resnet_encoder.beso_resnet_encoder
   _partial_: True
   embed_dim: ${..embed_dim}
   use_group_norm: True

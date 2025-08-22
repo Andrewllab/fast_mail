@@ -1,0 +1,12 @@
+defaults:
+  # tokenize the pointmaps using a ResNet
+  - /tokenizers@agent.obs_encoder.t5_resnets: resnet_pointmap_tokenizer
+  # add tokens for the robot state
+  - /tokenizers@agent.obs_encoder.t6_robot_state: linear_robot_state_tokenizer
+
+data:
+  batch_size: ${floor_div:${platform.batch_size},2}  # 1/2 of typical batch size
+
+logger:
+  wandb:
+    tags: ["pointmap", "resnet18"]
