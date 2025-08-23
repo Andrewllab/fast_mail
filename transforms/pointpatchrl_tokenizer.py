@@ -130,7 +130,7 @@ class PointPatchTokenizer(Transform, nn.Module):
 
         # concatenate along N dimension of embedding
         # obs_embed: (B, N, D)
-        return cat_nested([obs_embed, features], dim=-2)
+        return cat_nested([obs_embed, pcd_embed], dim=-2)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(mlp_1={self.mlp_1},(mlp_2={self.mlp_2})"
