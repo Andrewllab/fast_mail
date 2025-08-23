@@ -198,7 +198,7 @@ class PointMAECartesianPosEncoder(nn.Module):
         return self.model[-1].out_features
 
 
-class NerfPositionProjection(nn.Module):
+class FourierFeatures(nn.Module):
     """Positional encoding used by NeRF.
     Projects the coordinates of 3D point into a higher dimensional space, which
     is more suitable as input to a neural network than raw xyz, as these values

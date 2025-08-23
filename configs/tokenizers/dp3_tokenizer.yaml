@@ -1,3 +1,6 @@
+defaults:
+  - /models/pos_projection@spatial_encoder: null
+
 name: dp3_tokenizer
 _target_: transforms.dp3_tokenizer.DiffusionPolicy3DTokenizer
 _partial_: True

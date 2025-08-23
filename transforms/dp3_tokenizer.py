@@ -24,7 +24,7 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
         embed_dim: int,
         mlp_1: Callable[[int], nn.Linear],
         mlp_2: Callable[[int], nn.Linear],
-        pos_projection: nn.Linear | None = None,
+        spatial_encoder: nn.Linear | None = None,
         pcd_key: str = "pcd",
     ):
         super().__init__()
@@ -43,9 +43,9 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
 
         point_dim = 3
 
-        self.pos_projection = pos_projection
-        if self.pos_projection is not None:
-            point_dim = self.pos_projection.out_features
+        self.spatial_encoder = spatial_encoder
+        if self.spatial_encoder is not None:
+            point_dim = self.spatial_encoder.out_features
 
         if self._input_spec.color:
             point_dim += 3
@@ -94,9 +94,9 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
         # features: (B*N, 3)
         features = pos
 
-        if self.pos_projection is not None:
+        if self.spatial_encoder is not None:
             # features: (B*N, D)
-            features = self.pos_projection(features)
+            features = self.spatial_encoder(features)
 
         if color is not None:
             features = torch.cat([features, color], dim=-1)

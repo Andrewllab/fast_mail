@@ -23,8 +23,8 @@ class PointPatchTokenizer(Transform, nn.Module):
         embed_dim: int,
         mlp_1: Callable[[int], nn.Linear],
         mlp_2: Callable[[int], nn.Linear],
-        position_encoder: Callable[[int, int], nn.Linear],
-        pos_projection: nn.Linear | None = None,
+        token_pos_encoder: Callable[[int, int], nn.Linear],
+        spatial_encoder: nn.Linear | None = None,
         pcd_key: str = "pcd",
     ):
         super().__init__()
@@ -43,11 +43,11 @@ class PointPatchTokenizer(Transform, nn.Module):
 
         point_dim = 3
 
-        self.pos_projection = pos_projection
-        if self.pos_projection is not None:
-            point_dim = self.pos_projection.out_features
+        self.spatial_encoder = spatial_encoder
+        if self.spatial_encoder is not None:
+            point_dim = self.spatial_encoder.out_features
 
-        self.pos_encoder = position_encoder(point_dim, embed_dim)
+        self.token_pos_encoder = token_pos_encoder(point_dim, embed_dim)
 
         if self._input_spec.color:
             point_dim += 3
@@ -94,11 +94,11 @@ class PointPatchTokenizer(Transform, nn.Module):
         # features: (B*C, G, 3)
         features = patch_pos
 
-        if self.pos_projection is not None:
+        if self.spatial_encoder is not None:
             # features -> (B*C, G, D)
-            features = self.pos_projection(features)
+            features = self.spatial_encoder(features)
             # center_pos -> (B*C, D)
-            center_pos = self.pos_projection(center_pos)
+            center_pos = self.spatial_encoder(center_pos)
 
         if patch_color is not None:
             # concatenate color as an additional feature to the position
@@ -120,8 +120,8 @@ class PointPatchTokenizer(Transform, nn.Module):
         # max pool over each patch
         features = torch.max(features, dim=1).values  # features -> (B*C, D)
 
-        # add positional encoding
-        features += self.pos_encoder(center_pos)
+        # add encoding of the center position of the token to the token
+        features += self.token_pos_encoder(center_pos)
 
         pcd_embed = pyg_to_nested_tensor(features, batch=center_batch)
 

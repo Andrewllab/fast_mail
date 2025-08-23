@@ -11,7 +11,7 @@ defaults:
   - /transforms@data.gpu_batch_transforms.t4_norm_image: imagenet_norm
 
 data:
-  # you can modify the default configuration (e.g. resolution, etc.) below:
+  # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess_transforms:
     t2_resize:
       shape: 256

@@ -2,14 +2,26 @@
 
 defaults:
   - /tokenizers@agent.obs_encoder.t10_tokenizer: dp3_tokenizer
-  - /models/pos_projection@agent.obs_encoder.t10_tokenizer.pos_projection: nerf_pos_projection
+  - /models/spatial_encoder@agent.obs_encoder.t10_tokenizer.spatial_encoder: fourier_features
   
   # add tokens for the robot state
   - /tokenizers@agent.obs_encoder.t20_robot_state: linear_robot_state_tokenizer
 
+# Below is just the default configuration copied here for convenience. Change as needed.
 agent:
   obs_encoder:
     embed_dim: 256
+    t10_tokenizer:
+      mlp_1:
+        hidden_sizes: [64, 128]
+        out_features: 256
+        activation: ReLU
+        norm: LayerNorm
+      spatial_encoder:
+        n_wavelengths: 10
+        max_wavelength: 4.0
+        min_wavelength: 0.06
+        cat_cartesian_coordinates: False
 
 data:
   batch_size: ${floor_div:${platform.batch_size},4}  # 1/4 of typical batch size

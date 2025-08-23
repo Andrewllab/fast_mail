@@ -1,5 +1,6 @@
 defaults:
-  - /models/pos_encoder@position_encoder: point_mae
+  - /models/pos_encoder@token_pos_encoder: point_mae
+  - /models/pos_projection@spatial_encoder: null
 
 name: pointpatch_tokenizer
 _target_: transforms.pointpatchrl_tokenizer.PointPatchTokenizer
