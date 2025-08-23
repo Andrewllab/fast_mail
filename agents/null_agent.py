@@ -86,7 +86,6 @@ class NullAgent(BaseAgent):
         )
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
-        batch = self.normalizer(batch)  # in most cases this is a no-op
         batch = self.obs_encoder(batch)  # e.g. maybe render the observation
 
         if self.datamodule is not None:
@@ -100,12 +99,14 @@ class NullAgent(BaseAgent):
                 )
                 raise KeyboardInterrupt
 
-            # TODO: right now we don't use the replay normalizer or reverser for anything.
-            # It's unclear if they should be used. What's the use case?
-
             # simulate an agent that predicts the action, then reverse the transforms
             # using the reverser
             batch["action"] = data["action"]
+
+            # since the reverse transform includes unnormalizing the action,
+            # we have to normalize the action before reversing/unnormalizing
+            batch = self.replay_normalizer(batch)
+            batch = self.replay_reverser.reverse(batch)
 
         else:
             actions = torch.zeros(
@@ -114,8 +115,11 @@ class NullAgent(BaseAgent):
             actions[...] = self.null_action  # broadcasts over leading dimensions
             batch["action"] = actions
 
-        # reverse transforms as if during normal prediction
-        batch = self.reverser.reverse(batch)
+            # TODO: check if this is correct for visualize_real script
+            # we need to make sure that the reverse transform converts the
+            # relative null action to absolute
+            batch = self.normalizer(batch)
+            batch = self.reverser.reverse(batch)
 
         if self.fps is not None:
             self.clock.tick(self.fps)

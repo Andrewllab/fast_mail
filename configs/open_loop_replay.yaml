@@ -4,8 +4,6 @@ defaults:
   - data: real_robot
   - agent: null_agent
   - data@agent.replay_data: one_leg_alr_20250724
-  # convert incoming relative actions to absolute in the reference frame of the first ee_pose
-  - /transforms@data.cpu_batch_transforms.t1_relative_actions: action_abs_to_relative
   - callbacks:
   - logger:
   - python_logging: default
@@ -14,13 +12,19 @@ defaults:
   - platform: default
   - optional local: default
   - debug: verbose
-  - _self_
   # instead of converting to relative action chunks, we transform the entire
   # trajectory into the reference frame of the first action
   - override transforms@agent.replay_data.preprocess_transforms.t0-3_relative_actions: action_abs_to_relative
+  - _self_
 
 # task name, determines output directory path
 job_type: open_loop_replay
+
+callbacks:
+  sync_initial_robot_pose:
+    _target_: callbacks.sync_initial_robot_pose.SyncRobotResetPose
+    space: task  # sync initial task space positions
+    cartesian_offset: [0.0, 0.0, 0.04]  # lift by 4cm so as not to collide with the U-object
 
 agent:
   replay_data:
@@ -31,26 +35,18 @@ agent:
 
     preprocess_transforms:
       t0-3_relative_actions:
-        reference: first_action  # use the first action as the reference frame to convert to relative
+        reference: first_ee_pose  # use the first ee_pose as the reference frame to convert to relative
+      # t0-4_normalize_actions: null
 
-  fps: 5
+  fps: 10
 
 data:
+  eval_mode: env  # evaluate in the real environment
   env_dataset:
     env:
       cameras: null  # we don't need cameras for open-loop replay
     action_horizon: null  # execute all incoming actions
   
-  cpu_batch_transforms:
-    t1_relative_actions:
-      reference: first_ee_pose  # use the first ee_pose as the reference frame to convert back to absolute
-
-callbacks:
-  sync_initial_robot_pose:
-    _target_: callbacks.sync_initial_robot_pose.SyncInitialRobotPose
-    space: task  # sync initial task space positions
-    # cartesian_offset: [0.1, 0.0, 0.1]
-
 # since we load a small subset of the data, store preprocessed data in another folder
 paths:
   preprocessed_dir: ${paths.debug_preprocessed_dir}

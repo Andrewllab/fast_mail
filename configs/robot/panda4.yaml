@@ -3,6 +3,6 @@ ip_address: 141.3.53.154
 arm_port: 50053
 gripper_port: 50054
 home_pose: null
-reset_duration: 3.0
+reset_duration: null
 gripper_speed: 0.1
 gripper_force: 0.1

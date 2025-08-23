@@ -12,7 +12,7 @@ from utils.math import convert_quat
 log = logging.getLogger(__name__)
 
 
-class SyncInitialRobotPose(Callback):
+class SyncRobotResetPose(Callback):
 
     def __init__(
         self,
@@ -38,7 +38,7 @@ class SyncInitialRobotPose(Callback):
         if self.space == "joint":
             first_joint_pos = first_batch["obs", "robot_state"][..., :7].flatten()
 
-            log.info(f"Setting robot home pose to {first_joint_pos.tolist()}")
+            log.info(f"Setting robot home pose={first_joint_pos}")
             robot_env.reset(options={"home_pose": first_joint_pos})
 
         elif self.space == "task":
@@ -47,7 +47,7 @@ class SyncInitialRobotPose(Callback):
             first_wxyz = first_ee_pose[..., 3:].flatten()
             first_xyzw = convert_quat(first_wxyz, to="xyzw")
 
-            first_ee_pos += self.cartesian_offset
+            first_ee_pos = first_ee_pos + self.cartesian_offset
 
             log.info(
                 f"Setting robot home pose to position={first_ee_pos} and (wxyz) orientation={first_wxyz}"
