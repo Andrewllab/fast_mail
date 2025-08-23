@@ -51,9 +51,6 @@ class RealRobotEnv(gym.Env):
         self.gripper_speed = robot.get("gripper_speed", 0.1)
         self.gripper_force = robot.get("gripper_force", 0.1)
         self.gripper_max_width = self.gripper.metadata.max_width
-        assert self.gripper_max_width > 0, "Gripper max width must be greater than 0"
-        log.debug(f"Gripper speed: {self.gripper_speed}")
-        log.debug(f"Gripper force: {self.gripper_force}")
         log.debug(f"Gripper max width: {self.gripper_max_width}")
 
         if (home_pose := robot.get("home_pose", None)) is not None:
@@ -115,19 +112,9 @@ class RealRobotEnv(gym.Env):
         elif self.control_type == "hybrid_joint":
             self.arm.update_desired_ee_pose(position=pos, orientation=xyzw)
 
-        if gripper_command < 0:
-            # close gripper
-            self.gripper.grasp(
-                speed=self.gripper_speed, force=self.gripper_force, blocking=False
-            )
-        else:
-            # open gripper
-            self.gripper.goto(
-                self.gripper_max_width,
-                speed=self.gripper_speed,
-                force=self.gripper_force,
-                blocking=False,
-            )
+        self.gripper.set_state(
+            gripper_command.item(), speed=self.gripper_speed, force=self.gripper_force
+        )
 
         obs = self._get_obs()
         obs["target_ee_pose"] = action[:7]  # xyz + wxyz quaternion
@@ -137,30 +124,22 @@ class RealRobotEnv(gym.Env):
 
     def reset(self, *, seed=None, options=None) -> tuple[ObsType, InfoType]:
         # open gripper and go home simultaneously
-        self.gripper.goto(
-            self.gripper_max_width,
-            speed=self.gripper_speed,
-            force=self.gripper_force,
-            blocking=False,
-        )
+        self.gripper.goto(self.gripper_max_width, speed=self.gripper_speed)
 
         options = options or {}
         if "home_pose" in options:
-            self.arm.set_home_pose(torch.tensor(options["home_pose"]))
+            self.arm.set_home_pose(options["home_pose"])
+        elif "home_position" in options and "home_orientation" in options:
+            self.arm.set_home_ee_pose(
+                home_position=options["home_position"],
+                home_orientation=options["home_orientation"],
+            )
 
+        # wait for the arm to go home
         self.arm.go_home(time_to_go=self.reset_duration)
 
-        # open and close gripper
-        self.gripper.grasp(
-            speed=self.gripper_speed, force=self.gripper_force, blocking=True
-        )
-        time.sleep(1.0)  # wait for the gripper to close
-        self.gripper.goto(
-            self.gripper_max_width,
-            speed=self.gripper_speed,
-            force=self.gripper_force,
-            blocking=True,
-        )
+        # wait a little longer in case the gripper is still movin
+        time.sleep(1.0)
 
         # start the continuouos control policy
         if self.control_type == "cartesian":

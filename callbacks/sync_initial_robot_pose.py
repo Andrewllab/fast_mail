@@ -7,6 +7,7 @@ from lightning.pytorch.callbacks import Callback
 from agents.null_agent import NullAgent
 from environments.datamodule import TrajectoryDataModule
 from environments.gym_env_dataset import GymEnvDataset
+from utils.math import convert_quat
 
 log = logging.getLogger(__name__)
 
@@ -37,21 +38,20 @@ class SyncInitialRobotPose(Callback):
         if self.space == "joint":
             first_joint_pos = first_batch["obs", "robot_state"][..., :7].flatten()
 
+            log.info(f"Setting robot home pose to {first_joint_pos.tolist()}")
+            robot_env.reset(options={"home_pose": first_joint_pos})
+
         elif self.space == "task":
             first_ee_pose = first_batch["obs", "ee_pose"]
             first_ee_pos = first_ee_pose[..., :3].flatten()
-            wxyz = first_ee_pose[..., 3:].flatten()
-            xyzw = torch.cat((wxyz[1:], wxyz[:1]), dim=0)
+            first_wxyz = first_ee_pose[..., 3:].flatten()
+            first_xyzw = convert_quat(first_wxyz, to="xyzw")
 
             first_ee_pos += self.cartesian_offset
 
-            robot_arm = robot_env.unwrapped.get_attr("arm")[0]
-            home_joint_pos = robot_arm.home_pose
-            first_joint_pos, success = robot_arm.solve_inverse_kinematics(
-                first_ee_pos, xyzw, home_joint_pos
+            log.info(
+                f"Setting robot home pose to position={first_ee_pos} and (wxyz) orientation={first_wxyz}"
             )
-            assert success, "Failed to solve inverse kinematics for initial pose"
-
-        log.info(f"Setting robot home pose to {first_joint_pos.tolist()}")
-
-        robot_env.reset(options=dict(home_pose=first_joint_pos))
+            robot_env.reset(
+                options={"home_position": first_ee_pos, "home_orientation": first_xyzw}
+            )
