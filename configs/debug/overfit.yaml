@@ -18,9 +18,15 @@ trainer:
   max_epochs: 500
   check_val_every_n_epoch: 50
 
+# create checkpoints less frequently since we're training for longer
 callbacks:
   model_checkpoint:
     every_n_epochs: 50
+
+# Set wandb notes to make it clear that this is an overfit run
+logger:
+  wandb:
+    notes: overfit
 
 # since we load a small subset of the data, store preprocessed data in another folder
 paths:

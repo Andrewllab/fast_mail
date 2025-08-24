@@ -92,6 +92,11 @@ Install the remaining requirements:
 pip install -r requirements.txt
 ```
 
+Don't forget to log in to wandb, especially if you are setting up on a cluster or new platform!
+```bash
+wandb login
+```
+
 Depending on your use case, there may also be additional pip requirements to install:
 
 ### Horeka

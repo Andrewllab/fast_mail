@@ -6,8 +6,8 @@ defaults:
   - _self_
 
 platform:
-  name: horeka
-  num_workers: 36  # accelerated node has 152 cores = 38 cores per GPU
+  name: haicore
+  num_workers: 36  # node has 152 cores = 38 cores per GPU
 
 paths:
   # $TMPDIR, not ${oc.env:TMPDIR}, so it gets resolved inside the job, not on the login node
@@ -17,9 +17,9 @@ paths:
 hydra:
   mode: MULTIRUN
   launcher:
-    account: hk-project-p0022253
+    account: anthropomatik  # not sure if this is needed
     timeout_min: 1440  # 24 hours
-    partition: accelerated
+    partition: normal  # normal and advanced are almost identical, and both have GPUs
     gres: gpu:1
     cpus_per_task: 38
     setup:
