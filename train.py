@@ -19,7 +19,7 @@ from utils.instantiators import (
     instantiate_datamodule,
     instantiate_loggers,
 )
-from utils.logging import configure_logging
+from utils.logging import configure_logging, log_uncaught_exception
 from utils.seeding import get_rng
 from utils.torch_conf import configure_torch
 
@@ -27,7 +27,8 @@ log = logging.getLogger(__name__)
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="train")
-def main(cfg: DictConfig) -> None:
+@log_uncaught_exception
+def train(cfg: DictConfig) -> None:
     # resolve the entire config to catch any errors early
     OmegaConf.resolve(cfg)
     log_slurm_job_id(cfg)
@@ -84,4 +85,4 @@ def main(cfg: DictConfig) -> None:
 
 if __name__ == "__main__":
     setup_resolvers()
-    main()
+    train()

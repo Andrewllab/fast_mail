@@ -2,7 +2,6 @@
 
 defaults:
   - default
-  - override /hydra/launcher: submitit_slurm
   - slurm
   - _self_
 
@@ -35,8 +34,11 @@ hydra:
       # bash resolves $TMP inside the job
       - mkdir -pv ${data.dataset.preprocessed_dir}
       - echo "$(date '+%F_%H:%M:%S') - Extracting ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst to ${data.dataset.preprocessed_dir}..."
-      - tar -I "zstd -T0" -xvf ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst -C ${data.dataset.preprocessed_dir}
+      - tar -I "zstd -T0" -xf ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst -C ${data.dataset.preprocessed_dir}
       - echo "$(date '+%F_%H:%M:%S') - Done."
 
       # ensure wandb isn't disabled by accident
       - wandb enabled
+
+      # force hydra to show full error messages
+      - export HYDRA_FULL_ERROR="1"

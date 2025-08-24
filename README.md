@@ -187,7 +187,6 @@ paths:
 
 Horeka can be very very slow when it comes to file I/O. The fastest way to get data into a training run on the cluster is to do the preprocessing locally, compress it, transfer the archive, and then only uncompress inside the job itself.
 
-1. On your local machine, run training (or just start training) to ensure that your data is preprocessed as you want it.
 1. On horeka, create a file at `configs/local/default.yaml`, and add the following (or something similar):
     ```yaml
     # @package _global_
@@ -196,6 +195,11 @@ Horeka can be very very slow when it comes to file I/O. The fastest way to get d
     paths:
       zipped_preprocessed_dir: ${oc.env:HOME}/zipped_preprocessed_datasets
     ```
+1. On your local machine, run training with debug config `preprocess` and ensure that your data is preprocessed as you want it.
+    ```bash
+    # e.g. if you want to train with pointclouds on the cluster
+    python train.py obs_modality=sim_pointclouds obs_encoder=dp3 debug=preprocess
+    ```
 1. On your local machine, compress the preprocessed dataset using tar and zstd (this uses all your cores, unlike gzip). Ensure that the internal paths are relative to the root folder of the preprocessed dataset and the archive name is the folder name of the dataset. Below is an example for the `metaquest3_2025-07-24` dataset with `multiview_image` preprocessing.
     ```bash
     mkdir -pv ~/zipped_preprocessed_datasets/metaquest3_2025-07-24
@@ -203,7 +207,7 @@ Horeka can be very very slow when it comes to file I/O. The fastest way to get d
     # -f is the output archive
     tar -I "zstd -T0" -cv \
       -f ~/zipped_preprocessed_datasets/metaquest3_2025-07-24/multiview_image.tar.zst \
-      -C ~/.cache/debug_preprocessed_data/metaquest3_2025-07-24/multiview_image .
+      -C ~/preprocessed_data/metaquest3_2025-07-24/multiview_image .
     ```
 1. From your local machine, use rsync (or similar) to transfer the data to horeka into the ${paths.zipped_preprocessed_data} folder you defined in the config file above:
     ```bash
@@ -215,7 +219,8 @@ Horeka can be very very slow when it comes to file I/O. The fastest way to get d
     ```
 1. To start training on horeka, just modify the platform config like so:
     ```bash
-    python train.py debug=verbose platform=horeka
+    # add any other arguments as desired,
+    python train.py platform=horeka
     ```
 
 **Tip**: If you use `less` like I do, use `less -R` to look at slurm logs on horeka, otherwise ANSI escape sequences (for colored output) will not be displayed properly.

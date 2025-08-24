@@ -1,7 +1,9 @@
+import functools
 import logging
 from functools import lru_cache, partial
+from importlib.util import find_spec
 from itertools import accumulate
-from typing import Literal
+from typing import Callable, Literal
 
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
@@ -104,3 +106,40 @@ def warn_once(logger: logging.Logger, msg: str, *args, **kwargs):
     # TODO: replace with logging.captureWarnings, set up via config
     # https://docs.python.org/3/library/logging.html#logging.captureWarnings
     logger.warning(msg, *args, stacklevel=2, **kwargs)
+
+
+def log_uncaught_exception(func: Callable) -> Callable:
+    """Decorator to log uncaught exceptions raised by the decorated function
+    using the logger for the module where the function is defined.
+
+    Args:
+        func: The function to decorate.
+
+    Returns:
+        The decorated function.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        log = logging.getLogger(func.__module__)
+        exit_code = 0
+        try:
+            return func(*args, **kwargs)
+
+        except Exception as e:
+            log.exception(f"Exception in {func.__name__}: {e}")
+            exit_code = 1
+            raise
+
+        finally:
+            # always close wandb run (even if exception occurs so multirun won't fail)
+            if find_spec("wandb"):  # check if wandb is installed
+                import wandb
+
+                if wandb.run:
+                    log.debug(
+                        f"Finishing wandb run with {exit_code=} after {func.__name__} finished running"
+                    )
+                    wandb.finish(exit_code=exit_code)
+
+    return wrapper

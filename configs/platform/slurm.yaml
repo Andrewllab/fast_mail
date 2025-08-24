@@ -1,7 +1,16 @@
 # @package _global_
 
+defaults:
+  - override /hydra/launcher: submitit_slurm
+  - _self_
+
 data:
   eval_mode: 0.05  # we don't want to run IsaacSim on the cluster
 
 trainer:
   enable_progress_bar: False  # doesn't get captured correctly, making the log hard to read
+
+hydra:
+  launcher:
+    # remove the leading "." so it's not hidden
+    submitit_folder: ${hydra.sweep.dir}/submitit/%j

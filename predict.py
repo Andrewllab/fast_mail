@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 
 
 @hydra.main(version_base=None, config_path="configs")
-def main(cfg: DictConfig) -> None:
+def predict(cfg: DictConfig) -> None:
     # resolve the entire config to catch any errors early
     OmegaConf.resolve(cfg)
 
@@ -101,4 +101,4 @@ def main(cfg: DictConfig) -> None:
 
 if __name__ == "__main__":
     setup_resolvers()
-    main()
+    predict()

@@ -241,6 +241,9 @@ class TrajectoryDataset(Dataset, ABC):
         old_transforms_cfg = load_transforms_config(transforms_cfg_file)
         transforms_cfg = get_transforms_config(preprocess_transforms)
         if old_transforms_cfg != transforms_cfg:
+            log.debug(
+                f"Old config:\n{old_transforms_cfg}\n\nNew config:\n{transforms_cfg}"
+            )
             if not overwrite_preprocessed:
                 raise ValueError(
                     f"Preprocess transforms do not match saved version at {preprocessed_dir}. Set overwrite_preprocessed=True to overwrite."
@@ -248,9 +251,6 @@ class TrajectoryDataset(Dataset, ABC):
 
             log.warning(
                 f"Preprocess transforms do not match existing version in {preprocessed_dir}. Overwriting preprocessed data."
-            )
-            log.debug(
-                f"Old config:\n{old_transforms_cfg}\n\nNew config:\n{transforms_cfg}"
             )
             shutil.rmtree(preprocessed_dir)
             self.preprocess(preprocess_transforms, preprocessed_dir)

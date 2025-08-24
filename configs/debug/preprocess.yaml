@@ -1,0 +1,17 @@
+# @package _global_
+
+# overfits on a single trajectory, allowing for testing of the learning algorithm itself
+
+defaults:
+  - verbose
+
+# overwrite task name so debugging logs are stored in separate folder
+job_type: preprocessing
+
+# disable callbacks and loggers during debugging
+callbacks: null
+logger: null
+
+trainer:
+  max_epochs: 1
+  fast_dev_run: true
