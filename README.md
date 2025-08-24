@@ -213,7 +213,7 @@ Horeka can be very very slow when it comes to file I/O. The fastest way to get d
     ```bash
     # first make sure this folder exists on the remote system
     ssh horeka "mkdir -pv ~/zipped_preprocessed_datasets/metaquest3_2025-07-24"
-    rsync -hP \
+    rsync -hP --no-owner --no-group \
       ~/zipped_preprocessed_datasets/metaquest3_2025-07-24/multiview_image.tar.zst \
       horeka:zipped_preprocessed_datasets/metaquest3_2025-07-24/
     ```
