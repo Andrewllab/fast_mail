@@ -1,0 +1,2 @@
+_target_: transforms.time_trim_idle.TrimIdleStart
+_partial_: True
