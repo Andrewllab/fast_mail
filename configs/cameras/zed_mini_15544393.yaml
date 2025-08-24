@@ -1,6 +1,5 @@
 _target_: environments.real_robot.hardware.zed.Zed
 serial_number: 15544393
-resolution: HD720
 # intrinsics:
 #   fx: 450.0
 #   fy: 450.0

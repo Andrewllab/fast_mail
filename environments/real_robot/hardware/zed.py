@@ -2,6 +2,7 @@ import logging
 import time
 import weakref
 from typing import Literal, Mapping, Sequence
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -33,29 +34,23 @@ class Zed(BaseCamera):
         warm_start: int = 0,
         intrinsics: Mapping[str, float] | None = None,
         extrinsics: Sequence[Sequence[float]] | None = None,
+        optional_settings_path: Path | None = None,
     ):
         self.serial_number = str(serial_number)
         self._name = name if name else f"Zed_{serial_number}"
+        self.resolution = sl.RESOLUTION[resolution]
+        self.depth_mode = sl.DEPTH_MODE[depth_mode]
         self.fps = fps
         self.reconnect_attempts = reconnect_attempts
         self.warm_start = warm_start
-
-        if resolution in sl.RESOLUTION:
-            self.resolution = sl.RESOLUTION[resolution]
-        else:
-            log.warning(f"Resolution {resolution} not found. Using default: HD720")
-            self.resolution = sl.RESOLUTION.HD720
-
-        if depth_mode in sl.DEPTH_MODE:
-            self.depth_mode = sl.DEPTH_MODE[depth_mode]
-        else:
-            log.warning(f"Depth mode {depth_mode} not found. Using default: QUALITY")
-            self.depth_mode = sl.DEPTH_MODE.QUALITY
 
         self._intrinsics = intrinsics
         self._extrinsics = (
             torch.tensor(extrinsics).reshape(4, 4) if extrinsics is not None else None
         )
+        if optional_settings_path is not None and not optional_settings_path.exists():
+            raise RuntimeError(f"Optional settings file not found: {optional_settings_path}")
+        self._optional_settings_path = optional_settings_path
 
         self._connect()
 
@@ -90,6 +85,8 @@ class Zed(BaseCamera):
         init_params.camera_fps = self.fps
         init_params.depth_mode = self.depth_mode
         init_params.coordinate_units = sl.UNIT.MILLIMETER
+        if self._optional_settings_path is not None:
+            init_params.optional_settings_path = str(self._optional_settings_path)
 
         err = self.zed.open(init_params)
         if err != sl.ERROR_CODE.SUCCESS:
@@ -186,11 +183,11 @@ class Zed(BaseCamera):
         """
         self._retrieve_images()
 
-        image_left_np = self.image_left.get_data()  # BGRA
+        image_left_np = np.copy(self.image_left.get_data())  # BGRA
         image_left_np = cv2.cvtColor(image_left_np, cv2.COLOR_BGRA2RGB)  # RGB
-        image_right_np = self.image_right.get_data()  # BGRA
+        image_right_np = np.copy(self.image_right.get_data())  # BGRA
         image_right_np = cv2.cvtColor(image_right_np, cv2.COLOR_BGRA2RGB)  # RGB
-        depth_np = self.depth.get_data()
+        depth_np = np.copy(self.depth.get_data())
         # point_cloud_np = point_cloud.get_data()
 
         return {

@@ -257,16 +257,16 @@ class RealSense(BaseCamera):
         frameset = self._get_frameset()
 
         rgb_frame = frameset.get_color_frame()
-        rgb = np.asanyarray(rgb_frame.get_data())
+        rgb = np.copy(np.asanyarray(rgb_frame.get_data()))
 
         depth_frame = frameset.get_depth_frame()
-        depth = np.asanyarray(depth_frame.get_data(), dtype=np.float32)
+        depth = np.copy(np.asanyarray(depth_frame.get_data(), dtype=np.float32))
         depth *= depth_frame.get_units()
 
         left_infrared_frame = frameset.get_infrared_frame(1)
-        left_infrared = np.asanyarray(left_infrared_frame.get_data())
+        left_infrared = np.copy(np.asanyarray(left_infrared_frame.get_data()))
         right_infrared_frame = frameset.get_infrared_frame(2)
-        right_infrared = np.asanyarray(right_infrared_frame.get_data())
+        right_infrared = np.copy(np.asanyarray(right_infrared_frame.get_data()))
 
         return {
             "time": time.time(),

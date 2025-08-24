@@ -104,7 +104,7 @@ class HybridJointImpedanceControl(toco.PolicyModule):
         self.kp = torch.nn.Parameter(torch.tensor(0.0))
         self.kd = torch.nn.Parameter(torch.tensor(0.0))
         # Reference pose
-        self.q_desired = torch.nn.Parameter(torch.tensor(joint_pos_current))
+        self.q_desired = torch.nn.Parameter(to_tensor(joint_pos_current))
         self.qd_desired = torch.nn.Parameter(torch.zeros_like(joint_pos_current))
 
         self.integral_error = torch.zeros_like(joint_pos_current)

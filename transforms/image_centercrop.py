@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from typing import Sequence
 
 import torch
 import torchvision.transforms.functional as F
@@ -20,20 +21,20 @@ class CenterCropImage(Transform):
         # compute new shape of image
         if isinstance(shape, int):
             new_shape = (shape, shape)
-        elif isinstance(shape, tuple):
+        elif isinstance(shape, Sequence):
             # if shape is a tuple, it is the new shape
             new_shape = shape
         else:
-            raise ValueError("Shape must be an int or a tuple of ints.")
+            raise ValueError(f"Shape must be an int or a tuple of ints. Got {type(shape)}")
 
         # find the specs that this transform acts on
-        input_specs = {
+        self._input_specs = {
             key: spec for key, spec in specs.obs.items() if isinstance(spec, CameraSpec)
         }
 
         # create a modified specs object for the output
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
-        for key, spec in input_specs.items():
+        for key, spec in self._input_specs.items():
             streams = dict(spec.streams)  # copy streams for local modification
             for name, stream in streams.items():
                 stream = stream.reorder_channels("CHW")
@@ -69,7 +70,7 @@ class CenterCropImage(Transform):
                 leading_dims = image.shape[:-n_image_dims]
                 image = torch.flatten(image, end_dim=-n_image_dims - 1)
 
-                if stream.channel_order == "HWC":
+                if self._input_specs[key].streams[name].channel_order == "HWC":
                     image = torch.movedim(image, -1, -3)
 
                 image = F.center_crop(image, stream.height_width)

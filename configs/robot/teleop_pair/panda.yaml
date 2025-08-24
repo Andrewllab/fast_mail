@@ -1,0 +1,13 @@
+_target_: environments.real_robot.teleop.teleoperation_franka.FrankaTeleoperationPair
+leader_ip_address: "141.3.53.154"
+leader_ports:
+  - 50051
+  - 50052
+follower_ip_address: "141.3.53.154"
+follower_ports:
+  - 50053
+  - 50054
+teleoperation_type:
+  _target_: environments.real_robot.teleop.teleoperation_base.TeleoperationType
+  _args_: 
+    - 1
