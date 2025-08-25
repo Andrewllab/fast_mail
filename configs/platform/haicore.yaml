@@ -7,6 +7,7 @@ defaults:
 
 platform:
   name: haicore
+  batch_size: 128
   num_workers: 36  # node has 152 cores = 38 cores per GPU
 
 paths:
@@ -14,13 +15,17 @@ paths:
   preprocessed_dir: $TMPDIR/preprocessed_data
   debug_preprocessed_dir: $TMPDIR/debug_preprocessed_data
 
+# disable the batch size finder, since it seems to find a batch size that is too high
+callbacks:
+  batch_size_finder: null
+
 hydra:
   mode: MULTIRUN
   launcher:
     account: anthropomatik  # not sure if this is needed
     timeout_min: 1440  # 24 hours
     partition: normal  # normal and advanced are almost identical, and both have GPUs
-    gres: gpu:1
+    gres: gpu:full:1  # haicore supports requesting fractions of a GPU, so this must be used to request a full GPU
     cpus_per_task: 38
     setup:
       # unzip training data onto fast, job-local storage: https://www.nhr.kit.edu/userdocs/horeka/filesystems/#tmpdir
