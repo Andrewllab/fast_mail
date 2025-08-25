@@ -18,7 +18,7 @@ mamba activate ./.env
 
 ## Torch
 
-Most users can install the stable version of [pytorch](https://pytorch.org/get-started/locally/) and [torch geometric](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html):
+Install [pytorch](https://pytorch.org/get-started/locally/)>=2.7, torchvision and [torch geometric](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html):
 
 ```bash
 pip3 install torch torchvision torch_geometric
@@ -31,34 +31,12 @@ python -c "import torch; print(torch.__version__)"
 # >>> 2.8.0+cu128
 
 TORCH_PLUS_CUDA=$(python -c "import torch; print(torch.__version__)")
-pip install torch_cluster -f https://data.pyg.org/whl/torch-${TORCH_PLUS_CUDA}.html
-pip install torch_scatter -f https://data.pyg.org/whl/torch-${TORCH_PLUS_CUDA}.html
+pip install torch_cluster torch_scatter -f https://data.pyg.org/whl/torch-${TORCH_PLUS_CUDA}.html
 ```
 
-### Horeka
+### Building torch_cluster and torch_scatter from source
 
-Horeka only supports CUDA versions 12.4 and 12.9, whereas the default is 12.8, so run the following:
-
-```bash
-pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu129
-
-module load devel/cuda/12.9
-
-TORCH_PLUS_CUDA=$(python -c "import torch; print(torch.__version__)")
-pip install torch_cluster -f https://data.pyg.org/whl/torch-${TORCH_PLUS_CUDA}.html
-pip install torch_scatter -f https://data.pyg.org/whl/torch-${TORCH_PLUS_CUDA}.html
-```
-
-### RTX 50 Series Users
-
-Users with RTX 50 series GPUs must install the nightly release of pytorch (2.8.*).
-This requires installing the additional libraries from source:
-
-```bash
-pip3 install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
-pip install torch_geometric
-```
-
+If pip cannot find a precompiled binary of torch_cluster and torch_scatter for your specific pytorch+cuda versions, you must compile them from source.
 Install the CUDA toolkit version that matches the CUDA version of your installed pytorch. You can check the version like this:
 
 ```bash
@@ -73,16 +51,22 @@ export PATH=/usr/local/cuda/bin:$PATH
 export CPATH=/usr/local/cuda/include:$CPATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
-pip install --no-build-isolation --verbose torch_cluster
-pip install --no-build-isolation --verbose torch_scatter
+pip install --no-build-isolation --verbose torch_cluster torch_scatter
 ```
 
-In case pip refuses to compile these packages from source, run:
+The `--no-build-isolation` flag was necessary for me, but may not be necessary for you depending on your platform.
+
+### Kluster
+
+The kluster does not have cuda toolkit (or nvcc) installed, yet the binaries from pip depend on a glibc 2.32, while the system only has glibc 2.31.
+Therefore, we need to install nvcc inside the conda environment instead.
 
 ```bash
-pip install --no-cache --no-build-isolation --verbose torch_cluster
-pip install --no-cache --no-build-isolation --verbose torch_scatter
+mamba install -c nvidia cuda-nvcc=12.8 cuda-toolkit=12.8
+pip install --no-binary=:all: --verbose torch-scatter torch-cluster
 ```
+
+These commands worked for me, even though I did not set any of the required paths from the documentation.
 
 ## Python dependencies
 
@@ -98,6 +82,15 @@ wandb login
 ```
 
 Depending on your use case, there may also be additional pip requirements to install:
+
+### IsaacLab
+
+Users with Ubuntu 22.04/24.04 can simply install IsaacSim and IsaacLab with pip:
+
+```bash
+pip install 'isaacsim[all,extscache]==4.5.0' --extra-index-url https://pypi.nvidia.com
+pip install isaaclab[isaacsim,all]==2.0.2 --extra-index-url https://pypi.nvidia.com
+```
 
 ### Horeka
 
@@ -127,47 +120,6 @@ Some testing code and mockups require pytest or other packages.
 
 ```bash
 pip install -r requirements_test.txt
-```
-
-## IsaacLab
-
-Users with Ubuntu 22.04 can simply install IsaacSim and IsaacLab with pip:
-
-```bash
-pip install 'isaacsim[all,extscache]==4.5.0' --extra-index-url https://pypi.nvidia.com
-pip install isaaclab[isaacsim,all]==2.0.2 --extra-index-url https://pypi.nvidia.com
-```
-
-**Ubuntu 20.04 Users**
-
-Download and install the pre-built binaries for IsaacSim according to [the instructions](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_workstation.html).
-Add the required environment variables to your `.bashrc` file.
-With your conda environment deactivated, verify that IsaacSim runs as expected using the commands [here](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html#verifying-the-isaac-sim-installation).
-
-```bash
-# note: you can pass the argument "--help" to see all arguments possible.
-${ISAACSIM_PATH}/isaac-sim.sh
-# checks that python path is set correctly
-${ISAACSIM_PYTHON_EXE} -c "print('Isaac Sim configuration is now complete.')"
-# checks that Isaac Sim can be launched from python
-${ISAACSIM_PYTHON_EXE} ${ISAACSIM_PATH}/standalone_examples/api/isaacsim.core.api/add_cubes.py
-```
-
-Clone the IsaacLab repository and symlink IsaacSim into the IsaacLab directory:
-
-```bash
-git clone git@github.com:isaac-sim/IsaacLab.git
-# enter the cloned repository
-cd IsaacLab
-# create a symbolic link
-ln -s ${ISAACSIM_PATH} _isaac_sim
-```
-
-Install the isaaclab and isaaclab_tasks packages directly using pip:
-
-```bash
-pip install source/isaaclab
-pip install source/isaaclab_tasks
 ```
 
 # Data
