@@ -1,0 +1,31 @@
+# @package _global_
+
+defaults:
+  # tokenize the rgb images using a ViT-B/16 model
+  - /tokenizers@agent.obs_encoder.t10_vit: vit_image_tokenizer
+  # add tokens for the robot state
+  - /tokenizers@agent.obs_encoder.t20_robot_state: linear_robot_state_tokenizer
+
+agent:
+  obs_encoder:
+    embed_dim: 256
+    
+    t10_vit:
+      shared_encoder: False
+    
+      image_encoder:
+        # vit-b/16
+        pretrained_weights: IMAGENET1K_V1  # null or "IMAGENET1K_V1"
+        freeze_backbone: False
+
+  # increase size of transformer according to what David uses
+  noise_model:
+    decoder:
+      n_layers: 6
+      layer_module:
+        attention_module:
+          n_heads: 8
+
+logger:
+  wandb:
+    tags: ["rgb", "resnet18"]

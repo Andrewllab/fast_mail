@@ -17,3 +17,4 @@ rootutils  # enables importing locals modules regardless of where the script is 
 rich  # for Lightning rich model summary
 h5py  # for loading hdf5 files
 ftfy
+bitsandbytes # for 8-bit optimizers

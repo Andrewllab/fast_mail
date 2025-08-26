@@ -1,0 +1,6 @@
+name: adamw8bit
+_target_: bitsandbytes.optim.AdamW8bit
+_partial_: True
+# lr: 1e-4
+betas: [0.9, 0.995]
+weight_decay: 0.05
