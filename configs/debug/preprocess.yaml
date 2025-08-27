@@ -12,6 +12,10 @@ job_type: preprocessing
 callbacks: null
 logger: null
 
+data:
+  dataset:
+    overwrite_preprocessed: True  # don't worry about overwriting the preprocessed data since we are using a small subset
+
 trainer:
   max_epochs: 1
   fast_dev_run: true

@@ -1,3 +1,4 @@
+name: FourierFeatures
 _target_: models.pos_encoder.FourierFeatures
 n_wavelengths: 10
 max_wavelength: 4.0
