@@ -2,7 +2,7 @@
 
 defaults:
   # tokenize the rgb images using a ResNet
-  - /tokenizers@agent.obs_encoder.t10_resnets: resnet_image_tokenizer
+  - /tokenizers@agent.obs_encoder.t10_resnets: image_tokenizer
   # add tokens for the robot state
   - /tokenizers@agent.obs_encoder.t20_robot_state: linear_robot_state_tokenizer
 
@@ -13,10 +13,6 @@ agent:
     t10_resnets:
       shared_encoder: False
       image_type: rgbd
-    
-      image_encoder:
-        # resnet18
-        input_channels: 4
 
 data:
   batch_size: ${floor_div:${platform.batch_size},2}  # 1/2 of typical batch size

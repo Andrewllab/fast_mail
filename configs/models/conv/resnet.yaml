@@ -1,0 +1,5 @@
+_target_: models.resnet.beso_resnet_encoder
+_partial_: True  # requires in_channels and embed_dim
+pretrained_weights: null
+freeze_backbone: False
+use_group_norm: True

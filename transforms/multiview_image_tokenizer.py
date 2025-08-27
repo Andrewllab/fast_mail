@@ -18,7 +18,7 @@ class MultiviewImageTokenizer(Transform, nn.Module):
     def __init__(
         self,
         specs: DataSpecs,
-        image_encoder: Callable[[], nn.Module],
+        image_encoder: Callable[[int, int], nn.Module],
         embed_dim: int,
         image_type: Literal["rgb", "depth", "rgbd"] = "rgb",
         shared_encoder: bool = False,
@@ -27,10 +27,13 @@ class MultiviewImageTokenizer(Transform, nn.Module):
 
         if image_type == "rgb":
             stream_types = (RGBStream,)
+            in_channels = 3
         elif image_type == "depth":
             stream_types = (DepthStream,)
+            in_channels = 1
         elif image_type == "rgbd":
             stream_types = (RGBStream, DepthStream)
+            in_channels = 4
         else:
             raise ValueError(
                 f"image_type must be one of 'rgb', 'depth', or 'rgbd', but got {image_type}"
@@ -57,6 +60,7 @@ class MultiviewImageTokenizer(Transform, nn.Module):
             if isinstance(stream, stream_types)
         ]
 
+        # verify that all streams have the same time dimension
         if not all(stream.time == input_streams[0].time for stream in input_streams):
             raise ValueError(
                 "All input streams must have the same time dimension."
@@ -65,20 +69,21 @@ class MultiviewImageTokenizer(Transform, nn.Module):
 
         # instantiate rgb model(s)
         if shared_encoder:
+            # verify that all streams have the same resolution
             if not all(
-                input_stream.height_width == input_streams[0].height_width
-                for input_stream in input_streams
+                stream.height_width == input_streams[0].height_width
+                for stream in input_streams
             ):
                 raise ValueError(
                     "All input streams must have the same height and width when using a shared encoder."
                     f"Got {[stream.height_width for stream in input_streams]}"
                 )
 
-            self.model = image_encoder()
+            self.model = image_encoder(in_channels, embed_dim)
         else:
             self.models = nn.ModuleDict()
             for key in input_specs.keys():
-                self.models[key] = image_encoder()
+                self.models[key] = image_encoder(in_channels, embed_dim)
         self.shared_encoder = shared_encoder
 
         # each camera produces one token

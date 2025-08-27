@@ -1,0 +1,9 @@
+defaults:
+  - /models/conv@image_encoder: resnet
+  - /models/conv@pointmap_encoder: resnet
+
+name: multiview_pointmap_tokenizer
+_target_: transforms.multiview_pointmap_tokenizer.MultiviewPointMapTokenizer
+_partial_: True
+embed_dim: ${..embed_dim}
+fusion_type: cat

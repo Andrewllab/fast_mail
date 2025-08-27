@@ -130,6 +130,7 @@ class ImageStream(ABC):
     channel_order: ChannelOrderType = "HW"
     time: int | None = None
     intrinsics: PinholeCameraIntrinsic | None = None
+    # TODO: add extrinsics to each stream
 
     @property
     def height_width(self) -> tuple[int, int]:

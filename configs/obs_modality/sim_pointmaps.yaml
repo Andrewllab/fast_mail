@@ -1,0 +1,30 @@
+# @package _global_
+
+defaults:
+  # pretrained resnet18 expects images resized to 256x256...
+  - /transforms@data.preprocess_transforms.t2_resize: image_resize
+
+  # ...and then cropped to 224x224
+  - /transforms@data.preprocess_transforms.t3_crop_image: image_centercrop
+
+  # convert to pointmap
+  - /transforms@data.preprocess_transforms.t5_to_pointmap: to_pointmap
+
+  # apply ImageNet normalization
+  - /transforms@data.gpu_batch_transforms.t4_norm_image: imagenet_norm
+
+data:
+  # Below is just the default configuration copied here for convenience. Change as needed.
+  preprocess_transforms:
+    t2_resize:
+      shape: 256
+    
+    t3_crop_image:
+      shape: 224
+    
+    t5_to_pointmap:
+      color: False  # if this is true, imagenet_norm must be applied in preprocessing before to_pointmap
+
+  # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
+  dataset:
+    preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/multiview_pointmap

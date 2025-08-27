@@ -5,8 +5,8 @@ from timm import create_model
 
 
 def davit_encoder(
+    input_channels: int,
     embed_dim: int,
-    input_channels: int = 3,
     pretrained: bool = False,
     **davit_kwargs,
 ) -> nn.Module:

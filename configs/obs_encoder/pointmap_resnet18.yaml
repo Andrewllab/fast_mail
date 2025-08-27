@@ -1,10 +1,36 @@
+# @package _global_
+
 defaults:
   # tokenize the pointmaps using a ResNet
-  - /tokenizers@agent.obs_encoder.t5_resnets: resnet_pointmap_tokenizer
+  - /tokenizers@agent.obs_encoder.t10_resnets: pointmap_tokenizer
+
   # add tokens for the robot state
-  - /tokenizers@agent.obs_encoder.t6_robot_state: linear_robot_state_tokenizer
+  - /tokenizers@agent.obs_encoder.t20_robot_state: linear_robot_state_tokenizer
+
+# Below is just the default configuration copied here for convenience. Change as needed.
+agent:
+  obs_encoder:
+    embed_dim: 256
+    
+    t10_resnets:
+      fusion_type: cat  # Literal["6ch", "add", "cat"] | None
+      image_encoder:
+        # resnet18
+        pretrained_weights: IMAGENET1K_V1  # null or "IMAGENET1K_V1"
+        freeze_backbone: False
 
 data:
+  # Below is just the default configuration copied here for convenience. Change as needed.
+  preprocess_transforms:
+    t2_resize:
+      shape: 256
+    
+    t3_crop_image:
+      shape: 224
+    
+    t5_to_pointmap:
+      color: False  # if this is true, imagenet_norm must be applied in preprocessing before to_pointmap
+
   batch_size: ${floor_div:${platform.batch_size},2}  # 1/2 of typical batch size
 
 logger:

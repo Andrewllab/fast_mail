@@ -1,4 +1,4 @@
-_target_: transforms.to_pointcloud.ToPointMap
+_target_: transforms.to_pointmap.ToPointMap
 _partial_: True
-color: True
+color: False
 max_depth: 1.0

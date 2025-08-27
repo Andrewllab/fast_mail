@@ -19,12 +19,15 @@ data:
   preprocess_transforms:
     t2_resize_for_pcd:
       shape: 128
+
     t3_to_pcd:
       color: False
+
     t4_crop_pcd:
       x_range: [0.1, 1.0]  # crop the robot base out of the observation
       y_range: [-0.4, 0.4]
       z_range: [0.004, 0.4]  # just high enough to remove the table
+
   gpu_batch_transforms:
     t5_voxel_downsample:
       size: 0.006

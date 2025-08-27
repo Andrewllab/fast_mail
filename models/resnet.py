@@ -8,8 +8,8 @@ from torchvision.models import ResNet
 
 
 def beso_resnet_encoder(
+    input_channels: int,
     embed_dim: int,
-    input_channels: int = 3,
     pretrained_weights: str | None = None,
     freeze_backbone: bool = False,
     use_group_norm: bool = True,

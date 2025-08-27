@@ -114,7 +114,7 @@ class ResizeImage(Transform):
                 if stream.channel_order == "HWC":
                     image = torch.movedim(image, -1, -3)
 
-                if image.dtype != default_float_dtype:
+                if image.dtype == torch.uint8:
                     image = image.to(dtype=default_float_dtype).div(255)
 
                 interpolation = (

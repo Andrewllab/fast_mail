@@ -26,6 +26,8 @@ class NormalizeImage(Transform):
         for key, spec in input_specs.items():
             streams = dict(spec.streams)  # copy streams for local modification
             for name, stream in streams.items():
+                if not isinstance(stream, RGBStream):
+                    continue
                 stream = stream.reorder_channels("CHW")
                 streams[name] = stream
             obs_specs[key] = spec.replace(streams=streams)
@@ -49,7 +51,7 @@ class NormalizeImage(Transform):
                 if stream.channel_order == "HWC":
                     image = torch.movedim(image, -1, -3)
 
-                if image.dtype != default_float_dtype:
+                if image.dtype == torch.uint8:
                     image = image.to(dtype=default_float_dtype).div(255)
 
                 image = F.normalize(image, self.mean, self.std, inplace=True)
