@@ -18,7 +18,7 @@ data:
   # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess_transforms:
     t2_resize_for_pcd:
-      shape: 128
+      shape: 128  # scale shortest side to 128 and keep aspect ratio
 
     t3_to_pcd:
       color: False

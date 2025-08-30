@@ -1,5 +1,6 @@
 _target_: transforms.image_resize.ResizeImage
 _partial_: True
-shape: 256
+shape: 256  # int | tuple[int, int]: if int, scales shortest side to that target and keeps aspect ratio
+factor: null  # float: either shape or factor may be provided, not both
 interpolation: BILINEAR
 depth_interpolation: NEAREST_EXACT

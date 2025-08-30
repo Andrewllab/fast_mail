@@ -83,23 +83,6 @@ wandb login
 
 Depending on your use case, there may also be additional pip requirements to install:
 
-### IsaacLab
-
-Users with Ubuntu 22.04/24.04 can simply install IsaacSim and IsaacLab with pip:
-
-```bash
-pip install 'isaacsim[all,extscache]==4.5.0' --extra-index-url https://pypi.nvidia.com
-pip install isaaclab[isaacsim,all]==2.0.2 --extra-index-url https://pypi.nvidia.com
-```
-
-After installation, you can reinstall torch again, since isaaclab installs torch 2.5.1. Pip will complain about version mismatches, but you can ignore this.
-
-```bash
-pip3 install --upgrade torch torchvision torch_geometric
-```
-
-Be aware that isaaclab downgrades your numpy version to 1.26.4, and is **not** compatible with numpy 2.x.
-
 ### Horeka
 
 Horeka requires the submitit launcher for hydra.
@@ -129,6 +112,100 @@ Some testing code and mockups require pytest or other packages.
 ```bash
 pip install -r requirements_test.txt
 ```
+
+## IsaacLab
+
+Users with Ubuntu 22.04/24.04 can simply install IsaacSim and IsaacLab with pip:
+
+```bash
+pip install 'isaacsim[all,extscache]==4.5.0' --extra-index-url https://pypi.nvidia.com
+pip install isaaclab[isaacsim,all]==2.0.2 --extra-index-url https://pypi.nvidia.com
+```
+
+After installation, you can reinstall torch again, since isaaclab installs torch 2.5.1. Pip will complain about version mismatches, but you can ignore this.
+
+```bash
+pip3 install --upgrade torch torchvision torch_geometric
+```
+
+Be aware that isaaclab downgrades your numpy version to 1.26.4, and is **not** compatible with numpy 2.x.
+For this and other reasons, it is not recommended to install IsaacLab in the same environment as Novometis, FoundationStereo, or any other optional dependency.
+
+## FoundationStereo
+
+Since FoundationStereo is very large, we compile it with TensorRT to speed up inference times. The following compilation steps have been tested on the following platforms:
+- Ubuntu 22.04, RTX 3090, Nvidia driver 570 (CUDA 12.8)
+- Ubuntu 22.04, RTX 5090, Nvidia driver 570 (CUDA 12.8)
+- Pop! OS 22.04, RTX 5080, Nvidia driver 570 (CUDA 12.8)
+- Ubuntu 24.04, RTX 5090, Nvidia driver 575 (CUDA 12.9)
+
+1. Install the [nvidia CUDA network repo](https://docs.nvidia.com/cuda/cuda-installation-guide-linux/#network-repo-installation-for-ubuntu). This is equivalent to the first 3 steps of [installing the CUDA toolkit](https://developer.nvidia.com/cuda-downloads) when choosing "deb (network)" as the installer type. For Ubuntu 22.04, it looks like this:
+    ```bash
+    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+    sudo dpkg -i cuda-keyring_1.1-1_all.deb
+    sudo apt-get update
+    ```
+1. Users of CUDA 12.x need to pin the CUDA 12.x version of TensorRT and all related libraries, forcing apt to ignore newer versions.
+    Query apt for all available versions of TensorRT, and find one that is compatible with CUDA 12.x.
+    ```bash
+    apt-cache madison tensorrt
+    #  ...
+    #  tensorrt | 10.13.2.6-1+cuda12.9 | https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64  Packages
+    #  ...
+    ```
+    Here, cuda12.9 means it supports CUDA 12.0-12.9, **not** that only CUDA 12.9 is supported.
+    Copy the chosen version string below and add the pin:
+    ```bash
+    TRT_VERSION=10.13.2.6-1+cuda12.9  # copy the chosen version string here
+    echo "Package: libnvinfer* libnvonnxparsers* tensorrt* python3-libnvinfer*" | sudo tee /etc/apt/preferences.d/tensorrt-cuda12-9.pref
+    echo "Pin: version $TRT_VERSION" | sudo tee -a /etc/apt/preferences.d/tensorrt-cuda12-9.pref
+    echo "Pin-Priority: 1001" | sudo tee -a /etc/apt/preferences.d/tensorrt-cuda12-9.pref
+    ```
+
+    If you don't do this step, apt will try to install the latest version, which uses CUDA 13.x and is not compatible with your graphics driver. If you only specify the exact version of TensorRT that you want, apt will try to install all dependencies for CUDA 13.x, and cannot resolve the request.
+1. Install TensorRT.
+    ```bash
+    sudo apt install tensorrt
+    ```
+    Don't forget to add tensorrt to your path by adding the following to your `.bashrc` file.
+    ```bash
+    export PATH=${PATH:+${PATH}:}/usr/src/tensorrt/bin
+    ```
+1. Install additional pip dependencies in your mamba environment.
+    ```bash
+    pip install onnx tensorrt-cu12  # this installs the TensorRT bindings for CUDA 12.x
+    pip install -r requirements_fs.txt
+    ```
+1. Download the pretrained models.
+    ```bash
+    gdown --folder -O ./foundation_stereo_models https://drive.google.com/drive/folders/1VhPebc_mMxWKccrv7pdQLTvXYVcLYpsf
+    ```
+1. Make the onnx file. Adjust the image dimensions, batch size, and output filepath as you wish. This will take ~30 seconds.
+    ```bash
+    XFORMERS_DISABLED=1 python scripts/make_onnx.py \
+            --save_path ./foundation_stereo_models/foundation_stereo_small_3x480x640.onnx \
+            --ckpt_dir ./foundation_stereo_models/11-33-40/model_best_bp2.pth \
+            --height 480 \
+            --width 640 \
+            --valid_iters 16 \
+            --batch_size 3
+    ```
+1. Compile the onnx file into a TensorRT engine. This will take ~30 minutes.
+    ```bash
+    trtexec --onnx=foundation_stereo_models/foundation_stereo_small_3x480x640.onnx \
+            --saveEngine=foundation_stereo_models/foundation_stereo_small_3x480x640.plan \
+            --fp16 \
+            --verbose
+    ```
+
+    `dynamic_axes` is currently disabled in the `make_onnx.py` script, but if these are enabled, then trtexec must be passed the `--optShapes` argument (e.g. `--optShapes=left:3x3x480x640,right:3x3x480x640` for a batch size of 3). Otherwise it always assumes a batch size of 1.
+
+Note: according to [the documentation](https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/installing.html#python-package-index-installation), installing both the apt and pip packages for TensorRT is redundant and "may not be desirable". However, I was not able to find another way. The `trtexec` executable is part of the `libnvinfer-bin` apt package, while the pip package is required due to `import tensorrt` statements in python. With more trial and error, it's probably possible to find a way to install all the required software in user space only.
+
+### Troubleshooting FoundationStereo
+
+- Try not to do anything that requires too much GPU memory during compilation. If compilation randomly crashes after 10+ minutes, this may be the cause.
+- If the file `/usr/local/cuda/targets/x86_64-linux/lib/libnvinfer_builder_resource.so.10.9.0` exists on your system, this may be causing a problem. `trtexec` seems to want to load this dynamic library if it exists, even though it's (presumably) for an older version of `libnvinfer` (10.9 vs. 10.13). Uninstall all TensorRT and CUDA apt packages (carefully). You may see a message like `/usr/local/cuda not empty so not removing` after uninstalling CUDA. After all traces of CUDA should be gone from your system, if this file (and a few others) are still there, remove them with `rm -rf`. Reinstall TensorRT (CUDA toolkit is not required) and try compilation again.
 
 # Data
 

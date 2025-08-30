@@ -1,10 +1,9 @@
 # @package _global_
 
 defaults:
-  # pretrained resnet18 expects images resized to 256x256...
   - /transforms@data.preprocess_transforms.t2_resize: image_resize
 
-  # ...and then cropped to 224x224
+  # pretrained resnet18 expects images of shape 224x224
   - /transforms@data.preprocess_transforms.t3_crop_image: image_centercrop
   
   # apply ImageNet normalization
@@ -14,10 +13,10 @@ data:
   # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess_transforms:
     t2_resize:
-      shape: 256
+      shape: 224  # scale shortest side to 224 and keep aspect ratio
     
     t3_crop_image:
-      shape: 224
+      shape: 224  # crop to 224x224 square
 
   # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
   dataset:

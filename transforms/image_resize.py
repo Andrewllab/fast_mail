@@ -83,7 +83,7 @@ class ResizeImage(Transform):
         if factor is not None:
             self.summary = f"(factor={factor})"
         elif isinstance(shape, int):
-            self.summary = f"(shape={shape}x{shape})"
+            self.summary = f"(shape={shape}x???)"
         elif isinstance(shape, (tuple, list)):
             self.summary = f"(shape={shape[0]}x{shape[1]})"
 

@@ -20,34 +20,52 @@ from transforms.base_transform import Transform
 
 
 class RenderCameras(Transform):
-    def __init__(self, specs: DataSpecs) -> None:
+    def __init__(
+        self,
+        specs: DataSpecs,
+        stream_names: str | Sequence[str] | None = None,
+        min_depth: float | None = None,
+        max_depth: float | None = None,
+        depth_colormap: str = "magma",
+    ) -> None:
         input_specs = {
             key: spec for key, spec in specs.obs.items() if isinstance(spec, CameraSpec)
         }
 
-        H, W = None, None
-        n_images = 0
-        for key, spec in input_specs.items():
-            for name, stream in spec.streams.items():
-                if H is None or W is None:
-                    H, W = stream.height_width
-                else:
-                    assert (H, W) == stream.height_width
-            n_images += len(spec.streams)
+        if isinstance(stream_names, str):
+            stream_names = [stream_names]
 
+        input_streams = [
+            stream
+            for spec in input_specs.values()
+            for name, stream in spec.streams.items()
+            if stream_names is None or name in stream_names
+        ]
+
+        n_images = len(input_streams)
         if n_images == 0:
             raise ValueError("No camera specs found.")
-        assert H is not None and W is not None
 
+        height_widths = [stream.height_width for stream in input_streams]
+        if not all(hw == height_widths[0] for hw in height_widths):
+            raise ValueError(
+                f"All camera streams must have the same height and width, but got {height_widths}"
+            )
+
+        height, width = height_widths[0]
         self.tiled_height, self.tiled_width = find_tiling(n_images)
 
         self.screen = pygame.display.set_mode(
-            (W * self.tiled_width, H * self.tiled_height)
+            (width * self.tiled_width, height * self.tiled_height)
         )
         # pygame.display.set_caption(f"obs.{key}")
         self.screen.fill((0, 0, 0))  # Clear the screen
 
         self._input_specs = input_specs
+        self.stream_names = stream_names
+        self.min_depth = min_depth
+        self.max_depth = max_depth
+        self.depth_colormap = depth_colormap
         self._specs = specs
 
     @property
@@ -62,14 +80,21 @@ class RenderCameras(Transform):
 
         images = []
         for key, spec in self._input_specs.items():
-            camera = tensordict["obs", key]
             for name, stream in spec.streams.items():
-                image = camera[name]
+                if self.stream_names is not None and name not in self.stream_names:
+                    continue
+
+                image = tensordict["obs", key, name]
                 image = image[0, -1]  # remove batch and time dimensions
                 if isinstance(stream, RGBStream):
                     image = rgb_tensor_to_np(image, stream.channel_order)
                 elif isinstance(stream, DepthStream):
-                    image = depth_tensor_to_np(image)
+                    image = depth_tensor_to_np(
+                        image,
+                        depth_min=self.min_depth,
+                        depth_max=self.max_depth,
+                        colormap_name=self.depth_colormap,
+                    )
                 else:
                     assert stream.channels is None
                     image = intensity_tensor_to_np(image)
@@ -146,7 +171,12 @@ def intensity_tensor_to_np(image: torch.Tensor) -> np.ndarray:
     return image.cpu().numpy()
 
 
-def depth_tensor_to_np(depth: torch.Tensor, colormap_name="magma") -> np.ndarray:
+def depth_tensor_to_np(
+    depth: torch.Tensor,
+    depth_min: float | None = None,
+    depth_max: float | None = None,
+    colormap_name="magma",
+) -> np.ndarray:
     """
     Convert a torch tensor to a numpy array.
     The tensor is assumed to be in the format (H, W).
@@ -155,8 +185,10 @@ def depth_tensor_to_np(depth: torch.Tensor, colormap_name="magma") -> np.ndarray
     depth = torch.nan_to_num(depth, nan=0.0, posinf=0.0, neginf=0.0)
 
     # Normalize to [0, 1]
-    depth_min = depth.min()
-    depth_max = depth.max()
+    if depth_min is None:
+        depth_min = depth.min()
+    if depth_max is None:
+        depth_max = depth.max()
     depth_range = depth_max - depth_min + 1e-6  # avoid division by zero
     depth = (depth - depth_min) / depth_range
 

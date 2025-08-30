@@ -10,6 +10,7 @@ from environments.specs import (
     CameraSpec,
     DataSpecs,
     DepthStream,
+    ImageStream,
     ObsSpec,
     PinholeCameraIntrinsic,
     RGBStream,
@@ -18,7 +19,7 @@ from environments.specs import (
 log = logging.getLogger(__name__)
 
 
-class AlrFurnitureBenchDataset(TrajectoryDataset):
+class RealRobotDataset(TrajectoryDataset):
     def __init__(self, *args, **kwargs):
         self._specs = None
         super().__init__(*args, **kwargs)
@@ -39,13 +40,13 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         log.debug(f"Loading trajectories from file {filepath}")
 
         traj = TensorDict.from_h5(str(filepath))
-        
+
         if self._specs is None:
             log.debug(
                 f"Inferring dataset specs by inspecting trajectory from file {filepath}"
             )
             self._load_specs(traj)
-        
+
         # Handle proprioception data
         proprio = traj["obs", "proprioception"]
         robot_state = torch.cat(
@@ -55,7 +56,7 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             ),
             dim=-1,
         )
-        
+
         ee_pose = torch.cat(
             (
                 proprio["eef_pos"],  # shape: (T, 3)
@@ -64,12 +65,14 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             dim=-1,
         )
 
-        gripper_cam_transform = traj["obs", "gripper_cam", "frames", "dynamic_extrinsics"]
+        gripper_cam_transform = traj[
+            "obs", "gripper_cam", "frames", "dynamic_extrinsics"
+        ]
 
         action_data = traj["actions"]
         action = torch.cat(
             (
-                action_data["eef_pos"],  # shape: (T, 3) 
+                action_data["eef_pos"],  # shape: (T, 3)
                 action_data["eef_quat"],  # shape: (T, 4)
                 action_data["gripper_pos"].unsqueeze(-1),  # shape: (T, 1)
             ),
@@ -90,21 +93,27 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
                     "front_left_cam": {
                         "rgb": traj["obs", "left_cam", "frames", "rgb"],
                         "depth": traj["obs", "left_cam", "frames", "depth"],
+                        "left": traj["obs", "left_cam", "frames", "left"],
+                        "right": traj["obs", "left_cam", "frames", "right"],
                     },
                     "front_right_cam": {
                         "rgb": traj["obs", "right_cam", "frames", "rgb"],
                         "depth": traj["obs", "right_cam", "frames", "depth"],
+                        "left": traj["obs", "right_cam", "frames", "left"],
+                        "right": traj["obs", "right_cam", "frames", "right"],
                     },
                     "gripper_cam": {
                         "rgb": traj["obs", "gripper_cam", "frames", "rgb"],
                         "depth": traj["obs", "gripper_cam", "frames", "depth"],
+                        "left": traj["obs", "gripper_cam", "frames", "left"],
+                        "right": traj["obs", "gripper_cam", "frames", "right"],
                     },
                     "robot_state": robot_state,
                     "ee_pose": ee_pose,
                     "target_ee_pose": target_ee_pose,
-                    "gripper_cam_transform": gripper_cam_transform
+                    "gripper_cam_transform": gripper_cam_transform,
                 },
-                "action": action
+                "action": action,
             }
         )
 
@@ -118,15 +127,22 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             )
             data = TensorDict.from_h5(str(filepath))
 
-        # static camera front left
+        # static camera front left (Zed mini)
+        # rgb: (T, 720, 1280, 3)
         rgb_shape = data["obs", "left_cam", "frames", "rgb"].shape
         assert len(rgb_shape) == 4
         assert rgb_shape[-1] == 3
+        # depth: (T, 720, 1280)
         depth_shape = data["obs", "left_cam", "frames", "depth"].shape
         assert len(depth_shape) == 3
         assert rgb_shape[:-1] == depth_shape
+        # left|right: (T, 720, 1280, 3)
+        left_shape = data["obs", "left_cam", "frames", "left"].shape
+        right_shape = data["obs", "left_cam", "frames", "right"].shape
+        assert left_shape == right_shape == rgb_shape
         height, width, channels = rgb_shape[1:]
         intrinsics = data["obs", "left_cam", "meta", "intrinsics"].reshape(3, 3)
+        baseline = data["obs", "left_cam", "meta", "baseline"].item()
         extrinsics = data.get(("obs", "left_cam", "meta", "extrinsics"), None)
         if extrinsics is not None:
             extrinsics = extrinsics.reshape(4, 4)
@@ -134,23 +150,33 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             streams={
                 "rgb": RGBStream(height, width, channels, channel_order="HWC"),
                 "depth": DepthStream(height, width, orthogonal=True),
+                "left": RGBStream(height, width, channels, channel_order="HWC"),
+                "right": RGBStream(height, width, channels, channel_order="HWC"),
             },
             time=self.obs_seq_len,
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
                 intrinsics, height=height, width=width
             ),
+            baseline=baseline,
             extrinsics=extrinsics,
         )
 
-        # static camera front right
+        # static camera front right (Zed mini)
+        # rgb: (T, 720, 1280, 3)
         rgb_shape = data["obs", "right_cam", "frames", "rgb"].shape
         assert len(rgb_shape) == 4
         assert rgb_shape[-1] == 3
+        # depth: (T, 720, 1280)
         depth_shape = data["obs", "right_cam", "frames", "depth"].shape
         assert len(depth_shape) == 3
         assert rgb_shape[:-1] == depth_shape
+        # left|right: (T, 720, 1280, 3)
+        left_shape = data["obs", "right_cam", "frames", "left"].shape
+        right_shape = data["obs", "right_cam", "frames", "right"].shape
+        assert left_shape == right_shape == rgb_shape
         height, width, channels = rgb_shape[1:]
         intrinsics = data["obs", "right_cam", "meta", "intrinsics"].reshape(3, 3)
+        baseline = data["obs", "right_cam", "meta", "baseline"].item()
         extrinsics = data.get(("obs", "right_cam", "meta", "extrinsics"), None)
         if extrinsics is not None:
             extrinsics = extrinsics.reshape(4, 4)
@@ -158,37 +184,51 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             streams={
                 "rgb": RGBStream(height, width, channels, channel_order="HWC"),
                 "depth": DepthStream(height, width, orthogonal=True),
+                "left": RGBStream(height, width, channels, channel_order="HWC"),
+                "right": RGBStream(height, width, channels, channel_order="HWC"),
             },
             time=self.obs_seq_len,
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
                 intrinsics, height=height, width=width
             ),
+            baseline=baseline,
             extrinsics=extrinsics,
         )
 
-        # gripper camera
+        # gripper camera (Realsense D405)
+        # rgb: (T, 480, 640, 3)
         rgb_shape = data["obs", "gripper_cam", "frames", "rgb"].shape
         assert len(rgb_shape) == 4
         assert rgb_shape[-1] == 3
+        # depth: (T, 480, 640)
         depth_shape = data["obs", "gripper_cam", "frames", "depth"].shape
         assert len(depth_shape) == 3
         assert rgb_shape[:-1] == depth_shape
+        # left|right: (T, 480, 640)
+        left_shape = data["obs", "gripper_cam", "frames", "left"].shape
+        right_shape = data["obs", "gripper_cam", "frames", "right"].shape
+        assert left_shape == right_shape == rgb_shape[:-1]
         height, width, channels = rgb_shape[1:]
         intrinsics = data["obs", "gripper_cam", "meta", "intrinsics"].reshape(3, 3)
-        extrinsics = torch.eye(4, dtype=torch.float32)
+        baseline = data["obs", "gripper_cam", "meta", "baseline"].item()
+        extrinsics = data.get(("obs", "gripper_cam", "meta", "extrinsics"), None)
+        if extrinsics is not None:
+            extrinsics = extrinsics.reshape(4, 4)
 
         gripper_cam = CameraSpec(
             streams={
                 "rgb": RGBStream(height, width, channels, channel_order="HWC"),
                 "depth": DepthStream(height, width, orthogonal=True),
+                "left": ImageStream(height, width, channel_order="HW"),
+                "right": ImageStream(height, width, channel_order="HW"),
             },
             time=self.obs_seq_len,
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
                 intrinsics, height=height, width=width
             ),
-            dynamic_pose_obs_key="gripper_cam_transform",
-            # gripper_cam_transform provides complete transform to camera
+            baseline=baseline,
             extrinsics=extrinsics,
+            dynamic_pose_obs_key="gripper_cam_transform",
         )
 
         # robot state, Why is gripper two dim?

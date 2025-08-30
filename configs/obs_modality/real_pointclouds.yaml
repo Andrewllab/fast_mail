@@ -19,7 +19,7 @@ defaults:
 data:
   gpu_batch_transforms:
     t2_resize_for_pcd:
-      shape: 256
+      shape: 256  # scale shortest side to 256 and keep aspect ratio
     t4_crop_pcd:
       x_range: [0.1, 1.0]  # crop the robot base out of the observation
       y_range: [-0.30, 0.25]  # crop out the curtains

@@ -205,7 +205,10 @@ class RGBStream(ImageStream):
 
 @dataclass(frozen=True)
 class DepthStream(ImageStream):
-    """RGB image stream. By convention, the dtype is (usually) float32."""
+    """RGB image stream. By convention, the dtype is (usually) float32.
+
+    Note: we assume that a camera has at most one depth stream.
+    """
 
     # orthogonal or perspective depth measurement
     orthogonal: bool = True

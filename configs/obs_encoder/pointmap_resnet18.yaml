@@ -20,17 +20,6 @@ agent:
         freeze_backbone: False
 
 data:
-  # Below is just the default configuration copied here for convenience. Change as needed.
-  preprocess_transforms:
-    t2_resize:
-      shape: 256
-    
-    t3_crop_image:
-      shape: 224
-    
-    t5_to_pointmap:
-      color: False  # if this is true, imagenet_norm must be applied in preprocessing before to_pointmap
-
   batch_size: ${floor_div:${platform.batch_size},2}  # 1/2 of typical batch size
 
 logger:
