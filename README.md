@@ -190,10 +190,13 @@ Since FoundationStereo is very large, we compile it with TensorRT to speed up in
             --valid_iters 16 \
             --batch_size 3
     ```
-1. Compile the onnx file into a TensorRT engine. This will take ~30 minutes.
+    **Important**: Note the final dimensions of the onnx model (after padding), which are printed out at the end. You will need this for the next step.
+
+1. Compile the onnx file into a TensorRT engine. Adjust the optShapes argument to match the final dimensions of the onnx model from the previous step. These may differ from the nominal input dimensions before padding. This compilation will take ~30 minutes.
     ```bash
     trtexec --onnx=foundation_stereo_models/foundation_stereo_small_3x480x640.onnx \
             --saveEngine=foundation_stereo_models/foundation_stereo_small_3x480x640.plan \
+            --optShapes=left:3x3x480x640,right:3x3x480x640 \
             --fp16 \
             --verbose
     ```

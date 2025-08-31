@@ -98,14 +98,14 @@ if __name__ == "__main__":
         opset_version=16,
         input_names=["left", "right"],
         output_names=["disp"],
-        # # If these are enabled, trtexec must be given --optShapes argument to
-        # # specify the input shapes including batch size, otherwise it assumes
-        # # a batch size of 1
-        # dynamic_axes={
-        #     "left": {0: "batch_size"},
-        #     "right": {0: "batch_size"},
-        #     "disp": {0: "batch_size"},
-        # },
+        # even though we fix the size of the dynamic axis during compilation
+        # with --optShapes, specifying the dynamic axes here reduces the size
+        # of the compiled engine by 3x (for a batch size of 3).
+        dynamic_axes={
+            "left": {0: "batch_size"},
+            "right": {0: "batch_size"},
+            "disp": {0: "batch_size"},
+        },
     )
 
     log.info(f"ONNX model exported at {args.save_path}")
