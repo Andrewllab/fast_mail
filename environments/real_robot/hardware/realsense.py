@@ -33,7 +33,7 @@ class RealSense(BaseCamera):
         fps: int = 30,
         reconnect_attempts: int = 2,
         warm_start: int = 3,
-        intrinsics: Mapping[str, float] | None = None,
+        intrinsics: Mapping[str, int | float | str | list[float]] | None = None,
         extrinsics: Sequence[Sequence[float]] | None = None,
     ):
         self.serial_number = str(serial_number)
@@ -175,24 +175,24 @@ class RealSense(BaseCamera):
 
     def get_intrinsics(
         self,
-        stream: Literal["Color", "Depth", "Infrared Left", "Infrared Right"] = "Depth",
-    ) -> dict[str, int | float | np.ndarray | str]:
+        stream_name: Literal["rgb", "depth", "left", "right"] = "depth",
+    ) -> dict[str, int | float | str | list[float]]:
         # https://github.com/IntelRealSense/librealsense/issues/12090#issuecomment-1673844543
 
         STREAM_NAMES = {
-            "Color": "Color",
-            "Depth": "Depth",
-            "Infrared Left": "Infrared 1",
-            "Infrared Right": "Infrared 2",
+            "rgb": "Color",
+            "depth": "Depth",
+            "left": "Infrared 1",
+            "right": "Infrared 2",
         }
 
-        stream_name = STREAM_NAMES[stream]
+        stream_name_ = STREAM_NAMES[stream_name]
         for s in self.profile.get_streams():
-            if s.stream_name() == stream_name:
+            if s.stream_name() == stream_name_:
                 break
         else:
             raise ValueError(
-                f"Stream {stream_name} not found in RealSense profile for {self.name}."
+                f"Stream {stream_name_} not found in RealSense profile for {self.name}."
             )
 
         intrinsics = s.as_video_stream_profile().get_intrinsics()
@@ -204,7 +204,7 @@ class RealSense(BaseCamera):
             "width": intrinsics.width,
             "height": intrinsics.height,
             "distortion_model": intrinsics.model.name,
-            "distortion_coeffs": np.array(intrinsics.coeffs, dtype=np.float32),
+            "distortion_coeffs": intrinsics.coeffs,
         }
 
         # compute stereo baseline

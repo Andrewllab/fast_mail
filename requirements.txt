@@ -1,5 +1,6 @@
 numpy
 scipy  # for numerical integration in linear multistep sampler
+matplotlib  # for plotting and colors
 
 lightning
 tensordict

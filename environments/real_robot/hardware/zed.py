@@ -1,8 +1,8 @@
 import logging
 import time
 import weakref
-from typing import Literal, Mapping, Sequence
 from pathlib import Path
+from typing import Literal, Mapping, Sequence
 
 import cv2
 import numpy as np
@@ -32,10 +32,12 @@ class Zed(BaseCamera):
         fps: Literal[15, 30, 60, 100] = 30,
         reconnect_attempts: int = 2,
         warm_start: int = 0,
-        intrinsics: Mapping[str, float] | None = None,
+        intrinsics: Mapping[str, int | float | str | list[float]] | None = None,
         extrinsics: Sequence[Sequence[float]] | None = None,
         optional_settings_path: Path | None = None,
     ):
+        # TODO: add support for depth_mode NONE
+        # TODO: add support for point clouds and verify that it is equivalent to unprojecting depth maps
         self.serial_number = str(serial_number)
         self._name = name if name else f"Zed_{serial_number}"
         self.resolution = sl.RESOLUTION[resolution]
@@ -49,7 +51,9 @@ class Zed(BaseCamera):
             torch.tensor(extrinsics).reshape(4, 4) if extrinsics is not None else None
         )
         if optional_settings_path is not None and not optional_settings_path.exists():
-            raise RuntimeError(f"Optional settings file not found: {optional_settings_path}")
+            raise RuntimeError(
+                f"Optional settings file not found: {optional_settings_path}"
+            )
         self._optional_settings_path = optional_settings_path
 
         self._connect()
@@ -71,6 +75,11 @@ class Zed(BaseCamera):
                 log.info(f"Connection to Zed {self.name} successful.")
                 return
             except Exception:
+                if i == self.reconnect_attempts - 1:
+                    log.error(
+                        f'Failed to connect to Zed "{self.name}" after {self.reconnect_attempts} attempts.'
+                    )
+                    raise
                 log.exception(
                     f"Attempt {i + 1} to connect to Zed {self.name} (serial no. {self.serial_number}) failed."
                 )
@@ -84,7 +93,7 @@ class Zed(BaseCamera):
         init_params.camera_resolution = self.resolution
         init_params.camera_fps = self.fps
         init_params.depth_mode = self.depth_mode
-        init_params.coordinate_units = sl.UNIT.MILLIMETER
+        init_params.coordinate_units = sl.UNIT.METER
         if self._optional_settings_path is not None:
             init_params.optional_settings_path = str(self._optional_settings_path)
 
@@ -132,19 +141,33 @@ class Zed(BaseCamera):
             extrinsics=self._extrinsics,
         )
 
-    def get_intrinsics(self) -> dict[str, float]:
-        intrinsics = (
+    def get_intrinsics(
+        self, stream_name: Literal["rgb", "left", "right", "depth"] = "depth"
+    ) -> dict[str, int | float | list[float]]:
+        calibration = (
+            # calibration_parameters are for rectified/undistorted images
+            # calibration_parameters_raw are for unrectified/distorted images
             self.zed.get_camera_information().camera_configuration.calibration_parameters
         )
 
-        cx = intrinsics.left_cam.cx
-        cy = intrinsics.left_cam.cy
-        fx = intrinsics.left_cam.fx
-        fy = intrinsics.left_cam.fy
-        width = intrinsics.left_cam.image_size.width
-        height = intrinsics.left_cam.image_size.height
-        distortion = intrinsics.left_cam.disto
-        baseline = intrinsics.stereo_transform.get_translation().get()[0] / 1000
+        CAM_NAMES = {
+            "rgb": "left_cam",
+            "depth": "left_cam",
+            "left": "left_cam",
+            "right": "right_cam",
+        }
+
+        intrinsics = getattr(calibration, CAM_NAMES[stream_name])
+
+        cx = intrinsics.cx
+        cy = intrinsics.cy
+        fx = intrinsics.fx
+        fy = intrinsics.fy
+        width = intrinsics.image_size.width
+        height = intrinsics.image_size.height
+        distortion = intrinsics.disto
+        # baseline is in the same units as depth, which we set to meters
+        baseline = calibration.stereo_transform.get_translation().get()[0]
 
         return {
             "cx": cx,
@@ -153,7 +176,7 @@ class Zed(BaseCamera):
             "fy": fy,
             "width": width,
             "height": height,
-            "distortion": distortion,
+            "distortion": distortion.tolist(),
             "baseline": baseline,
         }
 

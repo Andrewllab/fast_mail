@@ -262,10 +262,13 @@ __pycache__/
 /preprocessed_datasets/
 /debug_preprocessed_datasets/
 
-# models downloaded from WandB
-/artifacts
+# acquisitions for camera calibration
+/calibration_data/
 
-recordings/
+# models downloaded from WandB
+/artifacts/
+
+/recordings/
 
 # pretrained and compiled FoundationStereo models
-foundation_stereo_models/
+/foundation_stereo_models/

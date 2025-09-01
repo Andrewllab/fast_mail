@@ -3,6 +3,7 @@ root_dir: ${oc.env:PROJECT_ROOT}
 
 # path to data directory
 data_dir: ${paths.root_dir}/datasets
+calibration_data_dir: ${paths.root_dir}/calibration_data
 
 # preprocessed data directory
 preprocessed_dir: ${paths.root_dir}/preprocessed_datasets

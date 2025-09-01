@@ -1,0 +1,4 @@
+_target_: environments.real_robot.hardware.zed.Zed
+serial_number: 17008863
+resolution: HD720  # 720x1280
+depth_mode: PERFORMANCE

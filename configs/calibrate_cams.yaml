@@ -1,0 +1,54 @@
+defaults:
+  - paths: default
+  - /cameras@cameras.left_cam: zed_mini_17008863
+  - /cameras@cameras.right_cam: zed_mini_16055244
+  - /cameras@cameras.gripper_cam: realsense_d405_218622270040
+  - robot: panda4
+  - debug: verbose
+  - _self_
+
+# this is how each camera is named in the final calibration output
+cameras:
+  left_cam:
+    name: left_cam
+  right_cam:
+    name: right_cam
+  gripper_cam:
+    name: gripper_cam
+
+# enabling or disabling various functions
+do_collect: False
+do_redetect_markers: False
+do_recompute_depth: False
+do_show_loaded: False
+do_render_fused_pcd: True
+
+# I/O settings
+acquisitions_folder: ${paths.calibration_data_dir}/2025-08-31
+output_folder: configs/cameras/calibration
+# fused_pcd_save_path: ${paths.root_dir}/fused_pointcloud.ply
+
+# calibration settings
+stream_name: left
+extrinsics_convention: ros  # ros | world
+optimization_objective: euclidean
+optimize_intrinsics: False  # if False, use factory intrinsics
+foundation_stereo_ckpt: ${paths.root_dir}/foundation_stereo_models/11-33-40/model_best_bp2.pth
+
+# charuco board config
+charuco:
+  board_size: [3, 3]  # number of chessboard squares in x and y directions
+  square_length: 0.055  # chessboard square side length (normally in meters)
+  marker_length: 0.043  # marker side length (same unit as square_length)
+  aruco_dict: 4X4_50
+
+# rendering settings
+fps: 10
+pause_s: 3  # seconds to pause after showing each acquisition
+rendering:
+  height_width: [384, 512]
+  depth:
+    colormap_name: inferno
+    depth_min: 0.0
+    depth_max: 2.0
+    invert_colormap: False

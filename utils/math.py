@@ -1086,6 +1086,26 @@ def transform_points(
 
 @torch.jit.script
 def transform_pointcloud(points: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
+    r"""Transform a point cloud using a homogeneous transformation matrix.
+
+    This function transform points from a source frame to a target frame. The transformation is
+    defined by the position :math:`t` and orientation :math:`R` of the target frame in the source
+    frame.
+
+    .. math::
+        p_{target} = R_{target} \times p_{source} + t_{target}
+
+    Either the inputs `points` or `transform` can have an arbitrary number of leading batch
+    dimensions, as long as they follow broadcasting rules. The last dimension of `points` must be
+    3, and the last two dimensions of `transform` must be 4x4.
+
+    Args:
+        points: Points to transform. Shape is (..., N, 3).
+        transform: Homogeneous transformation matrix. Shape is (..., 4, 4).
+
+    Returns:
+        Transformed points in the target frame. Shape is (..., N, 3).
+    """
     # -- rotation
     rot = transform[..., :3, :3]
     # batched matrix-vector product
@@ -1105,6 +1125,26 @@ def transform_pointcloud(points: torch.Tensor, transform: torch.Tensor) -> torch
 
 @torch.jit.script
 def transform_pointmap(points: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
+    r"""Transform a point map using a homogeneous transformation matrix.
+
+    This function transform points from a source frame to a target frame. The transformation is
+    defined by the position :math:`t` and orientation :math:`R` of the target frame in the source
+    frame.
+
+    .. math::
+        p_{target} = R_{target} \times p_{source} + t_{target}
+
+    Either the inputs `points` or `transform` can have an arbitrary number of leading batch
+    dimensions, as long as they follow broadcasting rules. The last dimension of `points` must be
+    3, and the last two dimensions of `transform` must be 4x4.
+
+    Args:
+        points: Points to transform. Shape is (..., H, W, 3).
+        transform: Homogeneous transformation matrix. Shape is (..., 4, 4).
+
+    Returns:
+        Transformed points in the target frame. Shape is (..., H, W, 3).
+    """
     H, W = points.shape[-3:-1]
     # (..., H, W, 3) -> (..., N, 3)
     pointcloud = points.flatten(start_dim=-3, end_dim=-2)
@@ -1736,10 +1776,13 @@ def pose_inv(pose):
 
     inv_pose = torch.zeros_like(pose)
 
-    # take transpose of last 2 dimensions
+    # invert rotations by taking their transpose
     inv_pose[..., :3, :3] = pose[..., :3, :3].transpose(-1, -2)
 
-    # note: PyTorch matmul wants shapes [..., 3, 3] x [..., 3, 1] -> [..., 3, 1] so we add a dimension and take it away after
+    # invert translations by multiplying the inverse rotation with the negative
+    # translation
+    # note: PyTorch matmul wants shapes [..., 3, 3] x [..., 3, 1] -> [..., 3, 1]
+    # so we add a dimension and take it away after
     inv_pose[..., :3, 3] = torch.matmul(
         -inv_pose[..., :3, :3], pose[..., :3, 3].unsqueeze(-1)
     ).squeeze(-1)

@@ -7,7 +7,6 @@ defaults:
   - hydra: default
   - transforms@agent.obs_encoder.t3_render: render_cameras
   - _self_
-  - experiment: depth_only
   - platform: default
   - optional local: default
   - debug: verbose
@@ -23,7 +22,7 @@ logger:
 # either specify a complete checkpoint path...
 log_dir:
 # ...or specify the wandb run name
-artifact_run_name: 0u1n2wcf
+artifact_run_name:
 # project and entity are only needed if they differ from the settings in the wandb logger config
 artifact_project: 3d-sim2real
 artifact_entity: alr-3d-sim2real

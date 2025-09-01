@@ -23,7 +23,7 @@ class BaseCamera(ABC):
         """
         raise NotImplementedError
 
-    def get_intrinsics(self) -> dict[str, float]:
+    def get_intrinsics(self, stream_name: str) -> dict[str, Any]:
         """
         Returns the camera intrinsics.
         """
