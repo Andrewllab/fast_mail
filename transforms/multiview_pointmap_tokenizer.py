@@ -149,6 +149,10 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
                 elif stream.channel_order == "HW":
                     image = torch.unsqueeze(image, dim=-3)
 
+                assert (
+                    image.shape[-2:] == stream.height_width
+                ), f"Expected image shape {stream.height_width}, but got {image.shape[-2:]} for {key}/{name}"
+
                 if image.dtype == torch.uint8:
                     image = image.to(dtype=default_float_dtype).div(255)
 

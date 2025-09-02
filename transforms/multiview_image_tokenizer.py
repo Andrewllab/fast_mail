@@ -79,11 +79,11 @@ class MultiviewImageTokenizer(Transform, nn.Module):
                     f"Got {[stream.height_width for stream in input_streams]}"
                 )
 
-            self.model = image_encoder(in_channels, embed_dim)
+            self.model = image_encoder(in_channels)
         else:
             self.models = nn.ModuleDict()
             for key in input_specs.keys():
-                self.models[key] = image_encoder(in_channels, embed_dim)
+                self.models[key] = image_encoder(in_channels)
         self.shared_encoder = shared_encoder
 
         # each camera produces one token
@@ -119,6 +119,10 @@ class MultiviewImageTokenizer(Transform, nn.Module):
                     image = torch.movedim(image, -1, -3)
                 elif stream.channel_order == "HW":
                     image = torch.unsqueeze(image, dim=-3)
+
+                assert (
+                    image.shape[-2:] == stream.height_width
+                ), f"Expected image shape {stream.height_width}, but got {image.shape[-2:]} for {key}/{name}"
 
                 if image.dtype == torch.uint8:
                     image = image.to(dtype=default_float_dtype).div(255)
