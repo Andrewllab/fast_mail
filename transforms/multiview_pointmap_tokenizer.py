@@ -224,7 +224,7 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
             # (B*T, D) -> (B*T, N, D)
             features = torch.stack(features, dim=1)
             # (B*T, N, D) -> (B, T, N, D)
-            features = torch.unflatten(features, dim=0, sizes=(B, T, N))
+            features = torch.unflatten(features, dim=0, sizes=(B, T))
 
         if self.late_fusion:
             # Do the same for rgb images
@@ -251,7 +251,7 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
                 # (B*T, D) -> (B*T, N, D)
                 features_rgb = torch.stack(features_rgb_list, dim=1)
                 # (B*T, N, D) -> (B, T, N, D)
-                features_rgb = torch.unflatten(features_rgb, dim=0, sizes=(B, T, N))
+                features_rgb = torch.unflatten(features_rgb, dim=0, sizes=(B, T))
 
             # features: (B, T, N, D)
             if self.fusion_type == "cat":
