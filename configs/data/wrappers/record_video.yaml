@@ -1,0 +1,11 @@
+record_video:
+  _target_: environments.wrappers.RecordMultiEpisodeVideo
+  _partial_: True  # requires 'env' argument
+  video_folder: ${paths.recording_dir}
+  name_prefix: rollout
+  episode_trigger:
+    _target_: environments.simulation.utils.triggers.episode_trigger
+    episode_interval: 1000  # record just once
+  num_episodes: 10  # number of episodes to record
+  fps: 30
+  disable_logger: True

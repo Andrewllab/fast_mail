@@ -108,7 +108,7 @@ def warn_once(logger: logging.Logger, msg: str, *args, **kwargs):
     logger.warning(msg, *args, stacklevel=2, **kwargs)
 
 
-def log_uncaught_exception(func: Callable) -> Callable:
+def log_exception_and_finish_wandb(func: Callable) -> Callable:
     """Decorator to log uncaught exceptions raised by the decorated function
     using the logger for the module where the function is defined.
 
@@ -133,13 +133,25 @@ def log_uncaught_exception(func: Callable) -> Callable:
 
         finally:
             # always close wandb run (even if exception occurs so multirun won't fail)
-            if find_spec("wandb"):  # check if wandb is installed
-                import wandb
-
-                if wandb.run:
-                    log.debug(
-                        f"Finishing wandb run with {exit_code=} after {func.__name__} finished running"
-                    )
-                    wandb.finish(exit_code=exit_code)
+            finished = try_finish_wandb(exit_code)
+            if finished:
+                log.debug(
+                    f"Finished wandb run with {exit_code=} after {func.__name__} finished running"
+                )
 
     return wrapper
+
+
+def try_finish_wandb(exit_code: int = 0) -> bool:
+    """Finish the current wandb run if it exists.
+
+    Args:
+        exit_code: The exit code to pass to wandb.finish(). Default is 0.
+    """
+    if find_spec("wandb"):  # check if wandb is installed
+        import wandb
+
+        if wandb.run:
+            wandb.finish(exit_code=exit_code)
+            return True
+    return False

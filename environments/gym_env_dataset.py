@@ -100,6 +100,7 @@ class GymEnvDataset(IterableDataset):
             done = torch.logical_or(terminated, truncated)
             num_episodes += done.sum().item()
             if done.any():
+                log.debug(f"Completed {num_episodes} episodes.")
                 obs, reset_info = self.env.reset(options={"mask": done})
                 info |= reset_info
 
@@ -114,6 +115,10 @@ class GymEnvDataset(IterableDataset):
         if self._next_action is not None:
             log.warning(f"Overwriting unconsumed next action {self._next_action}.")
         self._next_action = actions
+
+    def teardown(self) -> None:
+        # reset next action between evaluation epochs
+        self._next_action = None
 
     def close(self):
         self.env.close()

@@ -1,16 +1,15 @@
 import logging
 
 import hydra
-import numpy as np
 import rootutils
-import torch
-from lightning import Callback, LightningModule, Trainer
+from lightning import Callback, Trainer
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig, OmegaConf
 
 # enables importing local modules regardless of where the script is run
 rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
 
+from agents.base_agent import BaseAgent
 from environments.datamodule import TrajectoryDataModule
 from loggers.wandb import resolve_checkpoint, update_wandb_config
 from utils.conf import (
@@ -23,13 +22,14 @@ from utils.instantiators import (
     instantiate_datamodule,
     instantiate_loggers,
 )
-from utils.logging import configure_logging
+from utils.logging import configure_logging, log_exception_and_finish_wandb
 from utils.torch_conf import configure_torch
 
 log = logging.getLogger(__name__)
 
 
 @hydra.main(version_base=None, config_path="configs")
+@log_exception_and_finish_wandb
 def predict(cfg: DictConfig) -> None:
     # resolve the entire config to catch any errors early
     OmegaConf.resolve(cfg)
@@ -43,9 +43,13 @@ def predict(cfg: DictConfig) -> None:
 
     agent_cfg = cfg.get("agent", {})
     data_cfg = cfg.get("data", {})
-    if checkpoint := resolve_checkpoint(cfg, use_artifact=True):
+    checkpoint_cfg = cfg.get("checkpoint", {})
+    if checkpoint := resolve_checkpoint(checkpoint_cfg):
         # load agent config and specs from checkpoint
-        train_cfg, checkpoint_path = checkpoint
+        run_name, train_cfg, checkpoint_paths = checkpoint
+        # use the first checkpoint to initialize the agent, if multiple are given
+        epoch, checkpoint_path = checkpoint_paths[0]
+        log.info(f"Loading checkpoint after epoch {epoch} of run {run_name}...")
 
         # merge the agent and data configs, with the current config taking precedence
         agent_cfg = OmegaConf.merge(train_cfg.agent, agent_cfg)
@@ -83,10 +87,17 @@ def predict(cfg: DictConfig) -> None:
     # recursively delete these fields in config dictionary
     # we want these to be saved to WandB but we don't want them for instantiation
     delete_keys_recursively(agent_cfg, ["name"])
-    agent: LightningModule = hydra.utils.instantiate(agent_cfg, **datamodule_hparams)
+    agent: BaseAgent = hydra.utils.instantiate(agent_cfg, **datamodule_hparams)
+
+    if checkpoint:
+        agent.checkpoint_metadata = {
+            "run_name": run_name,
+            "epoch": epoch,
+        }
 
     log.debug("Instantiating callbacks...")
     callbacks: list[Callback] = instantiate_callbacks(cfg.get("callbacks"))
+    callbacks.extend(datamodule.get_callbacks())
 
     log.debug("Instantiating trainer...")
     trainer: Trainer = hydra.utils.instantiate(
@@ -97,6 +108,8 @@ def predict(cfg: DictConfig) -> None:
     trainer.predict(agent, datamodule=datamodule)
 
     log.info("Prediction loop completed.")
+
+    datamodule.close()
 
 
 if __name__ == "__main__":

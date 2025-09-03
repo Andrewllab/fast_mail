@@ -7,12 +7,13 @@ from typing import Any, Callable, Literal
 import hydra
 import lightning as L
 import torch.nn as nn
+from gymnasium import Wrapper
+from gymnasium.wrappers import RecordVideo
 from omegaconf import DictConfig
 from tensordict import NonTensorData, TensorDict, is_leaf_nontensor
 from torch import device
 from torch.utils.data import DataLoader, Subset, random_split
 
-from callbacks.action_writer import ActionWriter
 from environments.base_dataset import DeviceType, TrajectoryDataset
 from environments.collate import update_collate_fn_map
 from environments.gym_env_dataset import GymEnvDataset
@@ -267,9 +268,31 @@ class TrajectoryDataModule(L.LightningDataModule):
         return cls(*reversible_transforms) if reversible_transforms else None
 
     def get_callbacks(self) -> list[L.Callback]:
+        """This function is where I hide all the dirtiest parts of my code."""
+
+        callbacks = []
         if self.env is not None:
-            return [ActionWriter(self.env)]
-        return []
+            # import these here to prevent circular import
+            from callbacks.action_writer import ActionWriter
+            from callbacks.video_metadata_writer import VideoMetadataWriter
+
+            log.info("Adding ActionWriter callback for env dataset.")
+            callbacks.append(ActionWriter(self.env))
+
+            wrappers = []
+            env = self.env.env
+            # TODO: what about VectorWrapper?
+            while isinstance(env, Wrapper):
+                wrappers.append(env)
+                env = env.env  # go one level deeper
+
+            video_recorders = [w for w in wrappers if isinstance(w, RecordVideo)]
+            if video_recorders:
+                assert len(video_recorders) == 1
+                log.info("Adding VideoMetadataWriter callback for RecordVideo wrapper.")
+                callbacks.append(VideoMetadataWriter(video_recorders[0]))
+
+        return callbacks
 
     def train_dataloader(self) -> Any:
         log.debug("Creating new training dataloader...")
@@ -367,6 +390,9 @@ class TrajectoryDataModule(L.LightningDataModule):
 
     def teardown(self, stage: str) -> None:
         log.debug(f"Called teardown in stage {stage}")
-        # TODO: prevent this from being called after each validation stage
+        if self.env is not None:
+            self.env.teardown()
+
+    def close(self) -> None:
         if self.env is not None:
             self.env.close()

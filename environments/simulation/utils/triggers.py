@@ -7,4 +7,4 @@ def dummy_episode_trigger(episode_idx: int):
 
 
 def episode_trigger(episode_interval: int):
-    return lambda episode: episode % episode_interval == 0 and episode > 0
+    return lambda episode: episode % episode_interval == 0

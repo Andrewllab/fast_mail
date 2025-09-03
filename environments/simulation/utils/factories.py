@@ -1,7 +1,7 @@
-from omegaconf import DictConfig
 from typing import Optional
 
 from isaaclab.app import AppLauncher
+from omegaconf import DictConfig
 
 
 def launch_sim(cli_args: Optional[DictConfig] = None) -> AppLauncher:
@@ -31,18 +31,3 @@ def resolve_env_cfg(
         device=device,
         num_envs=num_envs,
     )
-
-
-def launch_sim_and_prepare_env_cfg(
-    task_name: str,
-    device: str,
-    num_envs: int,
-    cli_args: Optional[DictConfig] = None,
-):
-    """
-    Launch the simulator and return (launcher, env_cfg).
-    """
-    app_launcher = launch_sim(cli_args)
-    env_cfg = resolve_env_cfg(task_name, device, num_envs)
-
-    return app_launcher, env_cfg

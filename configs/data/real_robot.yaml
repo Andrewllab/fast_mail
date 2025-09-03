@@ -1,5 +1,4 @@
 defaults:
-  - env
   - /cameras@env_dataset.env.cameras.left_cam: zed_mini_17008863
   - /cameras@env_dataset.env.cameras.right_cam: zed_mini_16055244
   - /cameras@env_dataset.env.cameras.gripper_cam: realsense_d405_218622270040
@@ -8,6 +7,7 @@ defaults:
   - _self_
 
 env_dataset:
+  _target_: environments.gym_env_dataset.GymEnvDataset
   env:
     _target_: environments.real_robot.real_robot_env.make_env
     control_type: hybrid_joint
@@ -28,5 +28,6 @@ env_dataset:
         2.159746,
         -0.908100,
       ]
+  num_episodes: null  # run infinitely, although the real env has no timeout anyway
   action_horizon: 5
   fps: 5  # inference should probably be around 10fps on the real robot

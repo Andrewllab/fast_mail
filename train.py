@@ -19,7 +19,7 @@ from utils.instantiators import (
     instantiate_datamodule,
     instantiate_loggers,
 )
-from utils.logging import configure_logging, log_uncaught_exception
+from utils.logging import configure_logging, log_exception_and_finish_wandb
 from utils.seeding import get_rng
 from utils.torch_conf import configure_torch
 
@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="train")
-@log_uncaught_exception
+@log_exception_and_finish_wandb
 def train(cfg: DictConfig) -> None:
     # resolve the entire config to catch any errors early
     OmegaConf.resolve(cfg)
@@ -81,6 +81,8 @@ def train(cfg: DictConfig) -> None:
     trainer.fit(agent, datamodule=datamodule)
 
     log.info("Training completed.")
+
+    datamodule.close()
 
 
 if __name__ == "__main__":

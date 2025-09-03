@@ -17,20 +17,22 @@ defaults:
 # task name, determines output directory path
 job_type: test_on_dataset
 
-# either specify a complete checkpoint path...
-log_dir:
-# ...or specify the wandb run name
-artifact_run_name:
-# project and entity are only needed if they differ from the settings in the wandb logger config
-artifact_project: 3d-sim2real
-artifact_entity: alr-3d-sim2real
-# by default, the latest version of the artifact is used
-artifact_version:
+checkpoint:
+  # either specify a complete checkpoint path...
+  log_dir:
+  # ...or specify the wandb run name
+  wandb_run_id:
+  # project and entity are only needed if they differ from the settings in the wandb logger config
+  wandb_project: 3d-sim2real
+  wandb_entity: alr-3d-sim2real
+  epochs: last  # options: last, all, last_n (default: last)
+  artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
+  use_artifact: false  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
 
 data:
+  eval_mode: dataset
   # dataset:
   #   action_seq_len: 10  # you may need to reprocess the dataset if you enable this
-  eval_mode: dataset
 
 trainer:
   default_root_dir: ${paths.output_dir}

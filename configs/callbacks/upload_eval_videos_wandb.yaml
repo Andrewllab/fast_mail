@@ -1,0 +1,5 @@
+upload_eval_videos_wandb:
+  _target_: callbacks.upload_eval_videos_wandb.UploadEvalVideosToWandbOnTestEnd
+  recording_dir: ${paths.recording_dir}
+  artifact_run_name: ${artifact_run_name}
+  artifact_version: ${artifact_version}

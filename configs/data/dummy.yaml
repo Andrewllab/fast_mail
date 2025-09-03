@@ -2,6 +2,7 @@ defaults:
   - env
 
 env_dataset:
+  _target_: environments.gym_env_dataset.GymEnvDataset
   env:
     _target_: environments.real_robot.dummy_gym_env.DummyGymEnv
     _partial_: True

@@ -1,18 +1,18 @@
 import logging
 
 import hydra
-import numpy as np
 import rootutils
 import torch
-from lightning import Callback, LightningModule, Trainer
+from lightning import Callback, Trainer
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig, OmegaConf
 
 # enables importing local modules regardless of where the script is run
 rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
 
+from agents.base_agent import BaseAgent
 from environments.datamodule import TrajectoryDataModule
-from loggers.wandb import resolve_checkpoint, update_wandb_config, update_wandb_table
+from loggers.wandb import resolve_checkpoint, update_wandb_config
 from utils.conf import (
     delete_keys_recursively,
     patch_load_from_checkpoint,
@@ -23,13 +23,14 @@ from utils.instantiators import (
     instantiate_datamodule,
     instantiate_loggers,
 )
-from utils.logging import configure_logging
+from utils.logging import configure_logging, log_exception_and_finish_wandb
 from utils.torch_conf import configure_torch
 
 log = logging.getLogger(__name__)
 
 
 @hydra.main(version_base=None, config_path="configs")
+@log_exception_and_finish_wandb
 def test(cfg: DictConfig) -> None:
     # resolve the entire config to catch any errors early
     OmegaConf.resolve(cfg)
@@ -43,9 +44,13 @@ def test(cfg: DictConfig) -> None:
 
     agent_cfg = cfg.get("agent", {})
     data_cfg = cfg.get("data", {})
-    if checkpoint := resolve_checkpoint(cfg, use_artifact=True):
+    checkpoint_cfg = cfg.get("checkpoint", {})
+    if checkpoint := resolve_checkpoint(checkpoint_cfg):
         # load agent config and specs from checkpoint
-        train_cfg, checkpoint_path = checkpoint
+        run_name, train_cfg, checkpoint_paths = checkpoint
+        # use the first checkpoint to initialize the agent, if multiple are given
+        epoch, checkpoint_path = checkpoint_paths[0]
+        log.info(f"Loading checkpoint after epoch {epoch} of run {run_name}...")
 
         # merge the agent and data configs, with the current config taking precedence
         agent_cfg = OmegaConf.merge(train_cfg.agent, agent_cfg)
@@ -63,7 +68,7 @@ def test(cfg: DictConfig) -> None:
     # manually run prepare data and setup so we can use dataset specs for model creation
     log.debug("Instantiating datamodule...")
     datamodule.prepare_data()
-    datamodule.setup(stage="predict")
+    datamodule.setup(stage="test")
 
     if not checkpoint:
         # without a checkpoint, get the hparams from the datamodule like in train.py
@@ -83,10 +88,17 @@ def test(cfg: DictConfig) -> None:
     # recursively delete these fields in config dictionary
     # we want these to be saved to WandB but we don't want them for instantiation
     delete_keys_recursively(agent_cfg, ["name"])
-    agent: LightningModule = hydra.utils.instantiate(agent_cfg, **datamodule_hparams)
+    agent: BaseAgent = hydra.utils.instantiate(agent_cfg, **datamodule_hparams)
+
+    if checkpoint:
+        agent.checkpoint_metadata = {
+            "run_name": run_name,
+            "epoch": epoch,
+        }
 
     log.debug("Instantiating callbacks...")
     callbacks: list[Callback] = instantiate_callbacks(cfg.get("callbacks"))
+    callbacks.extend(datamodule.get_callbacks())
 
     log.debug("Instantiating trainer...")
     trainer: Trainer = hydra.utils.instantiate(
@@ -96,49 +108,25 @@ def test(cfg: DictConfig) -> None:
     log.info("Starting testing loop...")
     trainer.test(agent, datamodule=datamodule)
 
+    # if multiple checkpoints are given, test them all
+    for epoch, checkpoint_path in checkpoint_paths[1:]:
+        log.info(f"Loading checkpoint at epoch {epoch} of run {run_name}...")
+        # this is adapted from LightningModule.load_from_checkpoint but we don't
+        # want to re-instantiate the model
+        checkpoint = torch.load(checkpoint_path, weights_only=False)
+        agent.on_load_checkpoint(checkpoint)
+        agent.load_state_dict(checkpoint["state_dict"], strict=agent.strict_loading)
+        agent.checkpoint_metadata = {
+            "run_name": run_name,
+            "epoch": epoch,
+        }
+
+        log.info("Continuing testing...")
+        trainer.test(agent, datamodule=datamodule)
+
     log.info("Testing loop completed.")
 
-    # TODO: Make uploading evaluation videos to wandb optional
-    log.info("Starting uploading evaluation videos to wandb.")
-    update_wandb_table(cfg=cfg)
-    log.info("Uploading evaluation videos to wandb completed.")
-
-    # version = cfg.get("artifact_version", "latest") or "latest"
-    # wandb.init(
-    #     project=cfg.artifact_project,
-    #     entity=cfg.artifact_entity,
-    #     id=cfg.artifact_run_name,  # This is the original run ID from training
-    #     resume="must"
-    # )
-    # recording_dir = Path(cfg.paths.recording_dir)
-    # recording_paths = [
-    #     str(p.resolve()) for p in recording_dir.rglob("*.mp4")
-    # ]
-
-    # episodes_by_ckpt = defaultdict(list)
-    # for recording_path in recording_paths:
-    #     # parts = path.stem.split("-")  # e.g., ['eval', 'v2', 'ep3']
-    #     # if len(parts) < 3:
-    #     #     continue
-    #     # _, version, _ = parts
-    #     episodes_by_ckpt[version].append(wandb.Video(recording_path, fps=30, format="mp4"))
-
-    # # Check all logged history keys (metrics, tables, etc.)
-    # keys = run.history_keys
-    # print(keys)
-
-    # # Or, more directly check if a specific key exists
-    # if "evaluation" in keys:
-    #     print("Table already exists!")
-
-    # # TODO: this rewrites every time the table. Check if it exist and then only update it to prevent removing information from previous versions tests.
-    # table = wandb.Table(columns=["checkpoint_version", "episodes"])
-
-    # for version, video_list in sorted(episodes_by_ckpt.items()):
-    #     table.add_data(version, video_list)
-
-    # wandb.log({"evaluation": table})
-    # wandb.finish()
+    datamodule.close()
 
 
 if __name__ == "__main__":

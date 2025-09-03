@@ -136,7 +136,7 @@ class BesoAgent(BaseAgent):
         metrics = {}
 
         if "success" in batch:
-            metrics["val_success"] = batch["success"]
+            self.log("success", batch["success"].float(), reduce_fx="max")
 
         if "ref_action" in batch:
             # only if we are validating on demonstration data

@@ -6,9 +6,7 @@ from pathlib import Path
 
 import wandb
 from lightning.pytorch.loggers.wandb import WandbLogger as LightningWandbLogger
-from lightning.pytorch.utilities import rank_zero_only
-from omegaconf import DictConfig, OmegaConf, open_dict
-from typing_extensions import override
+from omegaconf import DictConfig, OmegaConf
 from wandb.wandb_run import Run
 
 log = logging.getLogger(__name__)
@@ -18,19 +16,13 @@ class WandbLogger(LightningWandbLogger):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Trigger lazy creation of wandb run by accessing experiment
+        # We want to initialize the run as early as possible to log all the
+        # messages from instantiating the dataset and model
         _ = self.experiment
 
-    @override
-    @rank_zero_only
-    def finalize(self, status: str) -> None:
-        if status != "success":
-            # If the run was aborted, we should finish it with an error
-            # status to avoid any confusion in the UI.
-            log.debug("Run was aborted, finishing wandb run with error status.")
-            wandb.finish(exit_code=1)
-
-        super().finalize(status)
-        wandb.finish()
+        # Any test metrics logged with the "test/" prefix will be associated
+        # with the epoch of the checkpoint used for testing, not the wandb step
+        self.experiment.define_metric("test/*", step_metric="ckpt_epoch")
 
 
 def update_wandb_config(cfg: DictConfig) -> None:
@@ -45,9 +37,14 @@ def update_wandb_config(cfg: DictConfig) -> None:
         wandb.config.update(wandb_cfg, allow_val_change=True)
 
 
+# filenames are like epoch=0-step=25.ckpt
+# this is the default checkpoint filename defined in lightning's ModelCheckpoint callback
+CKPT_PATTERN = re.compile(r"^epoch=(\d+)-step=(\d+).ckpt$")
+
+
 def resolve_checkpoint(
-    cfg: DictConfig, use_artifact: bool = False
-) -> tuple[DictConfig, Path] | None:
+    cfg: DictConfig,
+) -> tuple[str, DictConfig, list[tuple[int, Path]]] | None:
     """Get the model artifact from WandB and return the training config and model directory.
     Args:
         cfg: The configuration dictionary.
@@ -63,12 +60,10 @@ def resolve_checkpoint(
         train_cfg: DictConfig = OmegaConf.load(cfg_path)
 
         ckpt_paths = (log_dir / "checkpoints").glob("*.ckpt")
-        # filenames are like epoch=0-step=25.ckpt
-        ckpt_pattern = re.compile(r"^epoch=(\d+)-step=(\d+)$")
         # create a dict mapping epoch to model path
         try:
-            ckpt_paths = {
-                int(ckpt_pattern.match(path.stem).group(1)): path for path in ckpt_paths
+            ckpts_by_epoch = {
+                int(CKPT_PATTERN.match(path.name).group(1)): path for path in ckpt_paths
             }
         except AttributeError:
             raise ValueError(
@@ -76,94 +71,174 @@ def resolve_checkpoint(
                 "Make sure the filenames are in the format 'epoch=0-step=25.ckpt'."
             )
 
-        epoch = cfg.get("epoch")
-        if epoch is None:
-            # get the latest checkpoint
-            epoch = max(ckpt_paths.keys())
+        ckpts_by_epoch = list(sorted(ckpts_by_epoch.items()))
 
-        # get the checkpoint for the specified epoch
-        try:
-            ckpt_path = ckpt_paths[epoch]
-        except KeyError:
-            raise ValueError(
-                f"Checkpoint for epoch {epoch} not found in {log_dir / 'checkpoints'}"
-            )
+        epochs = cfg.get("epochs", "last")
 
-        log.debug(f"Loading model from {ckpt_path} and config from {cfg_path}")
+        if epochs == "last":
+            ckpts_by_epoch = ckpts_by_epoch[-1:]
+        elif epochs == "all":
+            pass  # keep all checkpoints
+        elif match := re.fullmatch(r"last_(\d+)", epochs):
+            n = int(match.group(1))
+            ckpts_by_epoch = ckpts_by_epoch[-n:]
 
-        return train_cfg, ckpt_path
+        log.debug(f"Found {len(ckpts_by_epoch)} checkpoint(s) in folder {log_dir}...")
 
-    run_name = cfg.get("artifact_run_name")
-    if run_name is not None:
+        return log_dir.name, train_cfg, ckpts_by_epoch
+
+    run_id = cfg.get("wandb_run_id")
+    if run_id is not None:
         # download model and specs artifacts from wandb, and get the config used
         # to train the model
-        version = cfg.get("artifact_version", "latest") or "latest"
-        artifact_path = [f"model-{run_name}:{version}"]
-        if (project := cfg.get("artifact_project")) is not None:
-            artifact_path.insert(0, project)
-            if (entity := cfg.get("artifact_entity")) is not None:
-                artifact_path.insert(0, entity)
+        prefix = []
+        if (project := cfg.get("wandb_project")) is not None:
+            prefix.insert(0, project)
+            if (entity := cfg.get("wandb_entity")) is not None:
+                prefix.insert(0, entity)
 
-        artifact_identifier = "/".join(artifact_path)
+        use_artifact = cfg.get("use_wandb_artifact", False)
 
-        if wandb.run is not None and not wandb.run.disabled and use_artifact:
-            model_artifact = wandb.run.use_artifact(artifact_identifier, type="model")
-        else:
-            api = wandb.Api()
-            model_artifact = api.artifact(artifact_identifier, type="model")
+        api = wandb.Api()
+        run = api.run("/".join([entity, project, run_id]))
 
         # get config used to train the model
-        train_cfg = model_artifact.logged_by().config
-        train_cfg: DictConfig = OmegaConf.create(train_cfg)
+        train_cfg: DictConfig = OmegaConf.create(run.config)
 
-        # load saved model state
-        ckpt_path = Path(model_artifact.download()) / "model.ckpt"
+        if (version := cfg.get("artifact_version")) is not None:
+            # get a specific checkpoint version
+            artifact_path = prefix + [f"model-{run_id}:{version}"]
+            artifact_identifier = "/".join(artifact_path)
 
-        return train_cfg, ckpt_path
+            log.debug(f"Loading checkpoint from wandb artifact {artifact_identifier}")
+
+            if wandb.run is not None and not wandb.run.disabled and use_artifact:
+                model_artifact = wandb.run.use_artifact(
+                    artifact_identifier, type="model"
+                )
+            else:
+                model_artifact = api.artifact(artifact_identifier, type="model")
+
+            # download checkpoint from WandB
+            ckpt_path = Path(model_artifact.download()) / "model.ckpt"
+
+            # TODO: maybe get the epoch so that we always return int epochs as keys
+            ckpt_paths = [(version, ckpt_path)]
+
+        else:
+            # get all artifacts from the run
+            artifacts = [
+                artifact
+                for artifact in run.logged_artifacts()
+                if artifact.type == "model"
+            ]
+
+            if not artifacts:
+                raise RuntimeError(f"No artifacts found for wandb run {run_id}")
+
+            try:
+                # sort the artifacts by epoch, which can be extracted from the original filename
+                artifacts_by_epoch = {
+                    int(
+                        CKPT_PATTERN.match(
+                            artifact.metadata["original_filename"]
+                        ).group(1)
+                    ): artifact
+                    for artifact in artifacts
+                }
+            except AttributeError:
+                raise ValueError(
+                    f"Could not parse artifact original filenames from run {run_id}. "
+                    "Make sure the filenames are in the format 'epoch=0-step=25.ckpt'."
+                )
+
+            # sort dictionary entries by epoch
+            artifacts_by_epoch = list(sorted(artifacts_by_epoch.items()))
+
+            epochs = cfg.get("epochs", "last")
+
+            if epochs == "last":
+                artifacts_by_epoch = artifacts_by_epoch[-1:]
+            elif epochs == "all":
+                pass  # keep all artifacts
+            elif match := re.fullmatch(r"last_(\d+)", epochs):
+                n = int(match.group(1))
+                artifacts_by_epoch = artifacts_by_epoch[-n:]
+
+            # TODO: maybe if there is only one artifact, add support for use_artifact
+
+            log.debug(
+                f"Loading {len(artifacts_by_epoch)} checkpoint(s) from wandb run {run_id}..."
+            )
+
+            # download all selected checkpoints from WandB
+            ckpt_paths = [
+                (epoch, Path(artifact.download()) / "model.ckpt")
+                for epoch, artifact in artifacts_by_epoch
+            ]
+
+        return run_id, train_cfg, ckpt_paths
 
     else:
         return None
 
 
-def get_existing_table(artifact_run_name, key="evaluation"):
-    api = wandb.Api()
-    print(f"ARTIFACT RUN NAME: {artifact_run_name}")
-    run = api.run(artifact_run_name)
-    print(f"WHAT IS RUN ?????", run)
-    for f in run.files():
-        if f.name.startswith(key) and f.name.endswith(".table.json"):
-            f.download(replace=True)
-            return wandb.Table.read_json(f.name)
-    return None
-
-
-def update_wandb_table(cfg):
-    # wandb.init(
-    #     project=cfg.artifact_project,
-    #     entity=cfg.artifact_entity,
-    #     id=cfg.artifact_run_name,  # This is the original run ID from training
-    #     resume="must"
-    # )version
-    checkpoint_version = cfg.get("artifact_version", "latest") or "latest"
-
-    # recording_dir = Path(cfg.paths.recording_dir + version)
-    recording_dir = Path(cfg.paths.recording_dir)
-    recording_paths = [str(p.resolve()) for p in recording_dir.rglob("*.mp4")]
-
-    # process all evaluation videos in a dict.
-    episodes_by_ckpt = {f"{checkpoint_version}": []}
-    for recording_path in recording_paths:
-        episodes_by_ckpt[checkpoint_version].append(
-            wandb.Video(recording_path, fps=30, format="mp4")
+def get_wandb_run_from_cfg(
+    cfg: DictConfig, use_artifact: bool = False
+) -> wandb.apis.public.Run:
+    """
+    Resolve the model artifact exactly similar to resolve_checkpoint and
+    return the public Run object that logged the artifact.
+    """
+    run_id = cfg.get("wandb_run_id")
+    if run_id is None:
+        raise ValueError(
+            "cfg.wandb_run_id is required to locate the run via the artifact."
         )
 
-    # Create evaluation table only the first time and get it for all subsequent model checkpoints
-    table = get_existing_table(cfg.artifact_run_name)
-    if table is None:
-        table = wandb.Table(columns=["checkpoint_version", "video"])
+    version = cfg.get("artifact_version", "latest") or "latest"
+    artifact_path = [f"model-{run_id}:{version}"]
 
-    for version, video_list in sorted(episodes_by_ckpt.items()):
-        table.add_data(version, video_list)
+    if (project := cfg.get("wandb_project")) is not None:
+        artifact_path.insert(0, project)
+        if (entity := cfg.get("wandb_entity")) is not None:
+            artifact_path.insert(0, entity)
 
-    wandb.log({"evaluation": table})
+    artifact_identifier = "/".join(artifact_path)
+
+    if wandb.run is not None and not wandb.run.disabled and use_artifact:
+        model_artifact = wandb.run.use_artifact(artifact_identifier, type="model")
+    else:
+        api = wandb.Api()
+        model_artifact = api.artifact(artifact_identifier, type="model")
+
+    run = model_artifact.logged_by()
+    if run is None:
+        raise ValueError(
+            f"Artifact {artifact_identifier} has no associated run (logged_by() returned None)."
+        )
+    return run
+
+
+def upload_eval_videos(artifact_version: str, recording_dir: Path):
+    if wandb.run is None or getattr(wandb.run, "disabled", False):
+        raise RuntimeError(
+            "update_wandb_table() must be called while a wandb run is active "
+            "(e.g., from a Lightning callback like on_test_end)."
+        )
+
+    recording_paths = sorted(str(p.resolve()) for p in recording_dir.rglob("*.mp4"))
+
+    # Log each video with an unique key
+    # NOTE: Already uploaded videos will NOT be overwritten, new videos will be just appended
+    for video_path in recording_paths:
+        video = wandb.Video(
+            video_path,
+            format="mp4",
+            caption=f"{artifact_version}",
+        )
+        wandb.log(
+            {f"evaluation_artifact_version:{artifact_version}": video}, commit=True
+        )
+    # NOTE: Although WandbLogger finalizes wandb, still, if not calling explicitly finish, the videos are not uploaded everytime.
     wandb.finish()

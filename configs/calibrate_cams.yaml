@@ -1,3 +1,5 @@
+# usage: python scripts/calibrate_cams.py
+
 defaults:
   - paths: default
   - /cameras@cameras.left_cam: zed_mini_17008863

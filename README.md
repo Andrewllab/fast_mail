@@ -122,10 +122,10 @@ pip install 'isaacsim[all,extscache]==4.5.0' --extra-index-url https://pypi.nvid
 pip install isaaclab[isaacsim,all]==2.0.2 --extra-index-url https://pypi.nvidia.com
 ```
 
-After installation, you can reinstall torch again, since isaaclab installs torch 2.5.1. Pip will complain about version mismatches, but you can ignore this.
+After installation, you can reinstall torch again, since isaaclab IsaacLab torch 2.5.1. IsaacLab also helpfully installs wandb version 0.12, which can be safely upgraded back to a version from this decade. Pip will complain about version mismatches, but you can ignore this.
 
 ```bash
-pip3 install --upgrade torch torchvision torch_geometric
+pip3 install --upgrade torch torchvision torch_geometric wandb
 ```
 
 Be aware that isaaclab downgrades your numpy version to 1.26.4, and is **not** compatible with numpy 2.x.

@@ -1,6 +1,10 @@
+# usage: python test.py -cn test_isaac
+
 defaults:
-  - callbacks:
-  - logger:
+  - data: isaac  # only necessary for runs that were trained with old environment config
+  - data/wrappers@data.env_dataset.env.wrappers: record_video  # record videos
+  # log test results to new wandb run, since test parameters affect results
+  - logger: wandb
   - python_logging: default
   - paths: default
   - hydra: default
@@ -12,20 +16,32 @@ defaults:
 # task name, determines output directory path
 job_type: test_sim
 
-# either specify a complete checkpoint path...
-log_dir:
-# ...or specify the wandb run name
-artifact_run_name:
-# project and entity are only needed if they differ from the settings in the wandb logger config
-artifact_project: 3d-sim2real
-artifact_entity: alr-3d-sim2real
-# by default, the latest version of the artifact is used
-artifact_version:
+checkpoint:
+  # either specify a complete checkpoint path...
+  log_dir:
+  # ...or specify the wandb run name
+  wandb_run_id:
+  # project and entity are only needed if they differ from the settings in the wandb logger config
+  wandb_project: 3d-sim2real
+  wandb_entity: alr-3d-sim2real
+  epochs: last  # options: last, all, last_n (default: last)
+  artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
+  use_artifact: false  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
 
 data:
-  env_dataset:
-    action_horizon: 5  # modify if desired
   eval_mode: env
+  env_dataset:
+    num_episodes: 10
+    action_horizon: 10  # modify if desired
+
+    env:
+      env_cfg:
+        episode_length_s: 10
+    
+      wrappers:
+        record_video:
+          num_episodes: ${data.env_dataset.num_episodes}  # number of episodes to record
+          fps: 50  # increase if the videos are too long
 
 trainer:
   default_root_dir: ${paths.output_dir}

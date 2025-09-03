@@ -1,9 +1,8 @@
-defaults:
-  - env
-
 env_dataset:
+  _target_: environments.gym_env_dataset.GymEnvDataset
   env:
     _target_: environments.simulation.utils.build_env.make
+    _recursive_: False  # don't try to import any targets for wrappers, in case IsaacLab is not installed
     task_name: Isaac-Insert-One-Leg-Franka-RGBD-SingleFallen-IK-Abs-v0
     device: cuda
     num_envs: 1
@@ -13,20 +12,19 @@ env_dataset:
       enable_cameras: True
       # run Isaac-Sim with GUI
       headless: False
-    wrapper_cfgs:
-      pre_process:
+    env_cfg:
+      episode_length_s: 10
+      # episode_length_steps: 300  # 10 seconds at render rate of 30 fps
+    wrappers:
+      gym_compatibility:
+        _target_: environments.simulation.utils.wrappers.IsaacLabGymWrapper
+        _partial_: True  # requires 'env' argument
+      preprocess:
+        _target_: environments.simulation.utils.wrappers.IsaacLabPreProcess
+        _partial_: True  # requires 'env' argument
         obs_seq_len: 1
-      record_video:
-        # if recording is desired, add it first [RecordVideo]
-        # names: [RecordVideo]
-        video_folder: ${paths.recording_dir}
-        # In case not entire episodes needs to be recorded, activate the recorder only every n steps
-        #   _target_: environments.simulation.utils.triggers.interval_trigger
-        #   step_interval: ???
-        episode_trigger:
-          _target_: environments.simulation.utils.triggers.episode_trigger
-          # record every episode
-          episode_interval: 1
-        fps: 30
-        disable_logger: True
-    enabled_wrappers: [pre_process]
+
+  num_envs: ${.env.num_envs}
+  num_episodes: 20  # evaluate on 20 episodes
+  action_horizon: null  # use all predicted actions
+  fps: null  # run as fast as IsaacSim can manage

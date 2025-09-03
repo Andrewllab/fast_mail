@@ -1,15 +1,17 @@
-import torch
+from typing import Any
+
 import gymnasium as gym
+import torch
 from tensordict import TensorDict
 
 from environments.specs import (
     ActionSpec,
     CameraSpec,
-    RGBStream,
-    DepthStream,
     DataSpecs,
-    PinholeCameraIntrinsic,
+    DepthStream,
     ObsSpec,
+    PinholeCameraIntrinsic,
+    RGBStream,
 )
 
 
@@ -18,7 +20,7 @@ class IsaacLabPreProcess(gym.Wrapper):
         super().__init__(env)
 
         # import it here, otherwise not possible to import before Isaac-Sim starts
-        from isaaclab.utils.math import matrix_from_quat, make_pose
+        from isaaclab.utils.math import make_pose, matrix_from_quat
 
         self._obs_seq_len = obs_seq_len
 
@@ -282,3 +284,20 @@ class IsaacLabPreProcess(gym.Wrapper):
                 )
 
         return pre_processed_action
+
+
+class IsaacLabGymWrapper(gym.Wrapper):
+    """Gym wrapper for IsaacLab environments to be compatible with gym API."""
+
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[Any, dict[str, Any]]:
+        # IsaacLab's ManagerBasedEnv ignores the mask option, but accepts a
+        # separate kwarg called "env_ids"
+        env_ids = None
+        if options and "mask" in options:
+            mask = options.pop("mask")
+            mask = torch.as_tensor(mask, dtype=torch.bool)
+            env_ids = mask.nonzero().squeeze(dim=-1)
+
+        return self.env.reset(seed=seed, env_ids=env_ids, options=options)

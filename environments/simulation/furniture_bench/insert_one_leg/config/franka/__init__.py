@@ -2,14 +2,11 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-import gymnasium as gym
 import os
 
-from . import (
-    agents,
-    four_legs_upright_all,
-    single_leg_fallen,
-)
+import gymnasium as gym
+
+from . import agents, four_legs_upright_all, single_leg_fallen
 
 ##
 # Register Gym environments.
@@ -187,4 +184,7 @@ gym.register(
         ),
     },
     disable_env_checker=True,
+    # can't wrap the environment with any Gym wrappers, because the reset
+    # method signature is incompatible with gym.Wrapper
+    order_enforce=False,
 )

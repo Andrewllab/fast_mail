@@ -3,10 +3,10 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+import math
 from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
-from isaaclab.sim.spawners.materials.physics_materials_cfg import RigidBodyMaterialCfg
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -15,10 +15,10 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
+from isaaclab.sim.spawners.materials.physics_materials_cfg import RigidBodyMaterialCfg
 from isaaclab.utils import configclass
 
-from . import mdp
-from . import assets
+from . import assets, mdp
 
 
 ##
@@ -230,4 +230,21 @@ class InsertOneLegEnvCfg(ManagerBasedRLEnvCfg):
             friction_combine_mode="max",  # to simulate the effect of the black tape used on the UMI grippers of the real-world Franka
             compliant_contact_damping=0.5,
             compliant_contact_stiffness=0.5,
+        )
+
+        self._episode_length_steps = math.ceil(
+            self.episode_length_s / (self.sim.dt * self.decimation)
+        )
+
+    @property
+    def episode_length_steps(self):
+        return self._episode_length_steps
+
+    @episode_length_steps.setter
+    def episode_length_steps(self, value):
+        self._episode_length_steps = value
+
+        # compute new episode_length_s, since this is what IsaacLab actually uses internally
+        self.episode_length_s = (
+            self._episode_length_steps * self.sim.dt * self.decimation
         )
