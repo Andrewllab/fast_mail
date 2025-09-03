@@ -54,6 +54,7 @@ class TrimIdleStart(Transform):
         # TODO: slice anything with a leading dimension of T
         tensordict["obs"] = tensordict["obs"][start:]
         tensordict["action"] = tensordict["action"][start:]
+        tensordict["ref_action"] = tensordict["ref_action"][start:]
 
         return tensordict
 

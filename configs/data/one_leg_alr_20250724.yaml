@@ -5,7 +5,7 @@ defaults:
   - isaac
   # trim idle frames from the start of each demonstration
   - /transforms@preprocess_transforms.t0-1_trim_idle: time_trim_idle
-  # # since this dataset was recorded at 30 fps, subsample by a factor of 3
+  # # since this dataset was recorded at ~20 fps, subsample by a factor of 2
   # - /transforms@preprocess_transforms.t0-2_subsample: time_subsample
   
   # convert actions to chunks of absolute target poses relative to the current frame

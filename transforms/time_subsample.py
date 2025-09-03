@@ -1,66 +1,64 @@
 from __future__ import annotations
 
-import torch
+from typing import Literal
+
 from tensordict import TensorDict
 
 from environments.specs import DataSpecs
 from transforms.base_transform import Transform
-from utils.math import combine_frame_transforms, subtract_frame_transforms
 
 
-class SubsampleTime(Transform):
+class SubsampleTrajectory(Transform):
     def __init__(
         self,
         specs: DataSpecs,
         factor: int,
+        split_or_decimate: Literal["split", "decimate"] = "split",
     ):
         self._specs = specs
-        self._factor = factor
+        self.factor = factor
+        self.op = split_or_decimate
 
     @property
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
-        # convert delta ee pose actions to a trajectory of desired end effector
-        # poses
-        delta_ee_pose = tensordict["action"][..., :-1]
-        current_ee_pose = tensordict["obs", "ee_pose"]
-        desired_ee_pos, desired_ee_rot = combine_frame_transforms(
-            current_ee_pose[..., :3],
-            current_ee_pose[..., 3:7],
-            delta_ee_pose[..., :3],
-            delta_ee_pose[..., 3:7],
-        )
-        tensordict["target_ee_pose"] = torch.cat(
-            (desired_ee_pos, desired_ee_rot), dim=-1
-        )
+    def call_trajectory(self, tensordict: TensorDict) -> list[TensorDict]:
 
-        # compute an offset, since we want to keep the very last time step, and
-        # rather remove some more initial frames
-        offset = (tensordict.shape[0] - 1) % self._factor
-        # subsample the trajectory
-        tensordict = tensordict[offset :: self._factor]
+        # We assume that the trajectory has not been prechunked yet, i.e. the
+        # subsampling happens relatively early in preprocessing
+        for key in ["action", "ref_action"]:
+            if tensordict[key].shape[0] != tensordict["obs"].shape[0]:
+                raise ValueError(
+                    "Action and observation trajectory lengths do not match: "
+                    f"{tensordict[key].shape[0]} vs {tensordict['obs'].shape[0]}"
+                )
 
-        # convert desired ee pose trajectory back to delta ee pose actions
-        desired_ee_pose = tensordict["target_ee_pose"]
-        current_ee_pose = tensordict["obs", "ee_pose"]
-        delta_ee_pos, delta_ee_rot = subtract_frame_transforms(
-            current_ee_pose[..., :3],
-            current_ee_pose[..., 3:7],
-            desired_ee_pose[..., :3],
-            desired_ee_pose[..., 3:7],
-        )
+        if self.op == "decimate":
+            # we want to keep the very last time step, and rather remove some
+            # more initial frames
+            offsets = [(tensordict.shape[0] - 1) % self.factor]
 
-        # TODO: the gripper actions are simply subsampled with no smoothing
-        # or interpolation. Is this a problem?
-        tensordict["action"] = torch.cat(
-            (
-                delta_ee_pos,
-                delta_ee_rot,
-                tensordict["action"][..., -1:],
-            ),
-            dim=-1,
-        )
+        else:
+            assert self.op == "split"
+            offsets = list(range(self.factor))
 
-        return tensordict
+        trajs = []
+        for offset in offsets:
+            # subsample the trajectory
+            # TODO: slice anything with a leading dimension of T
+            subsampled = TensorDict(
+                {
+                    "obs": tensordict["obs"][offset :: self.factor],
+                    "action": tensordict["action"][offset :: self.factor],
+                    "ref_action": tensordict["ref_action"][offset :: self.factor],
+                },
+            )
+
+            if "goal" in tensordict:
+                # don't subsample goals
+                subsampled["goal"] = tensordict["goal"]
+
+            trajs.append(subsampled)
+
+        return trajs

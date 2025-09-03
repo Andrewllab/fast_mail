@@ -1,3 +1,4 @@
-_target_: transforms.time_subsample.SubsampleTime
+_target_: transforms.time_subsample.SubsampleTrajectory
 _partial_: True
-factor: 3
+factor: 2
+split_or_decimate: split
