@@ -1,6 +1,6 @@
 defaults:
-  - /models/conv@image_encoder: resnet
-  - /models/conv@pointmap_encoder: resnet
+  - /models/vision_encoder@image_encoder: resnet
+  - /models/vision_encoder@pointmap_encoder: resnet
 
 name: multiview_pointmap_tokenizer
 _target_: transforms.multiview_pointmap_tokenizer.MultiviewPointMapTokenizer

@@ -15,18 +15,28 @@ from environments.specs import (
     PinholeCameraIntrinsic,
     RGBStream,
 )
+from utils.math import convert_quat
 
 log = logging.getLogger(__name__)
 
 
 class RealRobotDataset(TrajectoryDataset):
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self, 
+        *args,
+        extrinsics: dict[str, list[list[float]]] | None = None,
+        lightweight: bool = False, 
+        **kwargs
+    ):
         self._specs = None
+        self.extrinsics_dict = extrinsics
+        self.lightweight = lightweight  # Only load rgb and depth streams to not overload memory
         super().__init__(*args, **kwargs)
 
     def find_raw_files(self) -> list[Path]:
         # Data collector saves files with datetime pattern: YYYY_MM_DD-HH_MM_SS.h5
-        files = list(self.root_dir.glob("*.h5"))
+        # Also check all subfolders:
+        files = list(self.root_dir.glob("**/*.h5"))
 
         if not files:
             raise FileNotFoundError(
@@ -60,7 +70,7 @@ class RealRobotDataset(TrajectoryDataset):
         ee_pose = torch.cat(
             (
                 proprio["eef_pos"],  # shape: (T, 3)
-                proprio["eef_quat"],  # shape: (T, 4)
+                convert_quat(proprio["eef_quat"], to="wxyz"),  # shape: (T, 4)
             ),
             dim=-1,
         )
@@ -72,8 +82,8 @@ class RealRobotDataset(TrajectoryDataset):
         action_data = traj["actions"]
         action = torch.cat(
             (
-                action_data["eef_pos"],  # shape: (T, 3)
-                action_data["eef_quat"],  # shape: (T, 4)
+                action_data["eef_pos"],  # shape: (T, 3) 
+                convert_quat(action_data["eef_quat"], to="wxyz"),  # shape: (T, 4)
                 action_data["gripper_pos"].unsqueeze(-1),  # shape: (T, 1)
             ),
             dim=-1,
@@ -82,23 +92,21 @@ class RealRobotDataset(TrajectoryDataset):
         target_ee_pose = torch.cat(
             (
                 action_data["eef_pos"],  # shape: (T, 3)
-                action_data["eef_quat"],  # shape: (T, 4)
+                convert_quat(action_data["eef_quat"], to="wxyz"),  # shape: (T, 4)
             ),
             dim=-1,
         )
 
-        traj = TensorDict(
+        td = TensorDict(
             {
                 "obs": {
                     "front_left_cam": {
-                        "rgb": traj["obs", "left_cam", "frames", "rgb"],
-                        "depth": traj["obs", "left_cam", "frames", "depth"],
+                        "depth": traj["obs", "left_cam", "frames", "depth"] / 1000, # Convert from mm to meters
                         "left": traj["obs", "left_cam", "frames", "left"],
                         "right": traj["obs", "left_cam", "frames", "right"],
                     },
                     "front_right_cam": {
-                        "rgb": traj["obs", "right_cam", "frames", "rgb"],
-                        "depth": traj["obs", "right_cam", "frames", "depth"],
+                        "depth": traj["obs", "right_cam", "frames", "depth"] / 1000, # Convert from mm to meters
                         "left": traj["obs", "right_cam", "frames", "left"],
                         "right": traj["obs", "right_cam", "frames", "right"],
                     },
@@ -116,8 +124,14 @@ class RealRobotDataset(TrajectoryDataset):
                 "action": action,
             }
         )
+        
+        if self.lightweight:
+            td["obs", "front_left_cam"].pop("right")
+            td["obs", "front_right_cam"].pop("right")
+            td["obs", "gripper_cam"].pop("left")
+            td["obs", "gripper_cam"].pop("right")
 
-        return traj
+        return td
 
     def _load_specs(self, data: TensorDict | None = None) -> None:
         if data is None:
@@ -128,31 +142,32 @@ class RealRobotDataset(TrajectoryDataset):
             data = TensorDict.from_h5(str(filepath))
 
         # static camera front left (Zed mini)
-        # rgb: (T, 720, 1280, 3)
-        rgb_shape = data["obs", "left_cam", "frames", "rgb"].shape
-        assert len(rgb_shape) == 4
-        assert rgb_shape[-1] == 3
         # depth: (T, 720, 1280)
         depth_shape = data["obs", "left_cam", "frames", "depth"].shape
+        T = depth_shape[0]
         assert len(depth_shape) == 3
-        assert rgb_shape[:-1] == depth_shape
         # left|right: (T, 720, 1280, 3)
         left_shape = data["obs", "left_cam", "frames", "left"].shape
         right_shape = data["obs", "left_cam", "frames", "right"].shape
-        assert left_shape == right_shape == rgb_shape
-        height, width, channels = rgb_shape[1:]
+        assert left_shape == right_shape
+        assert left_shape[-1:] == depth_shape
+        height, width, channels = left_shape[1:]
         intrinsics = data["obs", "left_cam", "meta", "intrinsics"].reshape(3, 3)
         baseline = data["obs", "left_cam", "meta", "baseline"].item()
         extrinsics = data.get(("obs", "left_cam", "meta", "extrinsics"), None)
-        if extrinsics is not None:
+        if self.extrinsics_dict is not None:
+            extrinsics = self.extrinsics_dict.get("front_left_cam")
+            extrinsics = torch.tensor(extrinsics).reshape(4, 4)
+        elif extrinsics := data.get(("obs", "left_cam", "meta", "extrinsics"), None):
             extrinsics = extrinsics.reshape(4, 4)
+        streams = {
+            "left": RGBStream(height, width, channels, channel_order="HWC"),
+            "depth": DepthStream(height, width, orthogonal=True),
+        }
+        if not self.lightweight:
+            streams["right"] = RGBStream(height, width, channels, channel_order="HWC")
         left_cam = CameraSpec(
-            streams={
-                "rgb": RGBStream(height, width, channels, channel_order="HWC"),
-                "depth": DepthStream(height, width, orthogonal=True),
-                "left": RGBStream(height, width, channels, channel_order="HWC"),
-                "right": RGBStream(height, width, channels, channel_order="HWC"),
-            },
+            streams=streams,
             time=self.obs_seq_len,
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
                 intrinsics, height=height, width=width
@@ -162,31 +177,32 @@ class RealRobotDataset(TrajectoryDataset):
         )
 
         # static camera front right (Zed mini)
-        # rgb: (T, 720, 1280, 3)
-        rgb_shape = data["obs", "right_cam", "frames", "rgb"].shape
-        assert len(rgb_shape) == 4
-        assert rgb_shape[-1] == 3
         # depth: (T, 720, 1280)
         depth_shape = data["obs", "right_cam", "frames", "depth"].shape
         assert len(depth_shape) == 3
-        assert rgb_shape[:-1] == depth_shape
+        assert depth_shape[0] == T
         # left|right: (T, 720, 1280, 3)
         left_shape = data["obs", "right_cam", "frames", "left"].shape
         right_shape = data["obs", "right_cam", "frames", "right"].shape
-        assert left_shape == right_shape == rgb_shape
-        height, width, channels = rgb_shape[1:]
+        assert left_shape == right_shape
+        assert left_shape[-1:] == depth_shape
+        height, width, channels = left_shape[1:]
         intrinsics = data["obs", "right_cam", "meta", "intrinsics"].reshape(3, 3)
         baseline = data["obs", "right_cam", "meta", "baseline"].item()
         extrinsics = data.get(("obs", "right_cam", "meta", "extrinsics"), None)
-        if extrinsics is not None:
+        if self.extrinsics_dict is not None:
+            extrinsics = self.extrinsics_dict.get("front_right_cam")
+            extrinsics = torch.tensor(extrinsics).reshape(4, 4)
+        elif extrinsics := data.get(("obs", "right_cam", "meta", "extrinsics"), None):
             extrinsics = extrinsics.reshape(4, 4)
+        streams = {
+            "left": RGBStream(height, width, channels, channel_order="HWC"),
+            "depth": DepthStream(height, width, orthogonal=True),
+        }
+        if not self.lightweight:
+            streams["right"] = RGBStream(height, width, channels, channel_order="HWC")
         right_cam = CameraSpec(
-            streams={
-                "rgb": RGBStream(height, width, channels, channel_order="HWC"),
-                "depth": DepthStream(height, width, orthogonal=True),
-                "left": RGBStream(height, width, channels, channel_order="HWC"),
-                "right": RGBStream(height, width, channels, channel_order="HWC"),
-            },
+            streams=streams,
             time=self.obs_seq_len,
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
                 intrinsics, height=height, width=width
@@ -199,6 +215,7 @@ class RealRobotDataset(TrajectoryDataset):
         # rgb: (T, 480, 640, 3)
         rgb_shape = data["obs", "gripper_cam", "frames", "rgb"].shape
         assert len(rgb_shape) == 4
+        assert rgb_shape[0] == T
         assert rgb_shape[-1] == 3
         # depth: (T, 480, 640)
         depth_shape = data["obs", "gripper_cam", "frames", "depth"].shape
@@ -212,16 +229,20 @@ class RealRobotDataset(TrajectoryDataset):
         intrinsics = data["obs", "gripper_cam", "meta", "intrinsics"].reshape(3, 3)
         baseline = data["obs", "gripper_cam", "meta", "baseline"].item()
         extrinsics = data.get(("obs", "gripper_cam", "meta", "extrinsics"), None)
-        if extrinsics is not None:
+        if self.extrinsics_dict is not None:
+            extrinsics = self.extrinsics_dict.get("gripper_cam")
+            extrinsics = torch.tensor(extrinsics).reshape(4, 4)
+        elif extrinsics := data.get(("obs", "gripper_cam", "meta", "extrinsics"), None):
             extrinsics = extrinsics.reshape(4, 4)
-
+        streams = {
+            "rgb": RGBStream(height, width, channels, channel_order="HWC"),
+            "depth": DepthStream(height, width, orthogonal=True),
+        }
+        if not self.lightweight:
+            streams["left"] = RGBStream(height, width, channels, channel_order="HWC")
+            streams["right"] = RGBStream(height, width, channels, channel_order="HWC")
         gripper_cam = CameraSpec(
-            streams={
-                "rgb": RGBStream(height, width, channels, channel_order="HWC"),
-                "depth": DepthStream(height, width, orthogonal=True),
-                "left": ImageStream(height, width, channel_order="HW"),
-                "right": ImageStream(height, width, channel_order="HW"),
-            },
+            streams=streams,
             time=self.obs_seq_len,
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
                 intrinsics, height=height, width=width
@@ -231,9 +252,9 @@ class RealRobotDataset(TrajectoryDataset):
             dynamic_pose_obs_key="gripper_cam_transform",
         )
 
-        # robot state, Why is gripper two dim?
         joint_pos = data["obs", "proprioception", "joint_pos"]
         assert joint_pos.ndim == 2
+        assert joint_pos.shape[0] == T
         assert joint_pos.shape[-1] == 7
         gripper_pos = data["obs", "proprioception", "gripper_pos"]
         assert gripper_pos.ndim == 1
@@ -243,6 +264,7 @@ class RealRobotDataset(TrajectoryDataset):
         # end-effector pose
         ee_pos = data["obs", "proprioception", "eef_pos"]
         assert ee_pos.ndim == 2
+        assert ee_pos.shape[0] == T
         assert ee_pos.shape[-1] == 3
         ee_quat = data["obs", "proprioception", "eef_quat"]
         assert ee_quat.ndim == 2
@@ -254,15 +276,18 @@ class RealRobotDataset(TrajectoryDataset):
         # gripper_cam_transform
         transform = data["obs", "gripper_cam", "frames", "dynamic_extrinsics"]
         assert transform.ndim == 3
+        assert transform.shape[0] == T
         assert transform.shape[-2:] == (4, 4)
         gripper_cam_transform = ObsSpec(elem_shape=(4, 4), time=self.obs_seq_len)
 
         # actions
         action_eef_pos = data["actions", "eef_pos"]
         assert action_eef_pos.ndim == 2
+        assert action_eef_pos.shape[0] == T
         assert action_eef_pos.shape[-1] == 3
         action_eef_quat = data["actions", "eef_quat"]
         assert action_eef_quat.ndim == 2
+        assert action_eef_quat.shape[0] == T
         assert action_eef_quat.shape[-1] == 4
         action_gripper_pose = data["actions", "gripper_pos"]
         assert action_gripper_pose.ndim == 1

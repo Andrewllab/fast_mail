@@ -28,7 +28,7 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
         embed_dim: int,
         image_encoder: Callable[[int, int], nn.Module] | None = None,
         fusion_type: Literal["6ch", "add", "cat"] | None = None,
-        # shared_encoder: bool = False,  # TODO: implement this
+        shared_encoder: bool = False,
     ):
         super().__init__()
 
@@ -70,6 +70,19 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
             raise ValueError("No valid input specs found.")
         self._input_specs = input_specs
 
+        for key, spec in input_specs.items():
+            rgb_streams = [
+                name
+                for name, stream in spec.streams.items()
+                if isinstance(stream, RGBStream)
+            ]
+            if len(rgb_streams) > 1:
+                log.warning(
+                    f"Camera spec '{key}' contains multiple RGB streams. "
+                    f"Only the first RGB stream {rgb_streams[0]} will be used. "
+                    "Ensure that the image stream is aligned with the pointmap stream."
+                )
+
         input_streams = [
             stream
             for spec in input_specs.values()
@@ -84,15 +97,33 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
                 f"Got {[stream.time for stream in input_streams]}"
             )
 
-        # verify that all streams have the same resolution
-        if not all(
-            stream.height_width == input_streams[0].height_width
-            for stream in input_streams
-        ):
-            raise ValueError(
-                "All input streams must have the same height and width when using a shared encoder."
-                f"Got {[stream.height_width for stream in input_streams]}"
-            )
+        # instantiate pointmap model(s)
+        if shared_encoder:
+            # verify that all streams have the same resolution when using shared encoder
+            if not all(
+                stream.height_width == input_streams[0].height_width
+                for stream in input_streams
+            ):
+                raise ValueError(
+                    "All input streams must have the same height and width when using a shared encoder."
+                    f"Got {[stream.height_width for stream in input_streams]}"
+                )
+
+            self.pointmap_model = pointmap_encoder(in_channels, embed_dim)
+            if self.late_fusion:
+                assert image_encoder is not None
+                self.image_model = image_encoder(rgb_channels, embed_dim)
+        else:
+            self.pointmap_models = nn.ModuleDict()
+            for key in input_specs.keys():
+                self.pointmap_models[key] = pointmap_encoder(in_channels, embed_dim)
+
+            if self.late_fusion:
+                assert image_encoder is not None
+                self.image_models = nn.ModuleDict()
+                for key in input_specs.keys():
+                    self.image_models[key] = image_encoder(rgb_channels, embed_dim)
+        self.shared_encoder = shared_encoder
 
         # verify that all point map streams have the correct number of channels
         if not all(
@@ -104,12 +135,6 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
                 f"All input streams must have {in_channels} channels when using {fusion_type} fusion."
                 f"Got {[stream.channels for stream in input_streams if isinstance(stream, PointMapStream)]}"
             )
-
-        # instantiate rgb model(s)
-        self.pointmap_model = pointmap_encoder(in_channels, embed_dim)
-        if self.late_fusion:
-            assert image_encoder is not None
-            self.image_model = image_encoder(rgb_channels, embed_dim)
 
         # each camera produces one token
         # if we have stereo rgb, we just take the left camera
@@ -138,8 +163,12 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
         pointmap_streams = []
         rgb_streams = []
         for key, spec in self._input_specs.items():
+            # TODO: loop across stream types and find the first matching stream for each
+            found = {
+                stream_type: False for stream_type in self.stream_types
+            }  # only fetch first rgb and pointmap stream
             for name, stream in spec.streams.items():
-                if not isinstance(stream, self.stream_types):
+                if not isinstance(stream, self.stream_types) or found[type(stream)]:
                     continue
 
                 image = tensordict["obs", key, name]
@@ -161,28 +190,68 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
                 elif isinstance(stream, RGBStream):
                     rgb_streams.append(image)
 
+                found[type(stream)] = True
+
         # we stack and flatten rather than concatenate, to keep images from the same time step together
         # (B, T, C, H, W) -> (B, T, N, C, H, W)
         point_maps = torch.stack(pointmap_streams, dim=-4)
 
         leading_dims, shape = (point_maps.shape[:3], point_maps.shape[-3:])
-        # (B, T, N, C, H, W) -> (B*T*N, C, H, W)
-        point_maps = point_maps.view(-1, *shape)
 
-        # (B*T*N, C, H, W) -> (B*T*N, D)
-        features = self.pointmap_model(point_maps)
-        # keep time and number of cameras flattened
-        # (B*T*N, D) -> (B, T, N, D)
-        features = torch.unflatten(features, dim=0, sizes=leading_dims)
+        if self.shared_encoder:
+            # (B, T, N, C, H, W) -> (B*T*N, C, H, W)
+            point_maps = point_maps.view(-1, *shape)
+
+            # (B*T*N, C, H, W) -> (B*T*N, D)
+            features = self.pointmap_model(point_maps)
+            # keep time and number of cameras flattened
+            # (B*T*N, D) -> (B, T, N, D)
+            features = torch.unflatten(features, dim=0, sizes=leading_dims)
+        else:
+            # run each pointmap obs to independent models
+            B, T, N = leading_dims
+            features = []
+            for i, key in enumerate(self._input_specs.keys()):
+                # (B, T, N, C, H, W) -> (B, T, C, H, W)
+                pointmap = point_maps[:, :, i]
+                # (B, T, C, H, W) -> (B*T, C, H, W)
+                pointmap = pointmap.view(-1, *shape)
+
+                # (B*T, C, H, W) -> (B*T, D)
+                feature = self.pointmap_models[key](pointmap)
+                features.append(feature)
+
+            # (B*T, D) -> (B*T, N, D)
+            features = torch.stack(features, dim=1)
+            # (B*T, N, D) -> (B, T, N, D)
+            features = torch.unflatten(features, dim=0, sizes=(B, T, N))
 
         if self.late_fusion:
             # Do the same for rgb images
             rgb_images = torch.stack(rgb_streams, dim=-4)
             assert shape == rgb_images.shape[-3:]
 
-            rgb_images = rgb_images.view(-1, *shape)
-            features_rgb = self.image_model(rgb_images)
-            features_rgb = torch.unflatten(features_rgb, dim=0, sizes=leading_dims)
+            if self.shared_encoder:
+                rgb_images = rgb_images.view(-1, *shape)
+                features_rgb = self.image_model(rgb_images)
+                features_rgb = torch.unflatten(features_rgb, dim=0, sizes=leading_dims)
+            else:
+                B, T, N = leading_dims
+                features_rgb_list = []
+                for i, key in enumerate(self._input_specs.keys()):
+                    # (B, T, N, C, H, W) -> (B, T, C, H, W)
+                    rgb_image = rgb_images[:, :, i]
+                    # (B, T, C, H, W) -> (B*T, C, H, W)
+                    rgb_image = rgb_image.view(-1, *shape)
+
+                    # (B*T, C, H, W) -> (B*T, D)
+                    feature_rgb = self.image_models[key](rgb_image)
+                    features_rgb_list.append(feature_rgb)
+
+                # (B*T, D) -> (B*T, N, D)
+                features_rgb = torch.stack(features_rgb_list, dim=1)
+                # (B*T, N, D) -> (B, T, N, D)
+                features_rgb = torch.unflatten(features_rgb, dim=0, sizes=(B, T, N))
 
             # features: (B, T, N, D)
             if self.fusion_type == "cat":

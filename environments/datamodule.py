@@ -180,19 +180,30 @@ class TrajectoryDataModule(L.LightningDataModule):
             cpu_batch_transform, specs = init_transforms(
                 self._cpu_batch_transforms, specs
             )
-
-            log.debug(
-                "Prepending preprocess and cpu transforms to cpu batch transforms for gym environment..."
-            )
-            env_cpu_batch_transform = (
-                preprocess_transforms + list(cpu_transforms) + list(cpu_batch_transform)
-            )
-            self.env_cpu_batch_transform = Compose(*env_cpu_batch_transform)
-
+            
             log.debug("Instantiating gpu batch transforms for environment...")
-            self.env_gpu_batch_transform, specs = init_transforms(
+            env_gpu_batch_transforms, specs = init_transforms(
                 self._gpu_batch_transforms, specs
             )
+            
+            if cpu_transforms or cpu_batch_transform:
+                log.debug(
+                    "Prepending preprocess and cpu transforms to cpu batch transforms for gym environment..."
+                )
+                env_cpu_batch_transform = (
+                    preprocess_transforms + list(cpu_transforms) + list(cpu_batch_transform)
+                )
+                self.env_cpu_batch_transform = Compose(*env_cpu_batch_transform)
+                self.env_gpu_batch_transform = env_gpu_batch_transforms
+            else:
+                log.debug(
+                    "No cpu transforms found for gym environment. Prepending preprocess to gpu batch transforms for gym environment"
+                )
+                env_gpu_batch_transform = (
+                    preprocess_transforms + list(env_gpu_batch_transforms)
+                )
+                self.env_cpu_batch_transform = Compose()
+                self.env_gpu_batch_transform = Compose(*env_gpu_batch_transform)
 
             # if we have both a dataset and an environment, we need to check if
             # they have the same specs

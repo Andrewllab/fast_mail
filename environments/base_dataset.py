@@ -18,6 +18,7 @@ from torch.utils.data import Dataset
 from environments.specs import DataSpecs
 from transforms.base_transform import (
     Compose,
+    TransformConstraint,
     TransformPartialsDict,
     get_transforms_config,
     init_transforms,
@@ -67,15 +68,6 @@ class TrajectoryDataset(Dataset, ABC):
         if debug_preprocess and preprocess_transforms is not None:
             # TODO: implement this by running preprocessing in memory instead of saving to disk
             raise NotImplementedError
-
-            log.debug(
-                "`debug_preprocess` activated. Prepending preprocess transforms to cpu transforms."
-            )
-            if transforms is not None:
-                transforms = {**preprocess_transforms, **transforms}
-            else:
-                transforms = preprocess_transforms
-            preprocess_transforms = None
 
         if device == "gpu":
             device = "cuda"
@@ -282,6 +274,32 @@ class TrajectoryDataset(Dataset, ABC):
         assert isinstance(preprocess_transforms, Compose)
         assert specs == preprocess_transforms[-1].specs
 
+        if any(
+            TransformConstraint.GPU_ONLY in t.constraints for t in preprocess_transforms
+        ):
+            if not torch.cuda.is_available():
+                raise RuntimeError(
+                    "At least one of the preprocessing transforms is gpu_only but no GPU is available."
+                )
+
+            # pick GPU with most free memory (fallback to cuda:0)
+            if torch.cuda.device_count() == 1:
+                device = torch.device("cuda:0")
+            else:
+                free_per_dev = []
+                for d in range(torch.cuda.device_count()):
+                    try:
+                        free, _ = torch.cuda.mem_get_info(d)
+                    except Exception:
+                        free, _ = 0, 0
+                    free_per_dev.append((free, d))
+                _, dev_idx = max(free_per_dev)
+                device = torch.device(f"cuda:{dev_idx}")
+
+            log.info(
+                f"At least one of the preprocessing transforms is gpu_only. Preprocessing will be done (partly) on {device}."
+            )
+
         # TODO: implement multiprocessing and optionally running on GPU
         processed_files = []
         for raw_file in raw_files:
@@ -297,12 +315,16 @@ class TrajectoryDataset(Dataset, ABC):
             for transform in preprocess_transforms:
                 next_trajs = []
                 for traj in trajs:
-                    # apply the transform to each trajectory
-                    traj = transform.call_trajectory(traj)
-                    if isinstance(traj, list):
-                        next_trajs.extend(traj)
+                    if TransformConstraint.GPU_ONLY in transform.constraints:
+                        traj = traj.to(device)
+
+                    transformed = transform.call_trajectory(traj)
+
+                    # put trajectories back on CPU immediately to save VRAM
+                    if isinstance(transformed, list):
+                        next_trajs.extend([traj.cpu() for traj in transformed])
                     else:
-                        next_trajs.append(traj)
+                        next_trajs.append(transformed.cpu())
 
                 trajs = next_trajs
 

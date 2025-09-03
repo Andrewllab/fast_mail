@@ -46,6 +46,7 @@ data:
     env:
       cameras: null  # we don't need cameras for open-loop replay
     action_horizon: null  # execute all incoming actions
+    fps: null  # disable the redundant fps limiter in the environment
   
 # since we load a small subset of the data, store preprocessed data in another folder
 paths:

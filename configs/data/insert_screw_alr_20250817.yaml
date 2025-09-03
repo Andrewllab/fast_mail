@@ -2,6 +2,11 @@
 
 defaults:
   - default
+  - /transforms@preprocess_transforms.t0-1_trim_idle: time_trim_idle
+  - /transforms@preprocess_transforms.t0-3_relative_actions: action_abs_to_relative_chunk
+  - /transforms@preprocess_transforms.t0-4_normalize_actions: action_norm_max
+  - /transforms@preprocess_transforms.t0-5_remove_inf_depth: remove_inf_depth
+  - /cameras/calibration@data.dataset.extrinsics: 2025-08-31
 
 task_suite: furniture_bench
 task: insert_screw
@@ -16,9 +21,20 @@ dataset:
   obs_seq_len: 1
 
 preprocess_transforms:
-  t0-2_subsample:
-    factor: 3 # Subsample to 10hz
   t0-3_relative_actions:
     reference: current_ee_pose
+
+  t1-3_triangle_crop:
+    _target_: transforms.triangle_crop.TriangleCrop
+    _partial_: true
+    borders:
+      front_left_cam:
+        mask_right: true
+        point1: [449, 439]
+        point2: [337, 580]
+      front_right_cam:
+        mask_right: true
+        point1: [339, 45]
+        point2: [437, 105]
 
 device: cpu  # this dataset is maybe small enough to fit in memory

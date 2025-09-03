@@ -53,6 +53,20 @@ class MultiviewImageTokenizer(Transform, nn.Module):
         }
         self._input_specs = input_specs
 
+        # Check if camera specs contain multiple rgb streams and print out a warning
+        if RGBStream in stream_types:
+            for key, spec in input_specs.items():
+                rgb_streams = [
+                    name
+                    for name, stream in spec.streams.items()
+                    if isinstance(stream, RGBStream)
+                ]
+                if len(rgb_streams) > 1:
+                    log.warning(
+                        f"Camera spec '{key}' contains multiple RGB streams. "
+                        f"Only the first RGB stream {rgb_streams[0]} will be used"
+                    )
+
         input_streams = [
             stream
             for spec in input_specs.values()
@@ -108,9 +122,11 @@ class MultiviewImageTokenizer(Transform, nn.Module):
 
         imgs = []
         for key, spec in self._input_specs.items():
+            # TODO: loop across stream types and find the first matching stream for each
             streams = []
+            found = {stream_type: False for stream_type in self.stream_types}
             for name, stream in spec.streams.items():
-                if not isinstance(stream, self.stream_types):
+                if not isinstance(stream, self.stream_types) or found[type(stream)]:
                     continue
 
                 image = tensordict["obs", key, name]
@@ -127,11 +143,14 @@ class MultiviewImageTokenizer(Transform, nn.Module):
                 if image.dtype == torch.uint8:
                     image = image.to(dtype=default_float_dtype).div(255)
 
+                found[type(stream)] = True
+
                 streams.append(image)
 
             if len(streams) > 1:
                 # stack rgb and depth in channel dimension
                 imgs.append(torch.cat(streams, dim=-3))
+                assert len(streams) <= 2
             else:
                 imgs.append(streams[0])
 

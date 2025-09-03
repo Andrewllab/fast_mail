@@ -1,4 +1,4 @@
-left_cam:
+front_left_cam:
   extrinsics:
   - - 0.5572241544723511
     - 0.5962156057357788
@@ -16,7 +16,7 @@ left_cam:
     - 0.0
     - 0.0
     - 1.0
-right_cam:
+front_right_cam:
   extrinsics:
   - - -0.501140832901001
     - 0.47691452503204346

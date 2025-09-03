@@ -1,0 +1,2 @@
+_target_: transforms.remove_inf_depth.RemoveInfDepthStream
+_partial_: True

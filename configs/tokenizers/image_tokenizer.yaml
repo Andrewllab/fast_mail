@@ -1,5 +1,5 @@
 defaults:
-  - /models/conv@image_encoder: resnet
+  - /models/vision_encoder@image_encoder: resnet
 
 name: multiview_image_tokenizer
 _target_: transforms.multiview_image_tokenizer.MultiviewImageTokenizer

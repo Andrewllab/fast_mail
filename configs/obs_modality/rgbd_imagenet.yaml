@@ -1,6 +1,10 @@
 # @package _global_
 
 defaults:
+  - /transforms@data.preprocess_transforms.t1-0_resize_fs: image_resize
+
+  - /transforms@data.preprocess_transforms.t1-1_crop_fs: image_centercrop
+
   - /transforms@data.preprocess_transforms.t2_resize: image_resize
 
   # pretrained resnet18 expects images of shape 224x224
@@ -12,6 +16,12 @@ defaults:
 data:
   # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess_transforms:
+    t1-0_resize_fs:
+      shape: 480  # scale shortest side to 480 and keep aspect ratio
+
+    t1-1_crop_fs:
+      shape: [480, 640]  # crop all streams to 480x640
+
     t2_resize:
       shape: 224  # scale shortest side to 224 and keep aspect ratio
     

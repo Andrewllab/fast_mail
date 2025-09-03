@@ -13,9 +13,9 @@ env_dataset:
     control_type: hybrid_joint
     cameras:
       left_cam:
-        name: left_cam
+        name: front_left_cam
       right_cam:
-        name: right_cam
+        name: front_right_cam
       gripper_cam:
         name: gripper_cam
     robot:

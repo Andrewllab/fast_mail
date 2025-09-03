@@ -1,0 +1,3 @@
+_target_: models.davit.davit_encoder
+_partial_: True
+pretrained_weights: null

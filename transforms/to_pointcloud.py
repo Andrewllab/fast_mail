@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import logging
 
 import torch
 from tensordict import TensorDict
@@ -17,6 +18,7 @@ from environments.specs import (
 from transforms.base_transform import Transform
 from utils.math import transform_pointmap, unproject_depth
 
+log = logging.getLogger(__name__)
 
 class ToPointCloud(Transform):
     def __init__(
@@ -50,11 +52,19 @@ class ToPointCloud(Transform):
                     f"Depth stream at {key}.{name} does not have an intrinsics matrix."
                 )
 
-            if color and not any(
-                isinstance(stream, RGBStream) for stream in spec.streams.values()
-            ):
+            rgb_streams = [
+                stream
+                for stream in spec.streams.values()
+                if isinstance(stream, RGBStream)
+            ]
+
+            if color and not rgb_streams:
                 raise ValueError(
                     f"Depth camera spec {key} is not an RGBCameraSpec. Cannot use color."
+                )
+            elif color and len(rgb_streams) > 1:
+                log.warning(
+                    f"Depth camera spec {key} has multiple RGB streams. Using {rgb_streams[0]} to color the point cloud."
                 )
 
             if multiview and spec.extrinsics is None:

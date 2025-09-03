@@ -9,6 +9,7 @@ from abc import ABC, ABCMeta, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator, Mapping, Sequence
+from enum import Enum, auto
 
 import torch.nn as nn
 from omegaconf import ListConfig, OmegaConf
@@ -35,7 +36,9 @@ class KeyMapping:
     in_keys: KeyType | list[KeyType]
     out_keys: KeyType | list[KeyType]
     args: tuple[Any, ...] = ()
-
+    
+class TransformConstraint(Enum):
+    GPU_ONLY = auto()
 
 class TransformModuleMeta(ABCMeta):
     """Metaclass that allows for a class to multiple inherit from Transform and
@@ -54,6 +57,8 @@ class TransformModuleMeta(ABCMeta):
 
 class Transform(ABC, metaclass=TransformModuleMeta):
     """Base class for all transforms."""
+
+    constraints: list[TransformConstraint] = []
 
     @property
     @abstractmethod

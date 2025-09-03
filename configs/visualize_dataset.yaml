@@ -31,13 +31,9 @@ data:
     # debug_preprocess: True  # prepend preprocess transforms to cpu transforms
 
   preprocess_transforms:
-    t2_resize:
-      shape: 512  # increase resolution for better visualization
 
     t2_resize_for_pcd:
       shape: 256  # increase resolution for better visualization (but not too high, due to memory constraints)
-    
-    t3_crop_image: null  # disable cropping, because we want to visualize the whole image
     
     t3_to_pcd:
       color: True  # add colors to pointclouds, in case we render pointclouds

@@ -1,0 +1,4 @@
+image_encoder:
+  _target_: models.vit.vit_encoder
+  _partial_: True
+  embed_dim: ${..embed_dim}

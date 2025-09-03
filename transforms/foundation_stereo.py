@@ -5,11 +5,14 @@ from tensordict import TensorDict
 
 from environments.specs import CameraSpec, DataSpecs, DepthStream
 from third_party.FoundationStereo.core.utils.utils import InputPadder
-from transforms.base_transform import Transform
+from transforms.base_transform import Transform, TransformConstraint
 from utils.tensor_rt import get_metadata, load_engine, run_inference
 
 
 class FoundationStereo(Transform):
+
+    constraints = [TransformConstraint.GPU_ONLY]
+
     def __init__(
         self,
         specs: DataSpecs,

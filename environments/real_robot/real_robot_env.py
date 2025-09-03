@@ -27,8 +27,10 @@ class RealRobotEnv(gym.Env):
         robot: DictConfig,
         cameras: Mapping[str, BaseCamera] | None = None,
         control_type: Literal["cartesian", "hybrid_joint"] = "cartesian",
+        binary_gripper_state: bool = True
     ):
         self.control_type = control_type
+        self.binary_gripper_state = binary_gripper_state
 
         self.arm = RobotInterface(
             name=robot.name,
@@ -63,8 +65,8 @@ class RealRobotEnv(gym.Env):
         self.cameras: Mapping[str, BaseCamera] = cameras or {}
 
         obs_specs = {
-            # we concatenate joint_pos and gripper_pos to get a shape of (T, 9)
-            "robot_state": ObsSpec(elem_shape=(9,)),
+            # we concatenate joint_pos and gripper_pos to get a shape of (T, 9) if binary_gripper_state is False
+            "robot_state": ObsSpec(elem_shape=(8,)) if self.binary_gripper_state else ObsSpec(elem_shape=(9,)),
             # xyz + wxyz quaternion
             "ee_pose": ObsSpec(elem_shape=(7,)),
             "target_ee_pose": ObsSpec(elem_shape=(7,)),
@@ -189,14 +191,22 @@ class RealRobotEnv(gym.Env):
         state = self.arm.get_robot_state()
         joint_pos = torch.tensor(state.joint_positions)
 
-        robot_state = torch.cat(
-            (
-                joint_pos,  # 7
-                gripper_width,  # 1
-                -gripper_width,  # 1
-            ),
-            dim=-1,
-        )
+        if not self.binary_gripper_state:
+            robot_state = torch.cat(
+                (
+                    joint_pos,  # 7
+                    gripper_width,  # 1
+                    -gripper_width,  # 1
+                ),
+                dim=-1,
+            )
+        else:
+            thresh = (self.gripper_max_width * GRIPPER_POS_SCALE) / 2
+            factor = (1.0 if gripper_width > thresh else -1.0)
+            robot_state = torch.cat([
+                joint_pos,
+                factor * torch.ones(1, dtype=joint_pos.dtype, device=joint_pos.device)
+            ], dim=-1)
 
         ee_pos, ee_xyzw = self.arm.robot_model.forward_kinematics(joint_pos)
         ee_wxyz = torch.cat((ee_xyzw[3:], ee_xyzw[:3]), dim=0)

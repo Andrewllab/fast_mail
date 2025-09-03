@@ -25,10 +25,10 @@ class Zed(BaseCamera):
         self,
         serial_number: int | str,
         name: str | None = None,
-        resolution: Literal["HD720", "HD1080", "HD2K", "VGA"] = "HD720",
+        resolution: Literal["HD720", "HD1080", "HD2K", "VGA"] = "VGA",
         depth_mode: Literal[
             "QUALITY", "ULTRA", "NONE", "NEURAL", "PERFORMANCE"
-        ] = "QUALITY",
+        ] = "NEURAL",
         fps: Literal[15, 30, 60, 100] = 30,
         reconnect_attempts: int = 2,
         warm_start: int = 0,
@@ -142,7 +142,7 @@ class Zed(BaseCamera):
         )
 
     def get_intrinsics(
-        self, stream_name: Literal["rgb", "left", "right", "depth"] = "depth"
+        self, stream_name: Literal["left", "right", "depth"] = "depth"
     ) -> dict[str, int | float | list[float]]:
         calibration = (
             # calibration_parameters are for rectified/undistorted images
@@ -151,7 +151,6 @@ class Zed(BaseCamera):
         )
 
         CAM_NAMES = {
-            "rgb": "left_cam",
             "depth": "left_cam",
             "left": "left_cam",
             "right": "right_cam",
@@ -215,7 +214,6 @@ class Zed(BaseCamera):
 
         return {
             "time": time.time(),
-            "rgb": image_left_np,
             "left": image_left_np,
             "right": image_right_np,
             "depth": depth_np,

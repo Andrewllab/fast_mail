@@ -227,9 +227,7 @@ pyrightconfig.json
 
 ### VisualStudioCode ###
 .vscode/*
-!.vscode/settings.json
 !.vscode/tasks.json
-!.vscode/launch.json
 !.vscode/extensions.json
 !.vscode/*.code-snippets
 
@@ -258,6 +256,7 @@ __pycache__/
 /multirun/
 
 # training and validation data
+datasets
 /datasets/
 /preprocessed_datasets/
 /debug_preprocessed_datasets/

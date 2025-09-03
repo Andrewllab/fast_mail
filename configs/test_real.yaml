@@ -5,7 +5,7 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: default
-  - transforms@agent.obs_encoder.t3_render: render_cameras
+  - transforms@data.preprocess_transforms.t0-9_render_cameras: render_cameras
   - _self_
   - platform: default
   - optional local: default
@@ -18,13 +18,22 @@ checkpoint:
   # either specify a complete checkpoint path...
   log_dir:
   # ...or specify the wandb run name
-  wandb_run_id:
+  wandb_run_id: ???
   # project and entity are only needed if they differ from the settings in the wandb logger config
   wandb_project: 3d-sim2real
   wandb_entity: alr-3d-sim2real
   epochs: last  # options: last, all, last_n (default: last)
   artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
   use_artifact: false  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
+
+data:
+  eval_mode: env
+  env_dataset:
+    action_horizon: 5
+    fps: 10
+  preprocess_transforms:
+    t0-9_render_cameras:
+      stream_names: [rgb, depth]
 
 trainer:
   default_root_dir: ${paths.output_dir}

@@ -2,6 +2,7 @@ import dataclasses
 
 import torch
 from tensordict import TensorDict
+import logging
 
 from environments.specs import (
     CameraSpec,
@@ -13,6 +14,7 @@ from environments.specs import (
 from transforms.base_transform import Transform
 from utils.math import transform_pointmap, unproject_depth
 
+log = logging.getLogger(__name__)
 
 class ToPointMap(Transform):
     def __init__(
@@ -48,17 +50,25 @@ class ToPointMap(Transform):
                 )
 
             if color:
-                try:
-                    rgb_name = next(
-                        name
-                        for name, stream in spec.streams.items()
-                        if isinstance(stream, RGBStream)
-                    )
-                except StopIteration:
+                rgb_streams = [
+                    name
+                    for name, stream in spec.streams.items()
+                    if isinstance(stream, RGBStream)
+                ]
+                
+                if not rgb_streams:
                     raise ValueError(
-                        f"Depth camera spec {key} is not an RGBCameraSpec. Cannot use color."
+                        f"Camera spec {key} is not an RGBCameraSpec. Cannot use color."
                     )
-
+                elif len(rgb_streams) > 1:
+                    log.warning(
+                        f"Camera spec '{key}' contains multiple RGB streams. "
+                        f"Only the first RGB stream {rgb_streams[0]} will be concatenated "
+                        "to the pointmap feature channel"
+                    )
+                    
+                rgb_name = rgb_streams[0]
+                
             if multiview and spec.extrinsics is None:
                 raise ValueError(
                     f"Depth camera {key} does not have an extrinsics matrix."

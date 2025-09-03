@@ -1,40 +1,13 @@
 # @package _global_
 
 defaults:
-  # downsample the RGBD images, but not excessively, otherwise FoundationStereo is less accurate
-  - /transforms@data.gpu_batch_transforms.t1-0_resize_fs: image_resize
-
-  # crop the images so that streams from all cameras are the same size
-  - /transforms@data.gpu_batch_transforms.t1-1_crop_fs: image_centercrop
-
+  - rgbd_imagenet
   # replace measured depth with FoundationStereo depth
-  - /transforms@data.gpu_batch_transforms.t1-1_foundationstereo: foundation_stereo
-
-  - /transforms@data.gpu_batch_transforms.t2_resize: image_resize
-
-  # pretrained resnet18 expects images of shape 224x224
-  - /transforms@data.gpu_batch_transforms.t3_crop_image: image_centercrop
-  
-  # apply ImageNet normalization
-  - /transforms@data.gpu_batch_transforms.t4_norm_image: imagenet_norm
+  - /transforms@data.preprocess_transforms.t1-2_foundationstereo: foundation_stereo
+  - _self_
 
 data:
   # Below is just the default configuration copied here for convenience. Change as needed.
-  gpu_batch_transforms:
-    t1-0_resize_fs:
-      shape: 480  # scale shortest side to 480 and keep aspect ratio
-
-    t1-1_crop_fs:
-      shape: [480, 640]  # crop all streams to 480x640
-
-    t1-1_foundationstereo:
+  preprocess_transforms:
+    t1-2_foundationstereo:
       engine_path: ${paths.root_dir}/foundation_stereo_models/foundation_stereo_large_3x480x640.plan
-
-    t2_resize:
-      shape: 224  # scale shortest side to 224 and keep aspect ratio
-    
-    t3_crop_image:
-      shape: 224  # crop to 224x224 square
-
-  dataset:
-    preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/multiview_image
