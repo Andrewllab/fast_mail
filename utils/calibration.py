@@ -220,6 +220,7 @@ class SceneExtrinsics(nn.Module):
                 raise ValueError(
                     f"Expected {n_cams} camera extrinsics, got {len(T_base2cam)}"
                 )
+            T_base2cam = T_base2cam.float()
             T_cam2base = pose_inv(T_base2cam)
             pos, rot = unmake_pose(T_cam2base)
             pose_cam2base = torch.cat((pos, matrix_to_quaternion(rot)), dim=-1)
@@ -234,6 +235,7 @@ class SceneExtrinsics(nn.Module):
                 raise ValueError(
                     f"Expected {n_acquisitions} object poses, got {len(T_base2obj)}"
                 )
+            T_base2obj = T_base2obj.float()
             pos, rot = unmake_pose(T_base2obj)
             pose_base2obj = torch.cat((pos, matrix_to_quaternion(rot)), dim=-1)
         else:
@@ -356,14 +358,14 @@ def optimize_euclidean_dynamic_cam(
 
     inputs = TensorDict(
         {
-            "xyz_obj": torch.from_numpy(np.concatenate(all_xyz_obj)),
+            "xyz_obj": torch.from_numpy(np.concatenate(all_xyz_obj)).float(),
             "acquisition_idx": torch.from_numpy(np.concatenate(all_acquisition_idx)),
             "cam_idx": torch.from_numpy(np.concatenate(all_cam_idx)),
-            "T_ee2base": torch.cat(all_T_ee2base),
+            "T_ee2base": torch.cat(all_T_ee2base).float(),
         }  # type: ignore
     )
     inputs.auto_batch_size_(batch_dims=1)
-    xyz_cam = torch.from_numpy(np.concatenate(all_xyz_cam))
+    xyz_cam = torch.from_numpy(np.concatenate(all_xyz_cam)).float()
     train_dataset = InputsTargetsDataset(inputs, xyz_cam)
     # train_loader = tlm.utils.FastDataLoader(
     train_loader = torch.utils.data.DataLoader(
@@ -422,6 +424,7 @@ class SceneExtrinsicsAndIntrinsics(nn.Module):
                 raise ValueError(
                     f"Expected {n_cams} camera extrinsics, got {len(T_base2cam)}"
                 )
+            T_base2cam = T_base2cam.float()
             T_cam2base = pose_inv(T_base2cam)
             pos, rot = unmake_pose(T_cam2base)
             pose_cam2base = torch.cat((pos, matrix_to_quaternion(rot)), dim=-1)
@@ -436,6 +439,7 @@ class SceneExtrinsicsAndIntrinsics(nn.Module):
                 raise ValueError(
                     f"Expected {n_acquisitions} object poses, got {len(T_base2obj)}"
                 )
+            T_base2obj = T_base2obj.float()
             pos, rot = unmake_pose(T_base2obj)
             pose_base2obj = torch.cat((pos, matrix_to_quaternion(rot)), dim=-1)
         else:
@@ -540,14 +544,14 @@ def optimize_reprojection(
 
     inputs = TensorDict(
         {
-            "xyz_obj": torch.from_numpy(np.concatenate(all_xyz_obj)),
+            "xyz_obj": torch.from_numpy(np.concatenate(all_xyz_obj)).float(),
             "acquisition_idx": torch.from_numpy(np.concatenate(all_acquisition_idx)),
             "cam_idx": torch.from_numpy(np.concatenate(all_cam_idx)),
-            "T_ee2base": torch.cat(all_T_ee2base),
+            "T_ee2base": torch.cat(all_T_ee2base).float(),
         }  # type: ignore
     )
     inputs.auto_batch_size_(batch_dims=1)
-    xyz_cam = torch.from_numpy(np.concatenate(all_image_uv))
+    xyz_cam = torch.from_numpy(np.concatenate(all_image_uv)).float()
     train_dataset = InputsTargetsDataset(inputs, xyz_cam)
     # TODO: test with tlm.utils.FastDataLoader, including repeating the dataset
     train_loader = torch.utils.data.DataLoader(
