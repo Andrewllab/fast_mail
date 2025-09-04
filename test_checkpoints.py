@@ -38,45 +38,83 @@ Open questions:
 2) Removing all evaluation videos and all model checkpoints ensures proper cleaning. Should we make them optional?
 """
 
-import shutil
+import logging
+import os
+import signal
 import subprocess
-from pathlib import Path
+import sys
 
 import hydra
 import psutil
 import rootutils
-from omegaconf import DictConfig, OmegaConf
+from hydra.core.hydra_config import HydraConfig
+from omegaconf import DictConfig
 
 # enables importing local modules regardless of where the script is run
 rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
 
+log = logging.getLogger(__name__)
+
 
 def kill_process_tree(pid):
+    log.info(f"Killing process tree with root pid {pid}...")
+
+    # this only works because we set start_new_session=True in Popen
+    # therefore, the pid of the process is also the process group id
+    os.killpg(pid, signal.SIGKILL)  # send the signal to all the process groups
+
+    # try:
+    #     parent = psutil.Process(pid)
+    #     children = parent.children(recursive=True)
+    #     for child in children:
+    #         child.kill()
+    #     parent.kill()
+    # except psutil.NoSuchProcess:
+    #     pass
+
+
+def kill_process_tree_nicely(pid, timeout=5):
     try:
         parent = psutil.Process(pid)
-        children = parent.children(recursive=True)
-        for child in children:
-            child.kill()
-        parent.kill()
     except psutil.NoSuchProcess:
-        pass
+        return
+
+    # Try graceful first
+    for proc in parent.children(recursive=True) + [parent]:
+        try:
+            proc.terminate()  # SIGTERM on Unix, TerminateProcess on Windows
+        except psutil.NoSuchProcess:
+            pass
+
+    gone, alive = psutil.wait_procs(
+        parent.children(recursive=True) + [parent], timeout=timeout
+    )
+
+    # Force kill stragglers
+    for proc in alive:
+        try:
+            proc.kill()
+        except psutil.NoSuchProcess:
+            pass
 
 
-def run_test_single_checkpoint(command_args, log_path, trigger_phrase):
-    print(f"[INFO] Launching subprocess: {' '.join(command_args)}")
-
-    # create a file for logging
-    log_file = open(log_path, "w")
+def run_test_single_checkpoint(command_args, trigger_phrase):
+    log.info(f"Launching subprocess: {' '.join(command_args)}")
 
     try:
         # Popen is used, instead of "subprocess.run" because we want to read the process's output as well as get its id to kill it and all its child processes.
         p = subprocess.Popen(
             args=command_args,
-            text=True,
-            bufsize=1,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
+            text=True,  # file objects stdin, stdout and stderr are opened in text mode
+            bufsize=1,  # line-buffered (only usable if text=True)
+            stdout=subprocess.PIPE,  # capture stdout
+            # stderr=subprocess.STDOUT,  # no need to merge stdout and stderr
+            # universal_newlines=True,  # equivalent to text=True in Python 3.7+
+            # this means that the new subprocess is not a child of the current
+            # process (different process group)
+            # consequences:
+            # subprocess does not receive SIGINT when we press Ctrl+C in the main process
+            # os.killpg(p.pid, signal.SIGTERM) kills the entire process group of the child
             start_new_session=True,
         )
 
@@ -84,80 +122,40 @@ def run_test_single_checkpoint(command_args, log_path, trigger_phrase):
         # we create a pipe to the process's output, using it as a trigger event based on the logging outputs as IsaacSim's GUI gets stuck, so the process never actually finish even if we close the simulation application.
         try:
             for line in p.stdout:
-                print(line, end="")
+                print(line, end="")  # process stdout is sent to main process's stdout
                 if trigger_phrase in line:
-                    print(
-                        f"[INFO] Subprocess finished: trigger phrase detected — killing process tree..."
+                    log.info(
+                        "Subprocess finished: trigger phrase detected — killing process tree..."
                     )
-                    kill_process_tree(p.pid)
+                    break
 
         except Exception as e:
-            print(f"[ERROR] Error while reading stdout: {e}")
-            kill_process_tree(p.pid)
+            log.exception(f"[ERROR] Error while reading stdout: {e}")
 
     except subprocess.CalledProcessError as e:
-        print(f"Error while running test script: {e}")
-        log_file.write(f"Error while running test script: {e}")
+        log.exception(f"Subprocess failed with error: {e}")
+    finally:
+        kill_process_tree(p.pid)
 
-    log_file.close()
 
-
-@hydra.main(version_base=None, config_path="configs")
+@hydra.main(version_base=None, config_path="configs", config_name="test_isaac")
 def main(cfg: DictConfig):
-    # resolve the entire config to catch any errors early
-    OmegaConf.resolve(cfg)
+    # we don't use the config at all. We just need hydra to recognize overrides
+    # as if this was test.py -cn test_isaac
 
-    record_dir = cfg.paths.get("recording_dir")
-    # the wandb's model id
-    artifact_run_name = cfg.get("artifact_run_name")
-    # a list of all model checkpoints to be evaluated
-    artifact_versions = cfg.get("artifact_version")
-    # defines the number of episodes to record
-    num_episodes = cfg.data.env_dataset.num_episodes
-    episode_length = cfg.data.env_dataset.env.episode_length_s
+    command_args = [
+        sys.executable,  # fully-qualified path to current python interpreter
+        "test.py",
+        "-cn",
+        "test_isaac",
+    ]
+    # pass on any overrides from this job to the test script
+    command_args += list(HydraConfig.get().overrides.task)
 
-    # run test script for each required artifact_version
-    for artifact_version in artifact_versions:
-        print(
-            f"Running evaluation for run_id {artifact_run_name}, version {artifact_version}"
-        )
+    # the trigger phase is required for the subprocess we create in run_test_single_checkpoint to stop and kill all isaac-sim child processes
+    trigger_phrase = "Finished wandb run with exit_code=0"
 
-        # create directory for storing log-data. The log.txt file is used to read the logging info from UploadEvalVideosToWandbOnTestEnd as a trigger_phrase for the subprocess to stop.
-        artifact_specific_record_dir = Path(record_dir) / artifact_run_name
-        artifact_specific_record_dir.mkdir(exist_ok=True, parents=True)
-        log_path = artifact_specific_record_dir / "log.txt"
-
-        # setup prefix for storing videos used by the VideoRecorder
-        name_prefix = str("model-" + artifact_run_name + ":" + artifact_version)
-
-        # TODO: rewrite this hard-coded command-list which might be automated by reading all values from the hydra config cfg and ovewriting only the desired.
-        command_args = [
-            "python",
-            "test.py",
-            "-cn",
-            "test_isaac",
-            f"artifact_version={artifact_version}",
-            f"artifact_run_name={artifact_run_name}",
-            f"data.env_dataset.num_episodes={num_episodes}",
-            f"data.env_dataset.env.wrapper_cfgs.record_video.video_folder={artifact_specific_record_dir}",
-            f"data.env_dataset.env.wrapper_cfgs.record_video.name_prefix={name_prefix}",
-            f"data.env_dataset.env.episode_length_s={episode_length}",  # episode length in seconds
-            "data.env_dataset.env.enabled_wrappers=[record_video,preprocess]",  # required to record episodes with the VideoRecorder
-            f"logger.wandb.id={artifact_run_name}",  # required to attach evaluation videos to the original wandb training run instead of creating a new wandb run
-            "logger.wandb.resume=must",  # required to attach evaluation videos to the original wandb training run instead of creating a new wandb run
-        ]
-        # the trigger phase is required for the subprocess we create in run_test_single_checkpoint to stop and kill all isaac-sim child processes
-        trigger_phrase = "Uploading evaluation videos to wandb completed"
-
-        run_test_single_checkpoint(
-            command_args, log_path=log_path, trigger_phrase=trigger_phrase
-        )
-
-        # TODO: make optional
-        # remove evalution videos and log files
-        shutil.rmtree(artifact_specific_record_dir)
-        # remove model checkpoint
-        # shutil.rmtree(f"artifacts/model-{artifact_run_name}:{artifact_version}")
+    run_test_single_checkpoint(command_args, trigger_phrase=trigger_phrase)
 
 
 if __name__ == "__main__":
