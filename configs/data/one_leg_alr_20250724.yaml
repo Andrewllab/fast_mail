@@ -25,7 +25,7 @@ dataset:
   _partial_: True  # requires transforms at runtime
   root_dir: ${paths.data_dir}/insert_one_leg/isaac_sim/metaquest3_2025-07-24
   preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
-  action_seq_len: 30
+  action_seq_len: 60  # Jan says 60 works well
   obs_seq_len: 1
 
 preprocess_transforms:

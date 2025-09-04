@@ -201,7 +201,7 @@ Since FoundationStereo is very large, we compile it with TensorRT to speed up in
             --verbose
     ```
 
-    `dynamic_axes` is currently disabled in the `make_onnx.py` script, but if these are enabled, then trtexec must be passed the `--optShapes` argument (e.g. `--optShapes=left:3x3x480x640,right:3x3x480x640` for a batch size of 3). Otherwise it always assumes a batch size of 1.
+    Without the `--optShapes` argument (where the first dimension corresponds to the desired batch size), tensorrt always assumes a batch size of 1 for dynamic axes.
 
 Note: according to [the documentation](https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/installing.html#python-package-index-installation), installing both the apt and pip packages for TensorRT is redundant and "may not be desirable". However, I was not able to find another way. The `trtexec` executable is part of the `libnvinfer-bin` apt package, while the pip package is required due to `import tensorrt` statements in python. With more trial and error, it's probably possible to find a way to install all the required software in user space only.
 

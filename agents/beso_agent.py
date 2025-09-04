@@ -136,13 +136,6 @@ class BesoAgent(BaseAgent):
         if "episode_info" in batch:
             episode_info = batch["episode_info"]
             assert self.checkpoint_metadata and "epoch" in self.checkpoint_metadata
-            log.debug(
-                "\n".join(
-                    ["{"]
-                    + [f"{key}: {value.item()}" for key, value in episode_info.items()]
-                    + ["}"]
-                )
-            )
             self.log_dict(
                 {
                     "ckpt_epoch": self.checkpoint_metadata["epoch"],
