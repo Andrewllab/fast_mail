@@ -4,9 +4,6 @@ defaults:
   - /tokenizers@agent.obs_encoder.t10_tokenizer: dp3_tokenizer
   - /models/spatial_encoder@agent.obs_encoder.t10_tokenizer.spatial_encoder: fourier_features
   
-  # add tokens for the robot state
-  - /tokenizers@agent.obs_encoder.t20_robot_state: linear_robot_state_tokenizer
-
 # Below is just the default configuration copied here for convenience. Change as needed.
 agent:
   obs_encoder:

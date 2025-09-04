@@ -3,8 +3,6 @@
 defaults:
   # tokenize the rgb images using a ResNet
   - /tokenizers@agent.obs_encoder.t10_resnets: image_tokenizer
-  # add tokens for the robot state
-  - /tokenizers@agent.obs_encoder.t20_robot_state: linear_robot_state_tokenizer
 
 agent:
   obs_encoder:
