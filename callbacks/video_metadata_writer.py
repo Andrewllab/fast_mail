@@ -1,5 +1,4 @@
 import logging
-import os.path as osp
 
 from gymnasium.wrappers import RecordVideo
 from lightning import LightningModule, Trainer
@@ -25,3 +24,6 @@ class VideoMetadataWriter(Callback):
 
         # reset episode counter so that start trigger fires again
         self.video_recorder.episode_id = -1
+
+    on_validation_start = on_test_start
+    on_predict_start = on_test_start

@@ -20,9 +20,12 @@ class WandbLogger(LightningWandbLogger):
         # messages from instantiating the dataset and model
         _ = self.experiment
 
-        # Any test metrics logged with the "test/" prefix will be associated
+        # Any test metrics logged with the "eval_metrics/" prefix will be associated
         # with the epoch of the checkpoint used for testing, not the wandb step
-        self.experiment.define_metric("test/*", step_metric="ckpt_epoch")
+        # TODO: avoid hard-coding this
+        wandb.run.define_metric("eval_metrics/*", step_metric="ckpt_epoch")
+        wandb.run.define_metric("Episode_Termination/*", step_metric="ckpt_epoch")
+        wandb.run.define_metric("Episode_Reward/*", step_metric="ckpt_epoch")
 
 
 def update_wandb_config(cfg: DictConfig) -> None:
@@ -166,6 +169,9 @@ def resolve_checkpoint(
                 artifacts_by_epoch = artifacts_by_epoch[-n:]
 
             # TODO: maybe if there is only one artifact, add support for use_artifact
+            if wandb.run is not None and not wandb.run.disabled and use_artifact:
+                for _, artifact in artifacts_by_epoch:
+                    wandb.run.use_artifact(artifact, type="model")
 
             log.debug(
                 f"Loading {len(artifacts_by_epoch)} checkpoint(s) from wandb run {run_id}..."

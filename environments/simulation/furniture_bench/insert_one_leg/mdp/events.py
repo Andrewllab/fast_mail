@@ -35,6 +35,24 @@ def set_default_joint_pose(
     )
 
 
+def set_joint_pose(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    desired_pose: torch.Tensor,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+):
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    # read defaut position and velocity values from the articulation config
+    joint_pos = asset.data.default_joint_pos[env_ids].clone()
+    joint_vel = asset.data.default_joint_vel[env_ids].clone()
+
+    # Set into the physics simulation
+    asset.set_joint_position_target(joint_pos, env_ids=env_ids)
+    asset.set_joint_velocity_target(joint_vel, env_ids=env_ids)
+    asset.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
+
+
 def randomize_light_intensity(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,

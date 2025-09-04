@@ -24,24 +24,24 @@ checkpoint:
   # project and entity are only needed if they differ from the settings in the wandb logger config
   wandb_project: 3d-sim2real
   wandb_entity: alr-3d-sim2real
-  epochs: last  # options: last, all, last_n (default: last)
+  epochs: last_5  # options: last, all, last_n (default: last)
   artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
-  use_artifact: false  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
+  use_artifact: False  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
 
 data:
   eval_mode: env
   env_dataset:
-    num_episodes: 10
-    action_horizon: 10  # modify if desired
+    num_episodes: 6  # 30 episodes in total across 5 checkpoints
+    action_horizon: 20  # modify if desired
 
     env:
       env_cfg:
-        episode_length_s: 10
+        episode_length_s: 20  # 600 frames (simulation renders at 30fps)
     
       wrappers:
         record_video:
           num_episodes: ${data.env_dataset.num_episodes}  # number of episodes to record
-          fps: 50  # increase if the videos are too long
+          fps: 60  # increase if the videos are too long
 
 trainer:
   default_root_dir: ${paths.output_dir}

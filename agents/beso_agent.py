@@ -131,20 +131,32 @@ class BesoAgent(BaseAgent):
         return batch["action"]
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        # values logged here get averaged over an epoch
+
+        if "episode_info" in batch:
+            episode_info = batch["episode_info"]
+            assert self.checkpoint_metadata and "epoch" in self.checkpoint_metadata
+            log.debug(
+                "\n".join(
+                    ["{"]
+                    + [f"{key}: {value.item()}" for key, value in episode_info.items()]
+                    + ["}"]
+                )
+            )
+            self.log_dict(
+                {
+                    "ckpt_epoch": self.checkpoint_metadata["epoch"],
+                    **episode_info.to_dict(),
+                },
+                batch_size=episode_info.shape[0],
+            )
+
         prediction = self.predict_step(batch, batch_idx)
-
-        metrics = {}
-
-        if "success" in batch:
-            self.log("success", batch["success"].float(), reduce_fx="max")
 
         if "ref_action" in batch:
             # only if we are validating on demonstration data
             error = F.mse_loss(prediction, batch["ref_action"])
-            metrics["val_action_mse"] = error
-
-        # log these values per epoch
-        self.log_dict(metrics, batch_size=batch.shape[0])
+            self.log("val_action_mse", error, batch_size=batch["obs"].shape[0])
 
         # return the prediction in case we want to write it back to the environment
         return prediction

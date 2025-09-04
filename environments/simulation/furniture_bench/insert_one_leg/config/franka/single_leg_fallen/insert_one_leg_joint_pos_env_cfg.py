@@ -5,8 +5,10 @@
 
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
+from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.sensors import FrameTransformerCfg
+from isaaclab.sensors import FrameTransformerCfg, ContactSensorCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from isaaclab.sim.schemas.schemas_cfg import RigidBodyPropertiesCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
@@ -22,8 +24,16 @@ from ....mdp.events import (
     reset_table_parts_poses,
     randomize_object_position_from_predefined_area,
     randomize_light_intensity,
+    set_joint_pose,
 )
-from ....mdp.terminations import success
+from ....mdp.terminations import (
+    success,
+    reached,
+    grasp_analysis,
+    lifted,
+    inserted,
+    z_axis_aligned,
+)
 from .....insert_one_leg import assets
 
 ##
@@ -31,6 +41,15 @@ from .....insert_one_leg import assets
 ##
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 from ....assets.franka import FRANKA_PANDA_CFG
+
+
+@configclass
+class EvalMetricsObsGroupCfg(ObsGroup):
+    """An observation group acting as a container for all relevant evaluation metrics."""
+
+    def __post_init__(self):
+        self.enable_corruption = False
+        self.concatenate_terms = False
 
 
 @configclass
@@ -56,6 +75,26 @@ class EventCfg:
         },
     )
 
+    # set_franka_arm_pose = EventTerm(
+    #     func=set_joint_pose,
+    #     mode="reset",
+    #     params={
+    #         # "default_pose": [0.0444, -0.1894, -0.1107, -2.5148, 0.0044, 2.3775, 0.6952, 0.0400, 0.0400], # default initial pose from IsaacLab
+    #         "desired_pose": [0.005649, -0.099542, -0.118758, -2.201725, -0.009681, 2.159746, -0.908100, 0.0400, 0.0400] # corresponds to the initial pose on the real-world setup
+    #     },
+    # )
+
+    # change the robot's initial pose slightly
+    randomize_franka_joint_state = EventTerm(
+        func=franka_stack_events.randomize_joint_by_gaussian_offset,
+        mode="reset",
+        params={
+            "mean": 0.0,
+            "std": 0.02,
+            "asset_cfg": SceneEntityCfg("robot"),
+        },
+    )
+
     # set Franka gripper's dynamic and static frictions higher to simulate the black tape in the real world Franka's setup
     # instead of duplicating code, just reuse the existing function from IsaacLab (originally used for randomizing the friction properties) by setting the same upper and lower boundary values.
     # for more details: https://github.com/isaac-sim/IsaacLab/blob/1f0be3d2cc75c5019750d7873bb16845f9a4184c/source/isaaclab/isaaclab/envs/mdp/events.py#L148
@@ -68,17 +107,6 @@ class EventCfg:
             "dynamic_friction_range": (1.5, 1.5),
             "restitution_range": (0.0, 0.0),
             "num_buckets": 64,
-        },
-    )
-
-    # change the robot's initial pose slightly
-    randomize_franka_joint_state = EventTerm(
-        func=franka_stack_events.randomize_joint_by_gaussian_offset,
-        mode="reset",
-        params={
-            "mean": 0.0,
-            "std": 0.02,
-            "asset_cfg": SceneEntityCfg("robot"),
         },
     )
 
@@ -142,11 +170,14 @@ class RewardsCfg:
     success = RewTerm(
         func=success,
         params={
+            "leg_tip_pos_asset_cfgs": [
+                SceneEntityCfg("square_table_leg1_target_positions_frame"),
+            ],
+            "target_slot_pos_asset_cfg": SceneEntityCfg(
+                "square_table_top_target_positions_frame"
+            ),
             "xy_threshold": 0.0003,
             "height_threshold": 0.0002,
-            "leg_target_frames": [
-                "square_table_leg1_target_positions_frame",
-            ],
         },
         weight=1.0,
     )
@@ -166,11 +197,14 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
         self.terminations.success = DoneTerm(
             func=success,
             params={
+                "leg_tip_pos_asset_cfgs": [
+                    SceneEntityCfg("square_table_leg1_target_positions_frame"),
+                ],
+                "target_slot_pos_asset_cfg": SceneEntityCfg(
+                    "square_table_top_target_positions_frame"
+                ),
                 "xy_threshold": 0.0003,
                 "height_threshold": 0.0002,
-                "leg_target_frames": [
-                    "square_table_leg1_target_positions_frame",
-                ],
             },
             time_out=True,
         )
@@ -187,6 +221,87 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
 
         # Add semantics to ground
         self.scene.plane.semantic_tags = [("class", "ground")]
+
+        # Add all evaluation metrics as one observation group. If desired, they can also be used as terminations/rewards/events as well.
+        self.observations.eval_metrics = EvalMetricsObsGroupCfg()
+
+        self.observations.eval_metrics.leg_reached = ObsTerm(
+            func=reached,
+            params={
+                "source_asset_cfg": SceneEntityCfg("ee_frame"),
+                "target_asset_cfg": SceneEntityCfg("square_table_leg_1"),
+                "threshold": 0.08,  # Euclidean distance between the end-effector and the target object.
+            },
+        )
+        # TODO: measure per-contact tangential forces and compute the wrenches to decide if a grasp is stable ot not. Currently, the decision is done purely based on the force [N] which is not optimal.
+        # the threshold for each grasp type were found by doing the following steps:
+        # 1) recording 5-10 min. grasping attemps/grasps.
+        # 2) Calculate 1d-histogram and k-means over the data to find meaningful separations.
+        # The following grasp classification is purely based on the measured force between both fingers and the target object.
+        # TODO: Improve the thresholds by including an estimate about the grasp area.
+        self.observations.eval_metrics.grasp_analysis = ObsTerm(
+            func=grasp_analysis,
+            params={
+                "contact_sensors_asset_cfgs": {
+                    "contact_forces_left_finger_asset_cfg": SceneEntityCfg(
+                        "contact_forces_left_finger"
+                    ),
+                    "contact_forces_right_finger_asset_cfg": SceneEntityCfg(
+                        "contact_forces_right_finger"
+                    ),
+                },
+                "ee_frame_asset_cfg": SceneEntityCfg("ee_frame"),
+                "object_asset_cfg": SceneEntityCfg("square_table_leg_1"),
+                "reach_threshold": 0.08,
+                "very_weak_grasp_threshold": 5.0,  # very weak, might break under any minimal perturbations.
+                "weak_grasp_threshold": 15.0,  # it might be strong enough, but the grasp area might differ.
+                "strong_grasp_threshold": 26.0,  # includes strong enough grasps, but the grasp area might differ.
+            },
+        )
+        self.observations.eval_metrics.leg_lifted = ObsTerm(
+            func=lifted,
+            params={
+                "contact_sensors_asset_cfgs": {
+                    "contact_forces_left_finger_asset_cfg": SceneEntityCfg(
+                        "contact_forces_left_finger"
+                    ),
+                    "contact_forces_right_finger_asset_cfg": SceneEntityCfg(
+                        "contact_forces_right_finger"
+                    ),
+                },
+                "ee_frame_asset_cfg": SceneEntityCfg("ee_frame"),
+                "object_asset_cfg": SceneEntityCfg("square_table_leg_1"),
+                "reach_threshold": 0.08,
+                "very_weak_grasp_threshold": 5.0,  # very weak, might break under any minimal perturbations.
+                "weak_grasp_threshold": 15.0,  # it might be strong enough, but the grasp area might differ.
+                "strong_grasp_threshold": 26.0,  # includes strong enough grasps, but the grasp area might differ.
+                "lift_threshold": 0.02,  # this threshold value is only valid if the object is grasped as well.
+            },
+        )
+        self.observations.eval_metrics.leg_inserted = ObsTerm(
+            func=inserted,
+            params={
+                "object_tip_pos_asset_cfg": SceneEntityCfg(
+                    "square_table_leg1_target_positions_frame"
+                ),
+                "target_pos_asset_cfg": SceneEntityCfg(
+                    "square_table_top_target_positions_frame"
+                ),
+                "threshold": 0.0185,  # Euclidean-distance for which the leg is in the assembly slot, but can be skewed (not perfectly vertically aligned).
+            },
+        )
+        self.observations.eval_metrics.leg_aligned = ObsTerm(
+            func=z_axis_aligned,
+            params={
+                "object_tip_pos_asset_cfg": SceneEntityCfg(
+                    "square_table_leg1_target_positions_frame"
+                ),
+                "target_pos_asset_cfg": SceneEntityCfg(
+                    "square_table_top_target_positions_frame"
+                ),
+                "threshold": 0.15,  # rotational difference along z-axis in radians (8.594367 degrees)
+            },
+        )
 
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.JointPositionActionCfg(
@@ -314,6 +429,26 @@ class FrankaInsertOneLegEnvCfg(InsertOneLegEnvCfg):
                 mass_props=leg_mass,
                 semantic_tags=[("class", "square_table_leg_1")],
             ),
+        )
+
+        # contact sensors for both franka fingers, useful for grasp analysis
+        self.scene.contact_forces_right_finger = ContactSensorCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/panda_rightfinger",
+            update_period=0.0,
+            history_length=0,
+            debug_vis=False,
+            filter_prim_paths_expr=[
+                "{ENV_REGEX_NS}/SquareTable_Leg_1/square_table_leg1"
+            ],
+        )
+        self.scene.contact_forces_left_finger = ContactSensorCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/panda_leftfinger",
+            update_period=0.0,
+            history_length=0,
+            debug_vis=False,
+            filter_prim_paths_expr=[
+                "{ENV_REGEX_NS}/SquareTable_Leg_1/square_table_leg1"
+            ],
         )
 
         # Listens to the required transforms

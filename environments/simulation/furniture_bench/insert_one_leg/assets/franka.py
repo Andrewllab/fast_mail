@@ -1,4 +1,3 @@
-
 """Configuration for the Franka Emika robots.
 
 The following configurations are available:
@@ -30,9 +29,13 @@ FRANKA_PANDA_CFG = ArticulationCfg(
             max_depenetration_velocity=5.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=True, solver_position_iteration_count=100, solver_velocity_iteration_count=1
+            enabled_self_collisions=True,
+            solver_position_iteration_count=100,
+            solver_velocity_iteration_count=1,
         ),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+        collision_props=sim_utils.CollisionPropertiesCfg(
+            contact_offset=0.005, rest_offset=0.0
+        ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         joint_pos={
@@ -88,6 +91,7 @@ This configuration is useful for task-space control using differential IK.
 
 import os
 from pathlib import Path
+
 # Get current config directory
 BASE_PATH = Path(__file__).parent.parent
 
@@ -100,9 +104,13 @@ FRANKA_MIMIC_PANDA_UMI_GRIPPERS_CFG = ArticulationCfg(
             max_depenetration_velocity=5.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=True, solver_position_iteration_count=100, solver_velocity_iteration_count=1
+            enabled_self_collisions=True,
+            solver_position_iteration_count=100,
+            solver_velocity_iteration_count=1,
         ),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+        collision_props=sim_utils.CollisionPropertiesCfg(
+            contact_offset=0.005, rest_offset=0.0
+        ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         joint_pos={
@@ -145,7 +153,9 @@ FRANKA_MIMIC_PANDA_UMI_GRIPPERS_CFG = ArticulationCfg(
 
 FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG = FRANKA_MIMIC_PANDA_UMI_GRIPPERS_CFG.copy()
 FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.spawn.rigid_props.disable_gravity = True
-FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_shoulder"].stiffness = 400.0
+FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_shoulder"].stiffness = (
+    400.0
+)
 FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_shoulder"].damping = 80.0
 FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_forearm"].stiffness = 400.0
 FRANKA_MIMIC_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_forearm"].damping = 80.0
@@ -157,16 +167,22 @@ This configuration is useful for task-space control using differential IK.
 
 FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path=os.path.join(BASE_PATH, "assets/franka_panda_original_umi_grippers.usd"),
-        activate_contact_sensors=False,
+        usd_path=os.path.join(
+            BASE_PATH, "assets/franka_panda_original_umi_grippers.usd"
+        ),
+        activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
             max_depenetration_velocity=5.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=True, solver_position_iteration_count=100, solver_velocity_iteration_count=1
+            enabled_self_collisions=True,
+            solver_position_iteration_count=100,
+            solver_velocity_iteration_count=1,
         ),
-        collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+        collision_props=sim_utils.CollisionPropertiesCfg(
+            contact_offset=0.005, rest_offset=0.0
+        ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         joint_pos={
@@ -207,11 +223,19 @@ FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_CFG = ArticulationCfg(
 )
 """Configuration of Franka Emika Panda robot."""
 
-FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG = FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_CFG.copy()
+FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG = (
+    FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_CFG.copy()
+)
 FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.spawn.rigid_props.disable_gravity = True
-FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_shoulder"].stiffness = 400.0
-FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_shoulder"].damping = 80.0
-FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_forearm"].stiffness = 400.0
+FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_shoulder"].stiffness = (
+    400.0
+)
+FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_shoulder"].damping = (
+    80.0
+)
+FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_forearm"].stiffness = (
+    400.0
+)
 FRANKA_ORIGINAL_PANDA_UMI_GRIPPERS_HIGH_PD_CFG.actuators["panda_forearm"].damping = 80.0
 """Configuration of Franka Emika Panda robot with stiffer PD control.
 
@@ -282,5 +306,3 @@ This configuration is useful for task-space control using differential IK.
 
 # This configuration is useful for task-space control using differential IK.
 # """
-
-

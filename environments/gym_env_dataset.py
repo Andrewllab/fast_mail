@@ -1,4 +1,5 @@
 import logging
+from typing import Literal, Mapping, Sequence, TypeVar
 
 import gymnasium as gym
 import pygame
@@ -48,9 +49,18 @@ class GymEnvDataset(IterableDataset):
         return self._specs
 
     def __iter__(self):
+        obs, reset_info = self.env.reset()
+
+        device = obs.device or "cpu"
+        info = TensorDict(batch_size=(self.num_envs,), device=device)
+        info = accumulate_dict(info, unnest_dict(reset_info), aggr="max")
+        # TODO: move accumulation logic into a wrapper because it's
+        # probably environment specific
+        # TODO: also accumulate reward across episode
+
         # yield once with the reset observation
-        obs, info = self.env.reset()
-        yield step_return_to_tensor_dict(obs, info)
+        # it's not possible that any envs are already done, so we don't yield info
+        yield step_return_to_tensor_dict(obs)
 
         # afterwards, yield in a loop until we have reached the required number of episodes
         num_episodes = 0
@@ -60,6 +70,8 @@ class GymEnvDataset(IterableDataset):
             if self.num_episodes is not None and num_episodes >= self.num_episodes:
                 break
 
+            time += 1
+
             actions = self._next_action
             if actions is None:
                 raise ValueError(
@@ -68,10 +80,10 @@ class GymEnvDataset(IterableDataset):
             self._next_action = None
 
             # obs is either a Tensor or a TensorDict, so either way supports `.device`
-            device = obs.device or "cpu"
             reward = torch.zeros(self.num_envs, dtype=torch.float32, device=device)
             terminated = torch.zeros(self.num_envs, dtype=torch.bool, device=device)
             truncated = torch.zeros(self.num_envs, dtype=torch.bool, device=device)
+            episode_infos = []
             # actions: [num_envs, action_horizon, action_dim]
             # therefore we need to unbind the actions along the time dimension
 
@@ -80,8 +92,8 @@ class GymEnvDataset(IterableDataset):
                 if self.fps is not None:
                     self.clock.tick(self.fps)
 
-                obs, step_reward, step_terminated, step_truncated, info = self.env.step(
-                    action
+                obs, step_reward, step_terminated, step_truncated, step_info = (
+                    self.env.step(action)
                 )
 
                 # accumulate the return values over time
@@ -94,22 +106,31 @@ class GymEnvDataset(IterableDataset):
                 terminated = torch.logical_or(terminated, step_terminated)
                 truncated = torch.logical_or(truncated, step_truncated)
 
-            time += 1
+                # accumulate the "max" of any success-like metrics
+                info = accumulate_dict(info, unnest_dict(step_info), aggr="max")
+
+                step_done = torch.logical_or(step_terminated, step_truncated)
+                if step_done.any():
+                    # store the accumulated info for the envs that are done
+                    # (indexing with a boolean tensor is always a copy)
+                    episode_infos.append(info[step_done])
+
+                    # reset the info for the envs that are done
+                    # tensordict cannot handle info[done] = 0 because the fields
+                    # have different data types
+                    for value in info.values():
+                        value[step_done] = 0
 
             # reset the envs that are done
             done = torch.logical_or(terminated, truncated)
-            num_episodes += done.sum().item()
             if done.any():
+                num_episodes += done.sum().item()
                 log.debug(f"Completed {num_episodes} episodes.")
-                obs, reset_info = self.env.reset(options={"mask": done})
-                info |= reset_info
 
-            yield step_return_to_tensor_dict(
-                obs,
-                info,
-                reward=reward,
-                done=done,
-            )
+                obs, reset_info = self.env.reset(options={"mask": done})
+                info = accumulate_dict(info, unnest_dict(reset_info), aggr="max")
+
+            yield step_return_to_tensor_dict(obs, episode_infos)
 
     def write_actions(self, actions: torch.Tensor):
         if self._next_action is not None:
@@ -124,50 +145,59 @@ class GymEnvDataset(IterableDataset):
         self.env.close()
 
 
+T = TypeVar("T", bound=Mapping)
+
+
+def unnest_dict(d: T, parent_key: str = "", sep: str = "/") -> T:
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if bool(parent_key) and bool(sep) else k
+        if isinstance(v, Mapping):
+            items.extend(unnest_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    # this weird syntax also works for TensorDict
+    return type(d)(dict(items))
+
+
+def accumulate_dict(d1, d2, aggr: Literal["sum", "max"] = "sum"):
+
+    for key, value in d2.items():
+        if key not in d1:
+            d1[key] = value
+        else:
+            if aggr == "sum":
+                d1[key] += value
+            elif aggr == "max":
+                d1[key] = max(d1[key], value)
+            else:
+                raise ValueError(f"Unknown aggregation method: {aggr}")
+
+    return d1
+
+
 def step_return_to_tensor_dict(
     obs: TensorDict,
-    info: TensorDict,
-    reward: torch.Tensor | None = None,
-    done: torch.Tensor | None = None,
+    episode_infos: Sequence[TensorDict] | None = None,
 ) -> TensorDict:
     """Convert step return to TensorDict."""
 
-    # obs and info should only have one leading dimension corresponding to
-    # the batch resulting from the vectorized environment stacking the
-    # observations from all envs
+    # obs should only have one leading dimension (batch, not time) resulting
+    # from the vectorized environment stacking the observations from all envs
     assert obs.ndim == 1
-    assert info.ndim == 1
-    assert obs.shape == info.shape
 
-    # reward, done, and success
-    if reward is None:
-        reward = torch.zeros(obs.shape, dtype=torch.float32)
-    if done is None:
-        done = torch.zeros(obs.shape, dtype=torch.bool)
+    # The final obs dict should have only a single leading dimension but we
+    # also have to unsqueeze to add a singleton time dimension.
+    # The only way we can unsqueeze the tensordict is like this:
+    obs.auto_batch_size_(batch_dims=1)
+    obs = obs.unsqueeze(dim=1)
+    obs.auto_batch_size_(batch_dims=1)
 
-    for key in ("success", "is_success", "Episode_Termination/success"):
-        if key in info:
-            success = info.pop(key)
-            break
-    else:
-        success = torch.zeros(obs.shape, dtype=torch.bool)
+    tensordict = TensorDict({"obs": obs})  # type: ignore
 
-    tensordict = TensorDict(
-        {
-            "obs": obs,
-            "done": done,
-            "success": success,
-            "reward": reward,
-            "info": info,
-        }  # type: ignore
-    )
-
-    # the final batch should have only a single leading dimension for the batch
-    # but we also have to unsqueeze to add a singleton time dimension
-    # the only way we can unsqueeze the tensordict is like this:
-    tensordict.auto_batch_size_(batch_dims=1)
-    tensordict = tensordict.unsqueeze(dim=1)
-    tensordict.auto_batch_size_(batch_dims=1)
+    if episode_infos:
+        episode_info = tensordict.stack(episode_infos).float()
+        tensordict["episode_info"] = episode_info
 
     return tensordict
 

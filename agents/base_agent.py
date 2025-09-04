@@ -180,6 +180,6 @@ class BaseAgent(L.LightningModule):
                     new_key = key.replace("_ema_model.module.", "_model.")
                     state_dict[new_key] = state_dict[key]
 
-                if key.startswith("_ema_obs_encoder.module"):
+                elif key.startswith("_ema_obs_encoder.module"):
                     new_key = key.replace("_ema_obs_encoder.module.", "_obs_encoder.")
                     state_dict[new_key] = state_dict[key]

@@ -145,6 +145,10 @@ class IsaacLabPreProcess(gym.Wrapper):
             device=self.env.unwrapped.device,
             batch_dim=self.env.unwrapped.scene.num_envs,
         )
+        if "eval_metrics" in obs:
+            # eval metrics need to go into the info so they can be accumulated,
+            # whereas all the obs except the last are dropped
+            info["eval_metrics"] = obs.pop("eval_metrics")
         return obs, info
 
     def step(self, action):
@@ -156,6 +160,10 @@ class IsaacLabPreProcess(gym.Wrapper):
             device=self.env.unwrapped.device,
             batch_dim=self.env.unwrapped.scene.num_envs,
         )
+        if "eval_metrics" in obs:
+            # eval metrics need to go into the info so they can be accumulated,
+            # whereas all the obs except the last are dropped
+            info["eval_metrics"] = obs.pop("eval_metrics")
         return obs, reward, terminated, truncated, info
 
     def _preprocess_obs(self, obs):
@@ -204,11 +212,12 @@ class IsaacLabPreProcess(gym.Wrapper):
         )
         pre_processed_obs["ee_pose"] = ee_pose
 
-        return TensorDict(
-            pre_processed_obs,
-            device=self.env.unwrapped.device,
-            batch_size=pre_processed_obs[obs_group_name][obs_element_name].shape[0],
+        pre_processed_obs = TensorDict(
+            pre_processed_obs, device=self.env.unwrapped.device
         )
+        pre_processed_obs.auto_batch_size_(batch_dims=1)
+
+        return pre_processed_obs
 
     def _preprocess_info(self, info, device, batch_dim):
         """IsaacLab returns dictionaries with different dimensions on reset and step.
@@ -224,10 +233,15 @@ class IsaacLabPreProcess(gym.Wrapper):
             if not isinstance(v, torch.Tensor):
                 v = torch.tensor(v, device=device)
             if v.ndim == 0:
-                v = v.view(batch_dim, -1)
+                v = v.view(batch_dim)
             pre_processed_info[k] = v
 
-        return TensorDict(pre_processed_info, batch_size=batch_dim)
+        pre_processed_info = TensorDict(
+            pre_processed_info, device=self.env.unwrapped.device
+        )
+        pre_processed_info.auto_batch_size_(batch_dims=1)
+
+        return pre_processed_info
 
     def _detect_ctrl_mode(self) -> str:
         """Extract the controller and its mode from the environment nam."""
