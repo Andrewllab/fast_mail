@@ -33,9 +33,13 @@ hydra:
       # Note: this path gets resolved twice. First hydra resolves ${paths.preprocessed_dir} on the login node, then
       # bash resolves $TMPDIR inside the job
       - mkdir -pv ${data.dataset.preprocessed_dir}
-      - echo "$(date '+%F_%H:%M:%S') - Extracting ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst to ${data.dataset.preprocessed_dir}..."
-      - tar -I "zstd -T0" -xf ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst -C ${data.dataset.preprocessed_dir}
-      - echo "$(date '+%F_%H:%M:%S') - Done."
+      - if [[ -f ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst ]]; then
+      -   echo "$(date '+%F_%H:%M:%S') - Extracting ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst to ${data.dataset.preprocessed_dir}..."
+      -   tar -I "zstd -T0" -xf ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst -C ${data.dataset.preprocessed_dir}
+      -   echo "$(date '+%F_%H:%M:%S') - Done."
+      - else
+      -   echo "No zipped preprocessed data found at ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst"
+      - fi
 
       # ensure wandb isn't disabled by accident
       - wandb enabled

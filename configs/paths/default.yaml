@@ -20,3 +20,5 @@ output_dir: ${hydra:runtime.output_dir}
 
 # path for storing videos for validation in simulation 
 recording_dir: ${paths.root_dir}/recordings
+
+fs_engine_path: ${paths.root_dir}/foundation_stereo_models/foundation_stereo_small_3x480x640.plan

@@ -102,6 +102,19 @@ class FoundationStereo(Transform):
     def specs(self) -> DataSpecs:
         return self._output_specs
 
+    def __getstate__(self):
+        """Custom pickle method - exclude engine and context."""
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries
+        state.pop("engine")
+        state.pop("context")
+        return state
+
+    def __setstate__(self, state):
+        """Custom unpickle method - restore state without engine."""
+        self.__dict__.update(state)
+        self.engine, self.context = load_engine(self.engine_path)
+
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         default_dtype = torch.get_default_dtype()
 

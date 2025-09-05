@@ -5,11 +5,10 @@ defaults:
   - /transforms@preprocess_transforms.t0-1_trim_idle: time_trim_idle
   - /transforms@preprocess_transforms.t0-3_relative_actions: action_abs_to_relative_chunk
   - /transforms@preprocess_transforms.t0-4_normalize_actions: action_norm_max
-  - /transforms@preprocess_transforms.t0-5_remove_inf_depth: remove_inf_depth
-  - /cameras/calibration@data.dataset.extrinsics: 2025-08-31
+  - /cameras/calibration@dataset.extrinsics: 2025-08-31
 
 task_suite: furniture_bench
-task: insert_screw
+task: insert_one_leg
 name: insert_screw_20250817
 
 dataset:
@@ -19,6 +18,7 @@ dataset:
   preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
   action_seq_len: 30
   obs_seq_len: 1
+  gpu_preprocess_batch_size: ${platform.fs_preprocess_batch_size}  # TODO: move inside transform
 
 preprocess_transforms:
   t0-3_relative_actions:

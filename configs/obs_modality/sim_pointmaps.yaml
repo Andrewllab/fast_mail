@@ -1,11 +1,6 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess_transforms.t2_resize: image_resize
-
-  # pretrained resnet18 expects images of shape 224x224
-  - /transforms@data.preprocess_transforms.t3_crop_image: image_centercrop
-
   # convert to pointmap
   - /transforms@data.preprocess_transforms.t5_to_pointmap: to_pointmap
 
@@ -15,12 +10,6 @@ defaults:
 data:
   # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess_transforms:
-    t2_resize:
-      shape: 224  # scale shortest side to 224 and keep aspect ratio
-    
-    t3_crop_image:
-      shape: 224  # crop to 224x224 square
-    
     t5_to_pointmap:
       color: False  # if this is true, imagenet_norm must be applied in preprocessing before to_pointmap
 

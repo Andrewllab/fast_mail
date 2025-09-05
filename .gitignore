@@ -256,7 +256,6 @@ __pycache__/
 /multirun/
 
 # training and validation data
-datasets
 /datasets/
 /preprocessed_datasets/
 /debug_preprocessed_datasets/

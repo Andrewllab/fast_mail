@@ -36,7 +36,7 @@ class RealRobotDataset(TrajectoryDataset):
     def find_raw_files(self) -> list[Path]:
         # Data collector saves files with datetime pattern: YYYY_MM_DD-HH_MM_SS.h5
         # Also check all subfolders:
-        files = list(self.root_dir.glob("**/*.h5"))
+        files = list(self.root_dir.glob("**/*.h*5"))  # match .h5 and .hdf5
 
         if not files:
             raise FileNotFoundError(
@@ -150,13 +150,13 @@ class RealRobotDataset(TrajectoryDataset):
         left_shape = data["obs", "left_cam", "frames", "left"].shape
         right_shape = data["obs", "left_cam", "frames", "right"].shape
         assert left_shape == right_shape
-        assert left_shape[-1:] == depth_shape
+        assert left_shape[:-1] == depth_shape
         height, width, channels = left_shape[1:]
         intrinsics = data["obs", "left_cam", "meta", "intrinsics"].reshape(3, 3)
         baseline = data["obs", "left_cam", "meta", "baseline"].item()
         extrinsics = data.get(("obs", "left_cam", "meta", "extrinsics"), None)
         if self.extrinsics_dict is not None:
-            extrinsics = self.extrinsics_dict.get("front_left_cam")
+            extrinsics = self.extrinsics_dict.get("front_left_cam")["extrinsics"]
             extrinsics = torch.tensor(extrinsics).reshape(4, 4)
         elif extrinsics := data.get(("obs", "left_cam", "meta", "extrinsics"), None):
             extrinsics = extrinsics.reshape(4, 4)
@@ -185,13 +185,13 @@ class RealRobotDataset(TrajectoryDataset):
         left_shape = data["obs", "right_cam", "frames", "left"].shape
         right_shape = data["obs", "right_cam", "frames", "right"].shape
         assert left_shape == right_shape
-        assert left_shape[-1:] == depth_shape
+        assert left_shape[:-1] == depth_shape
         height, width, channels = left_shape[1:]
         intrinsics = data["obs", "right_cam", "meta", "intrinsics"].reshape(3, 3)
         baseline = data["obs", "right_cam", "meta", "baseline"].item()
         extrinsics = data.get(("obs", "right_cam", "meta", "extrinsics"), None)
         if self.extrinsics_dict is not None:
-            extrinsics = self.extrinsics_dict.get("front_right_cam")
+            extrinsics = self.extrinsics_dict.get("front_right_cam")["extrinsics"]
             extrinsics = torch.tensor(extrinsics).reshape(4, 4)
         elif extrinsics := data.get(("obs", "right_cam", "meta", "extrinsics"), None):
             extrinsics = extrinsics.reshape(4, 4)
@@ -230,7 +230,7 @@ class RealRobotDataset(TrajectoryDataset):
         baseline = data["obs", "gripper_cam", "meta", "baseline"].item()
         extrinsics = data.get(("obs", "gripper_cam", "meta", "extrinsics"), None)
         if self.extrinsics_dict is not None:
-            extrinsics = self.extrinsics_dict.get("gripper_cam")
+            extrinsics = self.extrinsics_dict.get("gripper_cam")["extrinsics"]
             extrinsics = torch.tensor(extrinsics).reshape(4, 4)
         elif extrinsics := data.get(("obs", "gripper_cam", "meta", "extrinsics"), None):
             extrinsics = extrinsics.reshape(4, 4)
@@ -239,8 +239,8 @@ class RealRobotDataset(TrajectoryDataset):
             "depth": DepthStream(height, width, orthogonal=True),
         }
         if not self.lightweight:
-            streams["left"] = RGBStream(height, width, channels, channel_order="HWC")
-            streams["right"] = RGBStream(height, width, channels, channel_order="HWC")
+            streams["left"] = ImageStream(height, width, channel_order="HW")
+            streams["right"] = ImageStream(height, width, channel_order="HW")
         gripper_cam = CameraSpec(
             streams=streams,
             time=self.obs_seq_len,

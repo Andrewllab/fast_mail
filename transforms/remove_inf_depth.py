@@ -10,11 +10,11 @@ from transforms.base_transform import Transform
 
 log = logging.getLogger(__name__)
 
+
 class RemoveInfDepthStream(Transform):
     def __init__(
         self,
         specs: DataSpecs,
-
     ):
         self._output_specs = specs
         self._has_depth_stream = any(
@@ -23,8 +23,7 @@ class RemoveInfDepthStream(Transform):
             if isinstance(cam_spec, CameraSpec)
             for _, stream in cam_spec.streams.items()
         )
-        self._imgs_transformed = 0
-        
+
         if not self._has_depth_stream:
             log.warning("No depth stream found in input specs.")
 
@@ -43,8 +42,10 @@ class RemoveInfDepthStream(Transform):
                 if not isinstance(stream, DepthStream):
                     continue
                 depth = tensordict["obs", key][stream_name]
-                if not torch.isfinite(depth).all():
-                    depth = torch.where(torch.isfinite(depth), depth, torch.zeros_like(depth))
-                    tensordict["obs", key][stream_name] = depth
-                    log.info(f"Removed inf/nan values from depth stream in {key}.")
+                finite_depth = torch.isfinite(depth)
+                if not finite_depth.all():
+                    depth[~finite_depth] = 0.0
+                    log.info(
+                        f"Removed inf/nan values from depth stream in {key}/{stream_name}."
+                    )
         return tensordict

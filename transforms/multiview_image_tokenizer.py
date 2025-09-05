@@ -93,11 +93,11 @@ class MultiviewImageTokenizer(Transform, nn.Module):
                     f"Got {[stream.height_width for stream in input_streams]}"
                 )
 
-            self.model = image_encoder(in_channels)
+            self.model = image_encoder(in_channels, embed_dim)
         else:
             self.models = nn.ModuleDict()
             for key in input_specs.keys():
-                self.models[key] = image_encoder(in_channels)
+                self.models[key] = image_encoder(in_channels, embed_dim)
         self.shared_encoder = shared_encoder
 
         # each camera produces one token

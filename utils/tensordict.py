@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import torch
 from tensordict import NonTensorData, NonTensorStack, TensorDict, is_leaf_nontensor
 from torch_geometric.data import Batch, Data
 
-from environments.specs import CameraSpec, DataSpecs, RGBStream
+from environments.specs import CameraSpec, DataSpecs, DepthStream
 from utils.pyg import update_batch_metadata
 
 
@@ -19,17 +20,13 @@ def compress_rgb_images(tensordict: TensorDict, specs: DataSpecs) -> TensorDict:
             continue
 
         for name, stream in spec.streams.items():
-            if isinstance(stream, RGBStream):
+            if not isinstance(stream, DepthStream):
+                # if the stream is RGB or intensity, we need to convert it to uint8
 
                 image = tensordict["obs", key, name]
                 if image.dtype != torch.uint8:
                     image = image.mul(255).clamp(0, 255).to(torch.uint8)
                     tensordict["obs", key, name] = image
-
-                # if the stream is RGB, we need to convert it to uint8
-                tensordict["obs", key, name] = tensordict["obs", key, name].to(
-                    dtype=torch.uint8
-                )
 
     return tensordict
 
@@ -57,8 +54,14 @@ def reduce_pyg_data(tensordict: TensorDict) -> TensorDict:
     return tensordict
 
 
+BackendType = Literal["memmap", "hdf5"]
+
+
 def save_tensordict(
-    tensordict: TensorDict, file: Path, specs: DataSpecs, backend: str = "memmap"
+    tensordict: TensorDict,
+    file: Path,
+    specs: DataSpecs,
+    backend: BackendType = "memmap",
 ):
     """Save a tensordict to a file. If the file is a directory, it is
     assumed to be a memory-mapped tensordict and the tensordict is saved
@@ -77,11 +80,13 @@ def save_tensordict(
     tensordict = reduce_pyg_data(tensordict)
 
     if backend == "memmap":
+        file = file.with_suffix("")  # remove suffix if any
         tensordict.memmap(str(file), num_threads=8)
+    elif backend == "hdf5":
+        file = file.with_suffix(".hdf5")
+        tensordict.to_h5(str(file), compression="gzip", compression_opts=9)
     else:
-        raise NotImplementedError(
-            f"Backend {backend} not implemented. Only memmap is supported."
-        )
+        raise NotImplementedError(f"Backend {backend} not implemented.")
 
 
 def unreduce_pyg_data(tensordict: TensorDict) -> TensorDict:
@@ -108,7 +113,7 @@ def load_tensordict(
     file: Path,
     start: int | None = None,
     stop: int | None = None,
-    backend: str = "memmap",
+    backend: BackendType = "memmap",
 ) -> TensorDict:
     """Load a tensordict from a file. If the file is a directory, it is
     assumed to be a memory-mapped tensordict and the start and stop
@@ -123,13 +128,16 @@ def load_tensordict(
         TensorDict: The loaded tensordict.
     """
     if backend == "memmap":
+        file = file.with_suffix("")  # remove suffix if any
         assert file.is_dir()
         # this is a memory-mapped tensordict
         trajectory = TensorDict.load_memmap(file, non_blocking=True)
+    elif backend == "hdf5":
+        file = file.with_suffix(".hdf5")
+        assert file.is_file()
+        trajectory = TensorDict.from_h5(str(file))
     else:
-        raise NotImplementedError(
-            f"Backend {backend} not implemented. Only memmap is supported."
-        )
+        raise NotImplementedError(f"Backend {backend} not implemented.")
 
     # convert DataBatch objects back into Data objects
     trajectory = unreduce_pyg_data(trajectory)
@@ -138,10 +146,11 @@ def load_tensordict(
     # way to store images
 
     # add back the batch dimension so we can index along the leading (time) dimension
-    trajectory.auto_batch_size_(batch_dims=1)
+    trajectory["obs"].auto_batch_size_(batch_dims=1)
 
-    if start is not None or stop is not None:
-        # slice the tensordict
-        trajectory = trajectory[start:stop]
+    # # TODO: slicing won't work because the tensordict doesn't have a batch dim
+    # if start is not None or stop is not None:
+    #     # slice the tensordict
+    #     trajectory = trajectory[start:stop]
 
     return trajectory

@@ -42,6 +42,21 @@ def setup_resolvers(exclude: list[str] | None = None):
     if "abspath" not in exclude:
         OmegaConf.register_new_resolver("abspath", lambda s: osp.abspath(s))
 
+    if "join" not in exclude:
+        OmegaConf.register_new_resolver("join", lambda *args: osp.join(*args))
+
+    if "dirname" not in exclude:
+        OmegaConf.register_new_resolver("dirname", lambda s: osp.dirname(s))
+
+    if "pathname" not in exclude:
+        OmegaConf.register_new_resolver("pathname", lambda s: osp.basename(s))
+
+    if "append_to_stem" not in exclude:
+        OmegaConf.register_new_resolver(
+            "append_to_stem",
+            lambda path, suffix: str(Path(path).with_stem(Path(path).stem + suffix)),
+        )
+
 
 def resolve_path(str_path: os.PathLike) -> Path:
     # resolve any environment variables in the first path element

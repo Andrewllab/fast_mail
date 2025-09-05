@@ -1,0 +1,24 @@
+# @package _global_
+
+defaults:
+  - /transforms@data.preprocess_transforms.t1-0_resize_fs: image_resize
+
+  - /transforms@data.preprocess_transforms.t1-1_crop_fs: image_centercrop
+
+  # replace measured depth with FoundationStereo depth
+  - /transforms@data.preprocess_transforms.t1-2_foundationstereo: foundation_stereo
+
+  # mask out invalid depth values
+  - /transforms@data.preprocess_transforms.t1-3_remove_inf_depth: remove_inf_depth
+
+data:
+  # Below is just the default configuration copied here for convenience. Change as needed.
+  preprocess_transforms:
+    t1-0_resize_fs:
+      shape: 480  # scale shortest side to 480 and keep aspect ratio
+
+    t1-1_crop_fs:
+      shape: [480, 640]  # crop all streams to 480x640
+
+  dataset:
+    preprocessed_dir: ${append_to_stem:${data.dataset.root_dir},_fs_480x640}

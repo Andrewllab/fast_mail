@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import torch
 import torchvision.transforms.functional as F
 from tensordict import TensorDict
@@ -7,6 +9,8 @@ from torchvision.transforms import InterpolationMode
 
 from environments.specs import CameraSpec, DataSpecs, DepthStream
 from transforms.base_transform import Transform
+
+log = logging.getLogger(__name__)
 
 
 class ResizeImage(Transform):
@@ -72,6 +76,10 @@ class ResizeImage(Transform):
                         "Shape must be an int or a tuple of ints, or None."
                     )
 
+                log.info(
+                    f"Resizing stream {key}/{name} from {H}x{W} to {new_shape[0]}x{new_shape[1]}"
+                )
+
                 stream = stream.resize(new_shape)
 
                 # update stream with resized shape and modified camera intrinsics
@@ -114,7 +122,8 @@ class ResizeImage(Transform):
                 if stream.channel_order == "HWC":
                     image = torch.movedim(image, -1, -3)
 
-                if image.dtype == torch.uint8:
+                img_dtype = image.dtype
+                if img_dtype == torch.uint8:
                     image = image.to(dtype=default_float_dtype).div(255)
 
                 interpolation = (
@@ -129,6 +138,11 @@ class ResizeImage(Transform):
                     interpolation=interpolation,
                     antialias=self.antialias,
                 )
+
+                # Convert back to uint8 to save memory
+                if img_dtype == torch.uint8:
+                    image = image.mul(255).clamp(0, 255).to(torch.uint8)
+
                 image = torch.unflatten(image, dim=0, sizes=leading_dims)
 
                 images[name] = image

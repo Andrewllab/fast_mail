@@ -4,16 +4,14 @@ defaults:
   - verbose
 
 # overwrite task name so debugging logs are stored in separate folder
-job_type: preprocessing
+job_type: prepreprocessing
 
 # disable callbacks and loggers during debugging
 callbacks: null
 logger: null
 
 data:
+  device: disk  # prevents trying to load trajectories after preprocessing
   dataset:
-    overwrite_preprocessed: True
-
-trainer:
-  max_epochs: 1
-  fast_dev_run: true
+    backend: hdf5  # save back to disk as hdf5
+    # overwrite_preprocessed: True

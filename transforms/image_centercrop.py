@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 from typing import Sequence
 
 import torch
@@ -9,6 +10,8 @@ from tensordict import TensorDict
 
 from environments.specs import CameraSpec, DataSpecs
 from transforms.base_transform import Transform
+
+log = logging.getLogger(__name__)
 
 
 class CenterCropImage(Transform):
@@ -25,7 +28,9 @@ class CenterCropImage(Transform):
             # if shape is a tuple, it is the new shape
             new_shape = shape
         else:
-            raise ValueError(f"Shape must be an int or a tuple of ints. Got {type(shape)}")
+            raise ValueError(
+                f"Shape must be an int or a tuple of ints. Got {type(shape)}"
+            )
 
         # find the specs that this transform acts on
         self._input_specs = {
@@ -37,6 +42,11 @@ class CenterCropImage(Transform):
         for key, spec in self._input_specs.items():
             streams = dict(spec.streams)  # copy streams for local modification
             for name, stream in streams.items():
+                H, W = stream.height_width
+                log.info(
+                    f"Cropping stream {key}/{name} from {H}x{W} to {new_shape[0]}x{new_shape[1]}"
+                )
+
                 stream = stream.reorder_channels("CHW")
                 stream = stream.center_crop(new_shape)
 

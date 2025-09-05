@@ -1,0 +1,19 @@
+# @package _global_
+
+defaults:
+  - /transforms@data.preprocess_transforms.t2_resize: image_resize
+
+  # pretrained resnet18 expects images of shape 224x224
+  - /transforms@data.preprocess_transforms.t3_crop_image: image_centercrop
+
+data:
+  # Below is just the default configuration copied here for convenience. Change as needed.
+  preprocess_transforms:
+    t2_resize:
+      shape: 224  # scale shortest side to 224 and keep aspect ratio
+    
+    t3_crop_image:
+      shape: 224  # crop to 224x224 square
+
+  dataset:
+    preprocessed_dir: ${append_to_stem:${data.dataset.root_dir},_224x224}

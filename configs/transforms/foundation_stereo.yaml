@@ -1,4 +1,4 @@
 _target_: transforms.foundation_stereo.FoundationStereo
 _partial_: True
-engine_path: ???
+engine_path: ${paths.fs_engine_path}
 remove_invisible: True

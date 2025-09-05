@@ -18,6 +18,8 @@ from torch.utils.data import Dataset
 from environments.specs import DataSpecs
 from transforms.base_transform import (
     Compose,
+    NormalizingTransform,
+    Transform,
     TransformConstraint,
     TransformPartialsDict,
     get_transforms_config,
@@ -28,7 +30,7 @@ from transforms.base_transform import (
     save_transforms_config,
 )
 from utils.conf import resolve_path
-from utils.tensordict import load_tensordict, save_tensordict
+from utils.tensordict import BackendType, load_tensordict, save_tensordict
 
 IndexType = slice | Tensor | Sequence
 DeviceType = Literal["disk", "gpu"] | str | torch.device
@@ -50,12 +52,14 @@ class TrajectoryDataset(Dataset, ABC):
         action_seq_len: int,
         obs_seq_len: int,
         device: DeviceType = "disk",
+        backend: BackendType = "memmap",
         transforms: TransformPartialsDict | None = None,
         preprocess_transforms: TransformPartialsDict | None = None,
         preprocessed_dir: Path | os.PathLike | None = None,
         overwrite_preprocessed: bool = False,
         debug_preprocess: bool = False,
         load_subset: int | float | Sequence[int] | None = None,
+        gpu_preprocess_batch_size: int | None = None,
         # filter: Callable[[Any], bool] | None = None,
     ) -> None:
         super().__init__()
@@ -64,6 +68,8 @@ class TrajectoryDataset(Dataset, ABC):
         self.action_seq_len = action_seq_len
         self.obs_seq_len = obs_seq_len
         self.load_subset = load_subset
+        self.gpu_preprocess_batch_size = gpu_preprocess_batch_size
+        self._prepreprocessed = None
 
         if debug_preprocess and preprocess_transforms is not None:
             # TODO: implement this by running preprocessing in memory instead of saving to disk
@@ -89,13 +95,17 @@ class TrajectoryDataset(Dataset, ABC):
                 )
 
             self.handle_preprocessing(
-                preprocess_transforms=preprocess_transforms,
+                preprocess_partials=preprocess_transforms,
                 preprocessed_dir=preprocessed_dir,
+                backend=backend,
                 overwrite_preprocessed=overwrite_preprocessed,
             )
 
             if self.device != "disk":
-                self.trajectories = [load_tensordict(f) for f in self.processed_files]
+                log.debug(f"Moving preprocessed trajectories to {self.device=}...")
+                self.trajectories = [
+                    load_tensordict(f, backend=backend) for f in self.processed_files
+                ]
 
         else:
             if self.device != "disk":
@@ -114,7 +124,7 @@ class TrajectoryDataset(Dataset, ABC):
                 ]
                 self.trajectories = trajectories
 
-                self._specs = self.get_specs()
+                self._specs = self._get_specs()
 
                 # collect trajectory lengths we need for TrajectorySlices
                 trajectory_lengths = [
@@ -122,6 +132,15 @@ class TrajectoryDataset(Dataset, ABC):
                 ]
                 self.specs.extend_lengths(trajectory_lengths)
                 self.preprocess_transforms = Compose()
+                if self.from_prepreprocessed:
+                    # if the raw data was already prepreprocessed, we need to prepend
+                    # the existing prepreprocess transforms to the new ones
+                    self.preprocess_transforms = Compose(
+                        *(
+                            list(self.prepreprocess_transforms)
+                            + list(self.preprocess_transforms)
+                        )
+                    )
 
             else:
                 # cannot load all trajectories into memory, so we need to
@@ -133,8 +152,9 @@ class TrajectoryDataset(Dataset, ABC):
                         f"{self.root_dir.name}_memmap"
                     )
                 self.handle_preprocessing(
-                    preprocess_transforms={},
+                    preprocess_partials={},
                     preprocessed_dir=preprocessed_dir,
+                    backend=backend,
                     overwrite_preprocessed=True,
                 )
 
@@ -142,7 +162,7 @@ class TrajectoryDataset(Dataset, ABC):
             f"Dataset trajectories have the following lengths:\n{self._specs.lengths}"
         )
         # TODO: add this info to the action specs
-        prechunked = self.trajectories[0]["action"].ndim == 3
+        # prechunked = self.trajectories[0]["action"].ndim == 3
         self.slices = TrajectorySlices(
             self.specs.lengths,
             obs_seq_len=obs_seq_len,
@@ -188,10 +208,117 @@ class TrajectoryDataset(Dataset, ABC):
     def specs(self) -> DataSpecs:
         return self._specs
 
+    @torch.no_grad()
+    def _preprocess_gpu(
+        self, transform: Transform, traj: TensorDict, device: torch.device
+    ) -> TensorDict | Sequence[TensorDict]:
+        """
+        Preprocess a trajectory on the GPU, optionally in memory bounded chunks, and return the
+        result back on the CPU.
+        Depending on the configured GPU batch size (self.gpu_preprocess_batch_size), this method
+        either:
+        1. Moves the entire trajectory TensorDict to the GPU and invokes transform.call_trajectory.
+        2. Splits the trajectory along the leading (time / batch) dimension into chunks of size
+            self.gpu_preprocess_batch_size, applies transform to each chunk on the GPU, brings each
+            transformed chunk back to CPU, and concatenates them along dim=0.
+        """
+        assert TransformConstraint.GPU_ONLY in transform.constraints
+
+        # Apply a gpu_only transform to a trajectory
+        if self.gpu_preprocess_batch_size is None:
+            # if no batch size is given, just move the entire trajectory to the GPU
+            transformed = transform.call_trajectory(traj.to(device))
+
+            if isinstance(transformed, list):
+                return [t.cpu() for t in transformed]
+            else:
+                return transformed.cpu()
+
+        # Split up a trajectory into chunks that fit into GPU memory,
+        # apply the transform to each chunk, and concatenate the results
+        if isinstance(transform, NormalizingTransform):
+            raise RuntimeError(
+                f"Cannot use NormalizingTransform {transform.__class__.__name__} on gpu in chunks, "
+                "as there is no way to aggregate statistics across chunks."
+            )
+
+        T = traj["obs"].shape[0]
+        goal = traj.get("goal", None)
+
+        log.info(
+            f"Preprocessing trajectory of length {T} in chunks of size {self.gpu_preprocess_batch_size} on {device}."
+        )
+        # Process chunks one at a time to minimize memory usage
+        transformed_goal = None
+        for i in range(0, T, self.gpu_preprocess_batch_size):
+            # Create chunk on-the-fly instead of storing all chunks
+            if i + self.gpu_preprocess_batch_size < T:
+                chunk = TensorDict(
+                    {
+                        "obs": traj["obs"][i : i + self.gpu_preprocess_batch_size],
+                        "action": traj["action"][
+                            i : i + self.gpu_preprocess_batch_size
+                        ],
+                        "ref_action": traj["ref_action"][
+                            i : i + self.gpu_preprocess_batch_size
+                        ],
+                    }
+                )
+            else:
+                chunk = TensorDict(
+                    {
+                        "obs": traj["obs"][i:],
+                        "action": traj["action"][i:],
+                        "ref_action": traj["ref_action"][i:],
+                    }
+                )
+
+            if goal is not None:
+                chunk["goal"] = goal
+
+            # We don't call transform.call_trajectory here because we are
+            # essentially operating on a batch
+            new_chunk_transformed = transform(chunk.to(device)).cpu()
+
+            # Handle goal consistency check
+            if transformed_goal is None and "goal" in new_chunk_transformed:
+                transformed_goal = new_chunk_transformed["goal"]
+            elif "goal" in new_chunk_transformed:
+                assert torch.allclose(
+                    transformed_goal, new_chunk_transformed["goal"]
+                ), "Goal changed between chunks, which should not happen."
+
+            # Directly modify traj to avoid accumulating large tensors in memory
+            if i + self.gpu_preprocess_batch_size < T:
+                traj["obs"][i : i + self.gpu_preprocess_batch_size] = (
+                    new_chunk_transformed["obs"]
+                )
+                traj["action"][i : i + self.gpu_preprocess_batch_size] = (
+                    new_chunk_transformed["action"]
+                )
+                traj["ref_action"][i : i + self.gpu_preprocess_batch_size] = (
+                    new_chunk_transformed["ref_action"]
+                )
+            else:
+                traj["obs"][i:] = new_chunk_transformed["obs"]
+                traj["action"][i:] = new_chunk_transformed["action"]
+                traj["ref_action"][i:] = new_chunk_transformed["ref_action"]
+
+            # Free up cache
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        # See note in _load_from_raw_file
+        if transformed_goal is not None:
+            traj["goal"] = transformed_goal
+
+        return traj
+
     def handle_preprocessing(
         self,
-        preprocess_transforms: TransformPartialsDict,
+        preprocess_partials: TransformPartialsDict,
         preprocessed_dir: Path,
+        backend: BackendType,
         overwrite_preprocessed: bool,
     ) -> None:
         """Decide if preprocessing is needed and if so, do it. After this method
@@ -210,7 +337,7 @@ class TrajectoryDataset(Dataset, ABC):
         # done yet
         if not (transforms_cfg_file.exists() and transforms_pkl_file.exists()):
             # delete the preprocessed directory if it exists and create a new one
-            if preprocessed_dir.exists():
+            if preprocessed_dir.is_dir() and any(preprocessed_dir.iterdir()):
                 if not overwrite_preprocessed:
                     raise ValueError(
                         f"Preprocessed directory {preprocessed_dir} is not empty (perhaps an incomplete earlier preprocessing run). Set overwrite_preprocessed=True to overwrite."
@@ -224,14 +351,14 @@ class TrajectoryDataset(Dataset, ABC):
             log.info(
                 f"Preprocessing dataset from {self.root_dir} and saving to {preprocessed_dir}"
             )
-            self.preprocess(preprocess_transforms, preprocessed_dir)
+            self.preprocess(preprocess_partials, preprocessed_dir, backend=backend)
             return
 
         # Some preprocessed data found, so we need to check if it matches the current
-        # preprocess_transforms
+        # preprocess_partials
         # TODO: also check dataset config, e.g. action_seq_len (only if actions prechunked), and subset
         old_transforms_cfg = load_transforms_config(transforms_cfg_file)
-        transforms_cfg = get_transforms_config(preprocess_transforms)
+        transforms_cfg = get_transforms_config(preprocess_partials)
         if old_transforms_cfg != transforms_cfg:
             log.debug(
                 f"Old config:\n{old_transforms_cfg}\n\nNew config:\n{transforms_cfg}"
@@ -245,7 +372,7 @@ class TrajectoryDataset(Dataset, ABC):
                 f"Preprocess transforms do not match existing version in {preprocessed_dir}. Overwriting preprocessed data."
             )
             shutil.rmtree(preprocessed_dir)
-            self.preprocess(preprocess_transforms, preprocessed_dir)
+            self.preprocess(preprocess_partials, preprocessed_dir, backend=backend)
             return
 
         # preprocessed data matches, so we can load it
@@ -253,23 +380,27 @@ class TrajectoryDataset(Dataset, ABC):
         assert isinstance(self.preprocess_transforms, Compose)
         self._specs = self.preprocess_transforms[-1].specs
         self.processed_files = self._find_processed_files(preprocessed_dir)
+        self.backend = backend
         log.info(
             f"Loaded preprocessed data from {preprocessed_dir} ({len(self.processed_files)} trajectories)."
         )
 
     def preprocess(
-        self, preprocess_partials: TransformPartialsDict, preprocessed_dir: Path
+        self,
+        preprocess_partials: TransformPartialsDict,
+        preprocessed_dir: Path,
+        backend: BackendType,
     ) -> None:
         """Runs the preprocessing transforms on the raw data and saves the
         resulting TensorDicts to disk. This method also sets self.specs and
         self.processed_files.
         """
-        assert not preprocessed_dir.exists()
-        preprocessed_dir.mkdir(parents=True)
+        preprocessed_dir.mkdir(parents=True, exist_ok=True)
+        assert not any(preprocessed_dir.iterdir())
 
         raw_files = self._find_raw_files()
 
-        specs = self.get_specs()
+        specs = self._get_specs()
         preprocess_transforms, specs = init_transforms(preprocess_partials, specs)
         assert isinstance(preprocess_transforms, Compose)
         assert specs == preprocess_transforms[-1].specs
@@ -316,15 +447,14 @@ class TrajectoryDataset(Dataset, ABC):
                 next_trajs = []
                 for traj in trajs:
                     if TransformConstraint.GPU_ONLY in transform.constraints:
-                        traj = traj.to(device)
-
-                    transformed = transform.call_trajectory(traj)
-
-                    # put trajectories back on CPU immediately to save VRAM
-                    if isinstance(transformed, list):
-                        next_trajs.extend([traj.cpu() for traj in transformed])
+                        transformed = self._preprocess_gpu(transform, traj, device)
                     else:
-                        next_trajs.append(transformed.cpu())
+                        transformed = transform.call_trajectory(traj)
+
+                    if isinstance(transformed, list):
+                        next_trajs.extend(transformed)
+                    else:
+                        next_trajs.append(transformed)
 
                 trajs = next_trajs
 
@@ -339,7 +469,7 @@ class TrajectoryDataset(Dataset, ABC):
             for traj, filename in zip(trajs, filenames):
                 specs.append_length(traj["obs"].batch_size[0])
 
-                save_tensordict(traj, filename, specs)
+                save_tensordict(traj, filename, specs, backend=backend)
                 processed_files.append(filename)
 
         # save the specs and transforms to the preprocessed directory to
@@ -347,11 +477,35 @@ class TrajectoryDataset(Dataset, ABC):
         transforms_cfg_file = preprocessed_dir / TRANSFORMS_CFG_FILE
         transforms_pkl_file = preprocessed_dir / TRANSFORMS_PKL_FILE
         save_transforms_config(preprocess_partials, transforms_cfg_file)
-        save_transforms(preprocess_transforms, transforms_pkl_file)
 
+        if self.from_prepreprocessed:
+            # if the raw data was already prepreprocessed, we need to prepend
+            # the existing prepreprocess transforms to the new ones
+            preprocess_transforms = Compose(
+                *(list(self.prepreprocess_transforms) + list(preprocess_transforms))
+            )
+
+        save_transforms(preprocess_transforms, transforms_pkl_file)
         self.preprocess_transforms = preprocess_transforms
         self._specs = specs
         self.processed_files = processed_files
+        self.backend = backend
+
+    @property
+    def from_prepreprocessed(self) -> bool:
+        # first we check if the root directory contains a transforms.pkl file,
+        # which means it is the product of prepreprocessing
+        # if so, we must load the specs from there and prepend any existing
+        # transforms to our own
+        if self._prepreprocessed is None:
+            transforms_pkl_file = self.root_dir / TRANSFORMS_PKL_FILE
+            self._prepreprocessed = transforms_pkl_file.exists()
+
+            if self._prepreprocessed:
+                self.prepreprocess_transforms = load_transforms(transforms_pkl_file)
+                assert isinstance(self.prepreprocess_transforms, Compose)
+
+        return self._prepreprocessed
 
     def __len__(self) -> int:
         return len(self.slices)
@@ -367,7 +521,9 @@ class TrajectoryDataset(Dataset, ABC):
             # if dataset does not fit into memory, then we have a preprocessed
             # version that we can load from disk
             # TODO: optimize by loading only the relevant slice
-            trajectory = load_tensordict(self.processed_files[traj_idx])
+            trajectory = load_tensordict(
+                self.processed_files[traj_idx], backend=self.backend
+            )
             # since we have already sliced the tensordict, adjust start and end
             obs_idx, action_idx = None, None
 
@@ -408,7 +564,12 @@ class TrajectoryDataset(Dataset, ABC):
         return get_subset(files, self.load_subset)
 
     def _load_from_raw_file(self, filepath: Path) -> list[TensorDict]:
-        trajectories = self.load_from_raw_file(filepath)
+        if self.from_prepreprocessed:
+            trajectory = load_tensordict(filepath, backend="hdf5")
+            trajectories = [trajectory.contiguous()]
+        else:
+            trajectories = self.load_from_raw_file(filepath)
+
         if not isinstance(trajectories, list):
             trajectories = [trajectories]
 
@@ -424,6 +585,20 @@ class TrajectoryDataset(Dataset, ABC):
             traj["ref_action"] = traj["action"].clone()
 
         return trajectories
+
+    def _get_specs(self) -> DataSpecs:
+        # if the raw data hsa actually already been prepreprocessed, we must
+        # load the specs from there, since the data may not match the original
+        # format
+        if self.from_prepreprocessed:
+            self._specs = self.prepreprocess_transforms[-1].specs
+
+            # the specs from the raw dataset are expected not to have lengths
+            # so we need to clear them to avoid double counting
+            self._specs._lengths.clear()
+            return self._specs
+
+        return self.get_specs()
 
     def _find_processed_files(self, preprocessed_dir: Path) -> list[Path]:
         """Find all processed files in the preprocessed directory."""
