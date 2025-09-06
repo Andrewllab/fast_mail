@@ -5,7 +5,9 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: default
-  - transforms@data.preprocess_transforms.t0-9_render_cameras: render_cameras
+  # Render cameras after preprocessing but before normalization so
+  # we actually see something
+  - transforms@data.preprocess_transforms.t3-2_render_cameras: render_cameras
   - _self_
   - platform: default
   - optional local: default
@@ -30,10 +32,10 @@ data:
   eval_mode: env
   env_dataset:
     action_horizon: 5
-    fps: 10
+    fps: 15
   preprocess_transforms:
-    t0-9_render_cameras:
-      stream_names: [rgb, depth]
+    t3-2_render_cameras:
+      stream_names: [rgb, left]
 
 trainer:
   default_root_dir: ${paths.output_dir}

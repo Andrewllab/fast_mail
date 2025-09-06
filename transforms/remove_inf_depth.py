@@ -45,7 +45,4 @@ class RemoveInfDepthStream(Transform):
                 finite_depth = torch.isfinite(depth)
                 if not finite_depth.all():
                     depth[~finite_depth] = 0.0
-                    log.info(
-                        f"Removed inf/nan values from depth stream in {key}/{stream_name}."
-                    )
         return tensordict

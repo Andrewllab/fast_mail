@@ -98,7 +98,7 @@ class TriangleCrop(Transform):
 
             for name, _ in spec.streams.items():
                 assert isinstance(images[name], torch.Tensor)
-                mask_stacked = mask.unsqueeze(0).expand_as(images[name])
+                mask_stacked = mask.unsqueeze(0).expand_as(images[name]).to(images[name].device)
                 mask_val = torch.tensor(self.mask_value, dtype=images[name].dtype, device=images[name].device)
                 images[name] = torch.where(mask_stacked, images[name], mask_val)
 

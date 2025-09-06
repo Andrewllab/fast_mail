@@ -22,6 +22,13 @@ class SubsampleTrajectory(Transform):
     @property
     def specs(self) -> DataSpecs:
         return self._specs
+    
+    def __call__(self, tensordict: TensorDict) -> list[TensorDict]:
+        # This gets called when running with an environment, where the
+        # preprocess transforms get rolled into the cpu_batch_transforms.
+        # We don't need to do anything, since we can only run during
+        # preprocessing.
+        return tensordict
 
     def call_trajectory(self, tensordict: TensorDict) -> list[TensorDict]:
 

@@ -1,8 +1,8 @@
 defaults:
   - /robot/teleop_pair@teleoperation_pair: panda
   - /cameras@cameras.0: realsense_d405_218622270040
-  - /cameras@cameras.1: zed_16055244
-  - /cameras@cameras.2: zed_17008863
+  - /cameras@cameras.1: zed_mini_16055244
+  - /cameras@cameras.2: zed_mini_17008863
   - debug: verbose
   - _self_
 

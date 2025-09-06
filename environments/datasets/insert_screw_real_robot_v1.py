@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Mapping
 
 import torch
 from tensordict import TensorDict
@@ -24,7 +25,7 @@ class RealRobotDataset(TrajectoryDataset):
     def __init__(
         self, 
         *args,
-        extrinsics: dict[str, list[list[float]]] | None = None,
+        extrinsics: Mapping[str, list[list[float]]] | None = None,
         lightweight: bool = False, 
         **kwargs
     ):
@@ -154,7 +155,6 @@ class RealRobotDataset(TrajectoryDataset):
         height, width, channels = left_shape[1:]
         intrinsics = data["obs", "left_cam", "meta", "intrinsics"].reshape(3, 3)
         baseline = data["obs", "left_cam", "meta", "baseline"].item()
-        extrinsics = data.get(("obs", "left_cam", "meta", "extrinsics"), None)
         if self.extrinsics_dict is not None:
             extrinsics = self.extrinsics_dict.get("front_left_cam")["extrinsics"]
             extrinsics = torch.tensor(extrinsics).reshape(4, 4)
@@ -189,7 +189,6 @@ class RealRobotDataset(TrajectoryDataset):
         height, width, channels = left_shape[1:]
         intrinsics = data["obs", "right_cam", "meta", "intrinsics"].reshape(3, 3)
         baseline = data["obs", "right_cam", "meta", "baseline"].item()
-        extrinsics = data.get(("obs", "right_cam", "meta", "extrinsics"), None)
         if self.extrinsics_dict is not None:
             extrinsics = self.extrinsics_dict.get("front_right_cam")["extrinsics"]
             extrinsics = torch.tensor(extrinsics).reshape(4, 4)
@@ -224,11 +223,10 @@ class RealRobotDataset(TrajectoryDataset):
         # left|right: (T, 480, 640)
         left_shape = data["obs", "gripper_cam", "frames", "left"].shape
         right_shape = data["obs", "gripper_cam", "frames", "right"].shape
-        assert left_shape == right_shape == rgb_shape[:-1]
+        assert left_shape == right_shape == depth_shape == rgb_shape[:-1]
         height, width, channels = rgb_shape[1:]
         intrinsics = data["obs", "gripper_cam", "meta", "intrinsics"].reshape(3, 3)
         baseline = data["obs", "gripper_cam", "meta", "baseline"].item()
-        extrinsics = data.get(("obs", "gripper_cam", "meta", "extrinsics"), None)
         if self.extrinsics_dict is not None:
             extrinsics = self.extrinsics_dict.get("gripper_cam")["extrinsics"]
             extrinsics = torch.tensor(extrinsics).reshape(4, 4)

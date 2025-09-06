@@ -4,11 +4,10 @@ from typing import Literal
 
 import torch
 import torch.nn as nn
-from tensordict import TensorDict
-
 from environments.specs import DataSpecs
+from tensordict import TensorDict
 from transforms.base_transform import ReversibleTransform
-from utils.math import combine_frame_transforms, subtract_frame_transforms
+from utils.math import combine_frame_transforms, normalize, subtract_frame_transforms
 
 
 class AbsoluteActionToRelativeChunk(ReversibleTransform):
@@ -108,6 +107,7 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
             rel_action_flat[..., :3],
             rel_action_flat[..., 3:7],
         )
+        rel_quat = normalize(rel_quat)
 
         # current_ee_pose: [B, 1, 7]
         current_ee_pose = tensordict["obs", "ee_pose"]

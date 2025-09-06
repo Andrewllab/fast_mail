@@ -4,14 +4,14 @@ import time
 from typing import Literal, Mapping
 
 import gymnasium as gym
+import pygame
 import torch
+from environments.real_robot.hardware.base_camera import BaseCamera
+from environments.specs import ActionSpec, DataSpecs, ObsSpec, specs_to_spaces
 from omegaconf import DictConfig
 from polymetis import GripperInterface, RobotInterface
 from torchcontrol.policies import CartesianImpedanceControl, HybridJointImpedanceControl
-
-from environments.real_robot.hardware.base_camera import BaseCamera
-from environments.specs import ActionSpec, DataSpecs, ObsSpec, specs_to_spaces
-from utils.math import make_pose, quaternion_to_matrix
+from utils.math import make_pose, normalize, quaternion_to_matrix
 
 ObsType = dict[str, torch.Tensor | dict[str, torch.Tensor]]
 InfoType = dict[str, torch.Tensor]
@@ -27,10 +27,16 @@ class RealRobotEnv(gym.Env):
         robot: DictConfig,
         cameras: Mapping[str, BaseCamera] | None = None,
         control_type: Literal["cartesian", "hybrid_joint"] = "cartesian",
-        binary_gripper_state: bool = True
+        binary_gripper_state: bool = True,
     ):
         self.control_type = control_type
         self.binary_gripper_state = binary_gripper_state
+
+        # Initialize pygame for keyboard input
+        pygame.init()
+        self.screen = pygame.display.set_mode((100, 100))
+        pygame.display.set_caption("Robot Control - Press K to reset, Q to quit")
+        self.should_quit = False
 
         self.arm = RobotInterface(
             name=robot.name,
@@ -66,7 +72,11 @@ class RealRobotEnv(gym.Env):
 
         obs_specs = {
             # we concatenate joint_pos and gripper_pos to get a shape of (T, 9) if binary_gripper_state is False
-            "robot_state": ObsSpec(elem_shape=(8,)) if self.binary_gripper_state else ObsSpec(elem_shape=(9,)),
+            "robot_state": (
+                ObsSpec(elem_shape=(8,))
+                if self.binary_gripper_state
+                else ObsSpec(elem_shape=(9,))
+            ),
             # xyz + wxyz quaternion
             "ee_pose": ObsSpec(elem_shape=(7,)),
             "target_ee_pose": ObsSpec(elem_shape=(7,)),
@@ -100,10 +110,33 @@ class RealRobotEnv(gym.Env):
     def specs(self) -> DataSpecs:
         return self._specs
 
+    def check_keyboard_input(self):
+        """Check for keyboard input and handle reset/quit commands"""
+        # Update the display to keep the window responsive
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_k:
+                    log.info("Reset key pressed - will reset after current step")
+                    return "reset"
+                elif event.key == pygame.K_q:
+                    log.info("Quit key pressed - setting quit flag")
+                    self.should_quit = True
+                    return "quit"
+            elif event.type == pygame.QUIT:
+                self.should_quit = True
+                return "quit"
+        return None
+
     def step(self, action: torch.Tensor) -> tuple[ObsType, float, bool, bool, InfoType]:
+        # Check for keyboard input
+        keyboard_action = self.check_keyboard_input()
+
         action = action.cpu()
         pos = action[:3]
         wxyz = action[3:7]
+        wxyz = normalize(wxyz)
         gripper_command = action[7]
         xyzw = torch.cat((wxyz[-3:], wxyz[:-3]), dim=0)
 
@@ -121,6 +154,18 @@ class RealRobotEnv(gym.Env):
         obs = self._get_obs()
         obs["target_ee_pose"] = action[:7]  # xyz + wxyz quaternion
         info = self._get_info()
+
+        # Add quit flag to info
+        info["should_quit"] = self.should_quit
+
+        # Handle reset request
+        if keyboard_action == "reset":
+            log.info("Resetting environment...")
+            obs, reset_info = self.reset()
+            info.update(reset_info)
+            log.info("Waiting 5 seconds after reset...")
+            time.sleep(5.0)
+            log.info("Ready to continue")
 
         return obs, 0, False, False, info
 
@@ -183,6 +228,9 @@ class RealRobotEnv(gym.Env):
         for camera in self.cameras.values():
             camera.close()
 
+        # Clean up pygame
+        pygame.quit()
+
     def _get_obs(self) -> ObsType:
         gripper_width = torch.tensor([self.gripper.get_state().width])
         # gripper in isaaclab and in the real world have different maximum widths
@@ -202,11 +250,15 @@ class RealRobotEnv(gym.Env):
             )
         else:
             thresh = (self.gripper_max_width * GRIPPER_POS_SCALE) / 2
-            factor = (1.0 if gripper_width > thresh else -1.0)
-            robot_state = torch.cat([
-                joint_pos,
-                factor * torch.ones(1, dtype=joint_pos.dtype, device=joint_pos.device)
-            ], dim=-1)
+            factor = 1.0 if gripper_width > thresh else -1.0
+            robot_state = torch.cat(
+                [
+                    joint_pos,
+                    factor
+                    * torch.ones(1, dtype=joint_pos.dtype, device=joint_pos.device),
+                ],
+                dim=-1,
+            )
 
         ee_pos, ee_xyzw = self.arm.robot_model.forward_kinematics(joint_pos)
         ee_wxyz = torch.cat((ee_xyzw[3:], ee_xyzw[:3]), dim=0)
@@ -234,9 +286,8 @@ class RealRobotEnv(gym.Env):
 
 from functools import partial
 
-from gymnasium.vector import AutoresetMode, SyncVectorEnv
-
 from environments.wrappers import VectorToTorchWrapper
+from gymnasium.vector import AutoresetMode, SyncVectorEnv
 
 
 def make_env(**kwargs) -> gym.Env:
