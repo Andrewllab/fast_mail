@@ -137,8 +137,8 @@ def intensity_to_renderable(intensity: np.ndarray) -> np.ndarray:
     assert (
         intensity.ndim == 2
     ), f"Intensity image must have 2 dimensions, got {intensity.ndim} instead."
-    assert np.isdtype(
-        intensity.dtype, np.uint8
+    assert (
+        intensity.dtype == np.uint8
     ), f"Intensity image must be of uint8 type, got {intensity.dtype} instead."
 
     # add a channel dimension and repeat the intensity value
@@ -164,8 +164,8 @@ def rgb_to_renderable(
     The tensor is assumed to be in the format (C, H, W) or (H, W, C).
     """
     assert rgb.ndim == 3, f"RGB image must have 3 dimensions, got {rgb.ndim} instead."
-    assert np.isdtype(
-        rgb.dtype, np.uint8
+    assert (
+        rgb.dtype == np.uint8
     ), f"RGB image must be of uint8 type, got {rgb.dtype} instead."
 
     if channel_order == "CHW":
