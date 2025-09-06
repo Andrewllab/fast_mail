@@ -1,0 +1,2 @@
+_target_: transforms.rotation_representations.QuaternionRotations
+_partial_: True

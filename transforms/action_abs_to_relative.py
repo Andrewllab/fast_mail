@@ -22,9 +22,13 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
     def __init__(
         self,
         specs: DataSpecs,
+        # we could get this from the specs, but by putting action_seq_len in
+        # the arguments, we trigger new preprocessing if it changes
+        action_seq_len: int,
         reference: Literal["current_ee_pose", "last_action"],
     ):
         self._specs = specs
+        self.action_seq_len = action_seq_len
         self.reference = reference
         if reference != "current_ee_pose":
             raise NotImplementedError(
@@ -40,14 +44,12 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
 
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
 
-        action_seq_len = self.specs.action_seq_len
-
         absolute_action = tensordict["action"]
         # since each chunk will be normalized to a difference reference, we
         # need to explicitly construct them
         absolute_chunks = absolute_action.unfold(
             0,  # dimension to unfold
-            action_seq_len,  # size of each chunk
+            self.action_seq_len,  # size of each chunk
             1,  # step
         )
         # move the chunk dimension to the second position
@@ -67,7 +69,7 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
         current_ee_pose = current_ee_pose[:n_chunks]
         # repeat the current_ee_pose for each action in the chunk
         current_ee_pose_flat = current_ee_pose.repeat_interleave(
-            repeats=action_seq_len, dim=0
+            repeats=self.action_seq_len, dim=0
         )
         ref_pos, ref_quat = (
             current_ee_pose_flat[..., :3],
@@ -84,7 +86,9 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
         # and reshape
         gripper_command = absolute_chunks_flat[..., 7:]
         rel_action_flat = torch.cat((rel_pos, rel_quat, gripper_command), dim=-1)
-        rel_action = rel_action_flat.unflatten(dim=0, sizes=(n_chunks, action_seq_len))
+        rel_action = rel_action_flat.unflatten(
+            dim=0, sizes=(n_chunks, self.action_seq_len)
+        )
 
         tensordict["action"] = rel_action
 

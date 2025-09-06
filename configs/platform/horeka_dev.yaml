@@ -5,7 +5,6 @@ defaults:
   - _self_
 
 hydra:
-  mode: MULTIRUN
   launcher:
     timeout_min: 50  # max timeout is 60 on this partition
     partition: dev_accelerated

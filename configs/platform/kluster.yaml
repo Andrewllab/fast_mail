@@ -10,7 +10,6 @@ platform:
   num_workers: 2  # each node has 20 cores = 5 cores per GPU
 
 hydra:
-  mode: MULTIRUN
   launcher:
     name: 3d-sim2real  # a nice name since others can see our job in squeue
     timeout_min: 1440  # 24 hours

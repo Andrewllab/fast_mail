@@ -8,8 +8,11 @@ defaults:
   # # since this dataset was recorded at ~20 fps, subsample by a factor of 2
   # - /transforms@preprocess_transforms.t0-2_subsample: time_subsample
   
-  # convert actions to chunks of absolute target poses relative to the current frame
-  - /transforms@preprocess_transforms.t0-3_relative_actions: action_abs_to_relative_chunk
+  # We express rotations as quaternions. Predicted quaternions are normalized to unit length
+  - /transforms@preprocess_transforms.t0-3_quaternions: rotations_quaternions
+
+  # # convert actions to chunks of absolute target poses relative to the current frame
+  # - /transforms@preprocess_transforms.t0-3_relative_actions: action_abs_to_relative_chunk
   # normalize relative actions so that the max magnitude of each action dimension is 1.0
   - /transforms@preprocess_transforms.t0-4_normalize_actions: action_norm_max
   
@@ -23,7 +26,7 @@ name: metaquest3_2025-07-24
 dataset:
   _target_: environments.datasets.furniture_bench_alr_v3.AlrFurnitureBenchDataset
   _partial_: True  # requires transforms at runtime
-  root_dir: ${paths.data_dir}/insert_one_leg/isaac_sim/metaquest3_2025-07-24
+  root_dir: ${paths.data_dir}/insert_one_leg/isaac_sim/metaquest3_2025-07-24_224x224
   preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
   action_seq_len: 60  # Jan says 60 works well
   obs_seq_len: 1

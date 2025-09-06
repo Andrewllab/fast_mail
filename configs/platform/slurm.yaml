@@ -11,6 +11,7 @@ trainer:
   enable_progress_bar: False  # doesn't get captured correctly, making the log hard to read
 
 hydra:
+  mode: MULTIRUN
   launcher:
     # remove the leading "." so it's not hidden
     submitit_folder: ${hydra.sweep.dir}/submitit/%j

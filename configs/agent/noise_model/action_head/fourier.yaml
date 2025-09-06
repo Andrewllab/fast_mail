@@ -1,0 +1,9 @@
+defaults:
+  - linear@mlp
+
+name: fourier
+_target_: models.action_heads.FourierActions
+_partial_: True  # requires in_features and out_features
+n_wavelengths: 8
+max_wavelength: 2.0  # action range is half of longest wavelength
+min_wavelength: 2e-6  # ensures that wavelengths are powers of 2

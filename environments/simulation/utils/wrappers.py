@@ -13,6 +13,7 @@ from environments.specs import (
     PinholeCameraIntrinsic,
     RGBStream,
 )
+from utils.math import normalize
 
 
 class IsaacLabPreProcess(gym.Wrapper):
@@ -290,6 +291,7 @@ class IsaacLabPreProcess(gym.Wrapper):
                 pre_processed_action[:, 5] = d_yall
 
             case "ik_absolute":
+                action[..., 3:7] = normalize(action[..., 3:7])
                 pre_processed_action = action
 
             case _:

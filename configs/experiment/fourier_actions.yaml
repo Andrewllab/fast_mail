@@ -1,0 +1,16 @@
+# @package _global_
+
+defaults:
+  - override /agent/noise_model/action_head: fourier
+
+agent:
+  noise_model:
+    action_head:
+      n_wavelengths: ${n_wavelengths}
+      max_wavelength: ${max_wavelength}
+      min_wavelength: ${min_wavelength}
+
+n_wavelengths: 8
+max_wavelength: 2.0  # action range is half of longest wavelength
+min_wavelength: ${pow:2,-6}  # 2^-6, ensures that wavelengths are powers of 2
+n_encoded_actions: 3  # just the 3D position

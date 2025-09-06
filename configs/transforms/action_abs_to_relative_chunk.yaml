@@ -1,3 +1,6 @@
 _target_: transforms.action_abs_to_relative.AbsoluteActionToRelativeChunk
 _partial_: True
+# we could get this from the specs, but by putting action_seq_len in 
+# the arguments, we trigger new preprocessing if it changes
+action_seq_len: ${data.dataset.action_seq_len}
 reference: ???

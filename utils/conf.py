@@ -39,6 +39,9 @@ def setup_resolvers(exclude: list[str] | None = None):
     if "log" not in exclude:
         OmegaConf.register_new_resolver("log", lambda x: math.log(x))
 
+    if "pow" not in exclude:
+        OmegaConf.register_new_resolver("pow", lambda x, y: math.pow(x, y))
+
     if "abspath" not in exclude:
         OmegaConf.register_new_resolver("abspath", lambda s: osp.abspath(s))
 

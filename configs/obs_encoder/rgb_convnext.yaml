@@ -4,6 +4,8 @@ defaults:
   # tokenize the rgb images using a ResNet
   - /tokenizers@agent.obs_encoder.t10_image_tokenizer: image_tokenizer
 
+  - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.image_encoder: convnext
+
 agent:
   obs_encoder:
     embed_dim: 256
@@ -22,4 +24,4 @@ agent:
 
 logger:
   wandb:
-    tags: ["rgb", "resnet18"]
+    tags: ["rgb", "convnext"]

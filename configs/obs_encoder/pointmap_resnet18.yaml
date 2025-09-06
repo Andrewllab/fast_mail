@@ -2,14 +2,14 @@
 
 defaults:
   # tokenize the pointmaps using a ResNet
-  - /tokenizers@agent.obs_encoder.t10_resnets: pointmap_tokenizer
+  - /tokenizers@agent.obs_encoder.t10_image_tokenizer: pointmap_tokenizer
 
 # Below is just the default configuration copied here for convenience. Change as needed.
 agent:
   obs_encoder:
     embed_dim: 256
     
-    t10_resnets:
+    t10_image_tokenizer:
       fusion_type: cat  # Literal["6ch", "add", "cat"] | None
       image_encoder:
         # resnet18
