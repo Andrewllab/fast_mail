@@ -16,6 +16,10 @@ paths:
   preprocessed_dir: $TMPDIR/preprocessed_data
   debug_preprocessed_dir: $TMPDIR/debug_preprocessed_data
 
+data:
+  dataset:
+     overwrite_preprocessed: True  # don't crash just because zipped datasets are out of date
+
 hydra:
   launcher:
     account: hk-project-p0022253
