@@ -29,9 +29,10 @@ class CleanupTransform(Transform):
         specs: DataSpecs,
         keep_stream_types: str | Sequence[str] | None = None,
         drop_stream_types: str | Sequence[str] | None = None,
-        keep_streams: str | Sequence[str] | None = None,
-        drop_streams: str | Sequence[str] | None = None,
+        keep_stream_names: str | Sequence[str] | None = None,
+        drop_stream_names: str | Sequence[str] | None = None,
         drop_keys: str | Sequence[str] | None = None,
+        drop_streams: str | Sequence[str] | None = None,
     ) -> None:
 
         all_streams = {
@@ -80,32 +81,32 @@ class CleanupTransform(Transform):
         else:
             self.pop_streams = {}
 
-        if keep_streams is not None:
-            if drop_streams is not None:
+        if keep_stream_names is not None:
+            if drop_stream_names is not None:
                 raise ValueError("Cannot specify both keep and remove streams/types")
 
-            if isinstance(keep_streams, str):
-                keep_streams = [keep_streams]
+            if isinstance(keep_stream_names, str):
+                keep_stream_names = [keep_stream_names]
             else:
-                keep_streams = list(keep_streams)
+                keep_stream_names = list(keep_stream_names)
 
             # remove any streams that the user wants to keep by name
             self.pop_streams = {
                 (key, name): stream
                 for (key, name), stream in self.pop_streams.items()
-                if name not in keep_streams
+                if name not in keep_stream_names
             }
 
-        elif drop_streams is not None:
-            if isinstance(drop_streams, str):
-                drop_streams = [drop_streams]
+        elif drop_stream_names is not None:
+            if isinstance(drop_stream_names, str):
+                drop_stream_names = [drop_stream_names]
             else:
-                drop_streams = list(drop_streams)
+                drop_stream_names = list(drop_stream_names)
 
             # add any streams that the user wants to drop by name
             # (duplicates don't matter, dict keys are unique)
             for (key, name), stream in all_streams.items():
-                if name in drop_streams:
+                if name in drop_stream_names:
                     self.pop_streams[(key, name)] = stream
 
         self.pop_keys = (
@@ -113,6 +114,18 @@ class CleanupTransform(Transform):
             if drop_keys is not None
             else []
         )
+
+        drop_streams = (
+            ([drop_streams] if isinstance(drop_streams, str) else list(drop_streams))
+            if drop_streams is not None
+            else []
+        )
+        for stream in drop_streams:
+            key, name = stream.split("/", 1)
+            if (key, name) in all_streams:
+                self.pop_streams[(key, name)] = all_streams[(key, name)]
+            else:
+                log.warning(f"Stream {stream} not found in specs, cannot drop it.")
 
         # create a modified specs object for the output
         obs_specs = dict(specs.obs)  # copy obs specs for local modification

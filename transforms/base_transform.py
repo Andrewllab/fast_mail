@@ -8,8 +8,8 @@ import re
 from abc import ABC, ABCMeta, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Callable, Iterator, Mapping, Sequence
 from enum import Enum, auto
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 import torch.nn as nn
 from omegaconf import ListConfig, OmegaConf
@@ -36,9 +36,11 @@ class KeyMapping:
     in_keys: KeyType | list[KeyType]
     out_keys: KeyType | list[KeyType]
     args: tuple[Any, ...] = ()
-    
+
+
 class TransformConstraint(Enum):
     GPU_ONLY = auto()
+
 
 class TransformModuleMeta(ABCMeta):
     """Metaclass that allows for a class to multiple inherit from Transform and
@@ -237,6 +239,8 @@ class Compose(ReversibleTransform):
         self._transforms: dict[str, Transform] = {}  # similar to nn.Module._modules
 
         if len(transforms) == 1 and isinstance(transforms[0], Mapping):
+            # TODO: ensure that keys are unique, otherwise we silently skip
+            # transforms
             for key, transform in transforms[0].items():
                 self._transforms[key] = transform
         else:

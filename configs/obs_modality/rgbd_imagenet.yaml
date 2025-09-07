@@ -11,7 +11,7 @@ data:
   preprocess_transforms:
     t9_cleanup:
       keep_stream_types: [rgb, depth]
-      drop_streams: right  # if multiple exist, drop the right rgb stream
+      drop_stream_names: right  # if multiple exist, drop the right rgb stream
       drop_keys: gripper_cam_transform
 
   dataset:

@@ -17,7 +17,7 @@ data:
     t9_cleanup:
       # keep rgb streams if MultiviewPointMapTokenizer fusion type is not None (or can't be resolved)
       keep_stream_types: ${if:${oc.select:agent.obs_encoder.t10_image_tokenizer.fusion_type,True},[pointmap,rgb],[pointmap]}
-      drop_streams: right  # even if we keep rgb streams, drop the right rgb stream
+      drop_stream_names: right  # even if we keep rgb streams, drop the right rgb stream
       drop_keys: gripper_cam_transform
 
   # we save the preprocessed data to a unique path so as not to overwrite other obs modalities

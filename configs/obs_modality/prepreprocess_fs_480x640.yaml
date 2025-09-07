@@ -1,24 +1,26 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess_transforms.t1-0_resize_fs: image_resize
-
-  - /transforms@data.preprocess_transforms.t1-1_crop_fs: image_centercrop
+  - /transforms@data.preprocess_transforms.t0-99_drop_zed_right: cleanup
 
   # replace measured depth with FoundationStereo depth
-  - /transforms@data.preprocess_transforms.t1-2_foundationstereo: foundation_stereo
+  # - /transforms@data.preprocess_transforms.t1-2_foundationstereo: foundation_stereo
 
   # mask out invalid depth values
   - /transforms@data.preprocess_transforms.t1-3_remove_inf_depth: remove_inf_depth
 
-data:
-  # Below is just the default configuration copied here for convenience. Change as needed.
-  preprocess_transforms:
-    t1-0_resize_fs:
-      shape: 480  # scale shortest side to 480 and keep aspect ratio
+  - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
 
-    t1-1_crop_fs:
-      shape: [480, 640]  # crop all streams to 480x640
+data:
+  preprocess_transforms:
+    # remove right streams from ZED cameras so we have less data to move to GPU
+    t0-99_drop_zed_right:
+      drop_streams: [front_left_cam/right, front_right_cam/right]
+
+    # remove the IR streams from the realsense camera, now that we have used
+    # them to compute depth
+    t9_cleanup:
+      keep_stream_types: [rgb, depth]
 
   dataset:
     preprocessed_dir: ${append_to_stem:${data.dataset.root_dir},_fs_480x640}

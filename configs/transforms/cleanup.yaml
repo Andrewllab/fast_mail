@@ -2,5 +2,7 @@ _target_: transforms.cleanup.CleanupTransform
 _partial_: True
 keep_stream_types: null
 drop_stream_types: null
-keep_streams: null
+keep_stream_names: null
+drop_stream_names: null
+drop_keys: null
 drop_streams: null
