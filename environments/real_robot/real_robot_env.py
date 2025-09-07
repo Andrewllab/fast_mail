@@ -36,7 +36,6 @@ class RealRobotEnv(gym.Env):
         pygame.init()
         self.screen = pygame.display.set_mode((100, 100))
         pygame.display.set_caption("Robot Control - Press K to reset, Q to quit")
-        self.should_quit = False
 
         self.arm = RobotInterface(
             name=robot.name,
@@ -110,29 +109,20 @@ class RealRobotEnv(gym.Env):
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def check_keyboard_input(self):
+    def should_quit(self) -> bool:
         """Check for keyboard input and handle reset/quit commands"""
         # Update the display to keep the window responsive
         pygame.display.flip()
 
         for event in pygame.event.get():
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_k:
-                    log.info("Reset key pressed - will reset after current step")
-                    return "reset"
-                elif event.key == pygame.K_q:
-                    log.info("Quit key pressed - setting quit flag")
-                    self.should_quit = True
-                    return "quit"
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_k:
+                log.info("Reset key pressed - will reset after current step")
+                return True
             elif event.type == pygame.QUIT:
-                self.should_quit = True
-                return "quit"
-        return None
+                return True
+        return False
 
     def step(self, action: torch.Tensor) -> tuple[ObsType, float, bool, bool, InfoType]:
-        # Check for keyboard input
-        keyboard_action = self.check_keyboard_input()
-
         action = action.cpu()
         pos = action[:3]
         wxyz = action[3:7]
@@ -154,20 +144,9 @@ class RealRobotEnv(gym.Env):
         obs = self._get_obs()
         obs["target_ee_pose"] = action[:7]  # xyz + wxyz quaternion
         info = self._get_info()
-
-        # Add quit flag to info
-        info["should_quit"] = self.should_quit
-
-        # Handle reset request
-        if keyboard_action == "reset":
-            log.info("Resetting environment...")
-            obs, reset_info = self.reset()
-            info.update(reset_info)
-            log.info("Waiting 5 seconds after reset...")
-            time.sleep(5.0)
-            log.info("Ready to continue")
-
-        return obs, 0, False, False, info
+        
+        should_quit = self.should_quit()
+        return obs, 0, should_quit, False, info
 
     def reset(self, *, seed=None, options=None) -> tuple[ObsType, InfoType]:
         # open gripper and go home simultaneously
@@ -216,6 +195,10 @@ class RealRobotEnv(gym.Env):
         obs = self._get_obs()
         obs["target_ee_pose"] = obs["ee_pose"]
         info = self._get_info()
+        
+        # Wait a bit to ensure everything is settled
+        log.info("Reset complete, waiting 10s to ensure everything is settled...")
+        time.sleep(10.0)
 
         return obs, info
 

@@ -1,5 +1,6 @@
 import dataclasses
 import os.path as osp
+from typing import Sequence
 
 import torch
 from tensordict import TensorDict
@@ -19,6 +20,7 @@ class FoundationStereo(Transform):
         self,
         specs: DataSpecs,
         engine_path: str,
+        cam_keys: str | Sequence[str] | None = None,
         remove_invisible: bool = True,
     ) -> None:
 
@@ -26,7 +28,10 @@ class FoundationStereo(Transform):
 
         # Load tensorRT engine
         self.engine_path = engine_path
-        self.engine, self.context = load_engine(resolve_path(self.engine_path))
+        self._engine, self._context = None, None
+
+        if isinstance(cam_keys, str):
+            cam_keys = [cam_keys]
 
         self._input_specs = {
             key: spec
@@ -35,6 +40,7 @@ class FoundationStereo(Transform):
             and "left" in spec.streams
             and "right" in spec.streams
             and spec.baseline is not None
+            and (cam_keys is None or key in cam_keys)
         }
 
         fs_metadata = get_metadata(self.engine)
@@ -109,18 +115,32 @@ class FoundationStereo(Transform):
     def specs(self) -> DataSpecs:
         return self._output_specs
 
+    @property
+    def engine(self):
+        # load engine lazily because not every platform has it but may need
+        # tp unpickle this transform to access the specs
+        if self._engine is None or self._context is None:
+            self._engine, self._context = load_engine(resolve_path(self.engine_path))
+        return self._engine
+
+    @property
+    def context(self):
+        if self._engine is None or self._context is None:
+            self._engine, self._context = load_engine(resolve_path(self.engine_path))
+        return self._context
+
     def __getstate__(self):
         """Custom pickle method - exclude engine and context."""
         state = self.__dict__.copy()
         # Remove the unpicklable entries
-        state.pop("engine")
-        state.pop("context")
+        state.pop("_engine")
+        state.pop("_context")
         return state
 
     def __setstate__(self, state):
         """Custom unpickle method - restore state without engine."""
         self.__dict__.update(state)
-        self.engine, self.context = load_engine(resolve_path(self.engine_path))
+        self._engine, self._context = None, None
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         default_dtype = torch.get_default_dtype()

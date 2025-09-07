@@ -17,6 +17,13 @@ data:
     t0-99_drop_zed_right:
       drop_streams: [front_left_cam/right, front_right_cam/right]
 
+    t1-2_foundationstereo:
+      # We only replace gripper_cam depth.
+      # The left and right cams have low resolution.
+      # Hence zed's neural depth mode actually works better
+      # than foundation stereo
+      cam_keys: gripper_cam
+
     # remove the IR streams from the realsense camera, now that we have used
     # them to compute depth
     t9_cleanup:

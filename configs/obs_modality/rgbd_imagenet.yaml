@@ -1,18 +1,19 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
+  - /transforms@data.preprocess_transforms.t0-0_cleanup: cleanup
 
   # apply ImageNet normalization
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
 
 data:
-  # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
   preprocess_transforms:
-    t9_cleanup:
+    # We don't need the right camera view for this task
+    t0-0_cleanup:
       keep_stream_types: [rgb, depth]
       drop_stream_names: right  # if multiple exist, drop the right rgb stream
       drop_keys: gripper_cam_transform
 
+  # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
   dataset:
     preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/multiview_image

@@ -2,3 +2,4 @@ _target_: transforms.foundation_stereo.FoundationStereo
 _partial_: True
 engine_path: ${paths.fs_engine_path}
 remove_invisible: True
+cam_keys: null  # specify camera keys to replace, or null to replace all
