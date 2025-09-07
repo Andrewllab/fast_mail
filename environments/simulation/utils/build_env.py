@@ -19,7 +19,7 @@ def make(
     cli_args: DictConfig | None = None,
     env_cfg: DictConfig | None = None,
     wrappers: DictConfig | None = None,
-    # these two arguments are here to maintain backwards compatibility
+    # BackCompat: leave these two arguments, which are no longer used
     enabled_wrappers=None,
     wrapper_cfgs=None,
 ):

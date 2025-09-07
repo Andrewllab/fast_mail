@@ -2,13 +2,13 @@
 
 defaults:
   # tokenize the rgb images using a ResNet
-  - /tokenizers@agent.obs_encoder.t10_img_tokenizer: image_tokenizer
+  - /tokenizers@agent.obs_encoder.t10_image_tokenizer: image_tokenizer
 
 agent:
   obs_encoder:
     embed_dim: 256
     
-    t10_img_tokenizer:
+    t10_image_tokenizer:
       shared_encoder: False
       image_type: rgbd
 

@@ -10,6 +10,7 @@ agent:
     embed_dim: 256
     
     t10_image_tokenizer:
+      shared_encoder: False
       fusion_type: cat  # Literal["6ch", "add", "cat"] | None
       image_encoder:
         # resnet18

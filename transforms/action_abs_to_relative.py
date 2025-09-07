@@ -4,8 +4,9 @@ from typing import Literal
 
 import torch
 import torch.nn as nn
-from environments.specs import DataSpecs
 from tensordict import TensorDict
+
+from environments.specs import DataSpecs
 from transforms.base_transform import ReversibleTransform
 from utils.math import combine_frame_transforms, normalize, subtract_frame_transforms
 
@@ -22,13 +23,16 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
     def __init__(
         self,
         specs: DataSpecs,
+        reference: Literal["current_ee_pose", "last_action"],
         # we could get this from the specs, but by putting action_seq_len in
         # the arguments, we trigger new preprocessing if it changes
-        action_seq_len: int,
-        reference: Literal["current_ee_pose", "last_action"],
+        # BackCompat: allow None for getting action_seq_len from specs
+        action_seq_len: int | None = None,
     ):
         self._specs = specs
-        self.action_seq_len = action_seq_len
+        self.action_seq_len = (
+            action_seq_len if action_seq_len is not None else specs.action_seq_len
+        )
         self.reference = reference
         if reference != "current_ee_pose":
             raise NotImplementedError(

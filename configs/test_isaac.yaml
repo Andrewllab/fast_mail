@@ -1,7 +1,7 @@
 # usage: python test.py -cn test_isaac
 
 defaults:
-  - data: isaac  # only necessary for runs that were trained with old environment config
+  - data: one_leg_alr_20250724  # BackCompat: overwrite environment and preprocessing configs
   - data/wrappers@data.env_dataset.env.wrappers: record_video  # record videos
   # log test results to new wandb run, since test parameters affect results
   - logger: wandb

@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  # downsample the RGBD images to avoid excessive memory usage
+  - /transforms@data.preprocess_transforms.t2_resize_for_pcd: image_resize
+
+data:
+  # Below is just the default configuration copied here for convenience. Change as needed.
+  preprocess_transforms:
+    t2_resize_for_pcd:
+      shape: 128  # scale shortest side to 128 and keep aspect ratio
+
+  dataset:
+    preprocessed_dir: ${append_to_stem:${data.dataset.root_dir},_128x128}

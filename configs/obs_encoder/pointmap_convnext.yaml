@@ -12,6 +12,7 @@ agent:
     embed_dim: 256
     
     t10_image_tokenizer:
+      shared_encoder: False
       fusion_type: null  # Literal["6ch", "add", "cat"] | null
       image_encoder:
         pretrained_weights: IMAGENET1K_V1  # null or "IMAGENET1K_V1"
