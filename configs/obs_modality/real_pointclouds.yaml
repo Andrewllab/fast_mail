@@ -1,36 +1,54 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.gpu_batch_transforms.t1_foundationstereo: foundation_stereo
+  - /transforms@data.preprocess_transforms.t2-1_resize_for_pcd: image_resize
 
-  - /transforms@data.gpu_batch_transforms.t2_resize_for_pcd: image_resize
+  - /transforms@data.preprocess_transforms.t2-2_crop_image: image_centercrop
 
-  - /transforms@data.gpu_batch_transforms.t3_to_pcd: to_pointcloud
+  - /transforms@data.preprocess_transforms.t3_to_pcd: to_pointcloud
 
-  - /transforms@data.gpu_batch_transforms.t4_crop_pcd: pointcloud_crop
+  - /transforms@data.preprocess_transforms.t4_crop_pcd: pointcloud_crop
 
-  - /transforms@data.gpu_batch_transforms.t4-1_crop_table: pointcloud_crop_table
+  - /transforms@data.preprocess_transforms.t4-1_crop_table: pointcloud_crop_table
+
+  - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
 
   - /transforms@data.gpu_batch_transforms.t5_voxel_downsample: pointcloud_downsample_voxel
 
   - /transforms@data.gpu_batch_transforms.t6_denoise: pointcloud_denoise
 
-
 data:
-  gpu_batch_transforms:
-    t2_resize_for_pcd:
-      shape: 256  # scale shortest side to 256 and keep aspect ratio
+  preprocess_transforms:
+    t2-1_resize_for_pcd:
+      shape: 128  # scale shortest side to 128 and keep aspect ratio
+  
+    t2-2_crop_image:
+      shape: 128
+
+    t3_to_pcd:
+      color: False
+
     t4_crop_pcd:
       x_range: [0.1, 1.0]  # crop the robot base out of the observation
       y_range: [-0.30, 0.25]  # crop out the curtains
       z_range: [-0.05, 0.4]  # only remove things below the table, the table is removed by pointcloud_crop_table
+
     t4-1_crop_table:
       ransac_distance_threshold: 0.002
       ransac_n: 3
       num_iterations: 100
       crop_threshold: 0.01
+
+    t9_cleanup:
+      keep_stream_types: []  # keep no stream types, i.e. remove all
+      drop_keys: gripper_cam_transform
+
+  gpu_batch_transforms:
     t5_voxel_downsample:
       size: 0.006
     t6_denoise:
       nb_points: 5
       radius: 0.01
+
+  dataset:
+    preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/pointclouds

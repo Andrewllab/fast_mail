@@ -119,6 +119,10 @@ class CleanupTransform(Transform):
         for key in list(obs_specs.keys()):
             # avoid modifying the dict while iterating over it
             spec = obs_specs[key]
+            if key in self.pop_keys:
+                obs_specs.pop(key)
+                continue
+
             if not isinstance(spec, CameraSpec):
                 continue
 

@@ -20,6 +20,7 @@ from utils.math import transform_pointmap, unproject_depth
 
 log = logging.getLogger(__name__)
 
+
 class ToPointCloud(Transform):
     def __init__(
         self,
@@ -116,6 +117,8 @@ class ToPointCloud(Transform):
                         pose_key = (pose_key,)
                     dynamic_extrinsics = tensordict[("obs",) + pose_key]
                     assert dynamic_extrinsics.shape[-2:] == (4, 4)
+                    # BackCompat
+                    dynamic_extrinsics = dynamic_extrinsics.to(dtype=torch.float32)
 
                     # left multiply the dynamic extrinsics because they are
                     # applied after the static extrinsics

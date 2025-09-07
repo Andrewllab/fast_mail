@@ -1,0 +1,5 @@
+_target_: transforms.pointmap_crop.CropPointMap
+_partial_: True
+x_range: ???
+y_range: ???
+z_range: ???

@@ -127,6 +127,8 @@ class RenderPointCloud(Transform):
                 if not isinstance(pose_key, tuple):
                     pose_key = (pose_key,)
                 dynamic_extrinsics = tensordict[("obs",) + pose_key]
+                # BackCompat
+                dynamic_extrinsics = dynamic_extrinsics.to(dtype=torch.float32)
                 # remove the batch dimension and index the last element in the sequence
                 dynamic_extrinsics = dynamic_extrinsics[0, -1].cpu()
 

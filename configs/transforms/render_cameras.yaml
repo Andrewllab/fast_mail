@@ -1,6 +1,6 @@
 _target_: transforms.render_cameras.RenderCameras
 _partial_: True
-stream_names: [rgb, depth]
+stream_names: null # render all streams
 min_depth: 0.0
 max_depth: 1.5
 depth_colormap: magma
