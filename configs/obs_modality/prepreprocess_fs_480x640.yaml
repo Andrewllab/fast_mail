@@ -4,7 +4,7 @@ defaults:
   - /transforms@data.preprocess_transforms.t0-99_drop_zed_right: cleanup
 
   # replace measured depth with FoundationStereo depth
-  # - /transforms@data.preprocess_transforms.t1-2_foundationstereo: foundation_stereo
+  - /transforms@data.preprocess_transforms.t1-2_foundationstereo: foundation_stereo
 
   # mask out invalid depth values
   - /transforms@data.preprocess_transforms.t1-3_remove_inf_depth: remove_inf_depth
