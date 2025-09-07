@@ -1,4 +1,5 @@
 import dataclasses
+import os.path as osp
 
 import torch
 from tensordict import TensorDict
@@ -6,6 +7,7 @@ from tensordict import TensorDict
 from environments.specs import CameraSpec, DataSpecs, DepthStream
 from third_party.FoundationStereo.core.utils.utils import InputPadder
 from transforms.base_transform import Transform, TransformConstraint
+from utils.conf import resolve_path
 from utils.tensor_rt import get_metadata, load_engine, run_inference
 
 
@@ -24,7 +26,7 @@ class FoundationStereo(Transform):
 
         # Load tensorRT engine
         self.engine_path = engine_path
-        self.engine, self.context = load_engine(self.engine_path)
+        self.engine, self.context = load_engine(resolve_path(self.engine_path))
 
         self._input_specs = {
             key: spec
@@ -98,6 +100,11 @@ class FoundationStereo(Transform):
                 f"Left and right images must have the same shape as the foundation stereo model, but got {left.height_width} and {fs_shape[-2:]}"
             )
 
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(engine_name={osp.basename(self.engine_path)})"
+        )
+
     @property
     def specs(self) -> DataSpecs:
         return self._output_specs
@@ -113,7 +120,7 @@ class FoundationStereo(Transform):
     def __setstate__(self, state):
         """Custom unpickle method - restore state without engine."""
         self.__dict__.update(state)
-        self.engine, self.context = load_engine(self.engine_path)
+        self.engine, self.context = load_engine(resolve_path(self.engine_path))
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         default_dtype = torch.get_default_dtype()
