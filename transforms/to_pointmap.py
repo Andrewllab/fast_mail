@@ -130,6 +130,7 @@ class ToPointMap(Transform):
                         pose_key = (pose_key,)
                     dynamic_extrinsics = tensordict[("obs",) + pose_key]
                     assert dynamic_extrinsics.shape[-2:] == (4, 4)
+                    dynamic_extrinsics = dynamic_extrinsics.to(dtype=torch.float32) # BackCompat
 
                     # left multiply the dynamic extrinsics because they are
                     # applied after the static extrinsics

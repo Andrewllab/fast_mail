@@ -195,6 +195,9 @@ class ImageStream(ABC):
         )
 
 
+# TODO: add explicit IR stream type to support isinstance checks
+
+
 @dataclass(frozen=True)
 class RGBStream(ImageStream):
     """RGB image stream. By convention, the dtype is uint8."""

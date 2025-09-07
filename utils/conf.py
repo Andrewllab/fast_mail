@@ -10,11 +10,19 @@ import numpy as np
 from omegaconf import DictConfig, OmegaConf, open_dict
 
 
+def if_resolver(pred: bool, a, b):
+    chosen = a if pred else b
+    return OmegaConf.create(chosen) if isinstance(chosen, (dict, list)) else chosen
+
+
 def setup_resolvers(exclude: list[str] | None = None):
     exclude = exclude or []
 
     if "eval" not in exclude:
         OmegaConf.register_new_resolver("eval", eval)
+
+    if "if" not in exclude:
+        OmegaConf.register_new_resolver("if", if_resolver)
 
     if "np" not in exclude:
         OmegaConf.register_new_resolver("np", lambda arr: np.array(arr))

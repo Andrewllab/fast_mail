@@ -120,7 +120,7 @@ class RealRobotDataset(TrajectoryDataset):
                     "robot_state": robot_state,
                     "ee_pose": ee_pose,
                     "target_ee_pose": target_ee_pose,
-                    "gripper_cam_transform": gripper_cam_transform,
+                    "gripper_cam_transform": gripper_cam_transform.to(dtype=torch.float32),
                 },
                 "action": action,
             }
@@ -156,8 +156,8 @@ class RealRobotDataset(TrajectoryDataset):
         intrinsics = data["obs", "left_cam", "meta", "intrinsics"].reshape(3, 3)
         baseline = data["obs", "left_cam", "meta", "baseline"].item()
         if self.extrinsics_dict is not None:
-            extrinsics = self.extrinsics_dict.get("front_left_cam")["extrinsics"]
-            extrinsics = torch.tensor(extrinsics).reshape(4, 4)
+            extrinsics = self.extrinsics_dict["front_left_cam"]["extrinsics"]
+            extrinsics = torch.as_tensor(extrinsics, dtype=torch.float32).reshape(4, 4)
         elif extrinsics := data.get(("obs", "left_cam", "meta", "extrinsics"), None):
             extrinsics = extrinsics.reshape(4, 4)
         streams = {
@@ -190,8 +190,8 @@ class RealRobotDataset(TrajectoryDataset):
         intrinsics = data["obs", "right_cam", "meta", "intrinsics"].reshape(3, 3)
         baseline = data["obs", "right_cam", "meta", "baseline"].item()
         if self.extrinsics_dict is not None:
-            extrinsics = self.extrinsics_dict.get("front_right_cam")["extrinsics"]
-            extrinsics = torch.tensor(extrinsics).reshape(4, 4)
+            extrinsics = self.extrinsics_dict["front_right_cam"]["extrinsics"]
+            extrinsics = torch.as_tensor(extrinsics, dtype=torch.float32).reshape(4, 4)
         elif extrinsics := data.get(("obs", "right_cam", "meta", "extrinsics"), None):
             extrinsics = extrinsics.reshape(4, 4)
         streams = {
@@ -228,8 +228,8 @@ class RealRobotDataset(TrajectoryDataset):
         intrinsics = data["obs", "gripper_cam", "meta", "intrinsics"].reshape(3, 3)
         baseline = data["obs", "gripper_cam", "meta", "baseline"].item()
         if self.extrinsics_dict is not None:
-            extrinsics = self.extrinsics_dict.get("gripper_cam")["extrinsics"]
-            extrinsics = torch.tensor(extrinsics).reshape(4, 4)
+            extrinsics = self.extrinsics_dict["gripper_cam"]["extrinsics"]
+            extrinsics = torch.as_tensor(extrinsics, dtype=torch.float32).reshape(4, 4)
         elif extrinsics := data.get(("obs", "gripper_cam", "meta", "extrinsics"), None):
             extrinsics = extrinsics.reshape(4, 4)
         streams = {
