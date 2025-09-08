@@ -14,7 +14,10 @@ parser.add_argument(
     "--num_envs", type=int, default=1, help="Number of environments to spawn."
 )
 parser.add_argument(
-    "--task", type=str, default="Isaac-Insert-One-Leg-Franka-v0", help="Task name."
+    "--task",
+    type=str,
+    default="Isaac-Insert-One-Leg-Franka-RGBD-SingleFallen-IK-Abs-v0",
+    help="Task name.",
 )
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()

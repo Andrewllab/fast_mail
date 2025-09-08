@@ -29,6 +29,7 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
         image_encoder: Callable[[int, int], nn.Module] | None = None,
         fusion_type: Literal["6ch", "add", "cat"] | None = None,
         shared_encoder: bool = False,  # BackCompat: set to False
+        spatial_encoder: nn.Linear | None = None,
     ):
         super().__init__()
 
@@ -97,6 +98,26 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
                 f"Got {[stream.time for stream in input_streams]}"
             )
 
+        # verify that all point map streams have the correct number of channels
+        # this needs to happen before changing the input_channels in case of a spatial encoder
+        if not all(
+            stream.channels == in_channels
+            for stream in input_streams
+            if isinstance(stream, PointMapStream)
+        ):
+            raise ValueError(
+                f"All input streams must have {in_channels} channels when using {fusion_type} fusion."
+                f"Got {[stream.channels for stream in input_streams if isinstance(stream, PointMapStream)]}"
+            )
+
+        self.spatial_encoder = spatial_encoder
+        if self.spatial_encoder is not None:
+            if fusion_type in ["6ch", "add", "cat"]:
+                raise ValueError(
+                    "Currently, fourier-features are only supported without a fusion."
+                )
+            in_channels = self.spatial_encoder.out_features
+
         # instantiate pointmap model(s)
         if shared_encoder:
             # verify that all streams have the same resolution when using shared encoder
@@ -124,17 +145,6 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
                 for key in input_specs.keys():
                     self.image_models[key] = image_encoder(rgb_channels, embed_dim)
         self.shared_encoder = shared_encoder
-
-        # verify that all point map streams have the correct number of channels
-        if not all(
-            stream.channels == in_channels
-            for stream in input_streams
-            if isinstance(stream, PointMapStream)
-        ):
-            raise ValueError(
-                f"All input streams must have {in_channels} channels when using {fusion_type} fusion."
-                f"Got {[stream.channels for stream in input_streams if isinstance(stream, PointMapStream)]}"
-            )
 
         # each camera produces one token
         # if we have stereo rgb, we just take the left camera
@@ -172,6 +182,11 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
                     continue
 
                 image = tensordict["obs", key, name]
+
+                # apply fourier-feature encoder before dimension processing
+                if self.spatial_encoder is not None:
+                    # features: (B*N, D)
+                    image = self.spatial_encoder(image)
 
                 if stream.channel_order == "HWC":
                     image = torch.movedim(image, -1, -3)
