@@ -5,7 +5,7 @@ import torch.nn as nn
 from tensordict import TensorDict
 from torch import Tensor
 
-from environments.specs import DataSpecs, PointMapStream
+from environments.specs import CameraSpec, DataSpecs, PointMapStream
 from transforms.base_transform import Transform
 
 
@@ -31,6 +31,8 @@ class CropPointMap(Transform, nn.Module):
         y_range: tuple[float, float] | None = None,
         z_range: tuple[float, float] | None = None,
     ):
+        super().__init__()
+
         x_range = x_range or (-torch.inf, torch.inf)
         y_range = y_range or (-torch.inf, torch.inf)
         z_range = z_range or (-torch.inf, torch.inf)
@@ -50,7 +52,9 @@ class CropPointMap(Transform, nn.Module):
         return self._specs
 
     def forward(self, tensordict: TensorDict) -> TensorDict:
-        for key, spec in self._specs.items():
+        for key, spec in self._specs.obs.items():
+            if not isinstance(spec, CameraSpec):
+                continue
             for name, stream in spec.streams.items():
                 if not isinstance(stream, PointMapStream):
                     continue

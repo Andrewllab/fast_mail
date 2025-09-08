@@ -112,9 +112,9 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
 
         self.spatial_encoder = spatial_encoder
         if self.spatial_encoder is not None:
-            if fusion_type in ["6ch", "add", "cat"]:
-                raise ValueError(
-                    "Currently, fourier-features are only supported without a fusion."
+            if fusion_type == "6ch":
+                raise NotImplementedError(
+                    "A spatial encoder is not supported for 6ch fusion."
                 )
             in_channels = self.spatial_encoder.out_features
 
@@ -184,8 +184,11 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
                 image = tensordict["obs", key, name]
 
                 # apply fourier-feature encoder before dimension processing
-                if self.spatial_encoder is not None:
-                    # features: (B*N, D)
+                if self.spatial_encoder is not None and isinstance(
+                    stream, PointMapStream
+                ):
+                    # image: (B, T, H, W, C) -> (B, T, H, W, D)
+                    assert image.shape[-1] == self.spatial_encoder.in_features == 3
                     image = self.spatial_encoder(image)
 
                 if stream.channel_order == "HWC":
@@ -244,7 +247,7 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
         if self.late_fusion:
             # Do the same for rgb images
             rgb_images = torch.stack(rgb_streams, dim=-4)
-            assert shape == rgb_images.shape[-3:]
+            leading_dims, shape = (rgb_images.shape[:3], rgb_images.shape[-3:])
 
             if self.shared_encoder:
                 rgb_images = rgb_images.view(-1, *shape)
