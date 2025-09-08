@@ -81,8 +81,7 @@ class GymEnvDataset(IterableDataset):
 
             # obs is either a Tensor or a TensorDict, so either way supports `.device`
             reward = torch.zeros(self.num_envs, dtype=torch.float32, device=device)
-            terminated = torch.zeros(self.num_envs, dtype=torch.bool, device=device)
-            truncated = torch.zeros(self.num_envs, dtype=torch.bool, device=device)
+            done = torch.zeros(self.num_envs, dtype=torch.bool, device=device)
             episode_infos = []
             # actions: [num_envs, action_horizon, action_dim]
             # therefore we need to unbind the actions along the time dimension
@@ -99,33 +98,31 @@ class GymEnvDataset(IterableDataset):
                 # accumulate the return values over time
                 # we drop all observations except the last, since stacking
                 # observations is done by the FrameStackObservation wrapper
-                # we also only keep the last info dict, mainly because there
-                # is no clear way to accumulate the information over time
-                # while also handling the reset info
                 reward += step_reward
-                terminated = torch.logical_or(terminated, step_terminated)
-                truncated = torch.logical_or(truncated, step_truncated)
+                step_done = torch.logical_or(step_terminated, step_truncated)
 
                 # accumulate the "max" of any success-like metrics
                 info = accumulate_dict(info, unnest_dict(step_info), aggr="max")
 
-                step_done = torch.logical_or(step_terminated, step_truncated)
-                if step_done.any():
+                # check if any envs are done for this first time at this step
+                if torch.logical_and(step_done, ~done).any():
                     # store the accumulated info for the envs that are done
                     # (indexing with a boolean tensor is always a copy)
+                    # TODO: also store the total reward and length of the episode
                     episode_infos.append(info[step_done])
 
-                    # reset the info for the envs that are done
-                    # tensordict cannot handle info[done] = 0 because the fields
-                    # have different data types
-                    for value in info.values():
-                        value[step_done] = 0
+                done = torch.logical_or(done, step_done)
 
             # reset the envs that are done
-            done = torch.logical_or(terminated, truncated)
             if done.any():
                 num_episodes += done.sum().item()
                 log.debug(f"Completed {num_episodes} episodes.")
+
+                # reset the info for the envs that are done
+                # tensordict cannot handle info[done] = 0 because the fields
+                # have different data types
+                for value in info.values():
+                    value[done] = 0
 
                 obs, reset_info = self.env.reset(options={"mask": done})
                 info = accumulate_dict(info, unnest_dict(reset_info), aggr="max")

@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 import gymnasium as gym
@@ -14,6 +15,8 @@ from environments.specs import (
     RGBStream,
 )
 from utils.math import normalize
+
+log = logging.getLogger(__name__)
 
 
 class IsaacLabPreProcess(gym.Wrapper):
@@ -154,7 +157,27 @@ class IsaacLabPreProcess(gym.Wrapper):
 
     def step(self, action):
         action = self._preprocess_action_orientation(action)
-        obs, reward, terminated, truncated, info = self.env.step(action)
+        try:
+            obs, reward, terminated, truncated, info = self.env.step(action)
+        except Exception as e:
+            log.warning(
+                f"Exception during env.step(): {e}. Returning empty observation and failed trajectory."
+            )
+            obs = {}
+            reward = torch.zeros(self.env.unwrapped.num_envs, device=action.device)
+            terminated = torch.ones(
+                self.env.unwrapped.num_envs, dtype=torch.bool, device=action.device
+            )
+            truncated = torch.zeros(
+                self.env.unwrapped.num_envs, dtype=torch.bool, device=action.device
+            )
+            info = {
+                "Episode_Termination/IK_error": torch.ones(self.env.unwrapped.num_envs)
+            }
+            info = TensorDict(info, device=action.device)
+            info.auto_batch_size_(batch_dims=1)
+            return obs, reward, terminated, truncated, info
+
         obs = self._preprocess_obs(obs)
         info = self._preprocess_info(
             info,

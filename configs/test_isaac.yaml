@@ -9,6 +9,7 @@ defaults:
   - paths: default
   - hydra: default
   - _self_
+  - obs_modality: null
   - platform: default
   - optional local: default
   - debug: verbose
@@ -27,6 +28,9 @@ checkpoint:
   epochs: last_5  # options: last, all, last_n (default: last)
   artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
   use_artifact: False  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
+
+agent:
+  num_sampling_steps: 10  # modify if desired
 
 data:
   eval_mode: env

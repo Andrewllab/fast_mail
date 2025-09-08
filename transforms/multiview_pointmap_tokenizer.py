@@ -28,7 +28,7 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
         embed_dim: int,
         image_encoder: Callable[[int, int], nn.Module] | None = None,
         fusion_type: Literal["6ch", "add", "cat"] | None = None,
-        shared_encoder: bool = True,  # BackCompat: set to True
+        shared_encoder: bool = False,  # BackCompat: set to False
     ):
         super().__init__()
 

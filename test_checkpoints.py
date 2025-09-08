@@ -43,6 +43,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 
 import hydra
 import psutil
@@ -107,9 +108,8 @@ def run_test_single_checkpoint(command_args, trigger_phrase):
             args=command_args,
             text=True,  # file objects stdin, stdout and stderr are opened in text mode
             bufsize=1,  # line-buffered (only usable if text=True)
-            stdout=subprocess.PIPE,  # capture stdout
-            # stderr=subprocess.STDOUT,  # no need to merge stdout and stderr
-            # universal_newlines=True,  # equivalent to text=True in Python 3.7+
+            stderr=subprocess.STDOUT,  # merge stdout and stderr
+            stdout=subprocess.PIPE,  # capture stdout (and stderr)
             # this means that the new subprocess is not a child of the current
             # process (different process group)
             # consequences:
@@ -127,6 +127,10 @@ def run_test_single_checkpoint(command_args, trigger_phrase):
                     log.info(
                         "Subprocess finished: trigger phrase detected — killing process tree..."
                     )
+                    break
+                elif "[ERROR]" in line or "Traceback (most recent call last)" in line:
+                    time.sleep(5.0)  # wait a bit for wandb sync to finish
+                    log.error("Subprocess error detected — killing process tree...")
                     break
 
         except Exception as e:

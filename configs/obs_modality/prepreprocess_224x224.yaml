@@ -6,6 +6,9 @@ defaults:
   # pretrained resnet18 expects images of shape 224x224
   - /transforms@data.preprocess_transforms.t3_crop_image: image_centercrop
 
+  # mask out invalid depth values (after resizing, otherwise the zero values may mess up the interpolated depth)
+  - /transforms@data.preprocess_transforms.t1-3_remove_inf_depth: remove_inf_depth
+
 data:
   # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess_transforms:
