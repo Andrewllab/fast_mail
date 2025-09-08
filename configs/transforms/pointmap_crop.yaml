@@ -2,4 +2,4 @@ _target_: transforms.pointmap_crop.CropPointMap
 _partial_: True
 x_range: null  # [min, max] or null
 y_range: null  # [min, max] or null
-z_range: null  # [min, max] or null
+z_range: [0.004, 1.0]  # just high enough to remove the table
