@@ -20,7 +20,6 @@ class FourierActions(nn.Module):
         min_wavelength: float,
         n_encoded_actions: int | None = None,
     ) -> None:
-        # TODO: implement n_encoded_actions so that not all action dims must be encoded
         # TODO: implement different numerical approximations to asin(tanh(x))
         super().__init__()
 

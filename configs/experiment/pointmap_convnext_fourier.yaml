@@ -3,12 +3,17 @@
 defaults:
   - /models/spatial_encoder@agent.obs_encoder.t10_image_tokenizer.spatial_encoder: fourier_features
 
-# Below is just the default configuration copied here for convenience. Change as needed.
 agent:
   obs_encoder:
     t10_image_tokenizer:
       spatial_encoder:
-          cat_cartesian_coordinates: True
-          max_wavelength: 4
-          min_wavelength: 0.4
-          n_wavelengths: 4
+          cat_cartesian_coordinates: ${cat_cartesian_coordinates}
+          max_wavelength: ${max_wavelength}
+          min_wavelength: ${min_wavelength}
+          n_wavelengths: ${n_wavelengths}
+
+# interpolate from top-level config for ease of use on command line
+cat_cartesian_coordinates: True
+max_wavelength: 4
+min_wavelength: 0.4
+n_wavelengths: 4
