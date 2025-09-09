@@ -9,3 +9,6 @@ defaults:
 data_collection_manager:
   data_dir: /tmp/sim2real/recordings/lamp
   step_hz: 15
+  drop_stream_names: null  # [time]
+  keep_stream_names: null
+  max_height_width: [480, 640]
