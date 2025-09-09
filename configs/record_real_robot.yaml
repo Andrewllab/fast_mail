@@ -1,17 +1,11 @@
 defaults:
-  - /robot/teleop_pair@teleoperation_pair: panda
-  - /cameras@cameras.0: realsense_d405_218622270040
-  - /cameras@cameras.1: zed_mini_16055244
-  - /cameras@cameras.2: zed_mini_17008863
+  - /robot/teleop_pair@data_collection_manager.teleoperation_pair: panda
+  - /cameras@data_collection_manager.cameras.gripper_cam: realsense_d405_218622270040
+  - /cameras@data_collection_manager.cameras.right_cam: zed_mini_16055244
+  - /cameras@data_collection_manager.cameras.left_cam: zed_mini_17008863
   - debug: verbose
   - _self_
 
 data_collection_manager:
-  data_dir: ???
-  baselines:
-    - RealSense_218622270040: 0.0180272
-  cam_name_mapping:
-    Zed_17008863: left_cam
-    Zed_16055244: right_cam
-    RealSense_218622270040: gripper_cam
-  step_hz: 30
+  data_dir: /tmp/sim2real/recordings/lamp
+  step_hz: 15

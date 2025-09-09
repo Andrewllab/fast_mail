@@ -18,7 +18,7 @@ class RobotState:
     joint_vel: torch.Tensor
     ee_pos: torch.Tensor
     ee_vel: torch.Tensor
-    gripper_state: Literal[1, -1]
+    gripper_state: torch.Tensor
 
 
 class Robot:

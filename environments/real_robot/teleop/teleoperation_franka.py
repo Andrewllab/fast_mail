@@ -30,6 +30,7 @@ class FrankaRobot(Robot):
         home_pose: Optional[Any] = None,
         gripper_speed: float = 0.1,
         gripper_force: float = 0.1,
+        binary_gripper_state: bool = False,
     ):
         super().__init__(name, ip_address, arm_port, gripper_port)
 
@@ -48,6 +49,7 @@ class FrankaRobot(Robot):
         assert self.gripper_max_width > 0, "Gripper max width must be greater than 0"
 
         self.control_type = control_type
+        self.binary_gripper_state = binary_gripper_state
 
     def send_policy(self):
         if self.control_type == "cartesian":
@@ -106,8 +108,11 @@ class FrankaRobot(Robot):
         ee_vel = jacobian @ joint_vel
         
         gripper_width = self.robot_gripper.get_state().width
-        thresh = self.gripper_max_width / 2
-        gripper_state = -1 if gripper_width < thresh else 1
+        if self.binary_gripper_state:
+            thresh = self.gripper_max_width / 2
+            gripper_state = torch.tensor(-1 if gripper_width < thresh else 1)
+        else:
+            gripper_state = torch.tensor(gripper_width)
         
         return RobotState(
             joint_pos=joint_pos,
@@ -183,9 +188,16 @@ class FrankaTeleoperationPair(TeleoperationPair):
         else:
             raise ValueError("The given teleoperation type is invalid")
 
+        gripper_action = leader_state.gripper_state
+        if torch.is_floating_point(gripper_action):
+            thresh = self._follower_robot.gripper_max_width / 2
+            gripper_action = -1 if gripper_action < thresh else 1
+        else:
+            gripper_action.item()
+
         # Move arm
         self.follower_robot.robot_gripper.set_state(
-            leader_state.gripper_state,
+            gripper_action,
             speed=self._follower_robot.gripper_speed,
             force=self._follower_robot.gripper_force,
         )
