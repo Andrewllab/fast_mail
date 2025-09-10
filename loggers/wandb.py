@@ -3,12 +3,12 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from typing import Sequence
 
 import wandb
 from hydra.core.hydra_config import HydraConfig
 from lightning.pytorch.loggers.wandb import WandbLogger as LightningWandbLogger
 from omegaconf import DictConfig, OmegaConf
-from wandb.wandb_run import Run
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +58,11 @@ class WandbLogger(LightningWandbLogger):
         wandb.run.define_metric("Episode_Reward/*", step_metric="ckpt_epoch")
 
 
-def update_wandb_config(cfg: DictConfig) -> None:
+def update_wandb_config(
+    cfg: DictConfig,
+    extra_tags: Sequence[str] | None = None,
+    default_notes: str | None = None,
+) -> None:
     if wandb.run is not None:
         wandb_cfg = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
 
@@ -69,6 +73,15 @@ def update_wandb_config(cfg: DictConfig) -> None:
 
         wandb.config.update(wandb_cfg, allow_val_change=True)
 
+        # append extra tags, e.g. from the checkpoint's original run
+        tags = wandb.run.tags or ()
+        tags += tuple(extra_tags) if extra_tags else ()
+        tags = tags or None  # # avoid passing empty tuple to wandb
+        wandb.run.tags = tags
+
+        if wandb.run.notes is None and default_notes is not None:
+            wandb.run.notes = default_notes
+
 
 # filenames are like epoch=0-step=25.ckpt
 # this is the default checkpoint filename defined in lightning's ModelCheckpoint callback
@@ -77,7 +90,7 @@ CKPT_PATTERN = re.compile(r"^epoch=(\d+)-step=(\d+).ckpt$")
 
 def resolve_checkpoint(
     cfg: DictConfig,
-) -> tuple[str, DictConfig, list[tuple[int, Path]]] | None:
+) -> tuple[Path | wandb.Run, DictConfig, list[tuple[int, Path]]] | None:
     """Get the model artifact from WandB and return the training config and model directory.
     Args:
         cfg: The configuration dictionary.
@@ -118,7 +131,7 @@ def resolve_checkpoint(
 
         log.debug(f"Found {len(ckpts_by_epoch)} checkpoint(s) in folder {log_dir}...")
 
-        return log_dir.name, train_cfg, ckpts_by_epoch
+        return log_dir, train_cfg, ckpts_by_epoch
 
     run_id = cfg.get("wandb_run_id")
     if run_id is not None:
@@ -213,7 +226,7 @@ def resolve_checkpoint(
                 for epoch, artifact in artifacts_by_epoch
             ]
 
-        return run_id, train_cfg, ckpt_paths
+        return run, train_cfg, ckpt_paths
 
     else:
         return None

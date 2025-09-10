@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import hydra
 import rootutils
@@ -39,14 +40,23 @@ def predict(cfg: DictConfig) -> None:
     # init wandb first so we can log any info or errors from instantiating dataset and model
     log.debug("Instantiating loggers...")
     logger: list[Logger] = instantiate_loggers(cfg.get("logger"))
-    update_wandb_config(cfg)
 
     agent_cfg = cfg.get("agent", {})
     data_cfg = cfg.get("data", {})
     checkpoint_cfg = cfg.get("checkpoint", {})
+    train_tags = None
+    train_notes = None
     if checkpoint := resolve_checkpoint(checkpoint_cfg):
         # load agent config and specs from checkpoint
-        run_name, train_cfg, checkpoint_paths = checkpoint
+        run, train_cfg, checkpoint_paths = checkpoint
+        if isinstance(run, Path):
+            run_name = run.name
+        else:
+            # wandb Api Run object
+            run_name = run.id
+            train_tags = run.tags
+            train_notes = run.notes
+
         # use the first checkpoint to initialize the agent, if multiple are given
         epoch, checkpoint_path = checkpoint_paths[0]
         log.info(f"Loading checkpoint after epoch {epoch} of run {run_name}...")
@@ -57,6 +67,12 @@ def predict(cfg: DictConfig) -> None:
 
         # modify the _target_ to point to the module's load_from_checkpoint method
         agent_cfg = patch_load_from_checkpoint(agent_cfg, checkpoint_path)
+
+        # save the merged configs back to cfg so they can be logged to wandb
+        cfg.agent = agent_cfg
+        cfg.data = data_cfg
+
+    update_wandb_config(cfg, train_tags, train_notes)
 
     # configure torch, e.g. set_float32_matmul_precision
     configure_torch(cfg.get("torch"))
