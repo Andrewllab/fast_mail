@@ -162,7 +162,7 @@ class ToPointMap(Transform):
             if self.max_depth is not None:
                 # get mask of points that are within max depth
                 # mask: (..., H, W)
-                mask = depth < self.max_depth
+                mask = depth >= self.max_depth
                 point_map[mask] = 0
 
             tensordict["obs", key, self._out_key] = point_map

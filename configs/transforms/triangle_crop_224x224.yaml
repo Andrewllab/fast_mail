@@ -1,0 +1,12 @@
+# Remove points that are outside the area of interest
+  _target_: transforms.triangle_crop.TriangleCrop
+  _partial_: true
+  borders:
+    front_left_cam:
+      mask_right: true
+      point1: [223, 150]
+      point2: [155, 223]
+    front_right_cam:
+      mask_right: true
+      point1: [190, 0]
+      point2: [223, 30]

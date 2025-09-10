@@ -1,0 +1,2 @@
+_target_: transforms.pointmap_normalize.PointMapNormalize
+_partial_: true

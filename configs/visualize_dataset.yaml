@@ -44,7 +44,7 @@ data:
       z_range: [0.004, 0.5]  # increase to keep robot arm in view
 
   gpu_batch_transforms:
-    t4_norm_image: null  # disable imagenet normalization of colors
+    t99_norm_image: null  # disable imagenet normalization of colors
 
     t5_voxel_downsample:
       size: 0.004  # increase resolution for better visualization

@@ -1,0 +1,15 @@
+# @package _global_
+
+defaults:
+  # convert to pointmap
+  - /transforms@data.preprocess_transforms.t5_to_pointmap: to_pointmap
+
+  # Collect pointmap statistics to normalize it
+  - /transforms@data.preprocess_transforms.t6_pointmap_normalize: pointmap_normalize
+
+  - /transforms@data.preprocess_transforms.t7_triangle_crop: triangle_crop_224x224
+
+  - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
+
+  # apply ImageNet normalization
+  - /transforms@data.gpu_batch_transforms.t4_norm_image: imagenet_norm
