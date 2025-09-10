@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 import wandb
+from hydra.core.hydra_config import HydraConfig
 from lightning.pytorch.loggers.wandb import WandbLogger as LightningWandbLogger
 from omegaconf import DictConfig, OmegaConf
 from wandb.wandb_run import Run
@@ -13,8 +14,37 @@ log = logging.getLogger(__name__)
 
 
 class WandbLogger(LightningWandbLogger):
+
+    OVERRIDE_EXCLUDE_KEYS = ["obs_modality", "obs_encoder", "platform", "debug"]
+
     def __init__(self, *args, **kwargs):
+
+        # enrich wandb notes and tags with hydra overrides
+        overrides = HydraConfig.get().overrides.task
+
+        overrides = dict(tuple(o.lstrip("+").split("=", 1)) for o in overrides)
+        param_overrides = [
+            k + "=" + v
+            for k, v in overrides.items()
+            if k not in self.OVERRIDE_EXCLUDE_KEYS
+        ]
+
+        if kwargs.get("notes") is None and param_overrides:
+            param_overrides = ", ".join(param_overrides)
+
+            kwargs["notes"] = f"Overrides: {param_overrides}"
+
+        tags = kwargs.get("tags", [])
+        if "obs_encoder" in overrides:
+            tags.append(overrides["obs_encoder"])
+        if "experiment" in overrides:
+            # experiment may show up in the tags and the notes
+            tags.append(overrides["experiment"])
+        tags = tags or None  # avoid passing empty list to wandb
+        kwargs["tags"] = tags
+
         super().__init__(*args, **kwargs)
+
         # Trigger lazy creation of wandb run by accessing experiment
         # We want to initialize the run as early as possible to log all the
         # messages from instantiating the dataset and model
