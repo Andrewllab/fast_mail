@@ -1,0 +1,4 @@
+_target_: models.timm_models.create_timm_model
+_partial_: True  # requires in_channels and embed_dim
+model_name: vit_small_patch16_224.augreg_in1k  # 11.7M parameters
+pretrained: False

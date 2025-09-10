@@ -3,6 +3,8 @@
 defaults:
   # tokenize the pointmaps using a ResNet
   - /tokenizers@agent.obs_encoder.t10_image_tokenizer: pointmap_tokenizer
+  - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.image_encoder: timm_resnet18
+  - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.pointmap_encoder: timm_resnet18
 
 # Below is just the default configuration copied here for convenience. Change as needed.
 agent:
@@ -11,15 +13,10 @@ agent:
     
     t10_image_tokenizer:
       shared_encoder: False
-      fusion_type: cat  # Literal["6ch", "add", "cat"] | null
+      fusion_type: null  # Literal["6ch", "add", "cat"] | null
       image_encoder:
-        # resnet18
-        pretrained_weights: IMAGENET1K_V1  # null or "IMAGENET1K_V1"
-        freeze_backbone: False
-
-data:
-  batch_size: ${floor_div:${platform.batch_size},2}  # 1/2 of typical batch size
+        pretrained: True
 
 logger:
   wandb:
-    tags: ["pointmap", "resnet18"]
+    tags: ["pointmap", "timm_resnet18"]

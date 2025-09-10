@@ -1,3 +1,4 @@
-image_encoder:
-  _target_: models.vit.vit_encoder
-  _partial_: True
+_target_: models.vit.vit_encoder
+_partial_: True  # requires in_channels and embed_dim
+pretrained_weights: null
+freeze_backbone: False

@@ -1,0 +1,25 @@
+# @package _global_
+
+defaults:
+  # tokenize the pointmaps using pretrained ConvNeXt
+  - /tokenizers@agent.obs_encoder.t10_image_tokenizer: pointmap_tokenizer
+  - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.image_encoder: timm_convnextv2
+  - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.pointmap_encoder: timm_convnextv2
+
+# Below is just the default configuration copied here for convenience. Change as needed.
+agent:
+  obs_encoder:
+    embed_dim: 256
+    
+    t10_image_tokenizer:
+      shared_encoder: False
+      fusion_type: null  # Literal["6ch", "add", "cat"] | null
+      image_encoder:
+        pretrained: True
+
+data:
+  batch_size: ${floor_div:${platform.batch_size},4}  # 1/4 of typical batch size
+
+logger:
+  wandb:
+    tags: ["pointmap", "convnextv2"]

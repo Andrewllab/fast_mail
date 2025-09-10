@@ -1,0 +1,4 @@
+_target_: models.timm_models.create_timm_model
+_partial_: True  # requires in_channels and embed_dim
+model_name: resnet18  # 11.7M parameters
+pretrained: False
