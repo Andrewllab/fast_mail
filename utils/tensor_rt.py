@@ -1,30 +1,26 @@
 import os
 from collections import defaultdict
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-import tensorrt as trt
 import torch
 
-numpy_to_torch_dtype_dict = {
-    np.bool: torch.bool,
-    np.uint8: torch.uint8,
-    np.int8: torch.int8,
-    np.int16: torch.int16,
-    np.int32: torch.int32,
-    np.int64: torch.int64,
-    np.float16: torch.float16,
-    np.float32: torch.float32,
-    np.float64: torch.float64,
-    np.complex64: torch.complex64,
-    np.complex128: torch.complex128,
-}
+if TYPE_CHECKING:
+    # lazy import this optional dependency
+    import tensorrt as trt
+
+
+def numpy_to_torch_dtype(np_dtype: np.dtype) -> torch.dtype:
+    name = np_dtype.__name__  # e.g., 'float32'
+    return getattr(torch, name)
 
 
 def load_engine(
     engine_path: str | os.PathLike,
     log_level: Literal["WARNING", "INFO", "VERBOSE"] = "INFO",
 ) -> tuple[trt.ICudaEngine, trt.IExecutionContext]:
+    import tensorrt as trt
+
     with open(engine_path, "rb") as f:
         engine_data = f.read()
 
@@ -36,12 +32,14 @@ def load_engine(
 
 
 def get_metadata(engine: trt.ICudaEngine):
+    import tensorrt as trt
+
     metadata = defaultdict(dict)
 
     for i in range(engine.num_io_tensors):
         name = engine.get_tensor_name(i)
         dtype = trt.nptype(engine.get_tensor_dtype(name))
-        dtype = numpy_to_torch_dtype_dict[dtype]
+        dtype = numpy_to_torch_dtype(dtype)
         # the returned type is trt.Dims, so we convert to tuple
         shape = tuple(engine.get_tensor_shape(name))
 
@@ -57,13 +55,15 @@ def get_metadata(engine: trt.ICudaEngine):
 
 
 def run_inference(engine: trt.ICudaEngine, context: trt.IExecutionContext, **inputs):
+    import tensorrt as trt
+
     arg_addrs = []
     outputs = {}
     device = list(inputs.values())[0].device
     for i in range(engine.num_io_tensors):
         name = engine.get_tensor_name(i)
         np_dtype = trt.nptype(engine.get_tensor_dtype(name))
-        dtype = numpy_to_torch_dtype_dict[np_dtype]
+        dtype = numpy_to_torch_dtype(np_dtype)
         shape = tuple(engine.get_tensor_shape(name))
         if engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT:
             input = inputs[name]
