@@ -17,7 +17,13 @@ class WandbLogger(LightningWandbLogger):
 
     OVERRIDE_EXCLUDE_KEYS = ["obs_modality", "obs_encoder", "platform", "debug"]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,
+        tags_from_overrides: bool = True,
+        notes_from_overrides: bool = True,
+        **kwargs,
+    ):
 
         # enrich wandb notes and tags with hydra overrides
         overrides = HydraConfig.get().overrides.task
@@ -36,7 +42,7 @@ class WandbLogger(LightningWandbLogger):
             k: v for k, v in overrides.items() if k not in self.OVERRIDE_EXCLUDE_KEYS
         }
 
-        if kwargs.get("notes") is None and param_overrides:
+        if kwargs.get("notes") is None and notes_from_overrides and param_overrides:
 
             # shorten keys by taking only the last part of a dotted path
             # e.g. agent.obs_encoder.t10_image_tokenizer.fusion_type=cat -> t10_image_tokenizer.fusion_type=cat
@@ -48,14 +54,15 @@ class WandbLogger(LightningWandbLogger):
 
             kwargs["notes"] = f"Overrides: {param_overrides}"
 
-        tags = kwargs.get("tags", [])
-        if "obs_encoder" in overrides:
-            tags.append(overrides["obs_encoder"])
-        if "experiment" in overrides:
-            # experiment may show up in the tags and the notes
-            tags.append(overrides["experiment"])
-        tags = tags or None  # avoid passing empty list to wandb
-        kwargs["tags"] = tags
+        if tags_from_overrides:
+            tags = kwargs.get("tags", [])
+            if "obs_encoder" in overrides:
+                tags.append(overrides["obs_encoder"])
+            if "experiment" in overrides:
+                # experiment may show up in the tags and the notes
+                tags.append(overrides["experiment"])
+            tags = tags or None  # avoid passing empty list to wandb
+            kwargs["tags"] = tags
 
         super().__init__(*args, **kwargs)
 
