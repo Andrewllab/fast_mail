@@ -180,18 +180,25 @@ class TrajectoryDataModule(L.LightningDataModule):
             cpu_batch_transform, specs = init_transforms(
                 self._cpu_batch_transforms, specs
             )
-            
+
             log.debug("Instantiating gpu batch transforms for environment...")
             env_gpu_batch_transforms, specs = init_transforms(
                 self._gpu_batch_transforms, specs
             )
-            
+
             if cpu_transforms or cpu_batch_transform:
                 log.debug(
                     "Prepending preprocess and cpu transforms to cpu batch transforms for gym environment..."
                 )
                 env_cpu_batch_transform = (
-                    preprocess_transforms + list(cpu_transforms) + list(cpu_batch_transform)
+                    preprocess_transforms
+                    + list(cpu_transforms)
+                    + list(cpu_batch_transform)
+                )
+                cls = (
+                    Sequential
+                    if any(isinstance(t, nn.Module) for t in env_cpu_batch_transform)
+                    else Compose
                 )
                 self.env_cpu_batch_transform = Compose(*env_cpu_batch_transform)
                 self.env_gpu_batch_transform = env_gpu_batch_transforms
@@ -199,11 +206,16 @@ class TrajectoryDataModule(L.LightningDataModule):
                 log.debug(
                     "No cpu transforms found for gym environment. Prepending preprocess to gpu batch transforms for gym environment"
                 )
-                env_gpu_batch_transform = (
-                    preprocess_transforms + list(env_gpu_batch_transforms)
+                env_gpu_batch_transform = preprocess_transforms + list(
+                    env_gpu_batch_transforms
                 )
                 self.env_cpu_batch_transform = Compose()
-                self.env_gpu_batch_transform = Compose(*env_gpu_batch_transform)
+                cls = (
+                    Sequential
+                    if any(isinstance(t, nn.Module) for t in env_gpu_batch_transform)
+                    else Compose
+                )
+                self.env_gpu_batch_transform = cls(*env_gpu_batch_transform)
 
             # if we have both a dataset and an environment, we need to check if
             # they have the same specs
@@ -280,6 +292,7 @@ class TrajectoryDataModule(L.LightningDataModule):
 
     def get_callbacks(self) -> list[L.Callback]:
         """This function is where I hide all the dirtiest parts of my code."""
+        # TODO: set up a system to register callbacks globally from anywhere
 
         callbacks = []
         if self.env is not None:
@@ -352,6 +365,16 @@ class TrajectoryDataModule(L.LightningDataModule):
             ):
                 if isinstance(value, NonTensorData):
                     batch[key] = value.data.to(device)
+
+        if (self.dataset is not None) and isinstance(
+            self.gpu_batch_transform, nn.Module
+        ):
+            self.gpu_batch_transform = self.gpu_batch_transform.to(device)
+
+        elif self.env is not None and isinstance(
+            self.env_gpu_batch_transform, nn.Module
+        ):
+            self.env_gpu_batch_transform = self.env_gpu_batch_transform.to(device)
 
         return batch
 

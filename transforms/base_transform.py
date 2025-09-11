@@ -230,6 +230,8 @@ class Compose(ReversibleTransform):
 
     Modified from: https://github.com/pytorch/vision/blob/main/torchvision/transforms/transforms.py#L60
     """
+    # TODO: add __new__ method that either creates a Compose or Sequential based on
+    # whether any of the transforms is an nn.Module
 
     def __init__(
         self,
