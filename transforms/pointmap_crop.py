@@ -63,6 +63,6 @@ class CropPointMap(Transform, nn.Module):
                 pos = pointmap[..., :3]  # if it has colors, ignore them for cropping
                 mask = ((pos >= self.min_bound) & (pos <= self.max_bound)).all(dim=-1)
                 # set out-of-bounds points (and their colors) to zero
-                pointmap[mask] = 0.0
+                pointmap[~mask] = 0.0
 
         return tensordict

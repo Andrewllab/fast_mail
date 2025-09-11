@@ -28,8 +28,8 @@ class PointMapNormalize(NormalizingTransform, nn.Module):
         
         streams = [
             stream
-            for spec in specs.obs.values()
-            for _, stream in spec.streams.items()
+            for spec in self._input_specs.values()
+            for stream in spec.streams.values()
             if isinstance(stream, PointMapStream)
         ]
         if not streams:
@@ -82,7 +82,6 @@ class PointMapNormalize(NormalizingTransform, nn.Module):
                 self.mean += delta.sum(dim=0) / self.n_points
                 delta2 = pointmap - self.mean
                 self.m2 += torch.sum(delta * delta2, dim=0)
-                print(self.m2)
 
         return tensordict
     
@@ -90,6 +89,8 @@ class PointMapNormalize(NormalizingTransform, nn.Module):
         """Normalize pointmaps using the computed mean and std."""
         if self.n_points < 2:
             raise RuntimeError("Not enough points to compute statistics. Call `call_trajectory` first.")
+        
+        default_float_dtype = torch.get_default_dtype()
         
         mean = self.mean
         var = self.m2 / (self.n_points - 1)
@@ -104,6 +105,9 @@ class PointMapNormalize(NormalizingTransform, nn.Module):
                 pointmap = pointmaps[name]
                 if stream.channel_order == "HWC":
                     pointmap = torch.movedim(pointmap, -1, -3)
+                    
+                if pointmap.dtype == torch.uint8:
+                    pointmap = pointmap.to(dtype=default_float_dtype).div(255)
 
                 pointmap = F.normalize(pointmap, mean, std, inplace=True)
                 

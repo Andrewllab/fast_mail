@@ -5,7 +5,7 @@ from typing import Sequence
 import pygame
 from tensordict import TensorDict
 
-from environments.specs import CameraSpec, DataSpecs, DepthStream, RGBStream
+from environments.specs import CameraSpec, DataSpecs, DepthStream, RGBStream, PointMapStream
 from transforms.base_transform import Transform
 from utils.rendering import (
     depth_to_renderable,
@@ -36,7 +36,7 @@ class RenderCameras(Transform):
             stream
             for spec in input_specs.values()
             for name, stream in spec.streams.items()
-            if stream_names is None or name in stream_names
+            if stream_names is None or name in stream_names and not isinstance(stream, PointMapStream)
         ]
 
         n_images = len(input_streams)
@@ -79,6 +79,8 @@ class RenderCameras(Transform):
         for key, spec in self._input_specs.items():
             for name, stream in spec.streams.items():
                 if self.stream_names is not None and name not in self.stream_names:
+                    continue
+                elif isinstance(stream, PointMapStream):
                     continue
 
                 image = tensordict["obs", key, name]

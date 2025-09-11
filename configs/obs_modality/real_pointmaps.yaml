@@ -4,12 +4,20 @@ defaults:
   # convert to pointmap
   - /transforms@data.preprocess_transforms.t5_to_pointmap: to_pointmap
 
+  - /transforms@data.preprocess_transforms.t6-1_crop_pointmap: pointmap_crop
+
   # Collect pointmap statistics to normalize it
-  - /transforms@data.preprocess_transforms.t6_pointmap_normalize: pointmap_normalize
+  - /transforms@data.preprocess_transforms.t6-2_pointmap_normalize: pointmap_normalize
 
-  - /transforms@data.preprocess_transforms.t7_triangle_crop: triangle_crop_224x224
-
-  - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
+  # crop out triangles outside the camera frame for the images
+  - /transforms@data.preprocess_transforms.t6-3_triangle_crop: triangle_crop_224x224
 
   # apply ImageNet normalization
-  - /transforms@data.gpu_batch_transforms.t4_norm_image: imagenet_norm
+  - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
+
+data:
+  preprocess_transforms:
+    t6-1_crop_pointmap:
+      x_range: [0.1, 1.0] # crop out the base of the robot
+      y_range: [-0.4, 0.3]  # [min, max] or null
+      z_range: [-0.02, 1.0]  # just high enough to remove the table
