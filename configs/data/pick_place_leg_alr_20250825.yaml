@@ -15,10 +15,4 @@ dataset:
   action_seq_len: 30
   obs_seq_len: 1
 
-preprocess_transforms:
-  t0-2_subsample:
-    factor: 3 # Subsample to 10hz
-  t0-3_relative_actions:
-    reference: current_ee_pose
-
 device: cpu  # this dataset is maybe small enough to fit in memory

@@ -13,6 +13,7 @@ defaults:
   - paths: default
   - hydra: default
   - _self_
+  - preprocessing: null
   - obs_modality: rgbd_imagenet
   - obs_encoder: rgb_resnet18
   - experiment: null

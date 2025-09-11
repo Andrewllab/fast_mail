@@ -1,0 +1,21 @@
+defaults:
+  - /transforms@preprocess_transforms.t0-1_trim_idle: time_trim_idle
+
+  # since this dataset was recorded at ~30 fps, subsample by a factor of 2
+  - /transforms@preprocess_transforms.t0-2_subsample: time_subsample
+
+  # We express rotations as quaternions. Predicted quaternions are normalized to unit length
+  - /transforms@preprocess_transforms.t0-4_quaternions: rotations_quaternions
+
+  # - /transforms@preprocess_transforms.t0-5_relative_actions: action_abs_to_relative_chunk
+
+  # normalize absolute actions so that they lie within [-1,1]
+  - /transforms@preprocess_transforms.t0-9_normalize_actions: action_norm_minmax
+
+data:
+  preprocess_transforms:
+    t0-2_subsample:
+      factor: 2
+
+    t0-5_relative_actions:
+      reference: current_ee_pose

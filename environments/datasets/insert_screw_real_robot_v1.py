@@ -126,6 +126,20 @@ class RealRobotDataset(TrajectoryDataset):
             }
         )
         
+        if filepath.parts[-2] != "enrico":
+            # all the demonstrations in the enrico subfolder are correct
+            # the others have left and right cameras swapped
+
+            log.debug(f"Swapping left and right cameras for file {filepath}")
+
+            # cannot write to a PersistentTensorDict in-place
+            td = td.contiguous()
+
+            left_cam = td["obs", "front_left_cam"]
+            right_cam = td["obs", "front_right_cam"]
+            td["obs", "front_left_cam"] = right_cam
+            td["obs", "front_right_cam"] = left_cam
+
         if self.lightweight:
             td["obs", "front_left_cam"].pop("right")
             td["obs", "front_right_cam"].pop("right")
