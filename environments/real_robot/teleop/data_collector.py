@@ -361,17 +361,22 @@ class DataCollectionManager:
             episode_td["obs", cam_name, "meta"] = self.cam_calib[cam_name]
 
         h5_path = self.data_dir / f"{datetime.now().strftime('%Y_%m_%d-%H_%M_%S')}.h5"
+
+        print(f"Saving episode {counter} to {h5_path}")
+        traj_length = len(data_follower.joint_pos_list)
+        duration = time.perf_counter() - self.episode_start
+        print(
+            f"Trajectory stats:\n"
+            f"Length (steps): {traj_length}\n"
+            f"Duration (s): {duration:.2f}\n"
+            f"Effective fps {traj_length / duration:.4f}"
+        )
+
         episode_td.to_h5(
             str(h5_path),
             compression="gzip",
             compression_opts=7,
         )
-
-        print(f"Episode {counter} saved to {h5_path}")
-
-        traj_length = len(data_follower.joint_pos_list)
-        duration = time.perf_counter() - self.episode_start
-        print(f"Average fps throughout trajectory was {traj_length / duration:.4f}")
 
     def __close_hardware_connections(self):
         self.teleoperation_pair.close()
