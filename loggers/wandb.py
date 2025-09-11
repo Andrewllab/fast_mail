@@ -22,14 +22,27 @@ class WandbLogger(LightningWandbLogger):
         # enrich wandb notes and tags with hydra overrides
         overrides = HydraConfig.get().overrides.task
 
-        overrides = dict(tuple(o.lstrip("+").split("=", 1)) for o in overrides)
+        # remove leading "+" and split into (key, value) pairs
+        overrides = [tuple(o.lstrip("+").split("=", 1)) for o in overrides]
+
+        # ignore blank placeholder experiment "none"
+        overrides = [
+            (k, v) for k, v in overrides if not (k == "experiment" and v == "none")
+        ]
+
+        # ignore certain keys that almost always show up in the overrides
+        # some of these will end up as tags instead
         param_overrides = [
-            k + "=" + v
-            for k, v in overrides.items()
-            if k not in self.OVERRIDE_EXCLUDE_KEYS
+            (k, v) for k, v in overrides if k not in self.OVERRIDE_EXCLUDE_KEYS
         ]
 
         if kwargs.get("notes") is None and param_overrides:
+            for i, (key, value) in enumerate(param_overrides):
+                short_key = key.split(".")[-2:]  # take last part of a dotted path
+                short_key = ".".join(short_key)
+
+                param_overrides[i] = short_key + "=" + value
+
             param_overrides = ", ".join(param_overrides)
 
             kwargs["notes"] = f"Overrides: {param_overrides}"
