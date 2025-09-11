@@ -16,7 +16,7 @@ job:
     override_dirname:
       kv_sep: "-"
       item_sep: _
-      exclude_keys: [obs_modality,obs_encoder,platform,debug]
+      exclude_keys: [data,obs_modality,obs_encoder,platform,debug]
 
 job_logging:
   handlers:

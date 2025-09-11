@@ -2,6 +2,7 @@
 
 defaults:
   - override /hydra/launcher: submitit_slurm
+  - override /hydra: numbered_subdir  # ensure that folder names are not too long
   - _self_
 
 data:
