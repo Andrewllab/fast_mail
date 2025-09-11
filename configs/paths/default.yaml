@@ -23,4 +23,4 @@ recording_dir: ${paths.root_dir}/recordings
 
 # because this gets saved into the transforms, don't resolve the (system-specific) absolute path
 # instead, $PROJECT_ROOT should be resolved at runtime
-fs_engine_path: $PROJECT_ROOT/foundation_stereo_models/foundation_stereo_small_3x480x640.plan
+fs_engines_dir: $PROJECT_ROOT/foundation_stereo_models

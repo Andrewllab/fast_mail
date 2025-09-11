@@ -23,6 +23,7 @@ data:
       # Hence zed's neural depth mode actually works better
       # than foundation stereo
       cam_keys: gripper_cam
+      engine_path: ${paths.fs_engines_dir}/foundation_stereo_small_1x480x640.plan
 
     # remove the IR streams from the realsense camera, now that we have used
     # them to compute depth

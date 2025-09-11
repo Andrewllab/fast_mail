@@ -1,0 +1,6 @@
+defaults:
+  - insert_screw_alr_20250817
+  - _self_
+
+dataset:
+  root_dir: ${paths.data_dir}/insert_one_leg/real_world_teleoperation/insert_screw_2025-08-17
