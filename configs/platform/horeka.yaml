@@ -13,5 +13,6 @@ hydra:
     account: hk-project-p0022253
     timeout_min: 1440  # 24 hours
     partition: accelerated
+    constraint: LSDF  # needed for the LSDF to be mounted on compute nodes
     gres: gpu:1
     cpus_per_task: 38
