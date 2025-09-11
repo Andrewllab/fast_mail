@@ -1,0 +1,5 @@
+_target_: transforms.pointmap_crop.CropPointMap
+_partial_: True
+x_range: [0.1, 1.0] # crop out the base of the robot
+y_range: [-0.4, 0.3]  # [min, max] or null
+z_range: [-0.02, 1.0]  # remove everything below the table

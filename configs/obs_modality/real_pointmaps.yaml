@@ -4,7 +4,7 @@ defaults:
   # convert to pointmap
   - /transforms@data.preprocess_transforms.t5_to_pointmap: to_pointmap
 
-  - /transforms@data.preprocess_transforms.t6-1_crop_pointmap: pointmap_crop
+  - /transforms@data.preprocess_transforms.t6-1_crop_pointmap: pointmap_crop_real
 
   # Collect pointmap statistics to normalize it
   - /transforms@data.preprocess_transforms.t6-2_pointmap_normalize: pointmap_normalize
@@ -12,12 +12,22 @@ defaults:
   # crop out triangles outside the camera frame for the images
   - /transforms@data.preprocess_transforms.t6-3_triangle_crop: triangle_crop_224x224
 
+  - /transforms@data.preprocess_transforms.t99_cleanup: cleanup
+
   # apply ImageNet normalization
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
 
 data:
   preprocess_transforms:
-    t6-1_crop_pointmap:
-      x_range: [0.1, 1.0] # crop out the base of the robot
-      y_range: [-0.4, 0.3]  # [min, max] or null
-      z_range: [-0.02, 1.0]  # just high enough to remove the table
+    t5_to_pointmap:
+      color: False  # to use 6-channel fusion, use real_pointmaps_6ch config
+
+    t99_cleanup:
+      # keep rgb streams if MultiviewPointMapTokenizer fusion type is not None (or can't be resolved)
+      keep_stream_types: ${if:${oc.select:agent.obs_encoder.t10_image_tokenizer.fusion_type,True},[pointmap,rgb],[pointmap]}
+      drop_stream_names: right  # even if we keep rgb streams, drop the right rgb stream
+      drop_keys: gripper_cam_transform
+
+  # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
+  dataset:
+    preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/multiview_pointmap

@@ -49,7 +49,9 @@ class TrimIdleStart(Transform):
         start = (start - self.margin).clamp(min=0)
         # TODO: also trim the end of the trajectory
 
-        log.debug(f"Trimming {start} steps from the start of the trajectory.")
+        log.debug(
+            f"Trimming the first {start} steps from trajectory of length {len(is_moving)}."
+        )
 
         # TODO: slice anything with a leading dimension of T
         tensordict["obs"] = tensordict["obs"][start:]
