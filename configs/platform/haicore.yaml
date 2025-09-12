@@ -9,10 +9,6 @@ platform:
   batch_size: 128
   num_workers: 36  # node has 152 cores = 38 cores per GPU
 
-# disable the batch size finder, since it seems to find a batch size that is too high
-callbacks:
-  batch_size_finder: null
-
 hydra:
   launcher:
     account: anthropomatik  # not sure if this is needed

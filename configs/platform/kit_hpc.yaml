@@ -15,6 +15,7 @@ paths:
 data:
   dataset:
      overwrite_preprocessed: True  # don't crash just because zipped datasets are out of date
+  batch_size: 512  # increase the nominal batch size, since we have more memory
 
 hydra:
   launcher:

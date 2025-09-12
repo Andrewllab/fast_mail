@@ -40,3 +40,8 @@ data:
   
   dataset:
     preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/pointclouds
+
+# disable the batch size finder for point clouds, because the data points 
+# don't have a consistent memory size
+callbacks:
+  batch_size_finder: null

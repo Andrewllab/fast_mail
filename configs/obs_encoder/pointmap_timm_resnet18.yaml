@@ -17,6 +17,13 @@ agent:
       image_encoder:
         pretrained: True
 
+data:
+  batch_size: ${floor_div:${platform.batch_size},2}  # 1/2 of typical batch size
+
 logger:
   wandb:
     tags: ["pointmap", "timm_resnet18"]
+
+# batch size finder seems to lead to OOMs with this model
+callbacks:
+  batch_size_finder: null
