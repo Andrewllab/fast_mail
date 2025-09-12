@@ -208,7 +208,7 @@ Note: according to [the documentation](https://docs.nvidia.com/deeplearning/tens
 ### Troubleshooting FoundationStereo
 
 - Try not to do anything that requires too much GPU memory during compilation. If compilation randomly crashes after 10+ minutes, this may be the cause.
-- If the file `/usr/local/cuda/targets/x86_64-linux/lib/libnvinfer_builder_resource.so.10.9.0` exists on your system, this may be causing a problem. `trtexec` seems to want to load this dynamic library if it exists, even though it's (presumably) for an older version of `libnvinfer` (10.9 vs. 10.13). Uninstall all TensorRT and CUDA apt packages (carefully). You may see a message like `/usr/local/cuda not empty so not removing` after uninstalling CUDA. After all traces of CUDA should be gone from your system, if this file (and a few others) are still there, remove them with `rm -rf`. Reinstall TensorRT (CUDA toolkit is not required) and try compilation again.
+- If the file `/usr/local/cuda/targets/x86_64-linux/lib/libnvinfer_builder_resource.so.10.9.0` exists on your system, this may be causing a problem. `trtexec` seems to want to load this dynamic library if it exists, even though it's (presumably) for an older version of `libnvinfer` (10.9 vs. 10.13). Carefully uninstall all TensorRT and CUDA apt packages (e.g. `sudo apt remove "cuda-*"`). You may see a message like `'/usr/local/cuda-12.8/targets/x86_64-linux/lib' not empty so not removed` after uninstalling CUDA. After all traces of CUDA should be gone from your system, if this file (and a few others) are still there, remove them with `sudo rm -r`. Reinstall TensorRT (CUDA toolkit is not required) and try compilation again.
 
 # Data
 
