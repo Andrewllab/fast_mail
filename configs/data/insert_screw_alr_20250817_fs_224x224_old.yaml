@@ -1,0 +1,26 @@
+# Compatibility for old dataset `insert_screw_20250817_fs_224x224_old3`
+# We accidentaly used preprocessing transforms like action norm and trim time idle
+# during prepreprocessing. So we remove them here to don't apply them twice.
+# However, we still have to time subsample from 30hz to 15hz
+# Don't use this config for new datasets!
+
+defaults:
+  - default
+  - /transforms@preprocess_transforms.t0-1_trim_idle: time_subsample
+  - /cameras/calibration@dataset.extrinsics: 2025-08-31
+
+
+task_suite: furniture_bench
+task: insert_one_leg
+name: insert_screw_20250817
+
+dataset:
+  _target_: environments.datasets.insert_screw_real_robot_v1.RealRobotDataset
+  _partial_: True
+  root_dir: ${paths.data_dir}/insert_one_leg/real_world_teleoperation/insert_screw_2025-08-17_fs_224x224_old3
+  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
+  action_seq_len: 60
+  obs_seq_len: 1
+  gpu_preprocess_batch_size: ${platform.fs_preprocess_batch_size}  # TODO: move inside transform
+
+device: cpu  # this dataset is maybe small enough to fit in memory

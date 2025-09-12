@@ -1,0 +1,21 @@
+# @package _global_
+
+defaults:
+  - pointmap_fourier_features
+
+# Remove pointmap normalise because we don't trust the transform yet
+data:
+  preprocess_transforms:
+    # remove pointmap normalisation for now
+    t6-2_pointmap_normalize: null
+
+agent:
+  obs_encoder:
+    t10_image_tokenizer:
+      shared_encoder: True
+      fusion_type: ${fusion_type}
+      image_encoder:
+        model_name: convnextv2_${model_size}
+
+fusion_type: "cat"  # "cat" or null
+model_size: "nano" # pico, femto

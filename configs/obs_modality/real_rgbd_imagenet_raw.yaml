@@ -3,18 +3,34 @@
 defaults:
   - /transforms@data.preprocess_transforms.t0-0_cleanup: cleanup
 
+  - /transforms@data.preprocess_transforms.t0-2_time_subsample: time_subsample
+
+  - /transforms@data.preprocess_transforms.t1-0_resize_fs: image_resize
+
+  - /transforms@data.preprocess_transforms.t1-1_crop_fs: image_centercrop
+
+  # mask out invalid depth values
+  - /transforms@data.preprocess_transforms.t1-2_remove_inf_depth: remove_inf_depth
+
   - /transforms@data.preprocess_transforms.t1-3_triangle_crop: triangle_crop_224x224
-  
+
   # apply ImageNet normalization
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
 
 data:
+  # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess_transforms:
     # We don't need the right camera view for this task
     t0-0_cleanup:
       keep_stream_types: [rgb, depth]
       drop_stream_names: right  # if multiple exist, drop the right rgb stream
       drop_keys: gripper_cam_transform
+
+    t1-0_resize_fs:
+      shape: 224  # scale shortest side to 480 and keep aspect ratio
+
+    t1-1_crop_fs:
+      shape: 224  # crop all streams to 480x640
 
   # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
   dataset:
