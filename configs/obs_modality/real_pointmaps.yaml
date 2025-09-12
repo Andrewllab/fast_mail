@@ -6,8 +6,8 @@ defaults:
 
   - /transforms@data.preprocess_transforms.t6-1_crop_pointmap: pointmap_crop_real
 
-  # Collect pointmap statistics to normalize it
-  - /transforms@data.preprocess_transforms.t6-2_pointmap_normalize: pointmap_normalize
+  # # Collect pointmap statistics to normalize it
+  # - /transforms@data.preprocess_transforms.t6-2_pointmap_normalize: pointmap_normalize
 
   # crop out triangles outside the camera frame for the images
   - /transforms@data.preprocess_transforms.t6-3_triangle_crop: triangle_crop_224x224
