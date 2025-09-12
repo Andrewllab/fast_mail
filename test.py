@@ -6,7 +6,7 @@ import rootutils
 import torch
 from lightning import Callback, Trainer
 from lightning.pytorch.loggers import Logger
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 # enables importing local modules regardless of where the script is run
 rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
@@ -70,8 +70,9 @@ def test(cfg: DictConfig) -> None:
         agent_cfg = patch_load_from_checkpoint(agent_cfg, checkpoint_path)
 
         # save the merged configs back to cfg so they can be logged to wandb
-        cfg.agent = agent_cfg
-        cfg.data = data_cfg
+        with open_dict(cfg):
+            cfg.agent = agent_cfg
+            cfg.data = data_cfg
 
     update_wandb_config(cfg, train_tags, train_notes)
 

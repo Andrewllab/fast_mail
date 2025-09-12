@@ -37,8 +37,8 @@ class EvaluatePredictedTrajectories(Callback):
         batch_idx: int,
         dataloader_idx: int = 0,
     ) -> None:
-        self.target_actions.append(batch["action"].cpu())
-        self.predicted_actions.append(outputs["actions"].cpu())
+        self.target_actions.append(batch["ref_action"].cpu())
+        self.predicted_actions.append(batch["action"].cpu())
 
     on_test_batch_end = on_validation_batch_end
 
@@ -102,7 +102,7 @@ class EvaluatePredictedTrajectories(Callback):
                     filename = f"traj_{i + 1}_horizon_{action_horizon}.png"
                     plt.savefig(log_dir / filename)
                     plt.close(fig)  # Close the figure to free memory
-                    log.debug(f"Saved plot to {filename}")
+                    log.debug(f"Saved plot to {log_dir / filename}")
 
                 losses.append(F.mse_loss(predicted_action, target_action))
             loss = torch.mean(torch.stack(losses))
