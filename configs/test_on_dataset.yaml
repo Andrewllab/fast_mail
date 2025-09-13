@@ -6,7 +6,7 @@ defaults:
   - logger:
   - python_logging: default
   - paths: default
-  - hydra: default
+  - hydra: checkpoint_dir_naming
   - _self_
   - platform: default
   - optional local: default

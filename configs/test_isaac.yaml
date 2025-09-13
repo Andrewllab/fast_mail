@@ -7,7 +7,7 @@ defaults:
   - logger: wandb
   - python_logging: default
   - paths: default
-  - hydra: default
+  - hydra: checkpoint_dir_naming
   - _self_
   - obs_modality: prepreprocess_224x224
   - platform: default

@@ -1,0 +1,14 @@
+defaults:
+  - default
+  - _self_
+
+# output directory based on wandb run id
+run:
+  dir: ${paths.log_dir}/${job_type}_runs/${checkpoint.wandb_run_id}/${now:%Y-%m-%d}_${now:%H-%M-%S}
+
+# we basically "disable" the directory pattern for sweeps by setting the root 
+# dir to a constant value and the subdir to be the same as for a single run
+# we lose the multirun.yaml config file, but we don't use it anyway
+sweep:
+  dir: ${paths.log_dir}/${job_type}_runs
+  subdir: ${checkpoint.wandb_run_id}/${now:%Y-%m-%d}_${now:%H-%M-%S}

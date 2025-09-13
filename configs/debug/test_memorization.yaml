@@ -1,6 +1,6 @@
 # @package _global_
 
-# usage: python test.py -cn test_pn_dataset debug=test_memorization
+# usage: python test.py -cn test_on_dataset debug=test_memorization
 
 defaults:
   - verbose

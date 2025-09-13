@@ -4,7 +4,7 @@ defaults:
   - logger:
   - python_logging: default
   - paths: default
-  - hydra: default
+  - hydra: checkpoint_dir_naming
   # Render cameras after preprocessing but before normalization so
   # we actually see something
   - transforms@data.preprocess_transforms.t3-2_render_cameras: render_cameras
