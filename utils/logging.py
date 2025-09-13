@@ -131,6 +131,11 @@ def log_exception_and_finish_wandb(func: Callable) -> Callable:
             exit_code = 1
             raise
 
+        except KeyboardInterrupt:
+            log.exception(f"KeyboardInterrupt in {func.__name__}")
+            exit_code = 1
+            raise
+
         finally:
             # always close wandb run (even if exception occurs so multirun won't fail)
             finished = try_finish_wandb(exit_code)

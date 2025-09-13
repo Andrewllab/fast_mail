@@ -81,19 +81,21 @@ class RealRobotDataset(TrajectoryDataset):
         ]
 
         action_data = traj["actions"]
-        action = torch.cat(
-            (
-                action_data["eef_pos"],  # shape: (T, 3) 
-                convert_quat(action_data["eef_quat"], to="wxyz"),  # shape: (T, 4)
-                action_data["gripper_pos"].unsqueeze(-1),  # shape: (T, 1)
-            ),
-            dim=-1,
-        )
-
         target_ee_pose = torch.cat(
             (
                 action_data["eef_pos"],  # shape: (T, 3)
                 convert_quat(action_data["eef_quat"], to="wxyz"),  # shape: (T, 4)
+            ),
+            dim=-1,
+        )
+
+        target_joint_pos = action_data["joint_pos"]
+        target_gripper_pos = action_data["gripper_pos"].unsqueeze(-1)
+
+        action = torch.cat(
+            (
+                target_ee_pose,  # shape: (T, 7)
+                target_gripper_pos,  # shape: (T, 1)
             ),
             dim=-1,
         )
@@ -120,6 +122,8 @@ class RealRobotDataset(TrajectoryDataset):
                     "robot_state": robot_state,
                     "ee_pose": ee_pose,
                     "target_ee_pose": target_ee_pose,
+                    "target_joint_pos": target_joint_pos,
+                    "target_gripper_pos": target_gripper_pos,
                     "gripper_cam_transform": gripper_cam_transform.to(dtype=torch.float32),
                 },
                 "action": action,
@@ -139,6 +143,8 @@ class RealRobotDataset(TrajectoryDataset):
             right_cam = td["obs", "front_right_cam"]
             td["obs", "front_left_cam"] = right_cam
             td["obs", "front_right_cam"] = left_cam
+        else:
+            log.debug(f"Not swapping left and right cameras for file {filepath}")
 
         if self.lightweight:
             td["obs", "front_left_cam"].pop("right")
