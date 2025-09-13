@@ -6,7 +6,7 @@ defaults:
 
   - /transforms@data.preprocess_transforms.t3_to_pcd: to_pointcloud
   
-  - /transforms@data.preprocess_transforms.t4_crop_pcd: pointcloud_crop
+  - /transforms@data.preprocess_transforms.t4_crop_pcd: pointcloud_crop_sim
 
   - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
 
