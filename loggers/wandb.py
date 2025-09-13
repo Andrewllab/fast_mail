@@ -15,15 +15,15 @@ log = logging.getLogger(__name__)
 
 class WandbLogger(LightningWandbLogger):
 
-    OVERRIDE_EXCLUDE_KEYS = ["obs_modality", "obs_encoder", "platform", "debug"]
-
     def __init__(
         self,
         *args,
         tags_from_overrides: bool = True,
         notes_from_overrides: bool = True,
+        exclude_override_keys: Sequence[str] | None = None,
         **kwargs,
     ):
+        exclude_override_keys = exclude_override_keys or []
 
         # enrich wandb notes and tags with hydra overrides
         overrides = HydraConfig.get().overrides.task
@@ -39,7 +39,7 @@ class WandbLogger(LightningWandbLogger):
         # ignore certain keys that almost always show up in the overrides
         # some of these will end up as tags instead
         param_overrides = {
-            k: v for k, v in overrides.items() if k not in self.OVERRIDE_EXCLUDE_KEYS
+            k: v for k, v in overrides.items() if k not in exclude_override_keys
         }
 
         if kwargs.get("notes") is None and notes_from_overrides and param_overrides:

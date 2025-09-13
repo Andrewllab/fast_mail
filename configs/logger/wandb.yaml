@@ -1,6 +1,7 @@
 wandb:
   _target_: loggers.wandb.WandbLogger
   log_model: all  # all checkpoints are uploaded to wandb, even if only the last one is kept on disk
+  exclude_override_keys: [data, preprocessing, obs_modality, obs_encoder, platform, debug]
 
   # passed to wandb.init()
   project: 3d-sim2real
