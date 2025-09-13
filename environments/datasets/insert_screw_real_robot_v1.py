@@ -127,7 +127,7 @@ class RealRobotDataset(TrajectoryDataset):
                     "gripper_cam_transform": gripper_cam_transform.to(dtype=torch.float32),
                 },
                 "action": action,
-            }
+            }  # type: ignore
         )
         
         if filepath.parts[-2] != "enrico":
@@ -291,6 +291,17 @@ class RealRobotDataset(TrajectoryDataset):
         ee_pose = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
         target_ee_pose = ObsSpec(elem_shape=(7,), time=self.action_seq_len)
 
+        target_joint_pos = data["actions", "joint_pos"]
+        assert target_joint_pos.ndim == 2
+        assert target_joint_pos.shape[0] == T
+        assert target_joint_pos.shape[-1] == 7
+        target_joint_pos = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
+        
+        target_gripper_pos = data["actions", "gripper_pos"]
+        assert target_gripper_pos.ndim == 1
+        assert target_gripper_pos.shape[0] == T
+        target_gripper_pos = ObsSpec(elem_shape=(1,), time=self.obs_seq_len)
+
         # gripper_cam_transform
         transform = data["obs", "gripper_cam", "frames", "dynamic_extrinsics"]
         assert transform.ndim == 3
@@ -320,6 +331,8 @@ class RealRobotDataset(TrajectoryDataset):
                 "robot_state": robot_state,
                 "ee_pose": ee_pose,
                 "target_ee_pose": target_ee_pose,
+                "target_joint_pos": target_joint_pos,
+                "target_gripper_pos": target_gripper_pos,
                 "gripper_cam_transform": gripper_cam_transform,
             },
             action=action,

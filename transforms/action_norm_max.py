@@ -59,6 +59,9 @@ class ActionNormMaxMagnitude(NormalizingTransform, nn.Module):
                 "Some dimensions of the action space have a max magnitude of zero. This will cause zero values after action unnormalization."
             )
 
+        # clamp action to [-1, 1]
+        action = action.clamp(-1, 1)
+
         # unnormalize actions
         action = action * self.max_actions
         return action
@@ -118,6 +121,9 @@ class ActionNormMinMax(NormalizingTransform, nn.Module):
             log.warning(
                 "Some dimensions of the action space have a range of zero. This will cause zero values after action unnormalization."
             )
+
+        # clamp action to [-1, 1]
+        action = action.clamp(-1, 1)
 
         # unnormalize actions
         action = (action + 1) / 2 * self.range_actions + self.min_actions
