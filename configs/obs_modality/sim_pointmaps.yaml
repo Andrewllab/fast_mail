@@ -4,10 +4,12 @@ defaults:
   # convert to pointmap
   - /transforms@data.preprocess_transforms.t5_to_pointmap: to_pointmap
 
-  - /transforms@data.preprocess_transforms.t6-1_crop_pointmap: pointmap_crop_sim
+  # - /transforms@data.preprocess_transforms.t6-1_crop_pointmap: pointmap_crop_sim
 
   # # Collect pointmap statistics to normalize it
   # - /transforms@data.preprocess_transforms.t6-2_pointmap_normalize: pointmap_normalize
+
+  # - /transforms@data.preprocess_transforms.t7_pointmap_random_transform: pointmap_random_transform
 
   - /transforms@data.preprocess_transforms.t99_cleanup: cleanup
 
