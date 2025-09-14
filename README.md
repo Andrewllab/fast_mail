@@ -115,6 +115,9 @@ pip install -r requirements_test.txt
 
 ## IsaacLab
 
+Warning: Isaaclab downgrades your numpy version to 1.26.4, and is **not** compatible with numpy 2.x.
+For this and other reasons, it is not recommended to install IsaacLab in the same conda environment as Novometis, FoundationStereo, or any other environment suite.
+
 Users with Ubuntu 22.04/24.04 can simply install IsaacSim and IsaacLab with pip:
 
 ```bash
@@ -128,19 +131,11 @@ After installation, you can reinstall torch again, since isaaclab IsaacLab torch
 pip3 install --upgrade torch torchvision torch_geometric wandb
 ```
 
-Be aware that isaaclab downgrades your numpy version to 1.26.4, and is **not** compatible with numpy 2.x.
-For this and other reasons, it is not recommended to install IsaacLab in the same environment as Novometis, FoundationStereo, or any other optional dependency.
 
 ## ManiSkill
 
-Note: ManiSkill needs an old gymnasium version (0.29.1).
-I recommend to create an seperate env for maniskill.
-
-```bash
-mamba create -n maniskill python=3.10
-mamba activate maniskill
-pip install -r requirements_maniskill.txt
-```
+Warning: Maniskill downgrades gymnasium to 0.29.1 and numpy to 1.26.4.
+Therefore it is not recommended to install ManiSkill in the same conda environment as Novometis, FoundationStereo, or any other environment suite.
 
 Install ManiSkill with:
 ```bash
@@ -152,16 +147,16 @@ Optionally, define a directory for maniskill downloads
 export MS_ASSET_DIR=path/to/where/to/save/all/mani_skill_data
 ```
 
-Download the dataset of desire. [Overview Tasks](https://maniskill.readthedocs.io/en/latest/user_guide/datasets/demos.html)
+Download your desired dataset. [Overview of Tasks](https://maniskill.readthedocs.io/en/latest/user_guide/datasets/demos.html)
 ```bash
 python -m mani_skill.utils.download_demo ${ENV_ID}
 ```
 
-(Optionally) If you intend to render obs in 256x256. Please go into your mani_skill.trajectory.replay_trajectory and add following code to line 522:
-```bash
+(Optionally) If you intend to render obs in 256x256, please go into your mani_skill.trajectory.replay_trajectory and add following code to line 522:
+```python
 env_kwargs["sensor_configs"] = {
         "base_camera": {"width": 256, "height": 256},
-        "hand_camera": {"width": 256, "height": 256} # comment out if necessary
+        "hand_camera": {"width": 256, "height": 256},  # comment out if necessary
     }
 ```
 
@@ -181,6 +176,7 @@ python -m mani_skill.trajectory.replay_trajectory \
 (Optionally) Preprocess the goal embeddings for every task.
 Be aware, embeddings might differ each time they're preprocessed! If possible, just use the provided ones.
 ```bash
+pip install regex
 python -m scripts.maniskill_preprocess_goals
 ```
 
