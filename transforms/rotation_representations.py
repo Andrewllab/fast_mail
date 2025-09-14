@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import torch
+import torch.nn.functional as F
 from tensordict import TensorDict
 
 from environments.specs import DataSpecs
@@ -18,6 +20,13 @@ class QuaternionRotations(ReversibleTransform):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}"
 
+    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
+        quat = tensordict["action"][..., 3:7]
+        quat = remove_jumps_from_quat_trajectory(quat)
+        tensordict["action"][..., 3:7] = quat
+
+        return tensordict
+
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         return tensordict
 
@@ -29,3 +38,39 @@ class QuaternionRotations(ReversibleTransform):
         action[..., 3:7] = normalize(action[..., 3:7])
 
         return tensordict
+
+
+def remove_jumps_from_quat_trajectory(quat: torch.Tensor) -> torch.Tensor:
+    """Given a trajectory of quaternions, remove jumps by flipping quaternions where needed.
+
+    Since a quaternion and its negation represent the same rotation, a trajectory of quaternions
+    may contain jumps where a quaternion is suddenly replaced by its negation. This function detects
+    such jumps and flips the quaternions after the jump to ensure a smooth trajectory.
+
+    Args:
+        quat (torch.Tensor): Tensor of shape (T, 4) representing a trajectory of quaternions.
+
+    Returns:
+        torch.Tensor: Tensor of the same shape as input, with jumps removed.
+    """
+
+    if quat.ndim != 2 or quat.shape[-1] != 4:
+        raise ValueError("Input tensor must have shape (T, 4)")
+
+    # create a tensor with both the quaternion and its negation
+    quat_pos_and_neg = torch.stack([quat, -quat], dim=-2)
+
+    # compare each quaternion to the following one and its negation and
+    # compute the MSE
+    mse = (quat_pos_and_neg[1:] - quat[:-1].unsqueeze(dim=-2)).pow(2).sum(dim=-1)
+
+    # create a mask that is 0 if the original quaternion was closer, 1 if the negated one was
+    jump_locations = F.pad(torch.argmin(mse, dim=-1), (1, 0))
+
+    # we have to swap all quaternions after a swap, so we compute the cumulative sum of the mask
+    swap_mask = (jump_locations.cumsum(dim=0) % 2).to(torch.bool)
+
+    # swap the quaternions where needed
+    quat[swap_mask] = -quat[swap_mask]
+
+    return quat
