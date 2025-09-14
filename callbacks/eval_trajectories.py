@@ -10,14 +10,19 @@ from typing_extensions import override
 
 log = logging.getLogger(__name__)
 
-DIM_NAMES = ["x", "y", "z", "quat_w", "quat_x", "quat_y", "quat_z", "gripper"]
-FOLDER_NAME = "trajectory_plots"
-
 
 class EvaluatePredictedTrajectories(Callback):
-    def __init__(self, action_horizons: Sequence[int], plot: bool = False) -> None:
+    def __init__(
+        self,
+        action_horizons: Sequence[int],
+        plot: bool = False,
+        folder_name: str = "trajectory_plots",
+        dim_names: Sequence[str] | None = None,
+    ) -> None:
         self.action_horizons = list(action_horizons)
         self.plot = plot
+        self.folder_name = folder_name
+        self.dim_names = dim_names
 
         self.target_actions = []
         self.predicted_actions = []
@@ -56,9 +61,14 @@ class EvaluatePredictedTrajectories(Callback):
         assert samples_per_trajectory.sum() == target_actions.shape[0]
         cumulative_samples = F.pad(torch.cumsum(samples_per_trajectory, dim=0), (1, 0))
 
-        log_dir = Path(trainer.log_dir) / FOLDER_NAME
+        log_dir = Path(trainer.log_dir) / self.folder_name
         if self.plot:
             log_dir.mkdir(parents=True, exist_ok=True)
+
+            dim_names = self.dim_names
+            action_dim = target_actions.shape[-1]
+            if dim_names is None:
+                dim_names = [f"action_{i}" for i in range(1, 1 + action_dim)]
 
         for action_horizon in self.action_horizons:
             losses = []
@@ -84,11 +94,11 @@ class EvaluatePredictedTrajectories(Callback):
                     fig, axs = plt.subplots(2, 4, figsize=(16, 8))
                     axs = axs.flatten()
 
-                    for dim in range(target_action.shape[-1]):
+                    for dim, name in zip(range(action_dim), dim_names):
                         ax = axs[dim]
                         ax.plot(target_action[..., dim].numpy(), label="Target")
                         ax.plot(predicted_action[..., dim].numpy(), label="Predicted")
-                        ax.set_title(DIM_NAMES[dim])
+                        ax.set_title(name)
                         ax.set_xlabel("Time")
                         ax.set_ylabel("Value")
                         ax.legend()

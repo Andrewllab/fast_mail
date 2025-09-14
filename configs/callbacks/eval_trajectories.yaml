@@ -1,4 +1,5 @@
 eval_trajectories:
   _target_: callbacks.eval_trajectories.EvaluatePredictedTrajectories
-  action_horizons: [1, 5, 10]
+  action_horizons: [10, 20, 30]
   plot: True
+  dim_names: ["x", "y", "z", "quat_w", "quat_x", "quat_y", "quat_z", "gripper"]
