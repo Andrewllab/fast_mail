@@ -1,0 +1,32 @@
+# @package _global_
+
+defaults:
+  # replace measured depth with FoundationStereo depth
+  - /transforms@data.preprocess_transforms.t1-2_foundationstereo: foundation_stereo
+
+  # mask out invalid depth values
+  - /transforms@data.preprocess_transforms.t1-3_remove_inf_depth: remove_inf_depth
+
+  # pretrained resnet18 expects images of shape 224x224
+  - /transforms@data.preprocess_transforms.t2_resize: image_resize
+  - /transforms@data.preprocess_transforms.t3_crop_image: image_centercrop
+  
+  - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
+
+data:
+  preprocess_transforms:
+    t1-2_foundationstereo:
+      engine_path: ${paths.fs_engines_dir}/foundation_stereo_small_3x480x640.plan
+
+    t2_resize:
+      shape: 224  # scale shortest side to 224 and keep aspect ratio
+    
+    t3_crop_image:
+      shape: 224  # crop to 224x224 square
+
+    t9_cleanup:
+      drop_stream_types: [ir]  # drop IR streams from the realsense
+      drop_stream_names: [right]  # drop right rgb stream from the zeds
+
+  dataset:
+    preprocessed_dir: ${append_to_stem:${data.dataset.root_dir},_fs_224x224}
