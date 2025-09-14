@@ -1,0 +1,6 @@
+defaults:
+  - lamp_20250909
+  - _self_
+
+dataset:
+  root_dir: ${paths.data_dir}/lamp/real_world_teleoperation/lamp_2025-09-09

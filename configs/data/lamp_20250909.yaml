@@ -1,0 +1,20 @@
+# recorded with real robot at 15fps
+
+defaults:
+  - default
+  - /cameras/calibration@dataset.extrinsics: 2025-08-31
+
+task_suite: furniture_bench
+task: lamp
+name: lamp_20250909
+
+dataset:
+  _target_: environments.datasets.insert_screw_real_robot_v1.RealRobotDataset
+  _partial_: True
+  root_dir: ${paths.data_dir}/lamp/real_world_teleoperation/lamp_2025-09-09_fs_224x224
+  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
+  action_seq_len: 60
+  obs_seq_len: 1
+  gpu_preprocess_batch_size: ${platform.fs_preprocess_batch_size}  # TODO: move inside transform
+
+device: cpu  # this dataset is maybe small enough to fit in memory
