@@ -1,0 +1,4 @@
+pushover_notifier:
+  _target_: callbacks.pushover_notifier.PushoverNotifier
+
+  # Make sure you set your user and token as env var

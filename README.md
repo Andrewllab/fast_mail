@@ -131,6 +131,81 @@ pip3 install --upgrade torch torchvision torch_geometric wandb
 Be aware that isaaclab downgrades your numpy version to 1.26.4, and is **not** compatible with numpy 2.x.
 For this and other reasons, it is not recommended to install IsaacLab in the same environment as Novometis, FoundationStereo, or any other optional dependency.
 
+## ManiSkill
+
+Note: ManiSkill needs an old gymnasium version (0.29.1).
+I recommend to create an seperate env for maniskill.
+
+```bash
+mamba create -n maniskill python=3.10
+mamba activate maniskill
+pip install -r requirements_maniskill.txt
+```
+
+Install ManiSkill with:
+```bash
+pip install mani_skill
+```
+
+Optionally, define a directory for maniskill downloads
+```bash
+export MS_ASSET_DIR=path/to/where/to/save/all/mani_skill_data
+```
+
+Download the dataset of desire. [Overview Tasks](https://maniskill.readthedocs.io/en/latest/user_guide/datasets/demos.html)
+```bash
+python -m mani_skill.utils.download_demo ${ENV_ID}
+```
+
+(Optionally) If you intend to render obs in 256x256. Please go into your mani_skill.trajectory.replay_trajectory and add following code to line 522:
+```bash
+env_kwargs["sensor_configs"] = {
+        "base_camera": {"width": 256, "height": 256},
+        "hand_camera": {"width": 256, "height": 256} # comment out if necessary
+    }
+```
+
+Replay the data. Edit flags if necessary.
+```bash
+python -m mani_skill.trajectory.replay_trajectory \
+    --traj-path demos/${ENV_ID}/motionplanning/trajectory.h5 \
+    --target-control-mode pd_ee_delta_pose \
+    -o rgbd \
+    --num-envs 25 \
+    --save-traj \
+    # --count 150 \
+    # --sim-backend physx_cuda \
+    # --use_env_states # necessary if using physx_cuda
+```
+
+(Optionally) Preprocess the goal embeddings for every task.
+Be aware, embeddings might differ each time they're preprocessed! If possible, just use the provided ones.
+```bash
+python -m scripts.maniskill_preprocess_goals
+```
+
+(Optionally) Add preprocessed embeddings to dataset
+```bash
+python -m scripts.maniskill_add_goals_to_h5 \
+    --filepath /path/to/.h5 \
+    --env-id ${ENV_ID}
+```
+
+Split the generated .h5 file into single .h5's for each trajectory.
+```bash
+python -m scripts.maniskill_split_trajectories.py \
+    --input /path/to/task.h5 \
+    --output /path/to/data_dir
+```
+
+(Optionally) Create a folder for MultiTask Training
+```bash
+python3 -m scripts.maniskill_combine_datasets \
+    -o group2 \
+    -d PegInsertionSide-v1 PlugCharger-v1 StackCube-v1 \
+    -n 450
+```
+
 ## FoundationStereo
 
 Since FoundationStereo is very large, we compile it with TensorRT to speed up inference times. The following compilation steps have been tested on the following platforms:

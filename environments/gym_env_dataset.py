@@ -183,14 +183,19 @@ def step_return_to_tensor_dict(
     # from the vectorized environment stacking the observations from all envs
     assert obs.ndim == 1
 
+    goal = obs.pop("goal", None)
+
+    tensordict = TensorDict({"obs": obs})  # type: ignore
+
+    if goal is not None:
+        tensordict["goal"] = goal
+
     # The final obs dict should have only a single leading dimension but we
     # also have to unsqueeze to add a singleton time dimension.
     # The only way we can unsqueeze the tensordict is like this:
-    obs.auto_batch_size_(batch_dims=1)
-    obs = obs.unsqueeze(dim=1)
-    obs.auto_batch_size_(batch_dims=1)
-
-    tensordict = TensorDict({"obs": obs})  # type: ignore
+    tensordict.auto_batch_size_(batch_dims=1)
+    tensordict = tensordict.unsqueeze(dim=1)
+    tensordict.auto_batch_size_(batch_dims=1)
 
     if episode_infos:
         episode_info = tensordict.stack(episode_infos).float()

@@ -1,0 +1,6 @@
+# name: crop_pointcloud
+_target_: transforms.pointcloud_crop.CropPointCloud
+_partial_: True
+x_range: [-0.5, 0.5]  # increase to keep robot base in view
+y_range: [-0.5, 0.5]
+z_range: [0.008, 0.5]   # just high enough to remove the table

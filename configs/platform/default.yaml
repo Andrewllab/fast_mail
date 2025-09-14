@@ -9,7 +9,7 @@ platform:
   num_workers: 4
   batch_size: 256
   pin_memory: True  # test if True is faster, but it might not be
-  prefetch_factor: 1  # reduce memory usage for on-disk datasets
+  prefetch_factor: 2  # reduce memory usage for on-disk datasets
   fs_preprocess_batch_size: 192
 
 torch:

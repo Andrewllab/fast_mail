@@ -1,0 +1,63 @@
+# usage: python test.py -cn test_maniskill
+
+defaults:
+  - data: maniskill  # BackCompat: overwrite environment and preprocessing configs
+  # - data/wrappers@data.env_dataset.env.wrappers: record_video  # record videos
+  # log test results to new wandb run, since test parameters affect results
+  - logger: wandb
+  - python_logging: default
+  - paths: default
+  - hydra: checkpoint_dir_naming
+  - _self_
+  - obs_modality: prepreprocess_224x224
+  - platform: default
+  - optional local: default
+  - debug: verbose
+
+# task name, determines output directory path
+job_type: test_sim
+
+checkpoint:
+  # either specify a complete checkpoint path...
+  log_dir:
+  # ...or specify the wandb run name
+  wandb_run_id:
+  # project and entity are only needed if they differ from the settings in the wandb logger config
+  wandb_project: 3d-sim2real
+  wandb_entity: alr-3d-sim2real
+  epochs: last_3  # options: last, all, last_n (default: last)
+  artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
+  use_artifact: False  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
+
+agent:
+  num_sampling_steps: 10  # modify if desired
+
+data:
+  eval_mode: env
+  env_dataset:
+    num_episodes: 5  # 15 episodes in total across 3 checkpoints
+    action_horizon: 20  # modify if desired
+
+    env:
+    #   env_cfg:
+    #     episode_length_s: 20  # 600 frames (simulation renders at 30fps)
+    
+      wrappers:
+        record_video:
+          num_episodes: ${data.env_dataset.num_episodes}  # number of episodes to record
+          fps: 60  # increase if the videos are too long
+  
+  dataset:
+    root_dir: ${paths.data_dir}/maniskill/StackCube-v1
+
+logger:
+  wandb:
+    # use the notes and tags from the training run
+    # don't use the overrides passed to the test.py script
+    notes_from_overrides: False
+    tags_from_overrides: False
+
+trainer:
+  default_root_dir: ${paths.output_dir}
+  enable_progress_bar: False
+  log_every_n_steps: 10

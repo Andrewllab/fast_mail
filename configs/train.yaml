@@ -7,13 +7,14 @@ defaults:
     - model_checkpoint
     - model_summary
     - batch_size_finder
+    # - pushover_notifier
   - logger:
     - wandb
   - python_logging: default
   - paths: default
   - hydra: default
   - _self_
-  - preprocessing: null
+  - preprocessing: isaac
   - obs_modality: rgbd_imagenet
   - obs_encoder: rgb_resnet18
   - experiment: null

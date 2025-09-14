@@ -1,0 +1,47 @@
+# @package _global_
+
+defaults:
+  # # downsample the RGBD images to avoid excessive memory usage
+  # - /transforms@data.preprocess_transforms.t2_resize_for_pcd: image_resize
+
+  - /transforms@data.preprocess_transforms.t3_to_pcd: to_pointcloud
+  
+  - /transforms@data.preprocess_transforms.t4_crop_pcd: pointcloud_crop_maniskill
+
+  - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
+
+  - /transforms@data.gpu_batch_transforms.t5_voxel_downsample: pointcloud_downsample_voxel
+
+  # we don't need to normalize the pointclouds because they are already sort of
+  # within the range [0, 1] after cropping
+  # - /transforms@data.gpu_batch_transforms.t5_normalize: pointcloud_normalize
+
+data:
+  # Below is just the default configuration copied here for convenience. Change as needed.
+  preprocess_transforms:
+    t2_resize_for_pcd:
+      shape: 128  # scale shortest side to 128 and keep aspect ratio
+
+    t3_to_pcd:
+      color: False
+
+    t4_crop_pcd:
+      x_range: [-0.5, 0.5]  # increase to keep robot base in view
+      y_range: [-0.5, 0.5]
+      z_range: [0.008, 0.5]   # just high enough to remove the table
+
+    t9_cleanup:
+      keep_stream_types: []  # keep no stream types, i.e. remove all
+      drop_keys: gripper_cam_transform
+
+  gpu_batch_transforms:
+    t5_voxel_downsample:
+      size: 0.006
+  
+  dataset:
+    preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/pointclouds
+
+# disable the batch size finder for point clouds, because the data points 
+# don't have a consistent memory size
+callbacks:
+  batch_size_finder: null
