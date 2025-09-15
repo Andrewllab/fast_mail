@@ -7,9 +7,9 @@ task: stack_cube
 name: maniskill_stack_cube
 
 dataset:
-  _target_: environments.datasets.maniskill_group2_dataset.ManiSkillDataset
+  _target_: environments.datasets.maniskill_group2_dataset_joint_pos.ManiSkillDataset
   _partial_: True  # requires transforms at runtime
-  root_dir: ${paths.data_dir}/maniskill/StackCube-v1
+  root_dir: ${paths.data_dir}/maniskill/StackCube-v1_joint_pos
   preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
   action_seq_len: 30
   obs_seq_len: 1
