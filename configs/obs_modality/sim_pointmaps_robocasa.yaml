@@ -1,0 +1,30 @@
+# @package _global_
+
+defaults:
+  # - /transforms@data.preprocess_transforms.t6-1_crop_pointmap: pointmap_crop_sim
+
+  # # Collect pointmap statistics to normalize it
+  # - /transforms@data.preprocess_transforms.t6-2_pointmap_normalize: pointmap_normalize
+
+  - /transforms@data.preprocess_transforms.t99_cleanup: cleanup
+
+  # apply jitter data augmentation
+  - /transforms@data.gpu_batch_transforms.t1_pointmap_jitter: translational_jitter
+  
+  # apply ImageNet normalization
+  - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
+
+data:
+  preprocess_transforms:
+    t5_to_pointmap:
+      color: False  # to use 6-channel fusion, use sim_pointmaps_6ch config
+
+    t99_cleanup:
+      # keep rgb streams if MultiviewPointMapTokenizer fusion type is not None (or can't be resolved)
+      keep_stream_types: ${if:${oc.select:agent.obs_encoder.t10_image_tokenizer.fusion_type,True},[pointmap,rgb],[pointmap]}
+      drop_stream_names: right  # even if we keep rgb streams, drop the right rgb stream
+      drop_keys: gripper_cam_transform
+
+  # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
+  dataset:
+    preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/multiview_pointmap
