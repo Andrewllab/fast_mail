@@ -1,2 +1,4 @@
 _target_: transforms.rotation_representations.QuaternionRotations
 _partial_: True
+remove_jumps: True
+mirror: True

@@ -10,22 +10,32 @@ from utils.math import normalize
 
 
 class QuaternionRotations(ReversibleTransform):
-    def __init__(self, specs: DataSpecs):
+    def __init__(
+        self, specs: DataSpecs, remove_jumps: bool = True, mirror: bool = True
+    ):
         self._specs = specs
+        self.remove_jumps = remove_jumps
+        self.mirror = mirror
 
     @property
     def specs(self) -> DataSpecs:
         return self._specs
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}"
+        return f"{self.__class__.__name__}(remove_jumps={self.remove_jumps}, mirror={self.mirror})"
 
-    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
-        quat = tensordict["action"][..., 3:7]
-        quat = remove_jumps_from_quat_trajectory(quat)
-        tensordict["action"][..., 3:7] = quat
+    def call_trajectory(self, tensordict: TensorDict) -> TensorDict | list[TensorDict]:
+        if self.remove_jumps:
+            quat = tensordict["action"][..., 3:7]
+            quat = remove_jumps_from_quat_trajectory(quat)
+            tensordict["action"][..., 3:7] = quat
 
-        return tensordict
+        if self.mirror:
+            mirrored = tensordict.clone(recurse=True)
+            mirrored["action"][..., 3:7] *= -1.0
+            return [tensordict, mirrored]
+        else:
+            return tensordict
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         return tensordict
@@ -64,10 +74,12 @@ def remove_jumps_from_quat_trajectory(quat: torch.Tensor) -> torch.Tensor:
     # compute the MSE
     mse = (quat_pos_and_neg[1:] - quat[:-1].unsqueeze(dim=-2)).pow(2).sum(dim=-1)
 
-    # create a mask that is 0 if the original quaternion was closer, 1 if the negated one was
+    # create a mask that is 0 if the original quaternion was closer, 1 if the
+    # negated one was
     jump_locations = F.pad(torch.argmin(mse, dim=-1), (1, 0))
 
-    # we have to swap all quaternions after a swap, so we compute the cumulative sum of the mask
+    # we have to swap all quaternions after a jump, but swaps cancel out so we
+    # compute the cumulative sum of the mask
     swap_mask = (jump_locations.cumsum(dim=0) % 2).to(torch.bool)
 
     # swap the quaternions where needed
