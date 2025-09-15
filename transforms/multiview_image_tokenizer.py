@@ -22,24 +22,30 @@ class MultiviewImageTokenizer(Transform, nn.Module):
         embed_dim: int,
         image_type: Literal["rgb", "depth", "rgbd"] = "rgb",
         shared_encoder: bool = False,
+        spatial_encoder: nn.Linear | None = None,
     ):
         super().__init__()
 
         if image_type == "rgb":
             stream_types = (RGBStream,)
             in_channels = 3
+            if spatial_encoder:
+                raise NotImplementedError(
+                    "spatial_encoder is not implemented for rgb images"
+                    )
         elif image_type == "depth":
             stream_types = (DepthStream,)
-            in_channels = 1
+            in_channels = 1 if spatial_encoder is None else spatial_encoder.out_features
         elif image_type == "rgbd":
             stream_types = (RGBStream, DepthStream)
-            in_channels = 4
+            in_channels = 4 if spatial_encoder is None else 3 + spatial_encoder.out_features
         else:
             raise ValueError(
                 f"image_type must be one of 'rgb', 'depth', or 'rgbd', but got {image_type}"
             )
         self.image_type = image_type
         self.stream_types = stream_types
+        self.spatial_encoder = spatial_encoder
 
         input_specs = {
             key: spec
@@ -130,11 +136,20 @@ class MultiviewImageTokenizer(Transform, nn.Module):
                     continue
 
                 image = tensordict["obs", key, name]
-
+                
                 if stream.channel_order == "HWC":
                     image = torch.movedim(image, -1, -3)
                 elif stream.channel_order == "HW":
                     image = torch.unsqueeze(image, dim=-3)
+                    
+                # apply fourier-feature encoding to depth map
+                # before dimension processing
+                if self.spatial_encoder and isinstance(stream, DepthStream):
+                    assert image.shape[-1] == self.spatial_encoder.in_features, (
+                        f"Expected depth image last dimension to be {self.spatial_encoder.in_features}, "
+                        f"but got {image.shape[-1]} for {key}/{name}"
+                    )
+                    image = self.spatial_encoder(image)
 
                 assert (
                     image.shape[-2:] == stream.height_width

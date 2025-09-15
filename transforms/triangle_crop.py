@@ -98,10 +98,13 @@ class TriangleCrop(Transform):
 
             for name, stream in spec.streams.items():
                 assert isinstance(images[name], torch.Tensor)
-                if isinstance(stream, PointMapStream):
-                    continue
                 
-                mask_stacked = mask.unsqueeze(0).expand_as(images[name]).to(images[name].device)
+                if stream.channel_order == "HWC":
+                    mask_stacked = mask.view((1,) * (images[name].ndim - 3) + mask.shape + (1,))
+                else:  # "CHW", "HW"
+                    mask_stacked = mask.view((1,) * (images[name].ndim - 2) + mask.shape)
+
+                mask_stacked = mask_stacked.expand_as(images[name]).to(images[name].device)
                 mask_val = torch.tensor(self.mask_value, dtype=images[name].dtype, device=images[name].device)
                 images[name] = torch.where(mask_stacked, images[name], mask_val)
 

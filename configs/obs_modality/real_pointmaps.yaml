@@ -4,10 +4,10 @@ defaults:
   # convert to pointmap
   - /transforms@data.preprocess_transforms.t5_to_pointmap: to_pointmap
 
-  # - /transforms@data.preprocess_transforms.t6-1_crop_pointmap: pointmap_crop_real
+  # - /transforms@data.preprocess_transforms.t6-1_pointmap_jitter: translational_jitter
 
-  # # Collect pointmap statistics to normalize it
-  # - /transforms@data.preprocess_transforms.t6-2_pointmap_normalize: pointmap_normalize
+  # Do this before triangle cropping such that the translation is not applied to masked values
+  - /transforms@data.preprocess_transforms.t6-2_pointmap_random_transform: pointmap_random_transform
 
   # crop out triangles outside the camera frame for the images
   - /transforms@data.preprocess_transforms.t6-3_triangle_crop: triangle_crop_224x224
@@ -21,6 +21,7 @@ data:
   preprocess_transforms:
     t5_to_pointmap:
       color: False  # to use 6-channel fusion, use real_pointmaps_6ch config
+      max_depth: null
 
     t6-1_crop_pointmap:
       x_range: [0.1, 1.0] # crop out the base of the robot

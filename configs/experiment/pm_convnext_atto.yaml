@@ -1,0 +1,21 @@
+# @package _global_
+
+agent:
+  obs_encoder:
+    t10_image_tokenizer:
+      shared_encoder: True
+      fusion_type: null
+      pointmap_encoder:
+        model_name: convnextv2_atto
+        pretrained: False
+      image_encoder:
+        model_name: convnextv2_atto
+        pretrained: True
+
+
+data:
+  batch_size: ${floor_div:${platform.batch_size},4}  # 1/4 of typical batch size
+
+logger:
+  wandb:
+    tags: ["pointmap", "convnextv2"]

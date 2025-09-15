@@ -26,7 +26,7 @@ class RealRobotEnv(gym.Env):
         self,
         robot: DictConfig,
         cameras: Mapping[str, BaseCamera] | None = None,
-        control_type: Literal["cartesian", "hybrid_joint"] = "cartesian",
+        control_type: Literal["cartesian", "hybrid_joint", "joint_actions"] = "cartesian",
         binary_gripper_state: bool = True,
     ):
         self.control_type = control_type
@@ -78,10 +78,16 @@ class RealRobotEnv(gym.Env):
             ),
             # xyz + wxyz quaternion
             "ee_pose": ObsSpec(elem_shape=(7,)),
-            "target_ee_pose": ObsSpec(elem_shape=(7,)),
             # gripper_cam_transform
             "gripper_cam_transform": ObsSpec(elem_shape=(4, 4)),
+            "target_gripper_pos": ObsSpec(elem_shape=(1,)),  # for joint actions
         }
+        
+        if self.control_type == "cartesian" or self.control_type == "hybrid_joint":
+            # target_ee_pose is only used for cartesian/hybrid control
+            obs_specs["target_ee_pose"] = ObsSpec(elem_shape=(7,))
+        elif self.control_type == "joint_actions":
+            obs_specs["target_joint_pos"] = ObsSpec(elem_shape=(7,))
 
         camera_specs = {key: camera.spec for key, camera in self.cameras.items()}
 
@@ -124,25 +130,37 @@ class RealRobotEnv(gym.Env):
 
     def step(self, action: torch.Tensor) -> tuple[ObsType, float, bool, bool, InfoType]:
         action = action.cpu()
-        pos = action[:3]
-        wxyz = action[3:7]
-        wxyz = normalize(wxyz)
-        gripper_command = action[7]
-        xyzw = torch.cat((wxyz[-3:], wxyz[:-3]), dim=0)
-
+        
+        if self.control_type in ["cartesian", "hybrid_joint"]:
+            pos = action[:3]
+            wxyz = action[3:7]
+            wxyz = normalize(wxyz)
+            gripper_command = action[7]
+            xyzw = torch.cat((wxyz[-3:], wxyz[:-3]), dim=0)
+        
         if self.control_type == "cartesian":
             self.arm.update_current_policy(
                 {"ee_pos_desired": pos, "ee_quat_desired": xyzw}
             )
         elif self.control_type == "hybrid_joint":
             self.arm.update_desired_ee_pose(position=pos, orientation=xyzw)
+        elif self.control_type == "joint_actions":
+            joint_pos_target = action[:-1]
+            gripper_command = action[-1]
+            self.arm.update_desired_joint_positions(positions=joint_pos_target)
+        else:
+            raise ValueError(f"Unknown control type: {self.control_type}")
 
         self.gripper.set_state(
             gripper_command.item(), speed=self.gripper_speed, force=self.gripper_force
         )
 
         obs = self._get_obs()
-        obs["target_ee_pose"] = action[:7]  # xyz + wxyz quaternion
+        if self.control_type == "joint_actions":
+            obs["target_joint_pos"] = action[:-1]  # no target in joint space
+        elif self.control_type in ["cartesian", "hybrid_joint"]:
+            obs["target_ee_pose"] = action[:7]  # xyz + wxyz quaternion
+        obs["target_gripper_pos"] = action[-1].unsqueeze(0)
         info = self._get_info()
         
         should_quit = self.should_quit()
@@ -176,7 +194,7 @@ class RealRobotEnv(gym.Env):
                 robot_model=self.arm.robot_model,
                 ignore_gravity=self.arm.use_grav_comp,
             )
-        elif self.control_type == "hybrid_joint":
+        elif self.control_type == "hybrid_joint" or self.control_type == "joint_actions":
             policy = HybridJointImpedanceControl(
                 joint_pos_current=self.arm.get_joint_positions(),
                 Kq=self.arm.Kq_default,
@@ -193,12 +211,16 @@ class RealRobotEnv(gym.Env):
         self.arm.send_torch_policy(policy, blocking=False)
 
         obs = self._get_obs()
-        obs["target_ee_pose"] = obs["ee_pose"]
+        obs["target_gripper_pos"] = obs["robot_state"][-1].unsqueeze(0)
+        if self.control_type == "joint_actions":
+            obs["target_joint_pos"] = obs["robot_state"][:7]  # no target in joint space
+        elif self.control_type in ["cartesian", "hybrid_joint"]:
+            obs["target_ee_pose"] = obs["ee_pose"]
         info = self._get_info()
         
         # Wait a bit to ensure everything is settled
-        log.info("Reset complete, waiting 10s to ensure everything is settled...")
-        time.sleep(10.0)
+        log.info("Reset complete, waiting 5s to ensure everything is settled...")
+        time.sleep(5.0)
 
         return obs, info
 

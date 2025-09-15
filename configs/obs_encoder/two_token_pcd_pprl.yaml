@@ -4,6 +4,7 @@ defaults:
   # patch the pointcloud and tokenize the patches
   - pointpatchrl
   - /tokenizers@agent.obs_encoder.t10_image_tokenizer: image_tokenizer
+  - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
   - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.image_encoder: timm_convnextv2
 
 agent:
@@ -12,7 +13,7 @@ agent:
 
     # RGB image tokenizer
     t10_image_tokenizer:
-      shared_encoder: True
+      shared_encoder: False
       image_type: rgb
       image_encoder:
         pretrained: True

@@ -14,8 +14,12 @@ agent:
     t10_image_tokenizer:
       shared_encoder: True
       fusion_type: ${fusion_type}
+      pointmap_encoder:
+        model_name: convnextv2_${model_size}
+        pretrained: False
       image_encoder:
         model_name: convnextv2_${model_size}
+        pretrained: True
 
 fusion_type: "cat"  # "cat" or null
 model_size: "nano" # pico, femto

@@ -7,7 +7,10 @@ defaults:
   - hydra: checkpoint_dir_naming
   # Render cameras after preprocessing but before normalization so
   # we actually see something
-  - transforms@data.preprocess_transforms.t3-2_render_cameras: render_cameras
+  # - transforms@data.preprocess_transforms.t99_render_cameras: render_cameras
+  #- transforms@data.preprocess_transforms.t99_render_pointcloud: render_pointcloud
+  # - /transforms@data.preprocess_transforms.t2-1_triangle_crop: triangle_crop_224x224
+  - obs_modality: prepreprocess_fs_224x224
   - _self_
   - platform: default
   - optional local: default
@@ -31,11 +34,35 @@ checkpoint:
 data:
   eval_mode: env
   env_dataset:
-    action_horizon: 5
+    action_horizon: 20
     fps: 15
+    env:
+      cameras:
+        front_left_cam:
+          resolution: VGA
+        front_right_cam:
+          resolution: VGA
+      # control_type: joint_actions
   preprocess_transforms:
-    t3-2_render_cameras:
-      stream_names: [rgb, left]
+    # These transforms mess everything up when we load them from wandb
+    t0-0_cleanup: null
+    t1-3_triangle_crop: null
+    t9_cleanup: null
+    t99_cleanup: null
+
+    # t98_to_pointcloud:
+    #   _target_: transforms.pointmap2pointcloud.PointMapToPointCloud
+    #   _partial_: True
+
+    t99_render_pcd:
+      render_camera_poses: True
+      render_ee_pose: True
+
+    t99_render_cameras:
+      stream_names: ["rgb", "left"] # render all streams
+
+  dataset:
+    preprocessed_dir: null
 
 trainer:
   default_root_dir: ${paths.output_dir}

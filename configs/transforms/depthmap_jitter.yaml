@@ -1,3 +1,0 @@
-_target_: transforms.depthmap_jitter.JitterDepthMap
-_partial_: True
-sigma: 0.001
