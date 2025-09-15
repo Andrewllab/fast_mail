@@ -29,7 +29,8 @@ class WandbLogger(LightningWandbLogger):
         overrides = HydraConfig.get().overrides.task
 
         # remove leading "+" and split into (key, value) pairs
-        overrides = [o.lstrip("+").split("=", 1) for o in overrides]
+        # (filter out values like ~debug that are not key-value pairs)
+        overrides = [o.lstrip("+").split("=", 1) for o in overrides if "=" in o]
         overrides = {k: v for k, v in overrides}
 
         # ignore blank placeholder experiment "none"
