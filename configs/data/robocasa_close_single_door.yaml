@@ -1,0 +1,16 @@
+
+defaults:
+  - default
+  - robocasa
+
+task_suite: robocasa
+task: CloseSingleDoor
+name: kitchen_doors
+
+dataset:
+  root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_doors/CloseSingleDoor
+  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
+
+env_dataset:
+  env:
+    env_name: CloseSingleDoor

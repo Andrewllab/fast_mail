@@ -36,7 +36,7 @@ data:
 
 trainer:
   default_root_dir: ${paths.output_dir}
-  deterministic: True
+  deterministic: False
   max_epochs: 100
   log_every_n_steps: 50
   check_val_every_n_epoch: 10

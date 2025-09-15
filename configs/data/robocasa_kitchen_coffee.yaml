@@ -1,0 +1,16 @@
+
+defaults:
+  - default
+  - robocasa
+
+task_suite: robocasa
+task: Coffee_PressButton_ServeMug_SetupMug
+name: kitchen_coffee
+
+dataset:
+  root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_coffee
+  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
+
+env_dataset:
+  env:
+    env_name: Coffee_PressButton_ServeMug_SetupMug

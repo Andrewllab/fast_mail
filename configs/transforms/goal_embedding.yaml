@@ -1,0 +1,2 @@
+_target_: transforms.goal_embedding.ClipGoalEmbedding
+_partial_: True

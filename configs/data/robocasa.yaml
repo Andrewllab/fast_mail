@@ -1,0 +1,61 @@
+defaults:
+  - default
+
+task_suite: robocasa
+task: ???
+name: robocasa
+
+dataset:
+  _target_: environments.datasets.robocasa_dataset.RoboCasaDataset
+  _partial_: True  # requires transforms at runtime
+  root_dir: ???
+  preprocessed_dir: ???
+  trajs_per_task: 1.0 # fraction of trajectories to use per task
+  action_seq_len: 10
+  obs_seq_len: 1
+
+env_dataset:
+  _target_: environments.gym_env_dataset.GymEnvDataset
+  env:
+    _target_: environments.simulation.robocasa.build_env.make 
+    _recursive_: False 
+    env_name: ???
+    img_size: [224, 224]
+    camera_names: 
+      - robot0_agentview_left
+      - robot0_agentview_right
+      - robot0_eye_in_hand
+    wrappers:
+      robosuite:
+        _target_: environments.simulation.robocasa.wrappers.RobosuiteWrapper
+        _partial_: True  # requires 'env' argument
+      to_pointcloud:
+        _target_: environments.simulation.robocasa.wrappers.PointCloudWrapper
+        _partial_: True  # requires 'env' argument
+        global_frame: False
+      pointcloud_fps:
+        _target_: environments.simulation.robocasa.wrappers.PointCloudSamplingWrapper
+        _partial_: True  # requires 'env' argument
+        pc_sampler: 
+          _target_: environments.simulation.robocasa.wrappers.FPSPointCloudSampler
+        num_points: 1024 # https://github.com/xiaogangjia/depth_vla/blob/4b034a6cacf28b039e0c3d9c6ddaacff5b57f926/configs/robocasa_config.yaml#L100
+      robocasa_preprocess:
+        _target_: environments.simulation.robocasa.wrappers.RoboCasaPreProcess
+        _partial_: True  # requires 'env' argument
+        obs_seq_len: 1
+        max_steps_per_episode: 400 # https://github.com/xiaogangjia/depth_vla/blob/4b034a6cacf28b039e0c3d9c6ddaacff5b57f926/configs/robocasa_config.yaml#L235
+      video_recoder:
+        _target_: environments.simulation.robocasa.wrappers.VideoRecorder
+        _partial_: True  # requires 'env' argument
+        out_dir: ${paths.root_dir}/recordings
+        filename_prefix: "eval_episode"
+        camera_name: "robot0_agentview_center"
+        size: [768, 512] # frame size (width, height)
+        fps: 20 
+
+  num_envs: 1
+  num_episodes: 10  # evaluate on 20 episodes
+  action_horizon: null  # use all predicted actions
+  fps: null  # run as fast as RoboCasa can manage
+
+device: cpu

@@ -363,7 +363,9 @@ class TrajectoryDataModule(L.LightningDataModule):
             for key, value in batch.items(
                 include_nested=True, leaves_only=True, is_leaf=is_leaf_nontensor
             ):
-                if isinstance(value, NonTensorData):
+                # check if the value is a NonTensorData and has a .to() method
+                # e.g. strings do not
+                if isinstance(value, NonTensorData) and hasattr(value.data, "to"):
                     batch[key] = value.data.to(device)
 
         if (self.dataset is not None) and isinstance(

@@ -1,0 +1,16 @@
+
+defaults:
+  - default
+  - robocasa
+
+task_suite: robocasa
+task: Drawer_TurnOff_TurnOn_SinkSpout
+name: kitchen_sink
+
+dataset:
+  root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_sink
+  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
+
+env_dataset:
+  env:
+    env_name: Drawer_TurnOff_TurnOn_SinkSpout
