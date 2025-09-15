@@ -1,7 +1,7 @@
 # usage: python train.py
 
 defaults:
-  - data: one_leg_alr_20250724
+  - data: ???
   - agent: beso_agent
   - callbacks:
     - model_checkpoint
@@ -14,7 +14,7 @@ defaults:
   - paths: default
   - hydra: default
   - _self_
-  - preprocessing: isaac
+  - preprocessing: null
   - obs_modality: rgbd_imagenet
   - obs_encoder: rgb_resnet18
   - experiment: null

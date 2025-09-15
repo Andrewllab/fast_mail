@@ -1,0 +1,2 @@
+_target_: transforms.pointmap2pointcloud.PointMapToPointCloud
+_partial_: True

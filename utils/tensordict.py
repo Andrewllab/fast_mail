@@ -7,7 +7,7 @@ import torch
 from tensordict import NonTensorData, NonTensorStack, TensorDict, is_leaf_nontensor
 from torch_geometric.data import Batch, Data
 
-from environments.specs import CameraSpec, DataSpecs, DepthStream
+from environments.specs import CameraSpec, DataSpecs, DepthStream, PointMapStream
 from utils.pyg import update_batch_metadata
 
 
@@ -20,7 +20,7 @@ def compress_rgb_images(tensordict: TensorDict, specs: DataSpecs) -> TensorDict:
             continue
 
         for name, stream in spec.streams.items():
-            if not isinstance(stream, DepthStream):
+            if not isinstance(stream, (DepthStream, PointMapStream)):
                 # if the stream is RGB or intensity, we need to convert it to uint8
 
                 image = tensordict["obs", key, name]
