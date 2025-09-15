@@ -20,3 +20,4 @@ h5py  # for loading hdf5 files
 ftfy
 bitsandbytes  # for 8-bit optimizers
 timm  # for vision transformers
+regex  # for CLIP tokenizer

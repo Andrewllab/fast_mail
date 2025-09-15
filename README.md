@@ -176,7 +176,6 @@ python -m mani_skill.trajectory.replay_trajectory \
 (Optionally) Preprocess the goal embeddings for every task.
 Be aware, embeddings might differ each time they're preprocessed! If possible, just use the provided ones.
 ```bash
-pip install regex
 python -m scripts.maniskill_preprocess_goals
 ```
 
