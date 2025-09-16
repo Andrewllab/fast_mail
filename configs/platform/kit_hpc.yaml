@@ -5,6 +5,10 @@ defaults:
   - slurm
   - _self_
 
+platform:
+  num_workers: 16  # our dataset is memory-mapped onto job-local storage, so we don't need many workers
+  prefetch_factor: 1  # reduce memory usage for on-disk datasets (especially important during batch size finding)
+
 paths:
   # absolute path to our project inside the LSDF, should work for all users
   data_dir: $LSDF/kit/iar/projects/alr_3d-sim2real/demonstrations

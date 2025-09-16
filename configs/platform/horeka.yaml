@@ -6,7 +6,7 @@ defaults:
 
 platform:
   name: horeka
-  num_workers: 36  # accelerated node has 152 cores = 38 cores per GPU
+  num_workers: 16  # accelerated node has 152 cores = 38 cores per GPU
 
 hydra:
   launcher:
