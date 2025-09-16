@@ -9,7 +9,7 @@ defaults:
   # # Collect pointmap statistics to normalize it
   # - /transforms@data.preprocess_transforms.t6-2_pointmap_normalize: pointmap_normalize
 
-  - /transforms@data.preprocess_transforms.t7_pointmap_random_transform: pointmap_random_transform
+  - /transforms@data.preprocess_transforms.t7_random_transform: pointmap_random_transform
 
   - /transforms@data.preprocess_transforms.t99_cleanup: cleanup
 

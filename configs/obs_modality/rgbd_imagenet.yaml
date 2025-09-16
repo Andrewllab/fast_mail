@@ -3,6 +3,11 @@
 defaults:
   - /transforms@data.preprocess_transforms.t0-0_cleanup: cleanup
 
+  - /transforms@data.gpu_batch_transforms.t1_color_jitter: image_jitter_color
+
+  # apply jitter data augmentation
+  - /transforms@data.gpu_batch_transforms.t2_pointmap_jitter: translational_jitter
+  
   # apply ImageNet normalization
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
 

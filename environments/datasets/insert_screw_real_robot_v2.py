@@ -106,14 +106,12 @@ class RealRobotDataset(TrajectoryDataset):
             {
                 "obs": {
                     "front_left_cam": {
-                        "depth": traj["obs", "left_cam", "frames", "depth"]
-                        / 1000,  # Convert from mm to meters
+                        "depth": traj["obs", "left_cam", "frames", "depth"],
                         "left": traj["obs", "left_cam", "frames", "left"],
                         "right": traj["obs", "left_cam", "frames", "right"],
                     },
                     "front_right_cam": {
-                        "depth": traj["obs", "right_cam", "frames", "depth"]
-                        / 1000,  # Convert from mm to meters
+                        "depth": traj["obs", "right_cam", "frames", "depth"],
                         "left": traj["obs", "right_cam", "frames", "left"],
                         "right": traj["obs", "right_cam", "frames", "right"],
                     },

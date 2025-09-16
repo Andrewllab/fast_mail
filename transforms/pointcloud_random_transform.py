@@ -4,21 +4,21 @@ from typing import Sequence
 
 import torch
 from tensordict import TensorDict
-from torch import Tensor
+from torch_geometric.data import Data
 
-from environments.specs import CameraSpec, DataSpecs, PointMapStream
+from environments.specs import DataSpecs
 from transforms.base_transform import Transform
 from utils.math import (
     make_pose,
     quaternion_to_matrix,
     random_orientation,
     sample_uniform,
-    transform_pointmap,
+    transform_pointcloud,
 )
 
 
-class RandomlyTransformPointMapTrajectory(Transform):
-    """Apply a random translation and rotation to the entire point map
+class RandomlyTransformPointCloudTrajectory(Transform):
+    """Apply a random translation and rotation to the entire pointcloud
     trajectory during preprocessing, which is then constant throughout
     training.
 
@@ -30,12 +30,18 @@ class RandomlyTransformPointMapTrajectory(Transform):
         self,
         specs: DataSpecs,
         max_translation: Sequence[float],
+        pcd_keys: str | Sequence[str] = "pcd",
     ):
         self.max_translation = torch.tensor(max_translation)
         if self.max_translation.shape != (3,):
             raise ValueError("max_translation must be a sequence of 3 floats")
 
         self._specs = specs
+        if isinstance(pcd_keys, str):
+            pcd_keys = [pcd_keys]
+        else:
+            pcd_keys = list(pcd_keys)
+        self._pcd_keys = pcd_keys
 
     @property
     def specs(self) -> DataSpecs:
@@ -54,18 +60,11 @@ class RandomlyTransformPointMapTrajectory(Transform):
         ).to(device)
 
         rot = quaternion_to_matrix(quat)
-        transform = make_pose(translation, rot)
+        transform = make_pose(translation, rot).squeeze(0)
 
-        for key, spec in self._specs.obs.items():
-            if not isinstance(spec, CameraSpec):
-                continue
-            for name, stream in spec.streams.items():
-                if not isinstance(stream, PointMapStream):
-                    continue
-
-                pointmap: Tensor = tensordict["obs", key, name]
-                pos = pointmap[..., :3]  # if it has colors, do not modify them
-                pointmap[..., :3] = transform_pointmap(pos, transform)
+        for key in self._pcd_keys:
+            data: Data = tensordict["obs", key]
+            data.pos = transform_pointcloud(data.pos, transform)
 
         return tensordict
 

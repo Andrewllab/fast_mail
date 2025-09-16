@@ -8,10 +8,15 @@ defaults:
   
   - /transforms@data.preprocess_transforms.t4_crop_pcd: pointcloud_crop_maniskill
 
+  - /transforms@data.preprocess_transforms.t7_random_transform: pointcloud_random_transform
+
   - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
 
-  - /transforms@data.gpu_batch_transforms.t5_voxel_downsample: pointcloud_downsample_voxel
+  - /transforms@data.gpu_batch_transforms.t1_voxel_downsample: pointcloud_downsample_voxel
 
+  # apply jitter data augmentation
+  - /transforms@data.gpu_batch_transforms.t2_jitter: translational_jitter
+  
   # we don't need to normalize the pointclouds because they are already sort of
   # within the range [0, 1] after cropping
   # - /transforms@data.gpu_batch_transforms.t5_normalize: pointcloud_normalize
@@ -35,7 +40,7 @@ data:
       drop_keys: gripper_cam_transform
 
   gpu_batch_transforms:
-    t5_voxel_downsample:
+    t1_voxel_downsample:
       size: 0.006
   
   dataset:
