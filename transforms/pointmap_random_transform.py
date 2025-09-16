@@ -70,3 +70,7 @@ class RandomlyTransformPointMapTrajectory(Transform):
                 pointmap[..., :3] = transform_pointmap(pos, transform)
 
         return tensordict
+
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        # Do nothing if not called during preprocessing
+        return tensordict
