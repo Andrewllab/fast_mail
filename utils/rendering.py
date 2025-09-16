@@ -164,9 +164,9 @@ def rgb_to_renderable(
     The tensor is assumed to be in the format (C, H, W) or (H, W, C).
     """
     assert rgb.ndim == 3, f"RGB image must have 3 dimensions, got {rgb.ndim} instead."
-    assert (
-        rgb.dtype == np.uint8
-    ), f"RGB image must be of uint8 type, got {rgb.dtype} instead."
+
+    if rgb.dtype != np.uint8:
+        rgb = (rgb * 255).clip(min=0, max=255).astype(np.uint8)
 
     if channel_order == "CHW":
         rgb = np.moveaxis(rgb, 0, -1)  # move channel to last dimension
