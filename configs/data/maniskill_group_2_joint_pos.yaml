@@ -18,6 +18,7 @@ env_dataset:
   env:
     env_id: StackCube-v1 # PegInsertionSide-v1, PlugCharger-v1, StackCube-v1
     sim_backend: physx_cpu
+    control_mode: pd_joint_pos
     sensor_configs:
       base_camera:
         width: 256

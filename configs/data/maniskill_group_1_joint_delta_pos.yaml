@@ -18,6 +18,7 @@ env_dataset:
   env:
     env_id: LiftPegUpright-v1 # LiftPegUpright-v1, PokeCube-v1, PullCube-v1
     sim_backend: physx_cuda
+    control_mode: pd_joint_delta_pos
     sensor_configs:
       base_camera:
         width: 256

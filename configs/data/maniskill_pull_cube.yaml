@@ -17,6 +17,7 @@ dataset:
 env_dataset:
   env:
     env_id: PullCube-v1
+    control_mode: pd_joint_delta_pos
     sensor_configs:
       base_camera:
         width: 256

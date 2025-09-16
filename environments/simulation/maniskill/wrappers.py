@@ -30,7 +30,7 @@ class ManiSkillPreProcess(gym.Wrapper):
             raise FileNotFoundError(f"Could not find goal embedding for '{env_id}' at {embedding_path}")
         
         log.info(f"Loading goal embedding from {embedding_path}")
-        self.goal_embedding = torch.load(embedding_path)
+        self.goal_embedding = torch.load(embedding_path, map_location=self.device)
         
         log.debug("Getting initial observation to read static camera intrinsics...")
         initial_obs, _ = self.env.reset()
@@ -98,9 +98,8 @@ class ManiSkillPreProcess(gym.Wrapper):
 
         batch_size = self.env.unwrapped.num_envs
 
-        # TODO: can be handled better, but yeah I'm lazy :)
         processed_obs["goal"] = TensorDict(
-            {"preprocessed_embed": self.goal_embedding.squeeze(0)}#, batch_size=[batch_size]
+            {"preprocessed_embed": self.goal_embedding.squeeze(0)}
         )
 
         if "agent" in obs:
@@ -128,13 +127,13 @@ class ManiSkillPreProcess(gym.Wrapper):
                 obs["sensor_param"], batch_size=[batch_size]
             ).float()
 
-        return TensorDict(processed_obs, batch_size=batch_size)
+        return TensorDict(processed_obs, batch_size=batch_size).to(self.device)
 
     def _preprocess_info(self, info: dict) -> TensorDict:
         processed_info = {k: v for k, v in info.items() if isinstance(v, torch.Tensor)}
         return TensorDict(
             processed_info, batch_size=self.env.unwrapped.num_envs
-        )
+        ).to(self.device)
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
@@ -151,4 +150,11 @@ class ManiSkillPreProcess(gym.Wrapper):
 
         processed_obs = self._preprocess_obs(obs)
         processed_info = self._preprocess_info(info)
-        return processed_obs, reward, terminated, truncated, processed_info
+        
+        return (
+            processed_obs,
+            reward.to(self.device),
+            terminated.to(self.device),
+            truncated.to(self.device),
+            processed_info,
+        )
