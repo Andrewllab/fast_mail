@@ -7,7 +7,7 @@ task: roll_ball
 name: maniskill_roll_ball
 
 dataset:
-  _target_: environments.datasets.maniskill_group1_dataset.ManiSkillDataset
+  _target_: environments.datasets.maniskill_group1_dataset_joint_pos.ManiSkillDataset
   _partial_: True  # requires transforms at runtime
   root_dir: ${paths.data_dir}/maniskill/RollBall-v1_joint_delta_pos
   preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base

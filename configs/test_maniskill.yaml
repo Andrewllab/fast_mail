@@ -21,11 +21,11 @@ checkpoint:
   # either specify a complete checkpoint path...
   log_dir:
   # ...or specify the wandb run name
-  wandb_run_id: ym7k0td9
+  wandb_run_id: 
   # project and entity are only needed if they differ from the settings in the wandb logger config
   wandb_project: 3d-sim2real
   wandb_entity: alr-3d-sim2real
-  epochs: last_5  # options: last, all, last_n (default: last)
+  epochs: all  # options: last, all, last_n (default: last)
   artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
   use_artifact: False  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
 
@@ -36,11 +36,11 @@ data:
   eval_mode: env
   env_dataset:
     num_episodes: 50  # 15 episodes in total across 3 checkpoints
-    action_horizon: 5  # modify if desired
+    action_horizon: 10  # modify if desired
 
     env:
-      #env_id: PokeCube-v1
-      #control_mode: # pd_joint_delta_pos
+      env_id: # PlugCharger-v1 #PegInsertionSide-v1
+      #control_mode: pd_joint_delta_pos
     
       wrappers:
         record_video:

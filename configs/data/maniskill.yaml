@@ -8,7 +8,7 @@ env_dataset:
     # env_id: PlugCharger-v1 # TODO: make this
     num_envs: 1
     obs_mode: rgbd  # 'state', 'pointcloud'
-    control_mode: pd_ee_delta_pose
+    # control_mode: pd_ee_delta_pose
     # sim_backend: physx_cuda
     # shader_dir: 'rt' # if using RT shaders
     render_mode: all
