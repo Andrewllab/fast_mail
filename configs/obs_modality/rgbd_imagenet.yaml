@@ -3,6 +3,8 @@
 defaults:
   - /transforms@data.preprocess_transforms.t0-0_cleanup: cleanup
 
+  # - /transforms@data.preprocess_transforms.t6-3_depth_normalize: depth_normalize
+
   - /transforms@data.gpu_batch_transforms.t1_color_jitter: image_jitter_color
 
   # apply jitter data augmentation
