@@ -1,17 +1,19 @@
 # @package _global_
 
 defaults:
-  # tokenize the rgb images using a ResNet
-  - /tokenizers@agent.obs_encoder.t10_image_tokenizer: image_tokenizer
+  # tokenize the depth map using a ConvNeXtv2
+  - /tokenizers@agent.obs_encoder.t15_depth_tokenizer: image_tokenizer
 
-  - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.image_encoder: timm_convnextv2
+  - override /models/vision_encoder@agent.obs_encoder.t15_depth_tokenizer.image_encoder: timm_convnextv2
 
 agent:
   obs_encoder:
     embed_dim: 256
-    t10_image_tokenizer:
-      shared_encoder: True
+    t15_depth_tokenizer:
+      shared_encoder: False
       image_type: depth
+      image_encoder:
+        pretrained: False
 
 logger:
   wandb:
