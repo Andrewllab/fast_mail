@@ -4,6 +4,9 @@ defaults:
   - horeka
   - _self_
 
+platform:
+  name: horeka_dev
+
 hydra:
   launcher:
     timeout_min: 50  # max timeout is 60 on this partition

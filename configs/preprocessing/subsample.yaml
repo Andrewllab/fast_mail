@@ -1,0 +1,10 @@
+# @package _global_
+
+defaults:
+  # since this dataset was recorded at ~30 fps, subsample by a factor of 2
+  - /transforms@data.preprocess_transforms.t0-2_subsample: time_subsample
+
+data:
+  preprocess_transforms:
+    t0-2_subsample:
+      factor: 2

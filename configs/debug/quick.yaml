@@ -28,4 +28,4 @@ paths:
   preprocessed_dir: ${paths.debug_preprocessed_dir}
 
 platform:
-  batch_size: 16  # reduce batch size to ensure we have at least 1 batch
+  batch_size: 64  # reduce batch size to ensure we have at least 1 batch
