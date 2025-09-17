@@ -49,6 +49,9 @@ class ColorJitterImage(Transform):
         return self._output_specs
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
+        if not self.training:
+            return tensordict
+        
         default_float_dtype = torch.get_default_dtype()
 
         for key, spec in self._input_specs.items():

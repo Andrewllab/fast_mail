@@ -52,8 +52,16 @@ class TransformModuleMeta(ABCMeta):
         cls = super().__new__(mcls, name, bases, namespace)
         # Check if nn.Module is in the MRO
         if any(issubclass(base, nn.Module) for base in cls.__mro__[1:]):
-            # Override __call__ with the one from nn.Module
+            # Override __call__, with the one from nn.Module
             cls.__call__ = nn.Module.__call__
+            
+            # Use nn.Module's train and eval methods
+            # if they are not overriden in the child class
+            if 'eval' not in namespace:
+                cls.eval = nn.Module.eval
+                
+            if 'train' not in namespace:
+                cls.train = nn.Module.train
         return cls
 
 
@@ -61,6 +69,7 @@ class Transform(ABC, metaclass=TransformModuleMeta):
     """Base class for all transforms."""
 
     constraints: list[TransformConstraint] = []
+    training: bool = True
 
     @property
     @abstractmethod
@@ -78,6 +87,12 @@ class Transform(ABC, metaclass=TransformModuleMeta):
         their behavior based on the spec of the input field.
         """
         return self._mapping_idx
+
+    def train(self, mode: bool = True):
+        self.training = mode
+        
+    def eval(self):
+        self.train(mode=False)
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
 
@@ -265,6 +280,11 @@ class Compose(ReversibleTransform):
                     "This Compose transform is empty, but no specs were provided. Please provide them on initialization."
                 )
             return self._specs
+        
+    def train(self, mode: bool = True):
+        for t in self._transforms.values():
+            t.train(mode=mode)
+        self.training = mode
 
     def __getitem__(self, idx: int | str | slice) -> Transform | list[Transform]:
         if isinstance(idx, str):
@@ -344,6 +364,15 @@ class Sequential(nn.Module, Compose):
 
     # nn.Module's __repr__ shadows Compose's __repr__, so we need to explicitly assign it
     __repr__ = Compose.__repr__
+    
+    def train(self, mode: bool = True):
+        # First call nn.Module's train to set self.training
+        super().train(mode=mode)
+        
+        # Set training mode for each transform
+        for t in self._transforms.values():
+            t.train(mode=mode)
+        
 
     def forward(self, input: TensorDict) -> TensorDict:
         for module in self:

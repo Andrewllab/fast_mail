@@ -225,6 +225,10 @@ class TrajectoryDataModule(L.LightningDataModule):
                 raise ValueError(
                     "Specs of training dataset and environment dataset do not match. Please check your transforms."
                 )
+                
+            # Set transforms to eval mode, as they will be used for evaluation
+            self.env_cpu_batch_transform.eval()
+            self.env_gpu_batch_transform.eval()
 
     @property
     def specs(self) -> DataSpecs:
@@ -347,8 +351,15 @@ class TrajectoryDataModule(L.LightningDataModule):
             or self.eval_mode == "dataset"
             or isinstance(self.eval_mode, float)
         ):
+            # set the transforms to train or eval mode depending on whether
+            # we are training or evaluating. We need to do this here because
+            # the transforms are shared for train and eval dataloaders
+            self.cpu_batch_transform.train(mode=self.trainer.training)
+            batch = self.cpu_transforms(batch)
             return self.cpu_batch_transform(batch)
         elif self.eval_mode == "env":
+            # For env evaluation, we always want the transforms to be in eval
+            assert self.env_cpu_batch_transform.training is False
             return self.env_cpu_batch_transform(batch)
 
     def transfer_batch_to_device(
@@ -372,7 +383,6 @@ class TrajectoryDataModule(L.LightningDataModule):
             self.gpu_batch_transform, nn.Module
         ):
             self.gpu_batch_transform = self.gpu_batch_transform.to(device)
-
         elif self.env is not None and isinstance(
             self.env_gpu_batch_transform, nn.Module
         ):
@@ -386,8 +396,13 @@ class TrajectoryDataModule(L.LightningDataModule):
             or self.eval_mode == "dataset"
             or isinstance(self.eval_mode, float)
         ):
+            # set the transforms to train or eval mode depending on whether
+            # we are training or evaluating. We need to do this here because
+            # the transforms are shared for train and eval dataloaders
+            self.gpu_batch_transform.train(mode=self.trainer.training)
             return self.gpu_batch_transform(batch)
         elif self.eval_mode == "env":
+            assert self.env_gpu_batch_transform.training is False
             return self.env_gpu_batch_transform(batch)
 
     def _evaluation_dataloader(self, stage: str):

@@ -331,3 +331,24 @@ class RealRobotDataset(TrajectoryDataset):
             self._load_specs()
         assert self._specs is not None
         return self._specs
+    
+    def _get_specs(self) -> DataSpecs:
+        # This allows us to change the calibration data even if we are already using
+        # a prepreprocessed dataset
+        if self.from_prepreprocessed:
+            self._specs = self.prepreprocess_transforms[-1].specs
+
+            # the specs from the raw dataset are expected not to have lengths
+            # so we need to clear them to avoid double counting
+            self._specs._lengths.clear()
+            
+            for cam in ["front_left_cam", "front_right_cam", "gripper_cam"]:
+                extrinsics = self.extrinsics_dict[cam]["extrinsics"]
+                object.__setattr__(
+                    self._specs.obs[cam], 
+                    'extrinsics', 
+                    torch.as_tensor(extrinsics, dtype=torch.float32).reshape(4, 4)
+                )
+            
+            return self._specs
+        return self.get_specs()

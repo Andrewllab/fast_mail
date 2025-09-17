@@ -3,6 +3,9 @@
 defaults:
   - /transforms@data.preprocess_transforms.t2-1_triangle_crop: triangle_crop_224x224
   
+  # Apply color jitter
+  - /transforms@data.gpu_batch_transforms.t98_color_jitter: image_jitter_color
+
   # apply ImageNet normalization
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
 

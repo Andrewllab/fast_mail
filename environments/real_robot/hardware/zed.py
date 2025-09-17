@@ -90,6 +90,7 @@ class Zed(BaseCamera):
         self._finalizer = weakref.finalize(self, self.zed.close)
 
         init_params = sl.InitParameters()
+        init_params.set_from_serial_number(int(self.serial_number))
         init_params.camera_resolution = self.resolution
         init_params.camera_fps = self.fps
         init_params.depth_mode = self.depth_mode

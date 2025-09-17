@@ -113,6 +113,10 @@ class GymEnvDataset(IterableDataset):
 
                 done = torch.logical_or(done, step_done)
 
+                # Break out of action loop if all environments are done
+                if done.all():
+                    break
+
             # reset the envs that are done
             if done.any():
                 num_episodes += done.sum().item()
@@ -193,7 +197,7 @@ def step_return_to_tensor_dict(
     tensordict.auto_batch_size_(batch_dims=1)
     tensordict = tensordict.unsqueeze(dim=1)
     tensordict.auto_batch_size_(batch_dims=1)
-    
+
     if goal is not None:
         tensordict["goal"] = goal
 

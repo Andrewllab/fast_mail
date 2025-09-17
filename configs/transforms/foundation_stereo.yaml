@@ -2,4 +2,4 @@ _target_: transforms.foundation_stereo.FoundationStereo
 _partial_: True
 engine_path: ${paths.fs_engines_dir}/foundation_stereo_small_3x480x640.plan
 remove_invisible: True
-cam_keys: null  # specify camera keys to replace, or null to replace all
+cam_keys: null # specify camera keys to replace, or null to replace all

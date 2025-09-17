@@ -34,6 +34,9 @@ class BaseJitter(Transform):
         return self._specs
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
+        if not self.training:
+            return tensordict
+        
         for key, spec in self._input_specs.items():
             images = tensordict["obs", key]
             for name, stream in spec.streams.items():
@@ -52,7 +55,6 @@ class BaseJitter(Transform):
 
         return tensordict
 
-
 class TranslationalJitter(BaseJitter):
     def __init__(
         self,
@@ -65,7 +67,6 @@ class TranslationalJitter(BaseJitter):
     @property
     def sigma(self) -> Union[float, int, Sequence[Union[float, int]]]:
         return self._sigma
-
 
 class VariableTranslationalJitter(BaseJitter):
     def __init__(

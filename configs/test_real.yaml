@@ -42,7 +42,7 @@ data:
           resolution: VGA
         front_right_cam:
           resolution: VGA
-      # control_type: joint_actions
+      control_type: joint_actions
   preprocess_transforms:
     # These transforms mess everything up when we load them from wandb
     t0-0_cleanup: null
@@ -59,7 +59,7 @@ data:
       render_ee_pose: True
 
     t99_render_cameras:
-      stream_names: ["rgb", "left"] # render all streams
+      stream_names: ["rgb", "left", "depth"] # render all streams
 
   dataset:
     preprocessed_dir: null
