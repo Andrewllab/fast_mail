@@ -2,23 +2,21 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
-from tensordict import TensorDict
-import torchvision.transforms.functional as F
-import rootutils
-
-# enables importing local modules regardless of where the script is run
-rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
 
 from environments.specs import DataSpecs, PointMapStream, CameraSpec
 from transforms.base_transform import NormalizingTransform
 
 
 class PointMapNormalize(NormalizingTransform, nn.Module):
-    def __init__(self, specs: DataSpecs):
+    max_points: torch.Tensor
+    min_points: torch.Tensor
+    
+    def __init__(self, specs: DataSpecs, do_reverse: bool = False):
         super().__init__()
 
         self._specs = specs
-        
+        self.do_reverse = do_reverse
+
         self._input_specs = {
             key: spec
             for key, spec in specs.obs.items()
@@ -35,24 +33,18 @@ class PointMapNormalize(NormalizingTransform, nn.Module):
         if not streams:
             raise ValueError("No PointMapStream found in specs")
         
-        H, W = None, None
-        n_channels = None
-        for stream in streams:
-            if H is None or W is None:
-                H, W = stream.height_width
-            else:
-                assert stream.height_width == (H, W), "All PointMapStreams must have the same spatial dimensions"
+        channels = [stream.channels for stream in streams]
+        if not all(c == channels[0] for c in channels):
+            raise ValueError(
+                f"All camera streams must have the same number of channels, but got {channels}"
+            )
+            
+        if channels[0] != 3:
+            raise ValueError(f"Currently only support 3-channel pointmaps, got {channels[0]}")
 
-            if n_channels is None:
-                n_channels = stream.channels
-            else:
-                assert stream.channels == n_channels, "All PointMapStreams must have the same number of channels"
+        self.register_buffer("max_points", torch.ones(channels[0]) * float('-inf'))
+        self.register_buffer("min_points", torch.ones(channels[0]) * float('inf'))
 
-        assert n_channels is not None
-        self.register_buffer("mean", torch.zeros(n_channels))
-        self.register_buffer("m2", torch.zeros(n_channels))
-        self.n_points = 0
-        
     @property
     def specs(self) -> DataSpecs:
         return self._specs
@@ -64,37 +56,37 @@ class PointMapNormalize(NormalizingTransform, nn.Module):
                 if not isinstance(stream, PointMapStream):
                     continue
 
-                pointmap = tensordict["obs", key][name]
+                pointmap: torch.Tensor = tensordict["obs", key][name]
                 
-                if not stream.channel_order == "HWC":
-                    pointmap = torch.movedim(pointmap, -1, -3)
+                # Move channels to HWC
+                if stream.channel_order == "CHW":
+                    pointmap = torch.movedim(pointmap, -3, -1)
 
                 # (..., H, W, C) -> (N, C)
                 pointmap = pointmap.flatten(0, -2)
                 assert pointmap.dim() == 2
+                assert pointmap.shape[-1] == 3
 
-                # We use Welford's algorithm to compute mean and variance online
-                # we do it in a batched manner for efficiency
-                n_points = pointmap.shape[0]
-                self.n_points += n_points
-                
-                delta = pointmap - self.mean
-                self.mean += delta.sum(dim=0) / self.n_points
-                delta2 = pointmap - self.mean
-                self.m2 += torch.sum(delta * delta2, dim=0)
+                # Collect max and min values
+                max_points = pointmap.max(dim=0).values
+                min_points = pointmap.min(dim=0).values
+                self.max_points = torch.maximum(self.max_points, max_points)
+                self.min_points = torch.minimum(self.min_points, min_points)
 
+        print(self.max_points)
+        print(self.min_points)
         return tensordict
     
     def forward(self, tensordict):
-        """Normalize pointmaps using the computed mean and std."""
-        if self.n_points < 2:
-            raise RuntimeError("Not enough points to compute statistics. Call `call_trajectory` first.")
-        
-        default_float_dtype = torch.get_default_dtype()
-        
-        mean = self.mean
-        var = self.m2 / (self.n_points - 1)
-        std = torch.sqrt(var)
+        if any(torch.isinf(self.max_points)) or any(torch.isinf(self.min_points)):
+            raise ValueError(
+                "Found inf in max_points or min_points. Make sure to call call_trajectory on a representative dataset before using the transform."
+            )
+            
+        if any(self.max_points <= self.min_points):
+            raise ValueError(
+                "max_points must be greater than min_points for all channels."
+            )
 
         for key, spec in self._input_specs.items():
             pointmaps = tensordict["obs", key]
@@ -103,48 +95,31 @@ class PointMapNormalize(NormalizingTransform, nn.Module):
                     continue
 
                 pointmap = pointmaps[name]
-                if stream.channel_order == "HWC":
-                    pointmap = torch.movedim(pointmap, -1, -3)
-                    
-                if pointmap.dtype == torch.uint8:
-                    pointmap = pointmap.to(dtype=default_float_dtype).div(255)
 
-                pointmap = F.normalize(pointmap, mean, std, inplace=True)
-                
-                if stream.channel_order == "HWC":
-                    pointmap = torch.movedim(pointmap, -3, -1)
+                # Scale pointmap from [min_points, max_points] to [-1, 1] on each axis
+                pointmap = 2 * (pointmap - self.min_points) / (self.max_points - self.min_points) - 1.0
+                pointmap = torch.clamp(pointmap, -1.0, 1.0)
                     
                 pointmaps[name] = pointmap
 
         return tensordict
     
     def reverse(self, tensordict):
-        """Do nothing on reverse."""
-        return tensordict
+        if not self.do_reverse:
+            return tensordict
 
-    
-    
-if __name__ == "__main__":
-    # Let's create a dummy specs and test the Normalize transform
-    spec = DataSpecs(
-        obs={
-            "camera1": CameraSpec(
-                streams={
-                    "pointmap": PointMapStream(height=64, width=64, channels=3, channel_order="HWC")
-                }
-            )
-        },
-        action={},
-    )
-    
-    transform = PointMapNormalize(spec)
-    t1 = torch.randn(3, 10, 64, 64, 3) * 3 + 2 # A batch of 10 pointmaps
-    t2 = torch.randn(3, 15, 64, 64, 3) * 3 + 2 # A batch of 15 pointmaps
-    
-    td1 = TensorDict({"obs": {"camera1": {"pointmap": t1}}})
-    td2 = TensorDict({"obs": {"camera1": {"pointmap": t2}}})
-        
-    transform.call_trajectory(td1)
-    transform.call_trajectory(td2)
-        
-    print(torch.mean(transform(td1)["obs", "camera1"]["pointmap"], dim=(0,1,2,3)))
+        for key, spec in self._input_specs.items():
+            pointmaps = tensordict["obs", key]
+            for name, stream in spec.streams.items():
+                if not isinstance(stream, PointMapStream):
+                    continue
+                
+                pointmap: torch.Tensor = pointmaps[name]
+                
+                # Unscale pointmap from [-1, 1] to [min_points, max_points] on each axis
+                pointmap = torch.clamp(pointmap, -1.0, 1.0)
+                pointmap = ((pointmap + 1.0) / 2) * (self.max_points - self.min_points) + self.min_points
+                    
+                pointmaps[name] = pointmap
+                
+        return tensordict

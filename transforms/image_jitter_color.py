@@ -39,6 +39,8 @@ class ColorJitterImage(Transform):
         for key, spec in input_specs.items():
             streams = dict(spec.streams)  # copy streams for local modification
             for name, stream in streams.items():
+                if not isinstance(stream, RGBStream):
+                    continue
                 stream = stream.reorder_channels("CHW")
                 streams[name] = stream
             obs_specs[key] = spec.replace(streams=streams)

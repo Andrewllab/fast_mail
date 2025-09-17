@@ -1,13 +1,17 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess_transforms.t2-1_triangle_crop: triangle_crop_224x224
-  
-  # Apply color jitter
-  - /transforms@data.gpu_batch_transforms.t98_color_jitter: image_jitter_color
 
-  # apply ImageNet normalization
+  # Apply jitter to images and depth maps
+  - /transforms@data.gpu_batch_transforms.t97-1_color_jitter: image_jitter_color
+  - /transforms@data.gpu_batch_transforms.t97-2_depth_jitter: translational_jitter
+
+  # Crop out regions outside the area of interest
+  - /transforms@data.gpu_batch_transforms.t98_triangle_crop: triangle_crop_224x224
+
+  # apply ImageNet normalization and scale depth maps to [-1, 1]
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
+  - /transforms@data.gpu_batch_transforms.t99-1_norm_depth: depth_normalize
 
 data:
   # we save the preprocessed data to a unique path so as not to overwrite other obs modalities

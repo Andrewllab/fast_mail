@@ -1,0 +1,3 @@
+_target_: transforms.depth_normalize.DepthNormalize
+_partial_: true
+max_depth: 1.2 # meters

@@ -138,7 +138,7 @@ class ResizeImage(Transform):
                     interpolation=interpolation,
                     antialias=self.antialias,
                 )
-
+                
                 # Convert back to uint8 to save memory
                 if img_dtype == torch.uint8:
                     image = image.mul(255).clamp(0, 255).to(torch.uint8)

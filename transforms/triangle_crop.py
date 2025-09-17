@@ -69,19 +69,17 @@ class TriangleCrop(Transform):
             if spec is None or not isinstance(spec, CameraSpec):
                 raise ValueError(f"Camera spec for key '{key}' not found in specs. Got {spec}")
 
-            H, W = None, None
-            for _, stream in spec.streams.items():
-                if H is None or W is None:
-                    H, W = stream.height_width
-
-                if not (H, W) == stream.height_width:
-                    raise ValueError(f"Stream dimensions of {key} don't match: {(H, W)} vs {stream.height_width}")
+            hws = [stream.height_width for stream in spec.streams.values()]
+            if not all(hw == hws[0] for hw in hws):
+                raise ValueError(
+                    f"All camera streams must have the same height and width, but got {hws}"
+                )
 
             border = TriangleCropBorder(**border_kwargs)
-            if not border.in_img(H, W):
-                raise ValueError(f"Border for {key} is out of image bounds: {border} vs {(H, W)}")
+            if not border.in_img(*hws[0]):
+                raise ValueError(f"Border for {key} is out of image bounds: {border} vs {hws[0]}")
 
-            self.masks[key] = border.build_mask(H, W)
+            self.masks[key] = border.build_mask(*hws[0])
 
     @property
     def specs(self) -> DataSpecs:
@@ -98,6 +96,8 @@ class TriangleCrop(Transform):
 
             for name, stream in spec.streams.items():
                 assert isinstance(images[name], torch.Tensor)
+                if isinstance(stream, PointMapStream):
+                    continue
                 
                 if stream.channel_order == "HWC":
                     mask_stacked = mask.view((1,) * (images[name].ndim - 3) + mask.shape + (1,))
