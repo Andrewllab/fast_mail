@@ -8,6 +8,7 @@ from tensordict import TensorDict
 from torch import Tensor
 from torch_geometric.data import Batch, Data
 
+from environments.base_dataset import EmptyPointCloudError
 from environments.specs import (
     CameraSpec,
     DataSpecs,
@@ -28,10 +29,13 @@ class ToPointCloud(Transform):
         color: bool = False,
         max_depth: float | None = None,
         out_key: str = "pcd",
+        warn_min_points: int = 100,
     ):
         self.color = color
         self.max_depth = max_depth
         self._out_key = out_key
+        self.warn_min_points = warn_min_points
+        self.error_min_points = False
 
         depth_specs = {
             key: spec
@@ -184,7 +188,22 @@ class ToPointCloud(Transform):
 
         batch = flatten_and_collate(points_batch, mask_batch, rgb_batch)
 
+        num_points = batch.ptr[1:] - batch.ptr[:-1]
+        if (num_points <= self.warn_min_points).any():
+            log.warning(
+                f"Some point clouds are empty after conversion to point cloud. This may be due to all points being beyond max_depth={self.max_depth}. The number of points per batch element is: {num_points}"
+            )
+            if self.error_min_points:
+                raise EmptyPointCloudError("Aborting due to empty point clouds.")
+
         tensordict["obs", self._out_key] = batch
+        return tensordict
+
+    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
+        error_min_points = self.error_min_points
+        self.error_min_points = True
+        tensordict = self(tensordict)
+        self.error_min_points = error_min_points
         return tensordict
 
 

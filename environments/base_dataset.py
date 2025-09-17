@@ -42,6 +42,10 @@ TRANSFORMS_CFG_FILE = "transforms_cfg.yaml"
 TRANSFORMS_PKL_FILE = "transforms.pkl"
 
 
+class EmptyPointCloudError(Exception):
+    pass
+
+
 class TrajectoryDataset(Dataset, ABC):
     preprocess_transforms: Compose
     transform: Compose
@@ -446,10 +450,16 @@ class TrajectoryDataset(Dataset, ABC):
             for transform in preprocess_transforms:
                 next_trajs = []
                 for traj in trajs:
-                    if TransformConstraint.GPU_ONLY in transform.constraints:
-                        transformed = self._preprocess_gpu(transform, traj, device)
-                    else:
-                        transformed = transform.call_trajectory(traj)
+                    try:
+                        if TransformConstraint.GPU_ONLY in transform.constraints:
+                            transformed = self._preprocess_gpu(transform, traj, device)
+                        else:
+                            transformed = transform.call_trajectory(traj)
+                    except EmptyPointCloudError as e:
+                        log.warning(
+                            f"Skipping trajectory from file {raw_file} due to empty point cloud after {transform.__class__.__name__}: {e}"
+                        )
+                        continue
 
                     if isinstance(transformed, list):
                         next_trajs.extend(transformed)

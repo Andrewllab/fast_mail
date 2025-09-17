@@ -38,6 +38,8 @@ def apply_mask(data: Data, mask: Tensor) -> Data:
         ):
             data[key] = value[mask]
 
+    data = update_ptr(data)
+
     return data
 
 

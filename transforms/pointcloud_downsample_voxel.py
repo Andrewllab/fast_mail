@@ -1,3 +1,4 @@
+import logging
 import re
 from typing import Sequence
 
@@ -11,6 +12,9 @@ from torch_geometric.utils import one_hot, scatter
 
 from environments.specs import DataSpecs
 from transforms.base_transform import KeyMapping, Transform
+from utils.pyg import update_ptr
+
+log = logging.getLogger(__name__)
 
 
 class GridSamplePointCloud(Transform):
@@ -93,6 +97,14 @@ class GridSamplePointCloud(Transform):
                     if item.dtype == torch.uint8:
                         item = item.to(default_dtype) / 255.0
                     data[key] = scatter(item, c, dim=0, reduce="mean")
+
+        data = update_ptr(data)
+
+        num_points = data.ptr[1:] - data.ptr[:-1]
+        if (num_points == 0).any():
+            log.warning(
+                f"Some point clouds are empty after cropping. The number of points per batch element is: {num_points}"
+            )
 
         return data
 
