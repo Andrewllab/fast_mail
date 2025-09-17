@@ -15,7 +15,7 @@ agent:
       shared_encoder: True
       image_type: rgb
       image_encoder:
-        pretrained: True
+        pretrained: False
 
     t10-2_image_tokenizer:
       shared_encoder: True
