@@ -13,7 +13,8 @@ from robocasa.utils.env_utils import create_env
 
 def make(
     env_name: str,
-    img_size: List[int],
+    img_height: int,
+    img_width: int,
     camera_names: List[str],
     wrappers: DictConfig | None = None,
 ):
@@ -32,8 +33,8 @@ def make(
 
     env = create_env(
         env_name=env_name,
-        camera_widths=img_size[0],
-        camera_heights=img_size[1],
+        camera_heights=img_height,
+        camera_widths=img_width,
         camera_names=[
             "robot0_agentview_left",
             "robot0_agentview_right",

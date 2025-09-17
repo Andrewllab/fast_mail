@@ -20,38 +20,56 @@ env_dataset:
     _target_: environments.simulation.robocasa.build_env.make 
     _recursive_: False 
     env_name: ???
-    img_size: [224, 224]
+    img_height: 224 # observation image height 
+    img_width: 224 # observation image width 
     camera_names: 
       - robot0_agentview_left
       - robot0_agentview_right
       - robot0_eye_in_hand
     wrappers:
-      robosuite:
-        _target_: environments.simulation.robocasa.wrappers.RobosuiteWrapper
+      gym_wrapper:
+        _target_: environments.simulation.robocasa.wrappers.GymWrapper
         _partial_: True  # requires 'env' argument
-      to_pointcloud:
-        _target_: environments.simulation.robocasa.wrappers.PointCloudWrapper
+        render_width: 768
+        render_height: 512
+      # robosuite:
+      #   _target_: environments.simulation.robocasa.wrappers.RobosuiteWrapper
+      #   _partial_: True  # requires 'env' argument
+      # video_recoder:
+      #   _target_: environments.simulation.robocasa.wrappers.VideoRecorder
+      #   _partial_: True  # requires 'env' argument
+      #   num_eval_episodes: 5
+      #   video_folder: ${paths.root_dir}/recordings
+      #   filename_prefix: "eval_episodes"
+      #   camera_name: "robot0_agentview_center"
+      #   size: [768, 512] # frame size (width, height)
+      #   fps: 20 
+      # to_pointcloud:
+      #   _target_: environments.simulation.robocasa.wrappers.PointCloudWrapper
+      #   _partial_: True  # requires 'env' argument
+      #   global_frame: False
+      # pointcloud_fps:
+      #   _target_: environments.simulation.robocasa.wrappers.PointCloudSamplingWrapper
+      #   _partial_: True  # requires 'env' argument
+      #   pc_sampler: 
+      #     _target_: environments.simulation.robocasa.wrappers.FPSPointCloudSampler
+      #   num_points: 1024 # https://github.com/xiaogangjia/depth_vla/blob/4b034a6cacf28b039e0c3d9c6ddaacff5b57f926/configs/robocasa_config.yaml#L100
+      record_video:
+        _target_: environments.wrappers.RecordMultiEpisodeVideo
         _partial_: True  # requires 'env' argument
-        global_frame: False
-      pointcloud_fps:
-        _target_: environments.simulation.robocasa.wrappers.PointCloudSamplingWrapper
-        _partial_: True  # requires 'env' argument
-        pc_sampler: 
-          _target_: environments.simulation.robocasa.wrappers.FPSPointCloudSampler
-        num_points: 1024 # https://github.com/xiaogangjia/depth_vla/blob/4b034a6cacf28b039e0c3d9c6ddaacff5b57f926/configs/robocasa_config.yaml#L100
+        video_folder: ${paths.recording_dir}
+        name_prefix: rollout
+        episode_trigger:
+          _target_: environments.simulation.utils.triggers.episode_trigger
+          episode_interval: 1000  # record just once
+        num_episodes: 5  # number of episodes to record
+        fps: 30
+        disable_logger: True
       robocasa_preprocess:
         _target_: environments.simulation.robocasa.wrappers.RoboCasaPreProcess
         _partial_: True  # requires 'env' argument
         obs_seq_len: 1
         max_steps_per_episode: 400 # https://github.com/xiaogangjia/depth_vla/blob/4b034a6cacf28b039e0c3d9c6ddaacff5b57f926/configs/robocasa_config.yaml#L235
-      video_recoder:
-        _target_: environments.simulation.robocasa.wrappers.VideoRecorder
-        _partial_: True  # requires 'env' argument
-        out_dir: ${paths.root_dir}/recordings
-        filename_prefix: "eval_episode"
-        camera_name: "robot0_agentview_center"
-        size: [768, 512] # frame size (width, height)
-        fps: 20 
 
   num_envs: 1
   num_episodes: 10  # evaluate on 20 episodes

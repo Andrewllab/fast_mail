@@ -63,6 +63,7 @@ def predict(cfg: DictConfig) -> None:
 
         # merge the agent and data configs, with the current config taking precedence
         agent_cfg = OmegaConf.merge(train_cfg.agent, agent_cfg)
+        train_cfg.data.pop("env_dataset")
         data_cfg = OmegaConf.merge(train_cfg.data, data_cfg)
 
         # modify the _target_ to point to the module's load_from_checkpoint method

@@ -187,15 +187,15 @@ def step_return_to_tensor_dict(
 
     tensordict = TensorDict({"obs": obs})  # type: ignore
 
-    if goal is not None:
-        tensordict["goal"] = goal
-
     # The final obs dict should have only a single leading dimension but we
     # also have to unsqueeze to add a singleton time dimension.
     # The only way we can unsqueeze the tensordict is like this:
     tensordict.auto_batch_size_(batch_dims=1)
     tensordict = tensordict.unsqueeze(dim=1)
     tensordict.auto_batch_size_(batch_dims=1)
+    
+    if goal is not None:
+        tensordict["goal"] = goal
 
     if episode_infos:
         episode_info = tensordict.stack(episode_infos).float()

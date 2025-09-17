@@ -52,6 +52,6 @@ class ClipGoalEmbedding(Transform):
         embedding = self.cached_clip(goal_text)
         assert embedding.shape == (1, 1, 1024)
 
-        tensordict["goal", "embed"] = embedding.squeeze(0)  # shape (1, 1024)
+        tensordict["goal", "embed"] = embedding  # shape (1, 1024)
 
         return tensordict

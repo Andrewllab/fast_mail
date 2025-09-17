@@ -5,11 +5,12 @@ defaults:
   - /transforms@data.preprocess_transforms.t1-3_remove_inf_depth: remove_inf_depth
   # - data/wrappers@data.env_dataset.env.wrappers: record_video  # record videos
   # log test results to new wandb run, since test parameters affect results
-  # - logger: wandb
+  - logger: wandb
   - python_logging: default
   - paths: default
   - hydra: default
   - _self_
+  - preprocessing: robocasa
   - obs_modality: sim_pointmaps
   - platform: default
   - optional local: default
@@ -36,17 +37,14 @@ agent:
 data:
   eval_mode: env
   env_dataset:
-    num_episodes: 6  # 30 episodes in total across 5 checkpoints
+    num_episodes: 5  # 30 episodes in total across 5 checkpoints
     action_horizon: 20  # modify if desired
 
-    # env:
-    #   env_cfg:
-    #     episode_length_s: 20  # 600 frames (simulation renders at 30fps)
-    
-      # wrappers:
-      #   record_video:
-      #     num_episodes: ${data.env_dataset.num_episodes}  # number of episodes to record
-      #     fps: 60  # increase if the videos are too long
+    env:
+      wrappers:
+        record_video:
+          num_episodes: ${data.env_dataset.num_episodes}  # number of episodes to record
+          fps: 20  # increase if the videos are too long
 
 trainer:
   default_root_dir: ${paths.output_dir}

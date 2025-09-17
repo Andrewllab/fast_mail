@@ -4,7 +4,7 @@ defaults:
   - robocasa
 
 task_suite: robocasa
-task: Drawer_TurnOff_TurnOn_SinkSpout
+task: TurnOffSinkFaucet_TurnOnSinkFaucet_TurnSinkSpout
 name: kitchen_sink
 
 dataset:
@@ -13,4 +13,4 @@ dataset:
 
 env_dataset:
   env:
-    env_name: Drawer_TurnOff_TurnOn_SinkSpout
+    env_name: TurnOffSinkFaucet_TurnOnSinkFaucet_TurnSinkSpout
