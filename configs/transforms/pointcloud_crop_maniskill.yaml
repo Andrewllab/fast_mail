@@ -1,7 +1,7 @@
 # name: crop_pointcloud
 _target_: transforms.pointcloud_crop.CropPointCloud
 _partial_: True
-x_range: [-1.0, 1.0]  # crop out the points in Narnia
-y_range: [-1.0, 1.0]
-z_range: [0.008, 1.0]   # just high enough to remove the table
+x_range: [-2.0, 2.0]  # crop out the points in Narnia
+y_range: [-2.0, 2.0]
+z_range: [0.02, 2.0]   # just high enough to remove the table in RollBall, which seems to be highest
 warn_min_points: 100

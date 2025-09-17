@@ -79,6 +79,9 @@ class ManiSkillDataset(TrajectoryDataset):
             )
             self._load_specs(traj)
 
+        extrinsics = traj["obs", "sensor_param", "base_camera", "cam2world_gl"][:-1]
+        extrinsics_ros = _convert_extrinsics_convention(extrinsics, target="ros")
+
         gripper_cam_extrinsics_gl = traj[
             "obs", "sensor_param", "hand_camera", "cam2world_gl"
         ][:-1]
@@ -105,6 +108,7 @@ class ManiSkillDataset(TrajectoryDataset):
                     },
                     "robot_state": traj["obs", "agent", "qpos"][:-1],
                     "ee_pose": traj["obs", "extra", "tcp_pose"][:-1],
+                    "base_cam_pose": extrinsics_ros,
                     "gripper_cam_transform": gripper_cam_extrinsics_ros,
                 },
                 "action": traj["actions"],
@@ -112,7 +116,7 @@ class ManiSkillDataset(TrajectoryDataset):
                     # "text": str(traj["goal", "text"]),
                     "embed": traj["goal", "preprocessed_embedding"],
                 },
-            },
+            },  # type: ignore
         )
 
         return traj
@@ -133,10 +137,6 @@ class ManiSkillDataset(TrajectoryDataset):
         assert depth_shape[-1] == 1
         height, width, channels = rgb_shape[1:]
         intrinsics = data["obs", "sensor_param", "base_camera", "intrinsic_cv"][0]
-        extrinsics = data["obs", "sensor_param", "base_camera", "cam2world_gl"][:1]
-        extrinsics_ros = _convert_extrinsics_convention(
-            extrinsics, target="ros"
-        ).squeeze(dim=0)
 
         base_cam = CameraSpec(
             streams={
@@ -147,7 +147,8 @@ class ManiSkillDataset(TrajectoryDataset):
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
                 intrinsics, height=height, width=width
             ),
-            extrinsics=extrinsics_ros,
+            extrinsics=torch.eye(4, dtype=torch.float32),
+            dynamic_pose_obs_key="base_cam_pose",
         )
 
         # hand cam
@@ -193,6 +194,12 @@ class ManiSkillDataset(TrajectoryDataset):
             elem_shape=(ee_pose.shape[-1],), time=self.action_seq_len
         )
 
+        # base_cam_pose
+        transform = data["obs", "sensor_param", "base_camera", "cam2world_gl"][0]
+        assert transform.ndim == 2
+        assert transform.shape[-2:] == (4, 4)
+        base_cam_pose = ObsSpec(elem_shape=(4, 4), time=self.obs_seq_len)
+
         # gripper_cam_transform
         transform = data["obs", "sensor_param", "hand_camera", "cam2world_gl"][0]
         assert transform.ndim == 2
@@ -224,6 +231,7 @@ class ManiSkillDataset(TrajectoryDataset):
                 "robot_state": robot_state,
                 "ee_pose": ee_pose,
                 "target_ee_pose": target_ee_pose,
+                "base_cam_pose": base_cam_pose,
                 "gripper_cam_transform": gripper_cam_transform,
             },
             action=action,
