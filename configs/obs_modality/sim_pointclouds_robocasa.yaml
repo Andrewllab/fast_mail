@@ -1,8 +1,7 @@
 # @package _global_
 
 defaults:
-  # # downsample the RGBD images to avoid excessive memory usage
-  # - /transforms@data.preprocess_transforms.t2_resize_for_pcd: image_resize
+  - /transforms@data.preprocess_transforms.t0-0_drop_rgbd: cleanup
 
   - /transforms@data.preprocess_transforms.t3_to_pcd: pointmap2pointcloud
 
@@ -10,7 +9,7 @@ defaults:
 
   # no need to apply random transform for robocasa, since this is in the dataset already
 
-  # - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
+  - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
 
   - /transforms@data.gpu_batch_transforms.t1_voxel_downsample: pointcloud_downsample_voxel
 
@@ -24,6 +23,9 @@ defaults:
 data:
   # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess_transforms:
+    t0-0_drop_rgbd:
+      keep_stream_types: [pointmap]
+
     t9_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
       drop_keys: gripper_cam_transform

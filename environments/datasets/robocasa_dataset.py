@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 import json
+import numpy as np
 
 import h5py
 import torch
@@ -48,13 +49,14 @@ class RoboCasaDataset(TrajectoryDataset):
     def load_from_raw_file(self, filepath: Path) -> TensorDict | list[TensorDict]:
         log.debug(f"Loading trajectories from file {filepath}")
 
-        all_trajs = TensorDict.from_h5(str(filepath))
+        file = h5py.File(str(filepath), "r")
+        all_trajs = file["data"]
+
         # each trajectory is stored under a key like "demo_1", "demo_2", etc.
         demo_keys = list(
-            sorted(all_trajs["data"].keys(), key=lambda demo_i: int(demo_i[5:]))
+            sorted(all_trajs.keys(), key=lambda demo_i: int(demo_i[5:]))
         )
         # required to extract task desriptions from each demonstration as RoboCasa's task descriptions are not unique: https://robocasa.ai/docs/tasks_scenes_assets/atomic_tasks.html
-        all_traj_data = h5py.File(str(filepath), "r")
 
         if isinstance(self.trajs_per_task, float):
             # if trajs_per_task is a fraction, take that fraction of the total
@@ -65,21 +67,28 @@ class RoboCasaDataset(TrajectoryDataset):
 
         trajs = []
         for key in demo_keys[:end]:
-            traj = all_trajs["data"][key]
-            curr_traj = all_traj_data["data"][key]
+            traj = all_trajs[key]
+
+            joint_pos = traj["obs"]["robot0_joint_pos"][...].astype(np.float32)  # shape: (T, 7), float32
+            # gripper joint positions which corresponds to the degree of open/close of the gripper (same as gripper_closure in Isaac)
+            gripper_pos = traj["obs"]["robot0_gripper_qpos"][...].astype(np.float32)  # shape: (T, 2), float32
+            ee_pos = traj["obs"]["robot0_eef_pos"][...].astype(np.float32)  # shape: (T, 3), float32
+            ee_quat = traj["obs"]["robot0_eef_quat"][...].astype(np.float32)  # shape: (T, 4), float32
+            # remove joint dims related to static mobile platform
+            action = traj["actions"][:, :7].astype(np.float32)
 
             robot_state = torch.cat(
                 (
-                    traj["obs", "robot0_joint_pos"], # shape: (T, 7), robot joint positions
-                    traj["obs", "robot0_gripper_qpos"] # shape (T, 2), gripper joint positions which corresponds to the degree of open/close of the gripper (same as gripper_closure in Isaac)
+                    torch.from_numpy(joint_pos),
+                    torch.from_numpy(gripper_pos),
                 ), 
                 dim=-1
             )
 
             ee_pose = torch.cat(
                 (
-                    traj["obs", "robot0_eef_pos"],  # shape: (T, 3), float64
-                    traj["obs", "robot0_eef_quat"],  # shape: (T, 4), float64
+                    torch.from_numpy(ee_pos),
+                    torch.from_numpy(ee_quat),
                 ),
                 dim=-1,
             )
@@ -88,28 +97,28 @@ class RoboCasaDataset(TrajectoryDataset):
                 {
                     "obs": {
                         "left_cam": {
-                            "rgb": traj["obs", "robot0_agentview_left_image"], # shape: (T, H, W, 3), uint8
-                            "depth": traj["obs", "robot0_agentview_left_depth"].squeeze(-1), # shape: (T, H, W), float32
-                            "pointmap": traj["obs", "point_cloud"][:, 0, :, :, :],  # shape (T, H, W, 3), float32
+                            "rgb": traj["obs"]["robot0_agentview_left_image"][...], # shape: (T, H, W, 3), uint8
+                            "depth": traj["obs"]["robot0_agentview_left_depth"][..., 0], # shape: (T, H, W), float32
+                            "pointmap": traj["obs"]["point_cloud"][:, 0, :, :, :],  # shape (T, H, W, 3), float32
                         },
                         
                         "right_cam": {
-                            "rgb": traj["obs", "robot0_agentview_right_image"],  # shape: (T, H, W, 3), uint8
-                            "depth": traj["obs", "robot0_agentview_right_depth"].squeeze(-1), # shape: (T, H, W), float32
-                            "pointmap": traj["obs", "point_cloud"][:, 1, :, :, :],  # shape (T, H, W, 3), float32
+                            "rgb": traj["obs"]["robot0_agentview_right_image"][...],  # shape: (T, H, W, 3), uint8
+                            "depth": traj["obs"]["robot0_agentview_right_depth"][..., 0], # shape: (T, H, W), float32
+                            "pointmap": traj["obs"]["point_cloud"][:, 1, :, :, :],  # shape (T, H, W, 3), float32
                         },
 
                         "gripper_cam": {
-                            "rgb": traj["obs", "robot0_eye_in_hand_image"],  # shape: (T, H, W, 3), uint8
-                            "depth": traj["obs", "robot0_eye_in_hand_depth"].squeeze(-1), # shape: (T, H, W), float32
-                            "pointmap": traj["obs", "point_cloud"][:, 2, :, :, :], # shape (T, H, W, 3), float32
+                            "rgb": traj["obs"]["robot0_eye_in_hand_image"][...],  # shape: (T, H, W, 3), uint8
+                            "depth": traj["obs"]["robot0_eye_in_hand_depth"][..., 0], # shape: (T, H, W), float32
+                            "pointmap": traj["obs"]["point_cloud"][:, 2, :, :, :], # shape (T, H, W, 3), float32
                         },
-                        "ee_pose": ee_pose, # shape: (T, 7), float64
-                        "robot_state": robot_state.float(), # shape: (T, 9), float64
+                        "ee_pose": ee_pose, # shape: (T, 7), float32
+                        "robot_state": robot_state, # shape: (T, 9), float32
                     },
-                    "action": traj["actions"].float()[:, :7], # remove joint dims related to static mobile platform
+                    "action": action,
                     "goal": {
-                        "text": json.loads(curr_traj.attrs["ep_meta"])["lang"]  # language description of the current task
+                        "text": json.loads(traj.attrs["ep_meta"])["lang"]  # language description of the current task
                     }
                 },  # type: ignore
             )
@@ -124,14 +133,14 @@ class RoboCasaDataset(TrajectoryDataset):
             log.debug(
                 f"Inferring dataset specs by inspecting trajectory from file {filepath}"
             )
-            data = TensorDict.from_h5(str(filepath))
-            data = data["data", "demo_1"]
+            file = h5py.File(str(filepath), "r")
+            traj = file["data"]["demo_1"]
 
         # static left camera
-        rgb_shape = data["obs", "robot0_agentview_left_image"].shape
+        rgb_shape = traj["obs"]["robot0_agentview_left_image"].shape
         assert len(rgb_shape) == 4
         assert rgb_shape[-1] == 3
-        depth_shape = data["obs", "robot0_agentview_left_depth"].shape
+        depth_shape = traj["obs"]["robot0_agentview_left_depth"].shape
         assert len(depth_shape) == 4
         assert depth_shape[-1] == 1
         assert rgb_shape[:-1] == depth_shape[:-1]
@@ -164,10 +173,10 @@ class RoboCasaDataset(TrajectoryDataset):
         )
 
         # static right camera
-        rgb_shape = data["obs", "robot0_agentview_right_image"].shape
+        rgb_shape = traj["obs"]["robot0_agentview_right_image"].shape
         assert len(rgb_shape) == 4
         assert rgb_shape[-1] == 3
-        depth_shape = data["obs", "robot0_agentview_right_depth"].shape
+        depth_shape = traj["obs"]["robot0_agentview_right_depth"].shape
         assert len(depth_shape) == 4
         assert depth_shape[-1] == 1
         assert rgb_shape[:-1] == depth_shape[:-1]
@@ -200,10 +209,10 @@ class RoboCasaDataset(TrajectoryDataset):
         )
 
         # gripper camera
-        rgb_shape = data["obs", "robot0_eye_in_hand_image"].shape
+        rgb_shape = traj["obs"]["robot0_eye_in_hand_image"].shape
         assert len(rgb_shape) == 4
         assert rgb_shape[-1] == 3
-        depth_shape = data["obs", "robot0_eye_in_hand_depth"].shape
+        depth_shape = traj["obs"]["robot0_eye_in_hand_depth"].shape
         assert len(depth_shape) == 4
         assert depth_shape[-1] == 1
         assert rgb_shape[:-1] == depth_shape[:-1]
@@ -238,20 +247,20 @@ class RoboCasaDataset(TrajectoryDataset):
         )
 
         # robot state
-        joint_pos = data["obs", "robot0_joint_pos"]
+        joint_pos = traj["obs"]["robot0_joint_pos"]
         assert joint_pos.ndim == 2
         assert joint_pos.shape[-1] == 7
-        gripper_pos = data["obs", "robot0_gripper_qpos"]
+        gripper_pos = traj["obs"]["robot0_gripper_qpos"]
         assert gripper_pos.ndim == 2
         assert gripper_pos.shape[-1] == 2
         # we concatenate joint_pos and gripper_pos to get a shape of (T, 9)
         robot_state = ObsSpec(elem_shape=(9,), time=self.obs_seq_len)
 
         # end-effector pose
-        ee_pos = data["obs", "robot0_eef_pos"]
+        ee_pos = traj["obs"]["robot0_eef_pos"]
         assert ee_pos.ndim == 2
         assert ee_pos.shape[-1] == 3
-        ee_quat = data["obs", "robot0_eef_quat"]
+        ee_quat = traj["obs"]["robot0_eef_quat"]
         assert ee_quat.ndim == 2
         assert ee_quat.shape[-1] == 4
         # we concatenate ee_pos and ee_quat to get a shape of (T, 7)
@@ -265,9 +274,9 @@ class RoboCasaDataset(TrajectoryDataset):
         gripper_cam_transform = ObsSpec(elem_shape=(4, 4), time=self.obs_seq_len)
 
         # !!! NOTE: JOINT-SPACE control actions !!!
-        assert data["actions"].ndim == 2
+        assert traj["actions"].ndim == 2
         # ignore joint dims related to static mobile platform
-        assert data["actions"][:, :7].shape[-1] == 7
+        assert traj["actions"][:, :7].shape[-1] == 7
         action = ActionSpec(action_dim=7, time=self.action_seq_len)
 
         self._specs = DataSpecs(
