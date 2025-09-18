@@ -15,7 +15,7 @@ agent:
       shared_encoder: False
       fusion_type: null  # Literal["6ch", "add", "cat"] | null
       image_encoder:
-        pretrained: True
+        pretrained: False
 
 data:
   batch_size: ${floor_div:${platform.batch_size},4}  # 1/4 of typical batch size

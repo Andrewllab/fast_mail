@@ -13,7 +13,7 @@ agent:
           cat_cartesian_coordinates: ${cat_cartesian_coordinates}
 
 # interpolate from top-level config for ease of use on command line
-n_wavelengths: 4
-max_wavelength: 4
-min_wavelength: 0.4
+n_wavelengths: 10
+max_wavelength: 2
+min_wavelength: 0.002
 cat_cartesian_coordinates: True
