@@ -11,7 +11,7 @@ dataset:
   root_dir: ???
   preprocessed_dir: ???
   trajs_per_task: 1.0 # fraction of trajectories to use per task
-  action_seq_len: 10
+  action_seq_len: 20
   obs_seq_len: 1
 
 env_dataset:

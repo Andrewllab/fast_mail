@@ -31,7 +31,7 @@ class BaseAgent(L.LightningModule):
         lr_scheduler: Callable[[Optimizer], LRScheduler] | None,
         specs: DataSpecs,
         ema_decay: float = 0.0,
-        goal_encoder: TransformPartial | None = None,
+        goal_encoder: TransformPartialsDict | None = None,
         normalizer: Sequential | None = None,
         reverse_transform: Compose | None = None,
     ):

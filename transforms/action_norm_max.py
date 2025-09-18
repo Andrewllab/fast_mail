@@ -37,6 +37,8 @@ class ActionNormMaxMagnitude(NormalizingTransform, nn.Module):
         max_actions = actions.abs().max(dim=0).values
         self.max_actions[...] = torch.maximum(self.max_actions, max_actions)
 
+        log.debug(f"Updated max action magnitudes: {self.max_actions}")
+
         return tensordict
 
     @property
@@ -99,6 +101,9 @@ class ActionNormMinMax(NormalizingTransform, nn.Module):
         self.min_actions[...] = torch.minimum(self.min_actions, min_actions)
 
         self.range_actions[...] = self.max_actions - self.min_actions
+
+        log.debug(f"Updated max action magnitudes: {self.max_actions}")
+        log.debug(f"Updated min action magnitudes: {self.min_actions}")
 
         return tensordict
 

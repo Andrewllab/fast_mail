@@ -6,7 +6,7 @@ defaults:
   - sampler: ddim
   - optimizer: adamw
   - lr_scheduler: none
-  - goal_encoder: none
+  - goal_encoder: null
 
 _target_: agents.beso_agent.BesoAgent
 

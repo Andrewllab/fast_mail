@@ -1,4 +1,4 @@
 _target_: models.timm_models.create_timm_model
 _partial_: True  # requires in_channels and embed_dim
-model_name: convnextv2_nano  # 15M parameters
+model_name: convnextv2_tiny  # 15M parameters
 pretrained: False

@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  # normalize absolute actions so that they lie within [-1,1]
+  - /transforms@data.preprocess_transforms.t0-9_normalize_actions: action_norm_minmax
+
+  # compute goal embeddings online to provide "data augmentation", since the embeddings
+  # are not deterministic
+  - /tokenizers@agent.goal_encoder.t1-0_goal_embedding: clip_goal_embedding

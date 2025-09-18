@@ -1,5 +1,6 @@
 from typing import Sequence
 
+import tensordict
 import torch
 from tensordict import NonTensorStack, TensorDict, is_leaf_nontensor
 from torch.utils.data._utils.collate import collate
@@ -18,9 +19,19 @@ def collate_tensor_dict(batch: list[TensorDict], *, collate_fn_map) -> TensorDic
         include_nested=True, leaves_only=True, is_leaf=is_leaf_nontensor
     ):
         if isinstance(value, NonTensorStack):
-            # because the Data objects are in a list, collate returns a list
-            # a single Batch object, so we need to unpack the list
-            stacked[key] = collate(value.tolist(), collate_fn_map=collate_fn_map)[0]
+
+            collated = collate(value.tolist(), collate_fn_map=collate_fn_map)
+
+            if isinstance(collated[0], GeomData):
+                # because the Data objects are in a list, collate returns a list
+                # a single Batch object, so we need to unpack the list
+                stacked[key] = collated[0]
+
+            else:
+                # e.g. a list of strings or something
+                with tensordict.set_list_to_stack(False):
+                    # convert to numpy array and wrap in NonTensorData (no indexing along batch dim)
+                    stacked[key] = collated
 
     # recompute batch size with only a single batch dimension, since tensordict
     # eagerly increases the number of batch dims when stacking

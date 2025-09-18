@@ -1,5 +1,6 @@
 import functools
 
+import numpy as np
 from tensordict import TensorDict
 
 from agents.encoders.clip_lang_encoder import LangClip
@@ -44,14 +45,14 @@ class ClipGoalEmbedding(Transform):
         self.make_model()
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
-        goal_text = tensordict["goal", "text"]
+        goal_texts = tensordict["goal", "text"]
+        assert isinstance(goal_texts, np.ndarray)
 
-        goal_text = str(goal_text)  # make sure it's a string
-        assert isinstance(goal_text, str)
+        goal_texts = [str(text) for text in goal_texts]
 
-        embedding = self.cached_clip(goal_text)
-        assert embedding.shape == (1, 1, 1024)
+        # embedding: (B, 1, 1024)
+        embedding = self.clip_model(goal_texts)
+        assert embedding.shape[-2:] == (1, 1024)
 
-        tensordict["goal", "embed"] = embedding  # shape (1, 1024)
-
+        tensordict["goal", "embed"] = embedding
         return tensordict
