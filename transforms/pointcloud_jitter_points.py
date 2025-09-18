@@ -24,13 +24,13 @@ class JitterPointCloud(Transform):
     def __init__(
         self,
         specs: DataSpecs,
-        translate: Union[float, int, Sequence[Union[float, int]]],
+        max_sigma: Union[float, int, Sequence[Union[float, int]]],
         pcd_keys: str | Sequence[str] = "pcd",
     ) -> None:
 
-        self.translate = translate
+        self.max_sigma = max_sigma
 
-        self.jitter = VariableJitter(translate)
+        self.jitter = VariableJitter(max_sigma)
 
         self._specs = specs
         if isinstance(pcd_keys, str):

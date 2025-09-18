@@ -9,7 +9,7 @@ defaults:
   - /transforms@data.preprocess_transforms.t99_cleanup: cleanup
 
   # apply jitter data augmentation
-  - /transforms@data.gpu_batch_transforms.t1_pointmap_jitter: translational_jitter
+  - /transforms@data.gpu_batch_transforms.t1_jitter: translational_jitter
   
   # apply ImageNet normalization
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
@@ -24,6 +24,10 @@ data:
       keep_stream_types: ${if:${oc.select:agent.obs_encoder.t10_image_tokenizer.fusion_type,True},[pointmap,rgb],[pointmap]}
       drop_stream_names: right  # even if we keep rgb streams, drop the right rgb stream
       drop_keys: gripper_cam_transform
+
+  gpu_batch_transforms:
+    t1_jitter:
+      max_sigma: 0.002  # slightly higher jitter for robocasa
 
   # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
   dataset:

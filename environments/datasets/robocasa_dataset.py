@@ -143,7 +143,7 @@ class RoboCasaDataset(TrajectoryDataset):
         left_cam_pos = torch.tensor([[-0.5, 0.35, 1.05]])
         left_cam_rot_quat = torch.tensor([[0.55623853, 0.29935253, -0.37678665, -0.6775092]])  # w, x, y, z
         left_cam_rot_mat = matrix_from_quat(left_cam_rot_quat)
-        extrinsics = make_pose(left_cam_pos, left_cam_rot_mat)
+        extrinsics = make_pose(left_cam_pos, left_cam_rot_mat).squeeze(0)
         # # correct extrinsics by adding conversion from ROS to WORLD camera convention
         # # we right-multiply, since we first need to transform the points
         # # into the WORLD convention, and then apply the extrinsics
@@ -179,7 +179,7 @@ class RoboCasaDataset(TrajectoryDataset):
         right_cam_pos = torch.tensor([[-0.5, -0.35, 1.05]])
         right_cam_rot_quat = torch.tensor([[0.6775091886520386, 0.3767866790294647, -0.2993525564670563, -0.55623859167099]])  # w, x, y, z
         right_cam_rot_mat = matrix_from_quat(right_cam_rot_quat)
-        extrinsics = make_pose(right_cam_pos, right_cam_rot_mat)
+        extrinsics = make_pose(right_cam_pos, right_cam_rot_mat).squeeze(0)
         # # correct extrinsics by adding conversion from ROS to WORLD camera convention
         # # we right-multiply, since we first need to transform the points
         # # into the WORLD convention, and then apply the extrinsics
@@ -215,7 +215,7 @@ class RoboCasaDataset(TrajectoryDataset):
         pos_gripper_cam = torch.tensor([[0.05, 0, 0]])
         rot_quat_gripper_cam = torch.tensor([[0, 0.707107, 0.707107, 0]])  # w, x, y, z
         rot_mat_gripper_cam = matrix_from_quat(rot_quat_gripper_cam)
-        extrinsics = make_pose(pos_gripper_cam, rot_mat_gripper_cam)
+        extrinsics = make_pose(pos_gripper_cam, rot_mat_gripper_cam).squeeze(0)
         # # correct extrinsics by adding conversion from ROS to WORLD camera convention
         # # we right-multiply, since we first need to transform the points
         # # into the WORLD convention, and then apply the extrinsics

@@ -15,7 +15,7 @@ defaults:
   - /transforms@data.gpu_batch_transforms.t1_voxel_downsample: pointcloud_downsample_voxel
 
   # apply jitter data augmentation
-  - /transforms@data.gpu_batch_transforms.t2_jitter: translational_jitter
+  - /transforms@data.gpu_batch_transforms.t2_jitter: pointcloud_jitter
   
   # we don't need to normalize the pointclouds because they are already sort of
   # within the range [0, 1] after cropping
