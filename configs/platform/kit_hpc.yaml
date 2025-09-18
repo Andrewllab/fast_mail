@@ -20,6 +20,9 @@ paths:
 data:
   dataset:
      overwrite_preprocessed: True  # don't crash just because zipped datasets are out of date
+     # Don't modify the path according to ${data.name}, since this crashes for multirun with different datasets
+     # The preprocessed data gets deleted after the job anyway, so it doesn't matter
+     preprocessed_dir: ${paths.preprocessed_dir}/preprocessed
 
 hydra:
   launcher:
