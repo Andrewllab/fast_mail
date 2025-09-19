@@ -169,7 +169,7 @@ def rendering_process(
     try:
         while True:
             # Non-blocking check for incoming messages
-            if pipe_end.poll(0.01):
+            if pipe_end.poll():
                 message = pipe_end.recv()
                 if message == "QUIT":
                     break
