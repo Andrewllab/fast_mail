@@ -21,7 +21,7 @@ agent:
         cat_cartesian_coordinates: False
 
 data:
-  batch_size: ${floor_div:${platform.batch_size},4}  # 1/4 of typical batch size
+  batch_size: ${floor_div:${platform.batch_size},8}  # 1/8 of typical batch size
 
 logger:
   wandb:
