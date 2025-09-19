@@ -1,3 +1,6 @@
 [submodule "third_party/FoundationStereo"]
 	path = third_party/FoundationStereo
 	url = git@github.com:NVlabs/FoundationStereo.git
+[submodule "third_party/robocasa"]
+	path = third_party/robocasa
+	url = https://github.com/robocasa/robocasa

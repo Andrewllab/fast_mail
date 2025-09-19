@@ -131,6 +131,16 @@ After installation, you can reinstall torch again, since isaaclab IsaacLab torch
 pip3 install --upgrade torch torchvision torch_geometric wandb
 ```
 
+## RoboCasa
+
+Warning: RoboCasa downgrades gymnasium to 0.26.2 numpy to 1.23.3.
+Therefore it is not recommended to install RoboCasa in the same conda environment as Novometis, FoundationStereo, or any other environment suite.
+
+```bash
+pip install git+https://github.com/ARISE-Initiative/robosuite
+pip install -e third_party/robocasa
+```
+
 
 ## ManiSkill
 
