@@ -2,5 +2,5 @@
 _target_: transforms.pointcloud_crop.CropPointCloud
 _partial_: True
 x_range: [0.1, 1.0]  # crop the robot base out of the observation
-y_range: [-0.4, 0.4]
-z_range: [0.004, 0.4]  # just high enough to remove the table
+y_range: [-0.5, 0.5]
+z_range: [0.004, 0.6]  # just high enough to remove the table

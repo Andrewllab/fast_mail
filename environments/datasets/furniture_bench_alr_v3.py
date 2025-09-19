@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+import h5py
 import torch
 from tensordict import TensorDict
 
@@ -55,8 +56,8 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
     def load_from_raw_file(self, filepath: Path) -> TensorDict | list[TensorDict]:
         log.debug(f"Loading trajectories from file {filepath}")
 
-        traj = TensorDict.from_h5(str(filepath))
-        traj = traj["data", "demo_0"]
+        file = h5py.File(str(filepath), "r")
+        traj = file["data"]["demo_0"]
 
         if self._specs is None:
             log.debug(
@@ -64,18 +65,23 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             )
             self._load_specs(traj)
 
+        joint_pos = traj["obs"]["proprioception"]["joint_pos"][...]
+        gripper_pos = traj["obs"]["proprioception"]["gripper_closure"][...]
+        ee_pos = traj["obs"]["proprioception"]["eef_pos_w"][...]
+        ee_quat = traj["obs"]["proprioception"]["eef_quat_w"][...]
+
         robot_state = torch.cat(
             (
-                traj["obs", "proprioception", "joint_pos"],  # shape: (T, 7)
-                traj["obs", "proprioception", "gripper_closure"],  # shape: (T, 2)
+                torch.from_numpy(joint_pos),
+                torch.from_numpy(gripper_pos),
             ),
             dim=-1,
         )
 
         ee_pose = torch.cat(
             (
-                traj["obs", "proprioception", "eef_pos_w"],  # shape: (T, 3)
-                traj["obs", "proprioception", "eef_quat_w"],  # shape: (T, 4)
+                torch.from_numpy(ee_pos),
+                torch.from_numpy(ee_quat),
             ),
             dim=-1,
         )
@@ -84,50 +90,54 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             {
                 "obs": {
                     "front_left_cam": {
-                        "rgb": traj["obs", "front_left_cam", "rgb"],
-                        "depth": traj["obs", "front_left_cam", "depth"].squeeze(-1),
+                        "rgb": traj["obs"]["front_left_cam"]["rgb"][...],
+                        "depth": traj["obs"]["front_left_cam"]["depth"][..., 0],
                     },
                     "front_right_cam": {
-                        "rgb": traj["obs", "front_right_cam", "rgb"],
-                        "depth": traj["obs", "front_right_cam", "depth"].squeeze(-1),
+                        "rgb": traj["obs"]["front_right_cam"]["rgb"][...],
+                        "depth": traj["obs"]["front_right_cam"]["depth"][..., 0],
                     },
                     "gripper_cam": {
-                        "rgb": traj["obs", "gripper_cam", "rgb"],
-                        "depth": traj["obs", "gripper_cam", "depth"].squeeze(-1),
+                        "rgb": traj["obs"]["gripper_cam"]["rgb"][...],
+                        "depth": traj["obs"]["gripper_cam"]["depth"][..., 0],
                     },
                     "robot_state": robot_state,
                     "ee_pose": ee_pose,
-                    "target_ee_pose": traj["actions", "action"][..., :7],
-                    "gripper_cam_transform": traj[
-                        "obs", "gripper_cam", "homogenious_matrix"
-                    ].view(-1, 4, 4),
+                    "target_ee_pose": traj["actions"]["action"][..., :7],
+                    "gripper_cam_transform": traj["obs"]["gripper_cam"][
+                        "homogenious_matrix"
+                    ][...].reshape(-1, 4, 4),
                 },
-                "action": traj["actions", "action"],
+                "action": traj["actions"]["action"][...],
             },  # type: ignore
         )
 
         return traj
 
-    def _load_specs(self, data: TensorDict | None = None) -> None:
-        if data is None:
+    def _load_specs(self, traj: TensorDict | None = None) -> None:
+        if traj is None:
             filepath = self.find_raw_files()[0]
             log.debug(
                 f"Inferring dataset specs by inspecting trajectory from file {filepath}"
             )
-            data = TensorDict.from_h5(str(filepath))
-            data = data["data", "demo_0"]
+            file = h5py.File(str(filepath), "r")
+            traj = file["data"]["demo_0"]
 
         # static camera front left
-        rgb_shape = data["obs", "front_left_cam", "rgb"].shape
+        rgb_shape = traj["obs"]["front_left_cam"]["rgb"].shape
         assert len(rgb_shape) == 4
         assert rgb_shape[-1] == 3
-        depth_shape = data["obs", "front_left_cam", "depth"].shape
+        depth_shape = traj["obs"]["front_left_cam"]["depth"].shape
         assert len(depth_shape) == 4
         assert depth_shape[-1] == 1
         assert rgb_shape[:-1] == depth_shape[:-1]
         height, width, channels = rgb_shape[1:]
-        intrinsics = data["obs", "front_left_cam", "intrinsic_matrix"].reshape(3, 3)
-        extrinsics = data["obs", "front_left_cam", "homogenious_matrix"].reshape(4, 4)
+        intrinsics = traj["obs"]["front_left_cam"]["intrinsic_matrix"][...].reshape(
+            3, 3
+        )
+        extrinsics = traj["obs"]["front_left_cam"]["homogenious_matrix"][...].reshape(
+            4, 4
+        )
         # # correct extrinsics by adding conversion from ROS to WORLD camera convention
         # # we right-multiply, since we first need to transform the points
         # # into the WORLD convention, and then apply the extrinsics
@@ -143,20 +153,24 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
                 intrinsics, height=height, width=width
             ),
-            extrinsics=extrinsics,
+            extrinsics=torch.from_numpy(extrinsics),
         )
 
         # static camera front right
-        rgb_shape = data["obs", "front_right_cam", "rgb"].shape
+        rgb_shape = traj["obs"]["front_right_cam"]["rgb"].shape
         assert len(rgb_shape) == 4
         assert rgb_shape[-1] == 3
-        depth_shape = data["obs", "front_right_cam", "depth"].shape
+        depth_shape = traj["obs"]["front_right_cam"]["depth"].shape
         assert len(depth_shape) == 4
         assert depth_shape[-1] == 1
         assert rgb_shape[:-1] == depth_shape[:-1]
         height, width, channels = rgb_shape[1:]
-        intrinsics = data["obs", "front_right_cam", "intrinsic_matrix"].reshape(3, 3)
-        extrinsics = data["obs", "front_right_cam", "homogenious_matrix"].reshape(4, 4)
+        intrinsics = traj["obs"]["front_right_cam"]["intrinsic_matrix"][...].reshape(
+            3, 3
+        )
+        extrinsics = traj["obs"]["front_right_cam"]["homogenious_matrix"][...].reshape(
+            4, 4
+        )
         # # correct extrinsics by adding conversion from ROS to WORLD camera convention
         # # we right-multiply, since we first need to transform the points
         # # into the WORLD convention, and then apply the extrinsics
@@ -172,19 +186,19 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
                 intrinsics, height=height, width=width
             ),
-            extrinsics=extrinsics,
+            extrinsics=torch.from_numpy(extrinsics),
         )
 
         # gripper camera
-        rgb_shape = data["obs", "gripper_cam", "rgb"].shape
+        rgb_shape = traj["obs"]["gripper_cam"]["rgb"].shape
         assert len(rgb_shape) == 4
         assert rgb_shape[-1] == 3
-        depth_shape = data["obs", "gripper_cam", "depth"].shape
+        depth_shape = traj["obs"]["gripper_cam"]["depth"].shape
         assert len(depth_shape) == 4
         assert depth_shape[-1] == 1
         assert rgb_shape[:-1] == depth_shape[:-1]
         height, width, channels = rgb_shape[1:]
-        intrinsics = data["obs", "gripper_cam", "intrinsic_matrix"].reshape(3, 3)
+        intrinsics = traj["obs"]["gripper_cam"]["intrinsic_matrix"][...].reshape(3, 3)
         # gripper_cam_transform provides complete transform to camera
         extrinsics = torch.eye(4, dtype=torch.float32)
         # # correct extrinsics by adding conversion from ROS to WORLD camera convention
@@ -208,20 +222,20 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         )
 
         # robot state
-        joint_pos = data["obs", "proprioception", "joint_pos"]
+        joint_pos = traj["obs"]["proprioception"]["joint_pos"]
         assert joint_pos.ndim == 2
         assert joint_pos.shape[-1] == 7
-        gripper_pos = data["obs", "proprioception", "gripper_closure"]
+        gripper_pos = traj["obs"]["proprioception"]["gripper_closure"]
         assert gripper_pos.ndim == 2
         assert gripper_pos.shape[-1] == 2
         # we concatenate joint_pos and gripper_pos to get a shape of (T, 9)
         robot_state = ObsSpec(elem_shape=(9,), time=self.obs_seq_len)
 
         # end-effector pose
-        ee_pos = data["obs", "proprioception", "eef_pos_w"]
+        ee_pos = traj["obs"]["proprioception"]["eef_pos_w"]
         assert ee_pos.ndim == 2
         assert ee_pos.shape[-1] == 3
-        ee_quat = data["obs", "proprioception", "eef_quat_w"]
+        ee_quat = traj["obs"]["proprioception"]["eef_quat_w"]
         assert ee_quat.ndim == 2
         assert ee_quat.shape[-1] == 4
         # we concatenate ee_pos and ee_quat to get a shape of (T, 7)
@@ -229,14 +243,14 @@ class AlrFurnitureBenchDataset(TrajectoryDataset):
         target_ee_pose = ObsSpec(elem_shape=(7,), time=self.action_seq_len)
 
         # gripper_cam_transform
-        transform = data["obs", "gripper_cam", "homogenious_matrix"]
+        transform = traj["obs"]["gripper_cam"]["homogenious_matrix"]
         assert transform.ndim == 2
         assert transform.shape[-1] == 16  # flattened 4x4 matrix
         gripper_cam_transform = ObsSpec(elem_shape=(4, 4), time=self.obs_seq_len)
 
         # actions
-        assert data["actions", "action"].ndim == 2
-        assert data["actions", "action"].shape[-1] == 8
+        assert traj["actions"]["action"].ndim == 2
+        assert traj["actions"]["action"].shape[-1] == 8
         action = ActionSpec(action_dim=8, time=self.action_seq_len)
 
         self._specs = DataSpecs(

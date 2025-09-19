@@ -137,7 +137,7 @@ class ToPointCloud(Transform):
             if self.max_depth is not None:
                 # get mask of points that are within max depth
                 # mask: (..., H, W)
-                mask = depth < self.max_depth
+                mask = torch.logical_and(0 < depth, depth < self.max_depth)
                 all_masks.append(mask)
 
             if self.color:

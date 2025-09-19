@@ -23,5 +23,9 @@ data:
     t0-2_subsample:
       factor: 2
 
+    t0-4_quaternions:
+      remove_jumps: True
+      mirror: True
+
     t0-5_relative_actions:
       reference: current_ee_pose

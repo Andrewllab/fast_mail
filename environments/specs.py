@@ -47,7 +47,7 @@ class PinholeCameraIntrinsic:
 
     @classmethod
     def from_intrinsic_matrix(
-        cls, intrinsic_matrix: torch.Tensor, height: int, width: int
+        cls, intrinsic_matrix: torch.Tensor | np.ndarray, height: int, width: int
     ) -> PinholeCameraIntrinsic:
         fx = intrinsic_matrix[0, 0].item()
         fy = intrinsic_matrix[1, 1].item()
