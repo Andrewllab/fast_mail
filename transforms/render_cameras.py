@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import multiprocessing as mp
+import traceback
 from typing import Sequence
 
-import pygame
 from tensordict import TensorDict
 
 from environments.specs import (
@@ -43,8 +44,7 @@ class RenderCameras(Transform):
             stream
             for spec in input_specs.values()
             for name, stream in spec.streams.items()
-            if stream_names is None
-            or name in stream_names
+            if (stream_names is None or name in stream_names)
             and not isinstance(stream, PointMapStream)
         ]
 
@@ -59,20 +59,11 @@ class RenderCameras(Transform):
             )
 
         height, width = height_widths[0]
-        self.tiled_height, self.tiled_width = find_tiling(n_images)
-
-        self.screen = pygame.display.set_mode(
-            (width * self.tiled_width, height * self.tiled_height)
-        )
-        pygame.display.set_caption("Camera Views")
-        self.screen.fill((0, 0, 0))  # Clear the screen
-
-        # Initialize font for labels
-        pygame.font.init()
-        self.font = pygame.font.Font(None, 24)
-
         self.width = width
         self.height = height
+        # self.tiled_height, self.tiled_width = find_tiling(n_images)
+        self.tiled_width = len(input_specs)  # number of cameras
+        self.tiled_height = n_images // self.tiled_width
 
         self._input_specs = input_specs
         self.stream_names = stream_names
@@ -82,16 +73,28 @@ class RenderCameras(Transform):
         self._specs = specs
         self.show_stream_names = show_stream_names
 
+        ctx = mp.get_context("spawn")
+
+        child_end, self.pipe = ctx.Pipe(duplex=False)
+        self.process = ctx.Process(
+            target=rendering_process,
+            args=(child_end,),
+            kwargs={
+                "window_title": "Camera Views",
+                "tile_width": self.width,
+                "tile_height": self.height,
+                "n_tiles_width": self.tiled_width,
+                "n_tiles_height": self.tiled_height,
+            },
+            daemon=True,  # daemon so it doesn't outlive the parent if something goes wrong
+        )
+        self.process.start()
+
     @property
     def specs(self) -> DataSpecs:
         return self._specs
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                raise KeyboardInterrupt("Pygame quit")
-
         images = []
         stream_names = []
         for key, spec in self._input_specs.items():
@@ -121,34 +124,99 @@ class RenderCameras(Transform):
 
         image = tile_images(images, self.tiled_height, self.tiled_width, vertical=True)
 
-        surface = pygame.surfarray.make_surface(image.transpose(1, 0, 2))
-        self.screen.blit(surface, (0, 0))
-
-        if self.show_stream_names:
-        # Add labels to each camera view
-            for i, label in enumerate(stream_names):
-                row = i % self.tiled_height
-                col = i // self.tiled_height
-                x = col * self.width + 10
-                y = row * self.height + 10
-
-                # Create text surface with black background for better visibility
-                text_surface = self.font.render(label, True, (255, 255, 255))
-                text_rect = text_surface.get_rect()
-
-                # Create background rectangle
-                bg_rect = pygame.Rect(
-                    x - 5, y - 2, text_rect.width + 10, text_rect.height + 4
-                )
-                pygame.draw.rect(self.screen, (0, 0, 0, 180), bg_rect)
-
-                # Blit text
-                self.screen.blit(text_surface, (x, y))
-
-        pygame.display.flip()  # Update display
+        try:
+            self.pipe.send(
+                {
+                    "image": image,
+                    "stream_names": stream_names if self.show_stream_names else [],
+                }
+            )
+        except (BrokenPipeError, EOFError):
+            # rendering process has crashed or exited
+            raise KeyboardInterrupt("Pygame quit")
 
         return tensordict
 
     def close(self) -> None:
-        pygame.font.quit()
-        pygame.quit()
+        self.pipe.send("QUIT")
+        self.process.terminate()
+        self.process.join()
+        self.pipe.close()
+
+
+def rendering_process(
+    pipe_end: mp.connection.Connection,
+    tile_width: int,
+    tile_height: int,
+    n_tiles_width: int,
+    n_tiles_height: int,
+    window_title: str = "Camera Views",
+):
+    import pygame
+
+    pygame.init()
+
+    screen = pygame.display.set_mode(
+        (n_tiles_width * tile_width, n_tiles_height * tile_height)
+    )
+    pygame.display.set_caption(window_title)
+    screen.fill((0, 0, 0))  # Clear the screen
+
+    # Initialize font for labels
+    pygame.font.init()
+    font = pygame.font.Font(None, 24)
+
+    try:
+        while True:
+            # Non-blocking check for incoming messages
+            if pipe_end.poll(0.01):
+                message = pipe_end.recv()
+                if message == "QUIT":
+                    break
+                elif isinstance(message, dict):
+                    image = message["image"]
+                    stream_names = message.get("stream_names", [])
+
+                    surface = pygame.surfarray.make_surface(image.transpose(1, 0, 2))
+                    screen.blit(surface, (0, 0))
+
+                    # Add labels to each camera view
+                    for i, label in enumerate(stream_names):
+                        row = i % n_tiles_height
+                        col = i // n_tiles_height
+                        x = col * tile_width + 10
+                        y = row * tile_height + 10
+
+                        # Create text surface with black background for better visibility
+                        text_surface = font.render(label, True, (255, 255, 255))
+                        text_rect = text_surface.get_rect()
+
+                        # Create background rectangle
+                        bg_rect = pygame.Rect(
+                            x - 5, y - 2, text_rect.width + 10, text_rect.height + 4
+                        )
+                        pygame.draw.rect(screen, (0, 0, 0, 180), bg_rect)
+
+                        # Blit text
+                        screen.blit(text_surface, (x, y))
+
+                    pygame.display.flip()  # Update display
+
+            # Keep the window responsive
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    raise KeyboardInterrupt("Pygame quit")
+
+    except KeyboardInterrupt:
+        pass
+    except Exception:
+        traceback.print_exc()
+    finally:
+        try:
+            pygame.font.quit()
+            pygame.quit()
+        except Exception:
+            pass
+
+        pipe_end.close()
