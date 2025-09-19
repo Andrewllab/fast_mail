@@ -1,8 +1,8 @@
 import dataclasses
+import logging
 
 import torch
 from tensordict import TensorDict
-import logging
 
 from environments.specs import (
     CameraSpec,
@@ -15,6 +15,7 @@ from transforms.base_transform import Transform
 from utils.math import transform_pointmap, unproject_depth
 
 log = logging.getLogger(__name__)
+
 
 class ToPointMap(Transform):
     def __init__(
@@ -55,7 +56,7 @@ class ToPointMap(Transform):
                     for name, stream in spec.streams.items()
                     if isinstance(stream, RGBStream)
                 ]
-                
+
                 if not rgb_streams:
                     raise ValueError(
                         f"Camera spec {key} is not an RGBCameraSpec. Cannot use color."
@@ -66,9 +67,9 @@ class ToPointMap(Transform):
                         f"Only the first RGB stream {rgb_streams[0]} will be concatenated "
                         "to the pointmap feature channel"
                     )
-                    
+
                 rgb_name = rgb_streams[0]
-                
+
             if multiview and spec.extrinsics is None:
                 raise ValueError(
                     f"Depth camera {key} does not have an extrinsics matrix."
@@ -130,7 +131,9 @@ class ToPointMap(Transform):
                         pose_key = (pose_key,)
                     dynamic_extrinsics = tensordict[("obs",) + pose_key]
                     assert dynamic_extrinsics.shape[-2:] == (4, 4)
-                    dynamic_extrinsics = dynamic_extrinsics.to(dtype=torch.float32) # BackCompat
+                    dynamic_extrinsics = dynamic_extrinsics.to(
+                        dtype=torch.float32
+                    )  # BackCompat
 
                     # left multiply the dynamic extrinsics because they are
                     # applied after the static extrinsics
@@ -162,7 +165,7 @@ class ToPointMap(Transform):
             if self.max_depth is not None:
                 # get mask of points that are within max depth
                 # mask: (..., H, W)
-                mask = depth >= self.max_depth
+                mask = torch.logical_or(depth < 0, depth >= self.max_depth)
                 point_map[mask] = 0
 
             tensordict["obs", key, self._out_key] = point_map

@@ -45,4 +45,5 @@ class RemoveInfDepthStream(Transform):
                 finite_depth = torch.isfinite(depth)
                 if not finite_depth.all():
                     depth[~finite_depth] = 0.0
+                depth.clamp_(min=0.0)  # Set negative depths to zero
         return tensordict
