@@ -182,7 +182,7 @@ class GymWrapper(Wrapper, gym.Env):
             camera_name=self._render_camera,
         )
         # robocasa envs return upside-down frames -> flip vertically
-        frame = np.flip(frame)
+        frame = np.flip(frame, axis=0)
         return frame
     
     def reset(self, seed=None, options=None):
@@ -338,8 +338,10 @@ class RoboCasaPreProcess(gym.Wrapper):
         left_cam_depth_shape = obs_dict["robot0_agentview_left_depth"].shape
         left_cam_intrinsics = get_camera_intrinsic_matrix(self.unwrapped.sim, "robot0_agentview_left", camera_height=obs_dict["robot0_agentview_left_image"].shape[0], camera_width=obs_dict["robot0_agentview_left_image"].shape[1])
         left_cam_intrinsics = torch.from_numpy(left_cam_intrinsics).float() # otherwise RuntimeError: expected scalar type when torch.matmul in math/utils/transform_pointcloud
-        left_cam_extrinsics = get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_agentview_left")
-        left_cam_extrinsics = torch.from_numpy(left_cam_extrinsics).float() # otherwise RuntimeError: expected scalar type when torch.matmul in math/utils/transform_pointcloud
+        # left_cam_extrinsics = get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_agentview_left")
+        # left_cam_extrinsics = torch.from_numpy(left_cam_extrinsics).float() # otherwise RuntimeError: expected scalar type when torch.matmul in math/utils/transform_pointcloud
+        left_cam_extrinsics = torch.eye(4, dtype=torch.float32)
+
         left_cam = CameraSpec(
             streams={
                 "rgb": RGBStream(left_cam_rgb_shape[0], left_cam_rgb_shape[1], left_cam_rgb_shape[2], channel_order="HWC"),
@@ -349,6 +351,7 @@ class RoboCasaPreProcess(gym.Wrapper):
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
                 left_cam_intrinsics, height=left_cam_depth_shape[0], width=left_cam_depth_shape[1]
             ),
+            dynamic_pose_obs_key="left_cam_transform",
             extrinsics=left_cam_extrinsics,
         )
 
@@ -356,8 +359,10 @@ class RoboCasaPreProcess(gym.Wrapper):
         right_cam_depth_shape = obs_dict["robot0_agentview_right_depth"].shape
         right_cam_intrinsics = get_camera_intrinsic_matrix(self.unwrapped.sim, "robot0_agentview_right", camera_height=obs_dict["robot0_agentview_right_image"].shape[0], camera_width=obs_dict["robot0_agentview_right_image"].shape[1])
         right_cam_intrinsics = torch.from_numpy(right_cam_intrinsics).float() # otherwise RuntimeError: expected scalar type when torch.matmul in math/utils/transform_pointcloud
-        right_cam_extrinsics = get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_agentview_right")
-        right_cam_extrinsics = torch.from_numpy(right_cam_extrinsics).float() # otherwise RuntimeError: expected scalar type when torch.matmul in math/utils/transform_pointcloud
+        # right_cam_extrinsics = get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_agentview_right")
+        # right_cam_extrinsics = torch.from_numpy(right_cam_extrinsics).float() # otherwise RuntimeError: expected scalar type when torch.matmul in math/utils/transform_pointcloud
+        right_cam_extrinsics = torch.eye(4, dtype=torch.float32)
+
         right_cam = CameraSpec(
             streams={
                 "rgb": RGBStream(right_cam_rgb_shape[0], right_cam_rgb_shape[1], right_cam_rgb_shape[2], channel_order="HWC"),
@@ -367,6 +372,7 @@ class RoboCasaPreProcess(gym.Wrapper):
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
                 right_cam_intrinsics, height=right_cam_depth_shape[0], width=right_cam_depth_shape[1]
             ),
+            dynamic_pose_obs_key="right_cam_transform",
             extrinsics=right_cam_extrinsics,
         )
 
@@ -374,8 +380,9 @@ class RoboCasaPreProcess(gym.Wrapper):
         gripper_cam_depth_shape = obs_dict["robot0_eye_in_hand_depth"].shape
         gripper_cam_intrinsics = get_camera_intrinsic_matrix(self.unwrapped.sim, "robot0_eye_in_hand", camera_height=obs_dict["robot0_eye_in_hand_image"].shape[0], camera_width=obs_dict["robot0_eye_in_hand_image"].shape[1])
         gripper_cam_intrinsics = torch.from_numpy(gripper_cam_intrinsics).float() # otherwise RuntimeError: expected scalar type when torch.matmul in math/utils/transform_pointcloud
-        gripper_cam_extrinsics = get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_eye_in_hand")
-        gripper_cam_extrinsics = torch.from_numpy(gripper_cam_extrinsics).float() # otherwise RuntimeError: expected scalar type when torch.matmul in math/utils/transform_pointcloud
+        # gripper_cam_extrinsics = get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_eye_in_hand")
+        # gripper_cam_extrinsics = torch.from_numpy(gripper_cam_extrinsics).float() # otherwise RuntimeError: expected scalar type when torch.matmul in math/utils/transform_pointcloud
+        gripper_cam_extrinsics = torch.eye(4, dtype=torch.float32)
         gripper_cam = CameraSpec(
             streams={
                 "rgb": RGBStream(gripper_cam_rgb_shape[0], gripper_cam_rgb_shape[1], gripper_cam_rgb_shape[2], channel_order="HWC"),
@@ -383,7 +390,7 @@ class RoboCasaPreProcess(gym.Wrapper):
             },
             time=self._obs_seq_len,
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
-                gripper_cam_intrinsics, height=gripper_cam_intrinsics[0], width=gripper_cam_intrinsics[1]
+                gripper_cam_intrinsics, height=gripper_cam_depth_shape[0], width=gripper_cam_depth_shape[1]
             ),
             dynamic_pose_obs_key="gripper_cam_transform",
             # gripper_cam_transform provides complete transform to camera
@@ -393,11 +400,6 @@ class RoboCasaPreProcess(gym.Wrapper):
         obs_spec["left_cam"] = left_cam
         obs_spec["right_cam"] = right_cam
         obs_spec["gripper_cam"] = gripper_cam
-        # set gripper_cam's extrinsics to the identity matrix at environment initialization, then at runtime read the dynamically-changing extrinsics for pointmap calculation.
-        # For more details check: transforms/to_pointcloud.py
-        obs_spec["gripper_cam"] = obs_spec["gripper_cam"].replace(
-            dynamic_pose_obs_key=("gripper_cam", "extrinsics"), extrinsics=torch.eye(4)
-        )
 
         self.specs = DataSpecs(obs=obs_spec, action=action_spec)
 
@@ -415,7 +417,7 @@ class RoboCasaPreProcess(gym.Wrapper):
         reward = torch.tensor([reward], dtype=torch.float32)
         terminated = torch.tensor([terminated], dtype=torch.bool,)
         truncated = torch.tensor(truncated, dtype=torch.bool,) # raw value always False, there is no truncated in robosuite envs
-        # info["success"] = torch.tensor([self._check_success()], dtype=torch.bool)
+        info["success"] = torch.tensor([self._check_success()], dtype=torch.bool)
 
         # necessary as robocasa/robosuite environment doesn't have a maximum episode steps
         if self._current_env_step >= self._max_steps_per_episode:
@@ -450,34 +452,34 @@ class RoboCasaPreProcess(gym.Wrapper):
                 "left_cam": {
                     "rgb": torch.from_numpy(obs["robot0_agentview_left_image"].copy()).unsqueeze(0), #.permute(0, 3, 1, 2), # shape: (1, H, W, 3), uint8
                     "depth": torch.from_numpy(obs["robot0_agentview_left_depth"].squeeze(-1)).unsqueeze(0), # shape: (1, H, W), float32, later to_pontmap transform gets applied
-                    # "pointmap": torch.from_numpy(obs["robot0_agentview_left_depth"].squeeze(-1)).unsqueeze(0), # shape: (1, H, W), float32, later to_pontmap transform gets applied
                     # "pointcloud": torch.from_numpy(obs["sampled_point_cloud"][:, :3]).unsqueeze(0),  # shape (1, H, W, 3), float32
-                    "extrinsics": torch.from_numpy(get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_agentview_left")).unsqueeze(0),  # shape (1, 4, 4), float32
-                    "intrinsics": torch.from_numpy(get_camera_intrinsic_matrix(self.unwrapped.sim, "robot0_agentview_left", 224, 224)).unsqueeze(0),  # shape (1, 3, 3), float32
+                    # "extrinsics": torch.from_numpy(get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_agentview_left")).unsqueeze(0),  # shape (1, 4, 4), float32
+                    # "intrinsics": torch.from_numpy(get_camera_intrinsic_matrix(self.unwrapped.sim, "robot0_agentview_left", 224, 224)).unsqueeze(0),  # shape (1, 3, 3), float32
                 },
                 
                 "right_cam": {
                     "rgb": torch.from_numpy(obs["robot0_agentview_right_image"].copy()).unsqueeze(0), #.permute(0, 3, 1, 2),  # shape: (1, H, W, 3), uint8
                     "depth": torch.from_numpy(obs["robot0_agentview_right_depth"].squeeze(-1)).unsqueeze(0), # shape: (1, H, W), float32, later to_pontmap transform gets applied
-                    # "pointmap": torch.from_numpy(obs["robot0_agentview_right_depth"].squeeze(-1)).unsqueeze(0), # shape: (1, H, W), float32, later to_pontmap transform gets applied
                     # "pointcloud": torch.from_numpy(obs["sampled_point_cloud"][:, :3]).unsqueeze(0),   # shape (1, H, W, 3), float32
-                    "extrinsics": torch.from_numpy(get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_agentview_right")).unsqueeze(0),  # shape (1, 4, 4), float32
-                    "intrinsics": torch.from_numpy(get_camera_intrinsic_matrix(self.unwrapped.sim, "robot0_agentview_right", 224, 224)).unsqueeze(0),  # shape (1, 3, 3), float32
+                    # "extrinsics": torch.from_numpy(get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_agentview_right")).unsqueeze(0),  # shape (1, 4, 4), float32
+                    # "intrinsics": torch.from_numpy(get_camera_intrinsic_matrix(self.unwrapped.sim, "robot0_agentview_right", 224, 224)).unsqueeze(0),  # shape (1, 3, 3), float32
                 },
 
                 "gripper_cam": {
                     "rgb": torch.from_numpy(obs["robot0_eye_in_hand_image"].copy()).unsqueeze(0), #.permute(0, 3, 1, 2),   # shape: (1, H, W, 3), uint8
                     "depth": torch.from_numpy(obs["robot0_eye_in_hand_depth"].squeeze(-1)).unsqueeze(0), # shape: (1, H, W), float32, later to_pontmap transform gets applied
-                    # "pointmap": torch.from_numpy(obs["robot0_eye_in_hand_depth"].squeeze(-1)).unsqueeze(0), # shape: (1, H, W), float32, later to_pontmap transform gets applied
                     # "pointcloud": torch.from_numpy(obs["sampled_point_cloud"][:, :3]).unsqueeze(0),  # shape (1, H, W, 3), float32
-                    "extrinsics": torch.from_numpy(get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_eye_in_hand")).unsqueeze(0),  # shape (1, 4, 4), float32
-                    "intrinsics": torch.from_numpy(get_camera_intrinsic_matrix(self.unwrapped.sim, "robot0_eye_in_hand", 224, 224)).unsqueeze(0),  # shape (1, 3, 3), float32
+                    # "extrinsics": torch.from_numpy(get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_eye_in_hand")).unsqueeze(0),  # shape (1, 4, 4), float32
+                    # "intrinsics": torch.from_numpy(get_camera_intrinsic_matrix(self.unwrapped.sim, "robot0_eye_in_hand", 224, 224)).unsqueeze(0),  # shape (1, 3, 3), float32
                 },
                 "ee_pose": ee_pose, # shape: (1, 7), float64
                 "robot_state": robot_state.float(), # shape: (1, 9), float64
                 "goal": {
-                    "text": self.unwrapped.get_ep_meta()["lang"], # language description of the current task
-                }
+                    "text": np.array([self.unwrapped.get_ep_meta()["lang"]]), # language description of the current task
+                },
+                "left_cam_transform": torch.from_numpy(get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_agentview_left")).unsqueeze(0),
+                "right_cam_transform": torch.from_numpy(get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_agentview_right")).unsqueeze(0),
+                "gripper_cam_transform": torch.from_numpy(get_camera_extrinsic_matrix(self.unwrapped.sim, "robot0_eye_in_hand")).unsqueeze(0),
             },  # type: ignore
             batch_size=1
         )
