@@ -8,10 +8,13 @@ defaults:
   - logger: wandb
   - python_logging: default
   - paths: default
-  - hydra: default
+  - hydra: checkpoint_dir_naming
   - _self_
-  - preprocessing: robocasa
-  - obs_modality: sim_pointmaps
+  # - obs_modality:
+  #   - sim_pointmaps_robocasa_new
+  #   - sim_pointclouds_robocasa_new
+  # - transforms@data.gpu_batch_transforms.t9_render: render_cameras
+  # - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
   - platform: default
   - optional local: default
   - debug: verbose
@@ -44,7 +47,28 @@ data:
       wrappers:
         record_video:
           num_episodes: ${data.env_dataset.num_episodes}  # number of episodes to record
-          fps: 20  # increase if the videos are too long
+          fps: 50  # increase if the videos are too long
+
+  preprocess_transforms:
+    t0-0_drop_rgbd: null
+    t3_to_pcd: null
+    t9_cleanup: null
+    t99_cleanup: null  # disable cleanup transform added by default
+
+  gpu_batch_transforms:
+    t9_render:
+      stream_names: [rgb, depth]
+    t9_render_pcd:
+      render_camera_poses: True
+      render_ee_pose: False
+      render_action: False
+
+logger:
+  wandb:
+    # use the notes and tags from the training run
+    # don't use the overrides passed to the test.py script
+    notes_from_overrides: False
+    tags_from_overrides: False
 
 trainer:
   default_root_dir: ${paths.output_dir}

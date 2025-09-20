@@ -9,7 +9,10 @@ defaults:
   - paths: default
   - hydra: checkpoint_dir_naming
   - _self_
-  - obs_modality: prepreprocess_224x224
+  - obs_modality:
+    - prepreprocess_224x224
+    # - prepreprocess_128x128
+  # - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
   - platform: default
   - optional local: default
   - debug: verbose
@@ -40,7 +43,7 @@ data:
 
     env:
       env_cfg:
-        episode_length_s: 20  # 600 frames (simulation renders at 30fps)
+        episode_length_s: 25  # 600 frames (simulation renders at 30fps)
     
       wrappers:
         record_video:

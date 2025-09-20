@@ -103,9 +103,6 @@ class ManiSkillPreProcess(gym.Wrapper):
                     )
                 if "depth" in cam_space.keys():
                     streams["depth"] = DepthStream(
-                        orthogonal=False,
-                        channels=None,
-                        channel_order="HW",
                         height=height,
                         width=width,
                     )
@@ -144,7 +141,7 @@ class ManiSkillPreProcess(gym.Wrapper):
         batch_size = self.env.unwrapped.num_envs
 
         processed_obs["goal"] = TensorDict(
-            {"embed": self.goal_embedding.squeeze(0)}
+            {"embed": self.goal_embedding}
         )
 
         if "agent" in obs:
