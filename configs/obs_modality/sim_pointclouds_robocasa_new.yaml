@@ -1,9 +1,7 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess_transforms.t0-0_drop_rgbd: cleanup
-
-  - /transforms@data.preprocess_transforms.t3_to_pcd: pointmap2pointcloud
+  - /transforms@data.preprocess_transforms.t3_to_pcd: to_pointcloud
 
   # we can't really crop because of the random world frame, but the cameras don't see any faraway points anyway  
 
@@ -23,8 +21,10 @@ defaults:
 data:
   # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess_transforms:
-    t0-0_drop_rgbd:
-      keep_stream_types: [pointmap]
+    t3_to_pcd:
+      color: False
+      max_depth: 5.0  # in meters
+      warn_min_points: 100
 
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all

@@ -178,9 +178,7 @@ class RoboCasaDataset(TrajectoryDataset):
         height, width, channels = rgb_shape[1:]
 
         # !!! IMPORTANT: "static" cameras are attached to the robot platform which sometimes moves caused by the robot-arm movements, so they move as well !!!
-        left_cam_intrinsics = torch.tensor(
-            traj["camera_params"]["dynamic"]["robot0_agentview_left"]["intrinsics"]
-        ).squeeze(0)
+        left_cam_intrinsics = traj["camera_params"]["dynamic"]["robot0_agentview_left"]["intrinsics"][0]
         left_cam_extrinsics = torch.eye(4, dtype=torch.float32)
         left_cam = CameraSpec(
             streams={
@@ -211,9 +209,7 @@ class RoboCasaDataset(TrajectoryDataset):
         height, width, channels = rgb_shape[1:]
 
         # !!! IMPORTANT: "static" cameras are attached to the robot platform which sometimes moves caused by the robot-arm movements, so they move as well !!!
-        right_cam_intrinsics = torch.tensor(
-            traj["camera_params"]["dynamic"]["robot0_agentview_right"]["intrinsics"]
-        ).squeeze(0)
+        right_cam_intrinsics = traj["camera_params"]["dynamic"]["robot0_agentview_right"]["intrinsics"][0]
         right_cam_extrinsics = torch.eye(4, dtype=torch.float32)
 
         right_cam = CameraSpec(
@@ -244,9 +240,7 @@ class RoboCasaDataset(TrajectoryDataset):
         assert rgb_shape[:-1] == depth_shape[:-1]
         height, width, channels = rgb_shape[1:]
 
-        gripper_cam_intrinsics = torch.tensor(
-            traj["camera_params"]["dynamic"]["robot0_eye_in_hand"]["intrinsics"]
-        ).squeeze(0)
+        gripper_cam_intrinsics = traj["camera_params"]["dynamic"]["robot0_eye_in_hand"]["intrinsics"][0]
         gripper_cam_extrinsics = torch.eye(4, dtype=torch.float32)
         gripper_cam = CameraSpec(
             streams={

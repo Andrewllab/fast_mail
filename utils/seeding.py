@@ -10,8 +10,13 @@ log = logging.getLogger(__name__)
 def get_rng(cfg):
     seed = cfg.get("seed")
     rng = np.random.default_rng(seed=seed)
+    if hasattr(rng.bit_generator, "seed_seq"):
+        entropy = rng.bit_generator.seed_seq.entropy
+    else:
+        # older versions of numpy
+        entropy = rng.bit_generator._seed_seq.entropy
     if seed is None:
-        log.info(f"Using random seed {rng.bit_generator.seed_seq.entropy} for this run")
+        log.info(f"Using random seed {entropy} for this run")
 
     return rng
 
