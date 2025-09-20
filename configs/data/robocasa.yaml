@@ -6,7 +6,7 @@ task: ???
 name: robocasa
 
 dataset:
-  _target_: environments.datasets.robocasa_dataset.RoboCasaDataset
+  _target_: environments.datasets.robocasa_dataset_v2.RoboCasaDataset
   _partial_: True  # requires transforms at runtime
   root_dir: ???
   preprocessed_dir: ???
