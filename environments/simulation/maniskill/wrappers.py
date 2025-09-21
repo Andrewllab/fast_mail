@@ -172,6 +172,12 @@ class ManiSkillPreProcess(gym.Wrapper):
                 extrinsics_ros = _convert_extrinsics_convention(extrinsics_gl, target="ros")
                 processed_obs["gripper_cam_transform"] = extrinsics_ros
 
+            if "base_camera" in obs["sensor_data"]:
+                assert torch.allclose(
+                    self.specs.obs["base_camera"].extrinsics,
+                    _convert_extrinsics_convention(obs["sensor_param"]["base_camera"]["cam2world_gl"], target="ros"),
+                )
+
         # if "sensor_param" in obs:
         #     processed_obs["sensor_param"] = TensorDict.from_dict(
         #         obs["sensor_param"], batch_size=[batch_size]

@@ -8,9 +8,9 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: checkpoint_dir_naming
-  - _self_
   # - transforms@data.preprocess_transforms.t0-99_render: render_cameras
   # - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
+  - _self_
   - platform: default
   - optional local: default
   - debug: verbose

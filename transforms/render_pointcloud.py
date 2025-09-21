@@ -243,7 +243,7 @@ class RenderPointCloud(ctx.Process, Transform):
                                     pcd = o3d.geometry.PointCloud(points)
                                     if color is not None:
                                         pcd.colors = color
-                                    vis.add_geometry(pcd)
+                                    vis.add_geometry(pcd, reset_bounding_box=False)
                                     geometries[name] = pcd
 
                             case "CoordinateFrame":
@@ -266,7 +266,7 @@ class RenderPointCloud(ctx.Process, Transform):
                                     )
                                 )
                                 frame.rotate(rotation, center=translation)
-                                vis.add_geometry(frame)
+                                vis.add_geometry(frame, reset_bounding_box=False)
                                 geometries[name] = frame
 
                             case _:

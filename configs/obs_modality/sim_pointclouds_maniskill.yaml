@@ -8,7 +8,8 @@ defaults:
   
   - /transforms@data.preprocess_transforms.t4_crop_pcd: pointcloud_crop_maniskill
 
-  - /transforms@data.preprocess_transforms.t7_random_transform: pointcloud_random_transform
+  # # disable random transforms for now
+  # - /transforms@data.preprocess_transforms.t7_random_transform: pointcloud_random_transform
 
   - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
 
@@ -45,6 +46,9 @@ data:
   gpu_batch_transforms:
     t1_voxel_downsample:
       size: 0.006
+
+    t2_jitter:
+      max_sigma: 0.002
   
   dataset:
     preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/pointclouds

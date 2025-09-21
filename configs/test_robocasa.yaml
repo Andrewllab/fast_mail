@@ -9,12 +9,12 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: checkpoint_dir_naming
-  - _self_
   # - obs_modality:
   #   - sim_pointmaps_robocasa_new
   #   - sim_pointclouds_robocasa_new
   # - transforms@data.gpu_batch_transforms.t9_render: render_cameras
   # - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
+  - _self_
   - platform: default
   - optional local: default
   - debug: verbose
@@ -51,7 +51,6 @@ data:
 
   preprocess_transforms:
     t0-0_drop_rgbd: null
-    t3_to_pcd: null
     t9_cleanup: null
     t99_cleanup: null  # disable cleanup transform added by default
 

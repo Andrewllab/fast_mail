@@ -4,12 +4,13 @@ defaults:
 
 task_suite: maniskill
 task: plug_charger
-name: maniskill_plug_charger
+name: maniskill_plug_charger_joint_pos
 
 dataset:
   _target_: environments.datasets.maniskill_group2_dataset_joint_pos.ManiSkillDataset
   _partial_: True  # requires transforms at runtime
   root_dir: ${paths.data_dir}/maniskill/PlugCharger-v1_joint_pos
+  load_subset: 200  # for comparability with cam2_joint_pos, which has only 200 trajs from this task
   preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
   action_seq_len: 30
   obs_seq_len: 1
