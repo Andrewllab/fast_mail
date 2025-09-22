@@ -19,6 +19,7 @@ env_dataset:
   env:
     env_id: PlugCharger-v1
     control_mode: pd_joint_pos
+    sim_backend: physx_cpu
     sensor_configs:
       base_camera:
         width: 256

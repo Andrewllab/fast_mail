@@ -3,22 +3,22 @@ defaults:
   - maniskill
 
 task_suite: maniskill
-task: peg_insertion_side
-name: maniskill_peg_insertion_side
+task: group_2
+name: maniskill_group_2
 
 dataset:
-  _target_: environments.datasets.maniskill_group2_dataset_joint_pos.ManiSkillDataset
+  _target_: environments.datasets.maniskill_group2_dataset_joint_pos.ManiSkillDataset # contains hand camera
   _partial_: True  # requires transforms at runtime
-  root_dir: ${paths.data_dir}/maniskill/PegInsertionSide-v1_joint_pos
+  root_dir: ${paths.data_dir}/maniskill/group2_joint_delta_pos
   preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
-  action_seq_len: 30
+  action_seq_len: 30 # actions are longer (motionplanned)
   obs_seq_len: 1
 
 env_dataset:
   env:
-    env_id: PegInsertionSide-v1
-    control_mode: pd_joint_pos
+    env_id: PlugCharger-v1 # PegInsertionSide-v1, PlugCharger-v1, StackCube-v1
     sim_backend: physx_cpu
+    control_mode: pd_joint_delta_pos
     sensor_configs:
       base_camera:
         width: 256

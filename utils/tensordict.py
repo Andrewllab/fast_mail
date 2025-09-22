@@ -147,6 +147,7 @@ def load_tensordict(
 
     # add back the batch dimension so we can index along the leading (time) dimension
     trajectory["obs"].auto_batch_size_(batch_dims=1)
+    assert trajectory["obs"].batch_dims == 1
 
     # # TODO: slicing won't work because the tensordict doesn't have a batch dim
     # if start is not None or stop is not None:

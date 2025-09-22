@@ -18,6 +18,7 @@ env_dataset:
   env:
     env_id: StackCube-v1
     control_mode: pd_joint_delta_pos
+    sim_backend: physx_cuda
     sensor_configs:
       base_camera:
         width: 256

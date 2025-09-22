@@ -25,6 +25,7 @@ from utils.math import (
 
 log = logging.getLogger(__name__)
 
+
 def _convert_extrinsics_convention(
     extrinsics_gl: torch.Tensor, target: str = "world"
 ) -> torch.Tensor:
@@ -45,8 +46,14 @@ def _convert_extrinsics_convention(
 
     return extrinsics_target
 
+
 class ManiSkillPreProcess(gym.Wrapper):
-    def __init__(self, env, obs_seq_len, embeddings_dir: str = "environments/simulation/maniskill/utils/preprocessed_embeddings"):
+    def __init__(
+        self,
+        env,
+        obs_seq_len,
+        embeddings_dir: str = "environments/simulation/maniskill/utils/preprocessed_embeddings",
+    ):
         super().__init__(env)
         self._obs_seq_len = obs_seq_len
 
@@ -54,11 +61,13 @@ class ManiSkillPreProcess(gym.Wrapper):
         embedding_path = Path(embeddings_dir) / f"{env_id}.pt"
 
         if not embedding_path.exists():
-            raise FileNotFoundError(f"Could not find goal embedding for '{env_id}' at {embedding_path}")
-        
+            raise FileNotFoundError(
+                f"Could not find goal embedding for '{env_id}' at {embedding_path}"
+            )
+
         log.info(f"Loading goal embedding from {embedding_path}")
         self.goal_embedding = torch.load(embedding_path, map_location=self.device)
-        
+
         log.debug("Getting initial observation to read static camera intrinsics...")
         initial_obs, _ = self.env.reset()
         self._build_specs(initial_obs)
@@ -66,8 +75,7 @@ class ManiSkillPreProcess(gym.Wrapper):
     def _build_specs(self, initial_obs: dict):
         log.debug("Building DataSpecs in __init__...")
         action_spec = ActionSpec(action_dim=self.env.action_space.shape[-1], time=1)
-        
-        
+
         obs_spec = {}
 
         goal_embedding_shape = self.goal_embedding.shape
@@ -86,8 +94,11 @@ class ManiSkillPreProcess(gym.Wrapper):
 
         if "sensor_data" in raw_obs_space.keys():
             for cam_name, cam_space in raw_obs_space["sensor_data"].items():
-                if self.env.unwrapped.spec.id == "StackCube-v1" and cam_name == "hand_camera":
-                    continue # Exclude hand cam from StackCube-v1
+                if (
+                    self.env.unwrapped.spec.id == "StackCube-v1"
+                    and cam_name == "hand_camera"
+                ):
+                    continue  # Exclude hand cam from StackCube-v1
                 height, width = cam_space["rgb"].shape[1], cam_space["rgb"].shape[2]
                 static_intrinsics_matrix = initial_obs["sensor_param"][cam_name][
                     "intrinsic_cv"
@@ -115,8 +126,10 @@ class ManiSkillPreProcess(gym.Wrapper):
                         extrinsics=torch.eye(4, dtype=torch.float32),
                         dynamic_pose_obs_key="gripper_cam_transform",
                     )
-                else: 
-                    extrinsics_gl = initial_obs["sensor_param"][cam_name]["cam2world_gl"][0]
+                else:
+                    extrinsics_gl = initial_obs["sensor_param"][cam_name][
+                        "cam2world_gl"
+                    ][0]
 
                     extrinsics_ros = _convert_extrinsics_convention(
                         extrinsics_gl.unsqueeze(0), target="ros"
@@ -140,9 +153,7 @@ class ManiSkillPreProcess(gym.Wrapper):
 
         batch_size = self.env.unwrapped.num_envs
 
-        processed_obs["goal"] = TensorDict(
-            {"embed": self.goal_embedding}
-        )
+        processed_obs["goal"] = TensorDict({"embed": self.goal_embedding})
 
         if "agent" in obs:
             robot_state = obs["agent"]["qpos"]
@@ -159,23 +170,23 @@ class ManiSkillPreProcess(gym.Wrapper):
                 if "rgb" in cam_obs:
                     camera_td["rgb"] = cam_obs["rgb"]
                 if "depth" in cam_obs:
-                    camera_td["depth"] = (
-                        cam_obs["depth"].squeeze(-1) / 1000.0
-                    )
+                    camera_td["depth"] = cam_obs["depth"].squeeze(-1) / 1000.0
 
-                processed_obs[cam_name] = TensorDict(
-                    camera_td, batch_size=[batch_size]
-                )
+                processed_obs[cam_name] = TensorDict(camera_td, batch_size=[batch_size])
 
             if "hand_camera" in obs["sensor_data"]:
                 extrinsics_gl = obs["sensor_param"]["hand_camera"]["cam2world_gl"]
-                extrinsics_ros = _convert_extrinsics_convention(extrinsics_gl, target="ros")
+                extrinsics_ros = _convert_extrinsics_convention(
+                    extrinsics_gl, target="ros"
+                )
                 processed_obs["gripper_cam_transform"] = extrinsics_ros
 
             if "base_camera" in obs["sensor_data"]:
                 assert torch.allclose(
                     self.specs.obs["base_camera"].extrinsics,
-                    _convert_extrinsics_convention(obs["sensor_param"]["base_camera"]["cam2world_gl"], target="ros"),
+                    _convert_extrinsics_convention(
+                        obs["sensor_param"]["base_camera"]["cam2world_gl"], target="ros"
+                    ),
                 )
 
         # if "sensor_param" in obs:
@@ -186,10 +197,14 @@ class ManiSkillPreProcess(gym.Wrapper):
         return TensorDict(processed_obs, batch_size=batch_size).to(self.device)
 
     def _preprocess_info(self, info: dict) -> TensorDict:
-        processed_info = {k: v for k, v in info.items() if isinstance(v, torch.Tensor) and v.numel() == 1} # TODO: we can only log single values atm!
-        return TensorDict(
-            processed_info, batch_size=self.env.unwrapped.num_envs
-        ).to(self.device)
+        processed_info = {
+            k: v
+            for k, v in info.items()
+            if isinstance(v, torch.Tensor) and v.numel() == 1
+        }  # TODO: we can only log single values atm!
+        return TensorDict(processed_info, batch_size=self.env.unwrapped.num_envs).to(
+            self.device
+        )
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
@@ -206,7 +221,7 @@ class ManiSkillPreProcess(gym.Wrapper):
 
         processed_obs = self._preprocess_obs(obs)
         processed_info = self._preprocess_info(info)
-        
+
         return (
             processed_obs,
             reward.to(self.device),

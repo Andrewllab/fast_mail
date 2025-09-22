@@ -1,0 +1,12 @@
+defaults:
+  - /models/spatial_encoder@spatial_encoder: fourier_features
+
+name: goal_region_tokenizer
+_target_: transforms.goal_region_tokenizer.GoalRegionEncoder
+_partial_: True
+
+model:
+  _target_: torch.nn.Linear
+  _partial_: True
+
+embed_dim: ${..embed_dim}

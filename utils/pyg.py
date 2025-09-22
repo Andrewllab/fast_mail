@@ -78,7 +78,7 @@ def apply_index(data: Data, index: Tensor) -> Data:
 T = TypeVar("T", bound=Data)
 
 
-def update_ptr(data: T) -> T:
+def update_ptr(data: T, keep_batch_size: bool = True) -> T:
     """Recompute the ptr attribute of a Batch object. While the batch attribute
     is kept up to date by transforms, the ptr attribute is usually not.
 
@@ -93,8 +93,12 @@ def update_ptr(data: T) -> T:
         batch = data.batch
         assert batch is not None
 
-        lengths = scatter(torch.ones_like(batch), batch, dim_size=data.batch_size)
+        batch_size = data.batch_size if keep_batch_size else None
+        lengths = scatter(torch.ones_like(batch), batch, dim_size=batch_size)
         data.ptr = F.pad(lengths.cumsum(dim=0), (1, 0))
+
+        if not keep_batch_size:
+            data._num_graphs = lengths.numel()
 
     return data
 
@@ -117,6 +121,6 @@ def update_batch_metadata(data: Batch) -> Batch:
     # for homogenous graphs, the slice dict is the same as the ptr for each
     # field of the data
     for key in data._slice_dict:
-        data._slice_dict[key][...] = data.ptr
+        data._slice_dict[key] = data.ptr.clone()
 
     return data
