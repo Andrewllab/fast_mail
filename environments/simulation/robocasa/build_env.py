@@ -8,7 +8,7 @@ from omegaconf import DictConfig
 log = logging.getLogger(__name__)
 
 # !!! IMPORTANT: the original create_env function was modified to take an additional parameter: camera_depths and then "pip install -e ." robocasa again !!!!
-from robocasa.utils.env_utils import create_env
+# from robocasa.utils.env_utils import create_env
 
 
 def make(
@@ -30,6 +30,8 @@ def make(
     """
 
     log.info(f"Building RoboCasa environment: '{env_name}'")
+
+    from robocasa.utils.env_utils import create_env
 
     env = create_env(
         env_name=env_name,

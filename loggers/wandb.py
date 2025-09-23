@@ -100,7 +100,8 @@ def update_wandb_config(
         tags = wandb.run.tags or ()
         tags += tuple(extra_tags) if extra_tags else ()
         tags = tags or None  # # avoid passing empty tuple to wandb
-        wandb.run.tags = tags
+        if tags:
+            wandb.run.tags = tags
 
         if wandb.run.notes is None and default_notes is not None:
             wandb.run.notes = default_notes
@@ -254,7 +255,9 @@ def resolve_checkpoint(
                 if isinstance(epochs, int):
                     epochs = [epochs]
                 artifacts_by_epoch = [
-                    (epoch, path) for epoch, path in artifacts_by_epoch if epoch in epochs
+                    (epoch, path)
+                    for epoch, path in artifacts_by_epoch
+                    if epoch in epochs
                 ]
                 if len(artifacts_by_epoch) != len(epochs):
                     found_epochs = [epoch for epoch, _ in artifacts_by_epoch]
