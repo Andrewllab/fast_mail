@@ -78,6 +78,7 @@ class WandbLogger(LightningWandbLogger):
         wandb.run.define_metric("eval_metrics/*", step_metric="ckpt_epoch")
         wandb.run.define_metric("Episode_Termination/*", step_metric="ckpt_epoch")
         wandb.run.define_metric("Episode_Reward/*", step_metric="ckpt_epoch")
+        wandb.run.define_metric("success", step_metric="ckpt_epoch", summary="max")
 
 
 def update_wandb_config(
@@ -150,6 +151,24 @@ def resolve_checkpoint(
         elif match := re.fullmatch(r"last_(\d+)", epochs):
             n = int(match.group(1))
             ckpts_by_epoch = ckpts_by_epoch[-n:]
+        elif isinstance(epochs, (int, list)):
+            if isinstance(epochs, int):
+                epochs = [epochs]
+            ckpts_by_epoch = [
+                (epoch, path) for epoch, path in ckpts_by_epoch if epoch in epochs
+            ]
+            if len(ckpts_by_epoch) != len(epochs):
+                found_epochs = [epoch for epoch, _ in ckpts_by_epoch]
+                missing_epochs = set(epochs) - set(found_epochs)
+                raise ValueError(
+                    f"Could not find checkpoints for epochs {sorted(missing_epochs)} "
+                    f"in folder {log_dir / 'checkpoints'}."
+                )
+        else:
+            raise ValueError(
+                f"Invalid value for cfg.epochs: {epochs}. "
+                "Must be 'last', 'all', 'last_N' or a list of integers."
+            )
 
         log.debug(f"Found {len(ckpts_by_epoch)} checkpoint(s) in folder {log_dir}...")
 
@@ -225,13 +244,37 @@ def resolve_checkpoint(
 
             epochs = cfg.get("epochs", "last")
 
-            if epochs == "last":
+            try:
+                _ = int(list(epochs)[0])  # type: ignore
+                epochs = list(epochs)
+            except ValueError:
+                pass  # epochs is not iterable
+
+            if isinstance(epochs, (int, list)):
+                if isinstance(epochs, int):
+                    epochs = [epochs]
+                artifacts_by_epoch = [
+                    (epoch, path) for epoch, path in artifacts_by_epoch if epoch in epochs
+                ]
+                if len(artifacts_by_epoch) != len(epochs):
+                    found_epochs = [epoch for epoch, _ in artifacts_by_epoch]
+                    missing_epochs = set(epochs) - set(found_epochs)
+                    raise ValueError(
+                        f"Could not find checkpoints for epochs {sorted(missing_epochs)} "
+                        f"in folder {log_dir / 'checkpoints'}."
+                    )
+            elif epochs == "last":
                 artifacts_by_epoch = artifacts_by_epoch[-1:]
             elif epochs == "all":
                 pass  # keep all artifacts
             elif match := re.fullmatch(r"last_(\d+)", epochs):
                 n = int(match.group(1))
                 artifacts_by_epoch = artifacts_by_epoch[-n:]
+            else:
+                raise ValueError(
+                    f"Invalid value for cfg.epochs: {epochs}. "
+                    "Must be 'last', 'all', 'last_N' or a list of integers."
+                )
 
             # TODO: maybe if there is only one artifact, add support for use_artifact
             if wandb.run is not None and not wandb.run.disabled and use_artifact:
