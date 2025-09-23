@@ -40,7 +40,7 @@ agent:
 data:
   eval_mode: env
   env_dataset:
-    num_episodes: 5  # 30 episodes in total across 5 checkpoints
+    num_episodes: 20  # 30 episodes in total across 5 checkpoints
     action_horizon: 20  # modify if desired
 
     env:

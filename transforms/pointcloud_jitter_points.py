@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Sequence, Union
 
 import torch
@@ -52,6 +53,9 @@ class JitterPointCloud(Transform):
 
     def _call_one(self, nt_data: NonTensorData) -> Data:
         data: Data = nt_data.data
+
+        if not self.training:
+            return data
 
         pos = data.pos
         assert pos is not None
