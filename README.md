@@ -137,8 +137,11 @@ Warning: RoboCasa downgrades gymnasium to 0.26.2 numpy to 1.23.3.
 Therefore it is not recommended to install RoboCasa in the same conda environment as Novometis, FoundationStereo, or any other environment suite.
 
 ```bash
-pip install git+https://github.com/ARISE-Initiative/robosuite
+pip install git+https://github.com/ARISE-Initiative/robosuite@9bbd9c44b23191fda94de6538afc568eb5a4b285
 pip install -e third_party/robocasa
+pip install numpy==1.23.3 moviepy
+
+python third_party/robocasa/robocasa/scripts/download_kitchen_assets.py
 ```
 
 
