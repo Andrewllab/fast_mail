@@ -230,19 +230,23 @@ Since FoundationStereo is very large, we compile it with TensorRT to speed up in
     ```
 1. Users of CUDA 12.x need to pin the CUDA 12.x version of TensorRT and all related libraries, forcing apt to ignore newer versions.
     Query apt for all available versions of TensorRT, and find one that is compatible with CUDA 12.x.
+
+    **Important**: The Zed SDK (for Zed cameras from Stereolabs) installs its own version of TensorRT onto the system, so installing another one will cause problems. If you are using the Zed SDK, check which version of TensorRT it uses. This can be seen in the filename of the installer, e.g. `ZED_SDK_Ubuntu24_cuda12.8_tensorrt10.9_v5.0.6.zstd.run` means TensorRT version 10.9.
+
     ```bash
     apt-cache madison tensorrt
     #  ...
-    #  tensorrt | 10.13.2.6-1+cuda12.9 | https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64  Packages
+    #  tensorrt | 10.9.0.34-1+cuda12.8 | https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64  Packages
     #  ...
     ```
-    Here, cuda12.9 means it supports CUDA 12.0-12.9, **not** that only CUDA 12.9 is supported.
+    Here, cuda12.8 means it supports CUDA 12.0-12.8, **not** that only CUDA 12.8 is supported.
     Copy the chosen version string below and add the pin:
     ```bash
-    TRT_VERSION=10.13.2.6-1+cuda12.9  # copy the chosen version string here
-    echo "Package: libnvinfer* libnvonnxparsers* tensorrt* python3-libnvinfer*" | sudo tee /etc/apt/preferences.d/tensorrt-cuda12-9.pref
-    echo "Pin: version $TRT_VERSION" | sudo tee -a /etc/apt/preferences.d/tensorrt-cuda12-9.pref
-    echo "Pin-Priority: 1001" | sudo tee -a /etc/apt/preferences.d/tensorrt-cuda12-9.pref
+    TRT_VERSION=10.9.0.34-1+cuda12.8  # copy the chosen version string here
+    TRT_PIP_VERSION=10.9.0.34
+    echo "Package: libnvinfer* libnvonnxparsers* tensorrt* python3-libnvinfer*" | sudo tee /etc/apt/preferences.d/tensorrt.pref
+    echo "Pin: version $TRT_VERSION" | sudo tee -a /etc/apt/preferences.d/tensorrt.pref
+    echo "Pin-Priority: 1001" | sudo tee -a /etc/apt/preferences.d/tensorrt.pref
     ```
 
     If you don't do this step, apt will try to install the latest version, which uses CUDA 13.x and is not compatible with your graphics driver. If you only specify the exact version of TensorRT that you want, apt will try to install all dependencies for CUDA 13.x, and cannot resolve the request.
@@ -256,7 +260,7 @@ Since FoundationStereo is very large, we compile it with TensorRT to speed up in
     ```
 1. Install additional pip dependencies in your mamba environment.
     ```bash
-    pip install onnx tensorrt-cu12  # this installs the TensorRT bindings for CUDA 12.x
+    pip install onnx tensorrt-cu12==$TRT_PIP_VERSION  # this installs the TensorRT bindings for CUDA 12.x
     pip install -r requirements_fs.txt
     ```
 1. Download the pretrained models.
@@ -291,7 +295,7 @@ Note: according to [the documentation](https://docs.nvidia.com/deeplearning/tens
 ### Troubleshooting FoundationStereo
 
 - Try not to do anything that requires too much GPU memory during compilation. If compilation randomly crashes after 10+ minutes, this may be the cause.
-- If the file `/usr/local/cuda/targets/x86_64-linux/lib/libnvinfer_builder_resource.so.10.9.0` exists on your system, this may be causing a problem. `trtexec` seems to want to load this dynamic library if it exists, even though it's (presumably) for an older version of `libnvinfer` (10.9 vs. 10.13). Carefully uninstall all TensorRT and CUDA apt packages (e.g. `sudo apt remove "cuda-*"`). You may see a message like `'/usr/local/cuda-12.8/targets/x86_64-linux/lib' not empty so not removed` after uninstalling CUDA. After all traces of CUDA should be gone from your system, if this file (and a few others) are still there, remove them with `sudo rm -r`. Reinstall TensorRT (CUDA toolkit is not required) and try compilation again.
+- Conflicting versions of libnvinfer that exist on your system can cause TensorRT to fail in unpredictable ways. `trtexec` seems to load any version this dynamic library it can find, even if the version is not compatible. For example, if you have installed TensorRT 10.13 but the file `/usr/local/cuda/targets/x86_64-linux/lib/libnvinfer_builder_resource.so.10.9.0` (i.e. libnvinfer 10.9) exists on your system, this may be causing a problem. Carefully uninstall all TensorRT and CUDA apt packages (e.g. `sudo apt remove "cuda-*"`). You may see a message like `'/usr/local/cuda-12.8/targets/x86_64-linux/lib' not empty so not removed` after uninstalling CUDA. After all traces of CUDA should be gone from your system, if this file (and a few others) are still there, remove them with `sudo rm -r`. Reinstall TensorRT (CUDA toolkit is not required) and try compilation again.
 
 # Data
 
