@@ -1,0 +1,15 @@
+# @package _global_
+
+agent:
+  noise_model:
+    token_dim: ${embed_dim}
+  obs_encoder:
+    embed_dim: ${embed_dim}
+    t10_patching:
+      patch_size: ${patch_size}
+      oversampling_ratio: ${oversampling_ratio}
+
+# interpolate from top-level config for ease of use on command line
+patch_size: 32
+oversampling_ratio: 0.25
+embed_dim: 256

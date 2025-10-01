@@ -1,11 +1,10 @@
-
 defaults:
   - default
   - robocasa
 
 task_suite: robocasa
 task: TurnOffMicrowave
-name: kitchen_microwave
+name: TurnOffMicrowave
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_microwave/TurnOffMicrowave

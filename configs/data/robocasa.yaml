@@ -19,9 +19,9 @@ env_dataset:
   env:
     _target_: environments.simulation.robocasa.build_env.make 
     _recursive_: False 
-    env_name: ???
-    img_height: 224 # observation image height 
-    img_width: 224 # observation image width 
+    env_name: null  # placeholder
+    img_height: 224  # observation image height
+    img_width: 224  # observation image width
     camera_names: 
       - robot0_agentview_left
       - robot0_agentview_right
