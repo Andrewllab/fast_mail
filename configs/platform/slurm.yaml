@@ -5,9 +5,6 @@ defaults:
   - override /hydra: numbered_subdir  # ensure that folder names are not too long
   - _self_
 
-data:
-  eval_mode: 0.05  # we don't want to run IsaacSim on the cluster
-
 trainer:
   enable_progress_bar: False  # doesn't get captured correctly, making the log hard to read
 

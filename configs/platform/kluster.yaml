@@ -13,12 +13,11 @@ hydra:
   launcher:
     name: 3d-sim2real  # a nice name since others can see our job in squeue
     timeout_min: 1440  # 24 hours
-    # partition: gpu  # this is the default partition anyway
-    # exclude: node[4-5]  # uncomment this to exclude nodes without enough VRAM
+    partition: gpu  # this is the default partition anyway
+    exclude: node[4-5]  # uncomment this to exclude nodes without enough VRAM
     gres: gpu:1
     cpus_per_task: 2  # according to slurm there are only 8 cpus per node
-    # mem_per_cpu: 15000  # in MB (* 8 cpus = 120GB)
-    mem_per_gpu: 60000
+    mem_per_cpu: 15000  # in MB (* 8 cpus = 120GB)
     setup:
       # ensure wandb isn't disabled by accident
       - wandb enabled

@@ -1,7 +1,6 @@
 # usage: python test.py -cn test_robocasa
 
 defaults:
-  - data: robocasa_coffee_press_button  # BackCompat: overwrite environment and preprocessing configs
   - /transforms@data.preprocess_transforms.t1-3_remove_inf_depth: remove_inf_depth
   # - data/wrappers@data.env_dataset.env.wrappers: record_video  # record videos
   # log test results to new wandb run, since test parameters affect results
