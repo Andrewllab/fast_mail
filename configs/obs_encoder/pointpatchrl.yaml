@@ -11,8 +11,8 @@ agent:
   obs_encoder:
     embed_dim: 256
     t10_patching:
-      patch_size: 32
-      oversampling_ratio: 0.5
+      patch_size: 16
+      oversampling_ratio: 0.2
     t11_tokenizer:
       mlp_1:
         hidden_sizes: [128]
