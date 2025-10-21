@@ -34,18 +34,15 @@ def prepreprocess(cfg: DictConfig) -> None:
     # configure torch, e.g. set_float32_matmul_precision
     configure_torch(cfg.get("torch"))
 
-    # TODO: filter out any preprocess steps from the dataset in case the user
-    # forgot to do this
-
     # instantiate dataset
     datamodule: TrajectoryDataModule = instantiate_datamodule(cfg.data)
 
     # manually run prepare data and setup so we can use dataset specs for model creation
-    log.debug("Loading training data...")
-    datamodule.prepare_data()
+    log.debug("Preparing and setting up data...")
+    datamodule.prepare_data(stage="fit")
     datamodule.setup(stage="fit")
 
-    log.info("Prepreprocessing completed.")
+    log.info("Preprocessing completed.")
 
     datamodule.close()
 

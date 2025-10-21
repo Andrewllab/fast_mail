@@ -2,15 +2,15 @@
 
 defaults:
   # apply ImageNet normalization in preprocessing, because color channels will be added to pointmap
-  - /transforms@data.preprocess_transforms.t4-9_norm_image: imagenet_norm
+  - /transforms@data.preprocess.t4-9_norm_image: imagenet_norm
 
   # convert to pointmap
-  - /transforms@data.preprocess_transforms.t5_to_pointmap: to_pointmap
+  - /transforms@data.preprocess.t5_to_pointmap: to_pointmap
 
-  - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
+  - /transforms@data.preprocess.t9_cleanup: cleanup
 
 data:
-  preprocess_transforms:
+  preprocess:
     t5_to_pointmap:
       color: True
 

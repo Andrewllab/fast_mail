@@ -64,7 +64,7 @@ def test(cfg: DictConfig) -> None:
 
         # merge the agent and data configs, with the current config taking precedence
         agent_cfg = OmegaConf.merge(train_cfg.agent, agent_cfg)
-        train_cfg.data.pop("env_dataset", None) # train and evaluate data configs might differ
+        train_cfg.data.pop("env", None)  # train and evaluate data configs might differ
         data_cfg = OmegaConf.merge(train_cfg.data, data_cfg)
 
         # modify the _target_ to point to the module's load_from_checkpoint method
@@ -84,8 +84,8 @@ def test(cfg: DictConfig) -> None:
     datamodule: TrajectoryDataModule = instantiate_datamodule(data_cfg)
 
     # manually run prepare data and setup so we can use dataset specs for model creation
-    log.debug("Instantiating datamodule...")
-    datamodule.prepare_data()
+    log.debug("Preparing and setting up data...")
+    datamodule.prepare_data(stage="test")
     datamodule.setup(stage="test")
 
     if not checkpoint:

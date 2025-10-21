@@ -2,7 +2,7 @@
 
 defaults:
   # normalize absolute actions so that they lie within [-1,1]
-  - /transforms@data.preprocess_transforms.t0-9_normalize_actions: action_norm_minmax
+  - /transforms@data.preprocess.t9_normalize_actions: action_norm_minmax
 
   # compute goal embeddings online to provide "data augmentation", since the embeddings
   # are not deterministic

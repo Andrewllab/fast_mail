@@ -1,0 +1,48 @@
+# @package _global_
+
+defaults:
+  - /transforms@data.prepreprocess.t0_drop_zed_right: cleanup
+
+  # replace measured depth with FoundationStereo depth
+  - /transforms@data.prepreprocess.t3_foundationstereo: foundation_stereo
+
+  # replace infrared from gripper
+  - /transforms@data.prepreprocess.t4_cleanup: cleanup
+
+  - /transforms@data.prepreprocess.t5_resize: image_resize
+
+  # pretrained resnet18 expects images of shape 224x224
+  - /transforms@data.prepreprocess.t6_crop_image: image_centercrop
+
+  # remove infinite values (set them to zero) after resizing, so we don't average
+  # with zero values and get weird depth values
+  - /transforms@data.prepreprocess.t8_remove_inf_depth: remove_inf_depth
+
+  - /transforms@data.prepreprocess.t99_cleanup: cleanup
+
+data:
+  prepreprocess:
+    backend: hdf5
+    root_dir: ${append_to_stem:${data.dataset.root_dir},_fs_224x224}
+  
+    # remove right streams from ZED cameras so we have less data to move to GPU
+    t0_drop_zed_right:
+      drop_streams: [front_left_cam/right, front_right_cam/right]
+
+    t3_foundationstereo:
+      # We only replace gripper_cam depth.
+      # The left and right cams have low resolution.
+      # Hence zed's neural depth mode actually works better
+      # than foundation stereo
+      cam_keys: gripper_cam
+      engine_path: ${paths.fs_engines_dir}/foundation_stereo_small_1x480x640.plan
+
+    t4_cleanup:
+      drop_stream_types: [ir]  # drop IR streams from the realsense
+      drop_stream_names: [right]  # drop right rgb stream from the zeds
+
+    t5_resize:
+      shape: 224  # scale shortest side to 224 and keep aspect ratio
+    
+    t6_crop_image:
+      shape: 224  # crop to 224x224 square

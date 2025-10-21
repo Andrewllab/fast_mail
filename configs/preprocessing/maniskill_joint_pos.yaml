@@ -2,9 +2,9 @@
 
 defaults:
   # # convert actions to chunks of absolute target poses relative to the current frame
-  # - /transforms@data.preprocess_transforms.t0-5_relative_actions: action_abs_to_relative_chunk
+  # - /transforms@data.preprocess.t0-5_relative_actions: action_abs_to_relative_chunk
   # # normalize relative actions so that the max magnitude of each action dimension is 1.0
-  # - /transforms@data.preprocess_transforms.t0-9_normalize_actions: action_norm_max
+  # - /transforms@data.preprocess.t0-9_normalize_actions: action_norm_max
   
   # normalize absolute actions so that they lie within [-1,1]
-  - /transforms@data.preprocess_transforms.t0-9_normalize_actions: action_norm_minmax
+  - /transforms@data.preprocess.t0-9_normalize_actions: action_norm_minmax

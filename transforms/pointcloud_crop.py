@@ -7,7 +7,7 @@ import torch
 from tensordict import NonTensorData, TensorDict
 from torch_geometric.data import Data
 
-from environments.base_dataset import EmptyPointCloudError
+from environments.datamodule import EmptyPointCloudError
 from environments.specs import DataSpecs
 from transforms.base_transform import KeyMapping, Transform
 from utils.pyg import apply_mask

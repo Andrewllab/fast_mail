@@ -2,17 +2,17 @@
 
 defaults:
   # convert to pointmap
-  - /transforms@data.preprocess_transforms.t5-1_to_pointmap: to_pointmap
+  - /transforms@data.preprocess.t5-1_to_pointmap: to_pointmap
 
-  - /transforms@data.preprocess_transforms.t5-2_crop_pointmap: pointmap_crop_sim
+  - /transforms@data.preprocess.t5-2_crop_pointmap: pointmap_crop_sim
 
-  - /transforms@data.preprocess_transforms.t6-1_random_transform: pointmap_random_transform
+  - /transforms@data.preprocess.t6-1_random_transform: pointmap_random_transform
 
   # Collect statistics to scale pointmaps to [-1, 1]^3
   # Do this after translations/cropping and before masking/jittering
-  - /transforms@data.preprocess_transforms.t6-2_pointmap_normalize: pointmap_normalize
+  - /transforms@data.preprocess.t6-2_pointmap_normalize: pointmap_normalize
 
-  - /transforms@data.preprocess_transforms.t99_cleanup: cleanup
+  - /transforms@data.preprocess.t99_cleanup: cleanup
 
   # apply jitter data augmentation
   - /transforms@data.gpu_batch_transforms.t2_jitter: translational_jitter
@@ -21,7 +21,7 @@ defaults:
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
 
 data:
-  preprocess_transforms:
+  preprocess:
     t5-1_to_pointmap:
       color: False  # to use 6-channel fusion, use sim_pointmaps_6ch config
       max_depth: null # in meters

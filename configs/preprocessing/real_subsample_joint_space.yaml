@@ -1,17 +1,17 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess_transforms.t0-1_trim_idle: time_trim_idle
+  - /transforms@data.preprocess.t0-1_trim_idle: time_trim_idle
 
   # since this dataset was recorded at ~30 fps, subsample by a factor of 2
-  - /transforms@data.preprocess_transforms.t0-2_subsample: time_subsample
+  - /transforms@data.preprocess.t0-2_subsample: time_subsample
 
-  - /transforms@data.preprocess_transforms.t0-3_joint_space: action_joint_space
+  - /transforms@data.preprocess.t0-3_joint_space: action_joint_space
 
   # normalize joint space actions so that they lie within [-1,1]
-  - /transforms@data.preprocess_transforms.t0-9_normalize_actions: action_norm_minmax
+  - /transforms@data.preprocess.t0-9_normalize_actions: action_norm_minmax
 
 data:
-  preprocess_transforms:
+  preprocess:
     t0-2_subsample:
       factor: 2

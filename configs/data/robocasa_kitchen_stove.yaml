@@ -1,16 +1,8 @@
-
 defaults:
-  - default
   - robocasa
 
-task_suite: robocasa
-task: Stove_TurnOff_TurnOn
-name: kitchen_stove
+task: kitchen_stove
+name: kitchen_stove_20250920
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_stove
-  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
-
-env_dataset:
-  env:
-    env_name: Stove_TurnOff_TurnOn

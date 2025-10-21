@@ -1,12 +1,12 @@
 defaults:
-  - /cameras@env_dataset.env.cameras.front_left_cam: zed_mini_17008863
-  - /cameras@env_dataset.env.cameras.front_right_cam: zed_mini_16055244
-  - /cameras@env_dataset.env.cameras.gripper_cam: realsense_d405_218622270040
-  - /cameras/calibration@env_dataset.env.cameras: 2025-08-31
-  - /robot@env_dataset.env.robot: panda4
+  - /cameras@env.env.cameras.front_left_cam: zed_mini_17008863
+  - /cameras@env.env.cameras.front_right_cam: zed_mini_16055244
+  - /cameras@env.env.cameras.gripper_cam: realsense_d405_218622270040
+  - /cameras/calibration@env.env.cameras: 2025-08-31
+  - /robot@env.env.robot: panda4
   - _self_
 
-env_dataset:
+env:
   _target_: environments.gym_env_dataset.GymEnvDataset
   env:
     _target_: environments.real_robot.real_robot_env.make_env

@@ -264,7 +264,7 @@ def resolve_checkpoint(
                     missing_epochs = set(epochs) - set(found_epochs)
                     raise ValueError(
                         f"Could not find checkpoints for epochs {sorted(missing_epochs)} "
-                        f"in folder {log_dir / 'checkpoints'}."
+                        f"in run {run_id}."
                     )
             elif epochs == "last":
                 artifacts_by_epoch = artifacts_by_epoch[-1:]

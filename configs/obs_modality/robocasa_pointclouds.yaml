@@ -1,13 +1,13 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess_transforms.t3_to_pcd: to_pointcloud
+  - /transforms@data.preprocess.t5_to_pcd: to_pointcloud
 
   # we can't really crop because of the random world frame, but the cameras don't see any faraway points anyway  
 
   # no need to apply random transform for robocasa, since this is in the dataset already
 
-  - /transforms@data.preprocess_transforms.t99_cleanup: cleanup
+  - /transforms@data.preprocess.t99_cleanup: cleanup
 
   - /transforms@data.gpu_batch_transforms.t1_voxel_downsample: pointcloud_downsample_voxel
 
@@ -20,15 +20,17 @@ defaults:
 
 data:
   # Below is just the default configuration copied here for convenience. Change as needed.
-  preprocess_transforms:
-    t3_to_pcd:
+  preprocess:
+    root_dir: ${paths.preprocessed_dir}/robocasa/${data.task}_pointclouds
+
+    t5_to_pcd:
       color: False
       max_depth: 5.0  # in meters
       warn_min_points: 100
 
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
-      drop_keys: gripper_cam_transform
+      drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose]
 
   gpu_batch_transforms:
     t1_voxel_downsample:
@@ -36,9 +38,6 @@ data:
 
     t2_jitter:
       max_sigma: 0.002  # slightly higher jitter for robocasa
-  
-  dataset:
-    preprocessed_dir: ${paths.preprocessed_dir}/${data.name}/pointclouds
 
 # disable the batch size finder for point clouds, because the data points 
 # don't have a consistent memory size

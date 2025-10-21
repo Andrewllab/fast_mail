@@ -2,16 +2,16 @@
 
 defaults:
   # TODO: do the inserted zero values mess up the interpolated depth?
-  - /transforms@data.preprocess_transforms.t1-3_remove_inf_depth: remove_inf_depth
+  - /transforms@data.preprocess.t1-3_remove_inf_depth: remove_inf_depth
 
-  - /transforms@data.preprocess_transforms.t2_resize: image_resize
+  - /transforms@data.preprocess.t2_resize: image_resize
 
   # pretrained resnet18 expects images of shape 224x224
-  - /transforms@data.preprocess_transforms.t3_crop_image: image_centercrop
+  - /transforms@data.preprocess.t3_crop_image: image_centercrop
 
 data:
   # Below is just the default configuration copied here for convenience. Change as needed.
-  preprocess_transforms:
+  preprocess:
     t2_resize:
       shape: 224  # scale shortest side to 224 and keep aspect ratio
     

@@ -1,16 +1,8 @@
-
 defaults:
-  - default
   - robocasa
 
-task_suite: robocasa
-task: Drawer_Open_Close
-name: kitchen_drawer
+task: kitchen_drawer
+name: kitchen_drawer_20250920
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_drawer
-  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
-
-env_dataset:
-  env:
-    env_name: Drawer_Open_Close

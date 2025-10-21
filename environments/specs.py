@@ -195,7 +195,20 @@ class ImageStream(ABC):
         )
 
 
-# TODO: add explicit IR stream type to support isinstance checks
+@dataclass(frozen=True)
+class IntensityStream(ImageStream):
+    """Greyscale intensity stream, e.g. from an IR sensor like the RealSense.
+    By convention, the dtype is (usually) uint8.
+    """
+
+    channels = None
+    channel_order: ChannelOrderType = "HW"
+
+    def __post_init__(self):
+        if self.channels is not None:
+            raise ValueError("channels must be None for an intensity stream")
+        if self.channel_order != "HW":
+            raise ValueError("Intensity stream must have channel order HW")
 
 
 @dataclass(frozen=True)

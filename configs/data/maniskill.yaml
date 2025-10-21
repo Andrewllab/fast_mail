@@ -1,7 +1,9 @@
-# TODO: fix for eval
+defaults:
+  - default
 
-env_dataset:
-  _target_: environments.gym_env_dataset.GymEnvDataset
+task_suite: maniskill
+
+env:
   env:
     _target_: environments.simulation.maniskill.build_maniskill_env.make_maniskill_env
     _recursive_: False  # don't try to import any targets for wrappers, in case IsaacLab is not installed
@@ -21,3 +23,4 @@ env_dataset:
   num_envs: ${.env.num_envs}
   num_episodes: 20  # evaluate on 20 episodes
   action_horizon: null  # use all predicted actions
+  fps: null  # run as fast as the simulation can manage

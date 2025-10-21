@@ -10,8 +10,9 @@ job_type: test_memorization
 
 data:
   dataset:
-    load_subset: [0]  # load only one trajectory
-    overwrite_preprocessed: True  # don't worry about overwriting the preprocessed data since we are using a small subset
+    load_subset: [0]  # load selected trajectory
+  preprocess:
+    overwrite: True  # don't worry about overwriting the preprocessed data since we are using a small subset
 
 # since we load a small subset of the data, store preprocessed data in another folder
 paths:

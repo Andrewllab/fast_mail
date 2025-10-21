@@ -1,16 +1,8 @@
-
 defaults:
-  - default
   - robocasa
 
-task_suite: robocasa
-task: TurnOffSinkFaucet_TurnOnSinkFaucet_TurnSinkSpout
-name: kitchen_sink
+task: kitchen_sink
+name: kitchen_sink_20250920
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_sink
-  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
-
-env_dataset:
-  env:
-    env_name: TurnOffSinkFaucet_TurnOnSinkFaucet_TurnSinkSpout

@@ -1,13 +1,22 @@
 import json
 import logging
+import os
+import re
 from pathlib import Path
+from typing import Sequence
 
 import h5py
 import numpy as np
 import torch
+from h5py import Group
 from tensordict import TensorDict
 
-from environments.base_dataset import TrajectoryDataset, keyfunc
+from environments.base_dataset import (
+    CustomHdf5Dataset,
+    TrajectorySlices,
+    get_subset,
+    iglob_follow_symlinks,
+)
 from environments.specs import (
     ActionSpec,
     CameraSpec,
@@ -15,296 +24,253 @@ from environments.specs import (
     DepthStream,
     ObsSpec,
     PinholeCameraIntrinsic,
-    PointMapStream,
     RGBStream,
 )
-from utils.math import make_pose, matrix_from_quat
+from transforms.base_transform import TransformPartialsDict, init_transforms
+from utils.paths import resolve_path
 
 log = logging.getLogger(__name__)
 
 
-class RoboCasaDataset(TrajectoryDataset):
+class RoboCasaDataset(CustomHdf5Dataset):
     def __init__(
         self,
-        *args,
-        trajs_per_task: int | float | None = None,
-        **kwargs,
+        root_dir: os.PathLike,
+        action_seq_len: int,
+        obs_seq_len: int,
+        item_transforms: TransformPartialsDict | None = None,
+        load_subset: int | float | Sequence[int] | None = None,
+        subfolders: Sequence[str] | None = None,
     ):
-        self._specs = None
-        self.trajs_per_task = trajs_per_task
+        self._root_dir = resolve_path(root_dir)
+        self.action_seq_len = action_seq_len
+        self.obs_seq_len = obs_seq_len
 
-        super().__init__(*args, **kwargs)
+        # no need to sort
+        self.files = list(self._root_dir.glob("**/*.hdf5"))
+        self.files = iglob_follow_symlinks(self._root_dir, "**/*.hdf5")
 
-    def find_raw_files(self) -> list[Path]:
-        files = list(self.root_dir.glob("**/*.hdf5"))
+        if subfolders is not None:
+            subfolders_set = set(subfolders)
+            files = [file for file in self.files if set(file.parts) & subfolders_set]
+            log.info(
+                f"Loading only data in the following subfolders: {subfolders} ({len(files)} files out of {len(self.files)} total)"
+            )
+            self.files = files
 
-        if not files:
+        if not self.files:
             raise FileNotFoundError(
-                f"No raw files found in {self.root_dir}. Please check the path."
+                f"No raw files found in {self._root_dir}. Please check the path."
             )
 
-        files = list(sorted(files, key=keyfunc))
-        return files
+        self.trajs: list[tuple[Path, str, Group]] = []
+        for file in self.files:
+            h5_file = h5py.File(str(file), "r")
 
-    def load_from_raw_file(self, filepath: Path) -> TensorDict | list[TensorDict]:
-        log.debug(f"Loading trajectories from file {filepath}")
+            file_trajs = h5_file["data"]
+            assert isinstance(file_trajs, Group)
+            traj_keys = list(sorted(file_trajs.keys(), key=self.traj_name_keyfunc))
+            traj_keys = get_subset(traj_keys, load_subset)
 
-        file = h5py.File(str(filepath), "r")
-        all_trajs = file["data"]
+            self.trajs.extend(
+                [
+                    (file.relative_to(self._root_dir), traj_key, file_trajs[traj_key])
+                    for traj_key in traj_keys
+                ]
+            )
 
+        traj_lengths = [len(traj["actions"]) for _, _, traj in self.trajs]
+
+        self.slices = TrajectorySlices(
+            traj_lengths,
+            obs_seq_len=obs_seq_len,
+            action_seq_len=action_seq_len,
+        )
+
+        self._load_specs()
+
+        if item_transforms is not None:
+            log.debug("Instantiating item transforms...")
+        self.transform, self._specs = init_transforms(item_transforms, self._specs)
+
+    @staticmethod
+    def traj_name_keyfunc(key: str) -> int:
         # each trajectory is stored under a key like "demo_1", "demo_2", etc.
-        demo_keys = list(sorted(all_trajs.keys(), key=lambda demo_i: int(demo_i[5:])))
-        # required to extract task desriptions from each demonstration as RoboCasa's task descriptions are not unique: https://robocasa.ai/docs/tasks_scenes_assets/atomic_tasks.html
+        match = re.fullmatch(r"demo_(\d+)", key)
+        assert match is not None
+        return int(match.group(1))
 
-        if isinstance(self.trajs_per_task, float):
-            # if trajs_per_task is a fraction, take that fraction of the total
-            # number of trajectories
-            end = int(len(demo_keys) * self.trajs_per_task)
-        else:
-            end = self.trajs_per_task
+    def get_trajectory(self, traj_idx: int) -> TensorDict:
+        path, name, traj = self.trajs[traj_idx]
 
-        trajs = []
-        for key in demo_keys[:end]:
-            traj = all_trajs[key]
+        # shape: (T, 7), float32
+        joint_pos = traj["obs"]["robot0_joint_pos"][...].astype(np.float32)
+        # gripper joint positions which corresponds to the degree of open/close of the gripper (same as gripper_closure in Isaac)
+        # shape: (T, 2), float32
+        gripper_pos = traj["obs"]["robot0_gripper_qpos"][...].astype(np.float32)
+        # shape: (T, 3), float32
+        ee_pos = traj["obs"]["robot0_eef_pos"][...].astype(np.float32)
+        # shape: (T, 4), float32
+        ee_quat = traj["obs"]["robot0_eef_quat"][...].astype(np.float32)
+        # remove joint dims related to static mobile platform
+        action = traj["actions"][:, :7].astype(np.float32)
 
-            joint_pos = traj["obs"]["robot0_joint_pos"][...].astype(
-                np.float32
-            )  # shape: (T, 7), float32
-            # gripper joint positions which corresponds to the degree of open/close of the gripper (same as gripper_closure in Isaac)
-            gripper_pos = traj["obs"]["robot0_gripper_qpos"][...].astype(
-                np.float32
-            )  # shape: (T, 2), float32
-            ee_pos = traj["obs"]["robot0_eef_pos"][...].astype(
-                np.float32
-            )  # shape: (T, 3), float32
-            ee_quat = traj["obs"]["robot0_eef_quat"][...].astype(
-                np.float32
-            )  # shape: (T, 4), float32
-            # remove joint dims related to static mobile platform
-            action = traj["actions"][:, :7].astype(np.float32)
+        robot_state = torch.cat(
+            (
+                torch.from_numpy(joint_pos),
+                torch.from_numpy(gripper_pos),
+            ),
+            dim=-1,
+        )
 
-            robot_state = torch.cat(
-                (
-                    torch.from_numpy(joint_pos),
-                    torch.from_numpy(gripper_pos),
-                ),
-                dim=-1,
-            )
+        ee_pose = torch.cat(
+            (
+                torch.from_numpy(ee_pos),
+                torch.from_numpy(ee_quat),
+            ),
+            dim=-1,
+        )
 
-            ee_pose = torch.cat(
-                (
-                    torch.from_numpy(ee_pos),
-                    torch.from_numpy(ee_quat),
-                ),
-                dim=-1,
-            )
+        camera_poses = traj["camera_params"]["dynamic"]
 
-            camera_poses = traj["camera_params"]["dynamic"]
-
-            traj = TensorDict(
-                {
-                    "obs": {
-                        "left_cam": {
-                            "rgb": traj["obs"]["robot0_agentview_left_image"][
-                                ...
-                            ],  # shape: (T, H, W, 3), uint8
-                            "depth": traj["obs"]["robot0_agentview_left_depth"][
-                                ..., 0
-                            ],  # shape: (T, H, W), float32
-                        },
-                        "right_cam": {
-                            "rgb": traj["obs"]["robot0_agentview_right_image"][
-                                ...
-                            ],  # shape: (T, H, W, 3), uint8
-                            "depth": traj["obs"]["robot0_agentview_right_depth"][
-                                ..., 0
-                            ],  # shape: (T, H, W), float32
-                        },
-                        "gripper_cam": {
-                            "rgb": traj["obs"]["robot0_eye_in_hand_image"][
-                                ...
-                            ],  # shape: (T, H, W, 3), uint8
-                            "depth": traj["obs"]["robot0_eye_in_hand_depth"][
-                                ..., 0
-                            ],  # shape: (T, H, W), float32
-                        },
-                        "ee_pose": ee_pose,  # shape: (T, 7), float32
-                        "robot_state": robot_state,  # shape: (T, 9), float64
-                        # !!! IMPORTANT: "static" cameras are attached to the robot platform which sometimes moves caused by the robot-arm movements, so they move as well !!!
-                        # shape T x 4 x 4 as homogenious matrix
-                        "left_cam_transform": camera_poses["robot0_agentview_left"][
-                            "extrinsics"
-                        ][...],
-                        # !!! IMPORTANT: "static" cameras are attached to the robot platform which sometimes moves caused by the robot-arm movements, so they move as well !!!
-                        # shape T x 4 x 4 as homogenious matrix
-                        "right_cam_transform": camera_poses["robot0_agentview_right"][
-                            "extrinsics"
-                        ][...],
-                        # shape T x 4 x 4 as homogenious matrix
-                        "gripper_cam_transform": camera_poses["robot0_eye_in_hand"][
-                            "extrinsics"
-                        ][...],
+        # TODO: does it use less memory if we explicitly convert to torch tensors first?
+        traj = TensorDict(
+            {
+                "obs": {
+                    "left_cam": {
+                        # shape: (T, H, W, 3), uint8
+                        "rgb": traj["obs"]["robot0_agentview_left_image"][...],
+                        # shape: (T, H, W), float32
+                        "depth": traj["obs"]["robot0_agentview_left_depth"][..., 0],
                     },
-                    "action": action,
-                    "goal": {
-                        "text": json.loads(traj.attrs["ep_meta"])[
-                            "lang"
-                        ]  # language description of the current task
+                    "right_cam": {
+                        # shape: (T, H, W, 3), uint8
+                        "rgb": traj["obs"]["robot0_agentview_right_image"][...],
+                        # shape: (T, H, W), float32
+                        "depth": traj["obs"]["robot0_agentview_right_depth"][..., 0],
                     },
-                },  # type: ignore
+                    "gripper_cam": {
+                        # shape: (T, H, W, 3), uint8
+                        "rgb": traj["obs"]["robot0_eye_in_hand_image"][...],
+                        # shape: (T, H, W), float32
+                        "depth": traj["obs"]["robot0_eye_in_hand_depth"][..., 0],
+                    },
+                    "ee_pose": ee_pose,  # shape: (T, 7), float32
+                    "robot_state": robot_state,  # shape: (T, 9), float32
+                    # shape: (T, 4, 4)
+                    "left_cam_pose": camera_poses["robot0_agentview_left"][
+                        "extrinsics"
+                    ][...],
+                    # shape: (T, 4, 4)
+                    "right_cam_pose": camera_poses["robot0_agentview_right"][
+                        "extrinsics"
+                    ][...],
+                    # shape: (T, 4, 4)
+                    "gripper_cam_pose": camera_poses["robot0_eye_in_hand"][
+                        "extrinsics"
+                    ][...],
+                },
+                "action": action,
+                "ref_action": action.copy(),
+                "goal": {
+                    # language description of the current task
+                    "text": json.loads(traj.attrs["ep_meta"])["lang"]
+                },
+                "path": str(path),
+                "name": name,
+            },  # type: ignore
+        )
+
+        # add a batch dimension so we can index
+        traj["obs"].auto_batch_size_(batch_dims=1)
+
+        return traj
+
+    def _load_specs(self) -> None:
+        _, _, traj = self.trajs[0]
+
+        obs_specs = {}
+
+        cam_names = ["left_cam", "right_cam", "gripper_cam"]
+        raw_keys = [
+            "robot0_agentview_left",
+            "robot0_agentview_right",
+            "robot0_eye_in_hand",
+        ]
+
+        for key, cam_name in zip(raw_keys, cam_names):
+            # !!! IMPORTANT: "static" cameras are attached to the robot platform which sometimes moves caused by the robot-arm movements, so they move as well !!!
+
+            rgb = traj["obs"][f"{key}_image"]
+            match rgb.shape:
+                case (T, height, width, 3):
+                    pass
+                case _:
+                    raise ValueError(
+                        f"Expected left camera RGB images to have shape (T, H, W, 3), got {rgb.shape}"
+                    )
+
+            depth = traj["obs"][f"{key}_depth"]
+            match depth.shape:
+                case (t, h, w, 1) if t == T and h == height and w == width:
+                    pass
+                case _:
+                    raise ValueError(
+                        f"Expected left camera depth images to have shape ({T}, {height}, {width}, 1), got {depth.shape}"
+                    )
+
+            intrinsics = traj["camera_params"]["dynamic"][key]["intrinsics"]
+            # verify that intrinsics never change over time
+            assert intrinsics.shape == (1, 3, 3)
+
+            cam_spec = CameraSpec(
+                streams={
+                    "rgb": RGBStream(height, width, 3, channel_order="HWC"),
+                    "depth": DepthStream(height, width),
+                },
+                time=self.obs_seq_len,
+                intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
+                    intrinsics[0], height=height, width=width
+                ),
+                dynamic_pose_obs_key=f"{cam_name}_pose",
+                extrinsics=torch.eye(4, dtype=torch.float32),
             )
+            obs_specs[cam_name] = cam_spec
 
-            trajs.append(traj)
-
-        return trajs
-
-    def _load_specs(self, data: TensorDict | None = None) -> None:
-        if data is None:
-            filepath = self.find_raw_files()[0]
-            log.debug(
-                f"Inferring dataset specs by inspecting trajectory from file {filepath}"
+            cam_pose = traj["camera_params"]["dynamic"][key]["extrinsics"]
+            match cam_pose.shape:
+                case (t, 4, 4) if t == T:
+                    pass
+                case _:
+                    raise ValueError(
+                        f"Expected {cam_name}_pose to have shape ({T}, 4, 4), got {cam_pose.shape}"
+                    )
+            obs_specs[f"{cam_name}_pose"] = ObsSpec(
+                elem_shape=(4, 4), time=self.obs_seq_len
             )
-            file = h5py.File(str(filepath), "r")
-            traj = file["data"]["demo_1"]
-
-        # static left camera
-        rgb_shape = traj["obs"]["robot0_agentview_left_image"].shape
-        assert len(rgb_shape) == 4
-        assert rgb_shape[-1] == 3
-        depth_shape = traj["obs"]["robot0_agentview_left_depth"].shape
-        assert len(depth_shape) == 4
-        assert depth_shape[-1] == 1
-        assert rgb_shape[:-1] == depth_shape[:-1]
-        height, width, channels = rgb_shape[1:]
-
-        # !!! IMPORTANT: "static" cameras are attached to the robot platform which sometimes moves caused by the robot-arm movements, so they move as well !!!
-        left_cam_intrinsics = traj["camera_params"]["dynamic"]["robot0_agentview_left"]["intrinsics"][0]
-        left_cam_extrinsics = torch.eye(4, dtype=torch.float32)
-        left_cam = CameraSpec(
-            streams={
-                "rgb": RGBStream(height, width, channels, channel_order="HWC"),
-                "depth": DepthStream(height, width, orthogonal=True),
-            },
-            time=self.obs_seq_len,
-            intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
-                left_cam_intrinsics, height=height, width=width
-            ),
-            dynamic_pose_obs_key="left_cam_transform",
-            extrinsics=left_cam_extrinsics,
-        )
-        # left_cam_transform
-        transform = torch.zeros(1, 16)  # TODO: fill in correct transform
-        assert transform.ndim == 2
-        assert transform.shape[-1] == 16  # flattened 4x4 matrix
-        left_cam_transform = ObsSpec(elem_shape=(4, 4), time=self.obs_seq_len)
-
-        # static right camera
-        rgb_shape = traj["obs"]["robot0_agentview_right_image"].shape
-        assert len(rgb_shape) == 4
-        assert rgb_shape[-1] == 3
-        depth_shape = traj["obs"]["robot0_agentview_right_depth"].shape
-        assert len(depth_shape) == 4
-        assert depth_shape[-1] == 1
-        assert rgb_shape[:-1] == depth_shape[:-1]
-        height, width, channels = rgb_shape[1:]
-
-        # !!! IMPORTANT: "static" cameras are attached to the robot platform which sometimes moves caused by the robot-arm movements, so they move as well !!!
-        right_cam_intrinsics = traj["camera_params"]["dynamic"]["robot0_agentview_right"]["intrinsics"][0]
-        right_cam_extrinsics = torch.eye(4, dtype=torch.float32)
-
-        right_cam = CameraSpec(
-            streams={
-                "rgb": RGBStream(height, width, channels, channel_order="HWC"),
-                "depth": DepthStream(height, width, orthogonal=True),
-            },
-            time=self.obs_seq_len,
-            intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
-                right_cam_intrinsics, height=height, width=width
-            ),
-            dynamic_pose_obs_key="right_cam_transform",
-            extrinsics=right_cam_extrinsics,
-        )
-        # right_cam_transform
-        transform = torch.zeros(1, 16)  # TODO: fill in correct transform
-        assert transform.ndim == 2
-        assert transform.shape[-1] == 16  # flattened 4x4 matrix
-        right_cam_transform = ObsSpec(elem_shape=(4, 4), time=self.obs_seq_len)
-
-        # gripper camera
-        rgb_shape = traj["obs"]["robot0_eye_in_hand_image"].shape
-        assert len(rgb_shape) == 4
-        assert rgb_shape[-1] == 3
-        depth_shape = traj["obs"]["robot0_eye_in_hand_depth"].shape
-        assert len(depth_shape) == 4
-        assert depth_shape[-1] == 1
-        assert rgb_shape[:-1] == depth_shape[:-1]
-        height, width, channels = rgb_shape[1:]
-
-        gripper_cam_intrinsics = traj["camera_params"]["dynamic"]["robot0_eye_in_hand"]["intrinsics"][0]
-        gripper_cam_extrinsics = torch.eye(4, dtype=torch.float32)
-        gripper_cam = CameraSpec(
-            streams={
-                "rgb": RGBStream(height, width, channels, channel_order="HWC"),
-                "depth": DepthStream(height, width, orthogonal=True),
-            },
-            time=self.obs_seq_len,
-            intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
-                gripper_cam_intrinsics, height=height, width=width
-            ),
-            dynamic_pose_obs_key="gripper_cam_transform",
-            # gripper_cam_transform provides complete transform to camera
-            extrinsics=gripper_cam_extrinsics,
-        )
-        # gripper_cam_transform
-        transform = torch.zeros(1, 16)  # TODO: fill in correct transform
-        assert transform.ndim == 2
-        assert transform.shape[-1] == 16  # flattened 4x4 matrix
-        gripper_cam_transform = ObsSpec(elem_shape=(4, 4), time=self.obs_seq_len)
 
         # robot state
         joint_pos = traj["obs"]["robot0_joint_pos"]
-        assert joint_pos.ndim == 2
-        assert joint_pos.shape[-1] == 7
+        assert joint_pos.shape == (T, 7)
         gripper_pos = traj["obs"]["robot0_gripper_qpos"]
-        assert gripper_pos.ndim == 2
-        assert gripper_pos.shape[-1] == 2
+        assert gripper_pos.shape == (T, 2)
         # we concatenate joint_pos and gripper_pos to get a shape of (T, 9)
-        robot_state = ObsSpec(elem_shape=(9,), time=self.obs_seq_len)
+        obs_specs["robot_state"] = ObsSpec(elem_shape=(9,), time=self.obs_seq_len)
 
         # end-effector pose
         ee_pos = traj["obs"]["robot0_eef_pos"]
-        assert ee_pos.ndim == 2
-        assert ee_pos.shape[-1] == 3
+        assert ee_pos.shape == (T, 3)
         ee_quat = traj["obs"]["robot0_eef_quat"]
-        assert ee_quat.ndim == 2
-        assert ee_quat.shape[-1] == 4
+        assert ee_quat.shape == (T, 4)
         # we concatenate ee_pos and ee_quat to get a shape of (T, 7)
-        ee_pose = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
-        target_ee_pose = ObsSpec(elem_shape=(7,), time=self.action_seq_len)
+        obs_specs["ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
+        obs_specs["target_ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
 
         # !!! NOTE: JOINT-SPACE control actions !!!
-        assert traj["actions"].ndim == 2
+        assert traj["actions"].shape == (T, 12)
         # ignore joint dims related to static mobile platform
-        assert traj["actions"][:, :7].shape[-1] == 7
         action = ActionSpec(action_dim=7, time=self.action_seq_len)
 
-        self._specs = DataSpecs(
-            obs={
-                "left_cam": left_cam,
-                "right_cam": right_cam,
-                "gripper_cam": gripper_cam,
-                "robot_state": robot_state,
-                "ee_pose": ee_pose,
-                "target_ee_pose": target_ee_pose,
-                "left_cam_transform": left_cam_transform,
-                "right_cam_transform": right_cam_transform,
-                "gripper_cam_transform": gripper_cam_transform,
-            },
-            action=action,
-        )
+        goal_specs = {"text": ObsSpec(elem_shape=(), time=None)}
 
-    def get_specs(self) -> DataSpecs:
-        if self._specs is None:
-            self._load_specs()
-        assert self._specs is not None
-        return self._specs
+        self._specs = DataSpecs(obs=obs_specs, action=action, goal=goal_specs)

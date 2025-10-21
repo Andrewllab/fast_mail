@@ -11,7 +11,8 @@ job_type: overfit
 data:
   dataset:
     load_subset: [38]  # load selected trajectory
-    overwrite_preprocessed: True  # don't worry about overwriting the preprocessed data since we are using a small subset
+  preprocess:
+    overwrite: True  # don't worry about overwriting the preprocessed data since we are using a small subset
 
 trainer:
   log_every_n_steps: 1  # since epochs are short, we need to log after every batch

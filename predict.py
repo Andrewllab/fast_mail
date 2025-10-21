@@ -82,8 +82,8 @@ def predict(cfg: DictConfig) -> None:
     datamodule: TrajectoryDataModule = instantiate_datamodule(data_cfg)
 
     # manually run prepare data and setup so we can use dataset specs for model creation
-    log.debug("Instantiating datamodule...")
-    datamodule.prepare_data()
+    log.debug("Preparing and setting up data...")
+    datamodule.prepare_data(stage="predict")
     datamodule.setup(stage="predict")
 
     if not checkpoint:

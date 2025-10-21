@@ -2,16 +2,16 @@
 
 defaults:
   # # downsample the RGBD images to avoid excessive memory usage
-  # - /transforms@data.preprocess_transforms.t2_resize_for_pcd: image_resize
+  # - /transforms@data.preprocess.t2_resize_for_pcd: image_resize
 
-  - /transforms@data.preprocess_transforms.t3_to_pcd: to_pointcloud
+  - /transforms@data.preprocess.t3_to_pcd: to_pointcloud
   
-  - /transforms@data.preprocess_transforms.t4_crop_pcd: pointcloud_crop_maniskill
+  - /transforms@data.preprocess.t4_crop_pcd: pointcloud_crop_maniskill
 
   # # disable random transforms for now
-  # - /transforms@data.preprocess_transforms.t7_random_transform: pointcloud_random_transform
+  # - /transforms@data.preprocess.t7_random_transform: pointcloud_random_transform
 
-  - /transforms@data.preprocess_transforms.t9_cleanup: cleanup
+  - /transforms@data.preprocess.t9_cleanup: cleanup
 
   - /transforms@data.gpu_batch_transforms.t1_voxel_downsample: pointcloud_downsample_voxel
 
@@ -24,7 +24,7 @@ defaults:
 
 data:
   # Below is just the default configuration copied here for convenience. Change as needed.
-  preprocess_transforms:
+  preprocess:
     t2_resize_for_pcd:
       shape: 128  # scale shortest side to 128 and keep aspect ratio
 

@@ -1,20 +1,17 @@
 defaults:
-  - default
   - maniskill
 
-task_suite: maniskill
 task: group_1
 name: maniskill_group_1
 
+action_seq_len: 5
+obs_seq_len: 1
+
 dataset:
   _target_: environments.datasets.maniskill_group1_dataset.ManiSkillDataset
-  _partial_: True  # requires transforms at runtime
   root_dir: ${paths.data_dir}/maniskill/group1
-  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
-  action_seq_len: 5
-  obs_seq_len: 1
 
-env_dataset:
+env:
   env:
     env_id: LiftPegUpright-v1 # LiftPegUpright-v1, PokeCube-v1, PullCube-v1
     sim_backend: physx_cuda
@@ -22,6 +19,3 @@ env_dataset:
       base_camera:
         width: 256
         height: 256
-
-
-device: cpu  # this dataset is maybe small enough to fit in memory

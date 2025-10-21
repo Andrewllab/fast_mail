@@ -10,6 +10,7 @@ platform:
   batch_size: 256
   pin_memory: True  # test if True is faster, but it might not be
   prefetch_factor: 1  # reduce memory usage for on-disk datasets
+  preprocess_backend: memmap  # memmap or hdf5
   fs_preprocess_batch_size: 192
 
 torch:

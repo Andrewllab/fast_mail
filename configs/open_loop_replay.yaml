@@ -14,7 +14,7 @@ defaults:
   - debug: verbose
   # instead of converting to relative action chunks, we transform the entire
   # trajectory into the reference frame of the first action
-  - override transforms@agent.replay_data.preprocess_transforms.t0-3_relative_actions: action_abs_to_relative
+  - override transforms@agent.replay_data.preprocess.t0-3_relative_actions: action_abs_to_relative
   - _self_
 
 # task name, determines output directory path
@@ -28,12 +28,13 @@ callbacks:
 
 agent:
   replay_data:
+    action_seq_len: 1  # action chunking unnecessary for open-loop replay
     dataset:
-      action_seq_len: 1  # action chunking unnecessary for open-loop replay
       load_subset: [0]  # load selected trajectory
-      overwrite_preprocessed: True  # don't worry about overwriting the preprocessed data since we are using a small subset
+    preprocess:
+      overwrite: True  # don't worry about overwriting the preprocessed data since we are using a small subset
 
-    preprocess_transforms:
+    preprocess:
       t0-3_relative_actions:
         reference: first_ee_pose  # use the first ee_pose as the reference frame to convert to relative
       # t0-4_normalize_actions: null
@@ -42,7 +43,7 @@ agent:
 
 data:
   eval_mode: env  # evaluate in the real environment
-  env_dataset:
+  env:
     env:
       cameras: null  # we don't need cameras for open-loop replay
     action_horizon: null  # execute all incoming actions

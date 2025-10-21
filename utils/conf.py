@@ -69,19 +69,6 @@ def setup_resolvers(exclude: list[str] | None = None):
         )
 
 
-def resolve_path(str_path: os.PathLike) -> Path:
-    # resolve any environment variables in the first path element
-    elements = str(str_path).split("/")
-    # if first character of first element is "$"
-    if (root := elements[0]).startswith("$"):
-        elements[0] = os.environ[root[1:]]
-    path = "/".join(elements)  # not osp.join because we used str.split above
-
-    # resolve ~ to the user's home directory
-    path = Path(path).expanduser()
-    return path
-
-
 def log_slurm_job_id(cfg: DictConfig):
     """Add slurm job ID (and potentially the array job/task ID) to the cfg
     (under cfg.platform) where it will be logged to wandb.

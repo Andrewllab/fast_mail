@@ -1,16 +1,8 @@
-
 defaults:
-  - default
   - robocasa
 
-task_suite: robocasa
 task: kitchen_move
-name: kitchen_move
+name: kitchen_move_20250920
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_move
-  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
-
-env_dataset:
-  env:
-    env_name: CoffeeServeMug

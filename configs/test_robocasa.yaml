@@ -1,16 +1,14 @@
 # usage: python test.py -cn test_robocasa
 
 defaults:
-  - /transforms@data.preprocess_transforms.t1-3_remove_inf_depth: remove_inf_depth
-  # - data/wrappers@data.env_dataset.env.wrappers: record_video  # record videos
+  - data: robocasa  # overwrite env config from training run
+  - /transforms@data.preprocess.t1_remove_inf_depth: remove_inf_depth
+  # - data/wrappers@data.env.env.wrappers: record_video  # record videos
   # log test results to new wandb run, since test parameters affect results
   - logger: wandb
   - python_logging: default
   - paths: default
   - hydra: checkpoint_dir_naming
-  # - obs_modality:
-  #   - sim_pointmaps_robocasa_new
-  #   - sim_pointclouds_robocasa_new
   # - transforms@data.gpu_batch_transforms.t9_render: render_cameras
   # - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
   - _self_
@@ -19,7 +17,7 @@ defaults:
   - debug: verbose
 
 # task name, determines output directory path
-job_type: test_robocasa
+job_type: test_sim
 
 checkpoint:
   # either specify a complete checkpoint path...
@@ -29,7 +27,7 @@ checkpoint:
   # project and entity are only needed if they differ from the settings in the wandb logger config
   wandb_project: 3d-sim2real
   wandb_entity: alr-3d-sim2real
-  epochs: [59, 79, 99]  # options: last, all, last_n (default: last)
+  epochs: last_3  # options: last, all, last_n (default: last)
   artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
   use_artifact: False  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
 
@@ -38,21 +36,19 @@ agent:
 
 data:
   eval_mode: env
-  env_dataset:
+  env:
     num_episodes: 20  # 30 episodes in total across 5 checkpoints
     action_horizon: 20  # modify if desired
 
     env:
       wrappers:
         record_video:
-          num_episodes: ${data.env_dataset.num_episodes}  # number of episodes to record
+          num_episodes: ${data.env.num_episodes}  # number of episodes to record
           fps: 60  # increase if the videos are too long
         robocasa_preprocess:
           max_steps_per_episode: 400
 
-  preprocess_transforms:
-    t0-0_drop_rgbd: null
-    t9_cleanup: null
+  preprocess:
     t99_cleanup: null  # disable cleanup transform added by default
 
   gpu_batch_transforms:

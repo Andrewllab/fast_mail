@@ -5,7 +5,7 @@ defaults:
 
 # Remove pointmap normalise because we don't trust the transform yet
 data:
-  preprocess_transforms:
+  preprocess:
     # remove pointmap normalisation for now
     t6-2_pointmap_normalize: null
 

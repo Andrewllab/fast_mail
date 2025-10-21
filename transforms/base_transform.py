@@ -54,13 +54,12 @@ class TransformModuleMeta(ABCMeta):
         if any(issubclass(base, nn.Module) for base in cls.__mro__[1:]):
             # Override __call__, with the one from nn.Module
             cls.__call__ = nn.Module.__call__
-            
-            # Use nn.Module's train and eval methods
-            # if they are not overriden in the child class
-            if 'eval' not in namespace:
+
+            # Override train and eval, with the ones from nn.Module
+            if "eval" not in namespace:
                 cls.eval = nn.Module.eval
-                
-            if 'train' not in namespace:
+
+            if "train" not in namespace:
                 cls.train = nn.Module.train
         return cls
 
@@ -90,7 +89,7 @@ class Transform(ABC, metaclass=TransformModuleMeta):
 
     def train(self, mode: bool = True):
         self.training = mode
-        
+
     def eval(self):
         self.train(mode=False)
 
@@ -245,6 +244,7 @@ class Compose(ReversibleTransform):
 
     Modified from: https://github.com/pytorch/vision/blob/main/torchvision/transforms/transforms.py#L60
     """
+
     # TODO: add __new__ method that either creates a Compose or Sequential based on
     # whether any of the transforms is an nn.Module
 
@@ -280,7 +280,7 @@ class Compose(ReversibleTransform):
                     "This Compose transform is empty, but no specs were provided. Please provide them on initialization."
                 )
             return self._specs
-        
+
     def train(self, mode: bool = True):
         for t in self._transforms.values():
             t.train(mode=mode)
@@ -314,6 +314,18 @@ class Compose(ReversibleTransform):
                 )
             tensordict = t.reverse(tensordict)
         return tensordict
+
+    def __add__(self, other: Compose) -> Compose:
+        if not isinstance(other, Compose):
+            raise TypeError(
+                f"Can only add Compose to another Compose (got {type(other)})"
+            )
+        # concatenate the transforms in self and other
+        transforms = list(self) + list(other)
+        cls = (
+            Sequential if any(isinstance(t, nn.Module) for t in transforms) else Compose
+        )
+        return cls(*transforms, specs=other.specs)
 
     def __repr__(self) -> str:
         if not self._transforms:
@@ -364,15 +376,14 @@ class Sequential(nn.Module, Compose):
 
     # nn.Module's __repr__ shadows Compose's __repr__, so we need to explicitly assign it
     __repr__ = Compose.__repr__
-    
+
     def train(self, mode: bool = True):
         # First call nn.Module's train to set self.training
         super().train(mode=mode)
-        
+
         # Set training mode for each transform
         for t in self._transforms.values():
             t.train(mode=mode)
-        
 
     def forward(self, input: TensorDict) -> TensorDict:
         for module in self:
@@ -485,8 +496,9 @@ def get_transforms_config(transform_partials: TransformPartialsDict) -> ListConf
             }
         )
 
-    # convert to omegaconf DictConfig
+    # convert to omegaconf ListConfig
     cfg = OmegaConf.create(cfg)
+    assert isinstance(cfg, ListConfig)
     return cfg
 
 

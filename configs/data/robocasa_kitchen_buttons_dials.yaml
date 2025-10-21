@@ -1,16 +1,8 @@
-
 defaults:
-  - default
   - robocasa
 
-task_suite: robocasa
 task: kitchen_buttons_dials
-name: kitchen_buttons_dials
+name: kitchen_buttons_dials_20250920
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_buttons_dials
-  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base
-
-env_dataset:
-  env:
-    env_name: CoffeePressButton

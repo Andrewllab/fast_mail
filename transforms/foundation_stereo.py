@@ -8,7 +8,7 @@ from tensordict import TensorDict
 from environments.specs import CameraSpec, DataSpecs, DepthStream
 from third_party.FoundationStereo.core.utils.utils import InputPadder
 from transforms.base_transform import Transform, TransformConstraint
-from utils.conf import resolve_path
+from utils.paths import resolve_path
 from utils.tensor_rt import get_metadata, load_engine, run_inference
 
 

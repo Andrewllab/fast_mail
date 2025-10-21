@@ -22,15 +22,13 @@ defaults:
 job_type: visualize_dataset
 
 data:
-  batch_size: 1  # required for visualization
   eval_mode: dataset
+  batch_size: 1  # required for visualization
+  action_seq_len: 1  # no action chunks, because only the first frame is rendered
   dataset:
     load_subset: [0]  # load selected trajectory
-    action_seq_len: 1  # no action chunks, because only the first frame is rendered
-    # # disabled `debug_preprocess` because some transforms only work in preprocessing
-    # debug_preprocess: True  # prepend preprocess transforms to cpu transforms
 
-  preprocess_transforms:
+  preprocess:
 
     t2_resize_for_pcd:
       shape: 256  # increase resolution for better visualization (but not too high, due to memory constraints)

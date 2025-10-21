@@ -48,7 +48,12 @@ class ClipGoalEmbedding(Transform):
         goal_texts = tensordict["goal", "text"]
         assert isinstance(goal_texts, np.ndarray)
 
-        goal_texts = [str(text) for text in goal_texts]
+        if isinstance(goal_texts[0], np.str_):
+            goal_texts = [text.item() for text in goal_texts]
+        elif isinstance(goal_texts[0], np.bytes_):
+            goal_texts = [text.decode("utf-8") for text in goal_texts]
+        else:
+            raise TypeError(f"Unsupported goal text type: {type(goal_texts[0])}")
 
         # embedding: (B, 1, 1024)
         embedding = self.clip_model(goal_texts)

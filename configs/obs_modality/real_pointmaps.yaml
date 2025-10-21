@@ -1,17 +1,17 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess_transforms.t5-1_to_pointmap: to_pointmap
+  - /transforms@data.preprocess.t5-1_to_pointmap: to_pointmap
 
   # Crop out regions outside the area of interest
-  - /transforms@data.preprocess_transforms.t5-2_crop_pointmap: pointmap_crop_real
+  - /transforms@data.preprocess.t5-2_crop_pointmap: pointmap_crop_real
 
   # Do this before triangle cropping such that the translation is not applied to masked values
-  - /transforms@data.preprocess_transforms.t6-1_pointmap_random_transform: pointmap_random_transform
+  - /transforms@data.preprocess.t6-1_pointmap_random_transform: pointmap_random_transform
 
   # Collect statistics to scale pointmaps to [-1, 1]^3
   # Do this after translations/cropping and before masking/jittering
-  - /transforms@data.preprocess_transforms.t6-2_pointmap_normalize: pointmap_normalize
+  - /transforms@data.preprocess.t6-2_pointmap_normalize: pointmap_normalize
 
   # Apply jitter to images and pointmaps
   - /transforms@data.gpu_batch_transforms.t97-1_color_jitter: image_jitter_color
@@ -24,7 +24,7 @@ defaults:
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
 
 data:
-  preprocess_transforms:
+  preprocess:
     t5-1_to_pointmap:
       color: false  # to use 6-channel fusion, use real_pointmaps_6ch config
       max_depth: null # in meters

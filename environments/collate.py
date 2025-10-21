@@ -23,8 +23,13 @@ def collate_tensor_dict(batch: list[TensorDict], *, collate_fn_map) -> TensorDic
             collated = collate(value.tolist(), collate_fn_map=collate_fn_map)
 
             if isinstance(collated[0], GeomData):
-                # because the Data objects are in a list, collate returns a list
-                # a single Batch object, so we need to unpack the list
+                # because the obs TensorDict has a batch dimension, the
+                # NonTensorData has a batch dimension too. Therefore, each
+                # element in the stack is a list with one Data object, so
+                # collate returns a list with one DataBatch object
+                assert isinstance(collated, list)
+                assert len(collated) == 1
+                assert isinstance(collated[0], GeomBatch)
                 stacked[key] = collated[0]
 
             else:

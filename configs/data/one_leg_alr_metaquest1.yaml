@@ -16,7 +16,7 @@ dataset:
 
 device: cpu  # this dataset is small enough to fit in memory
 
-# env_dataset:
+# env:
 #   _target_: environments.simulations.isaac.IsaacSim
 #   scene: 
 #   render: False

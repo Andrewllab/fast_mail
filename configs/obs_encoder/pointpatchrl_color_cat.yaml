@@ -45,7 +45,7 @@ agent:
 data:
   batch_size: ${floor_div:${platform.batch_size},4}  # 1/4 of typical batch size
 
-  preprocess_transforms:
+  preprocess:
     t9_cleanup:
       keep_stream_types: [rgb]  # keep rgb streams
       drop_stream_names: [right]  # but drop any right rgb streams if they exist

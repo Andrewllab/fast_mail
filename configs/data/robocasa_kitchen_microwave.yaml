@@ -1,11 +1,8 @@
 defaults:
-  - default
   - robocasa
 
-task_suite: robocasa
 task: kitchen_microwave
 name: kitchen_microwave_20250920
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_microwave
-  preprocessed_dir: ${paths.preprocessed_dir}/${..name}/base

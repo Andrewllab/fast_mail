@@ -8,7 +8,7 @@ from tensordict import TensorDict
 from torch import Tensor
 from torch_geometric.data import Batch, Data
 
-from environments.base_dataset import EmptyPointCloudError
+from environments.datamodule import EmptyPointCloudError
 from environments.specs import (
     CameraSpec,
     DataSpecs,

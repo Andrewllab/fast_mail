@@ -1,0 +1,20 @@
+# @package _global_
+
+defaults:
+  - /transforms@data.preprocess.t0_cleanup: cleanup
+
+  - /transforms@data.preprocess.t1_triangle_crop: triangle_crop_224x224
+
+  # apply color jitter before normalization
+  - /transforms@data.gpu_batch_transforms.t90_color_jitter: image_jitter_color
+
+  # apply ImageNet normalization
+  - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
+
+data:
+  preprocess:
+    root_dir: ${paths.preprocessed_dir}/real/${data.name}_rgb
+
+    t0_cleanup:
+      keep_stream_types: rgb
+      drop_keys: gripper_cam_transform

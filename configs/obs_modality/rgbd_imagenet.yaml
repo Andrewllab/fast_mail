@@ -1,9 +1,9 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess_transforms.t0-0_cleanup: cleanup
+  - /transforms@data.preprocess.t0-0_cleanup: cleanup
 
-  # - /transforms@data.preprocess_transforms.t6-3_depth_normalize: depth_normalize
+  # - /transforms@data.preprocess.t6-3_depth_normalize: depth_normalize
 
   # - /transforms@data.gpu_batch_transforms.t1_color_jitter: image_jitter_color
 
@@ -14,7 +14,7 @@ defaults:
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
 
 data:
-  preprocess_transforms:
+  preprocess:
     # We don't need the right camera view for this task
     t0-0_cleanup:
       keep_stream_types: [rgb, depth]

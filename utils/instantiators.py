@@ -67,7 +67,7 @@ def instantiate_datamodule(datamodule_cfg: DictConfig) -> "TrajectoryDataModule"
     if not isinstance(datamodule_cfg, DictConfig):
         raise TypeError("Data module config must be a DictConfig!")
 
-    log.debug("Instantiating <TrajectoryDataModule>")
+    log.debug("Instantiating TrajectoryDataModule...")
 
     # resolve entire config before we start modifying it
     OmegaConf.resolve(datamodule_cfg)
@@ -78,14 +78,18 @@ def instantiate_datamodule(datamodule_cfg: DictConfig) -> "TrajectoryDataModule"
         for key in ["name", "task", "task_suite", "randomness"]:
             datamodule_cfg.pop(key, None)
 
-        # do not instantiate env_dataset recursively, as it may import simulation
+        # do not instantiate dataset config, as we need to manipulate the config first
+        dataset_cfg = datamodule_cfg.pop("dataset", None)
+
+        # do not instantiate env config recursively, as it may import simulation
         # modules that are not available in the current environment
-        env_cfg = datamodule_cfg.pop("env_dataset", None)
+        env_cfg = datamodule_cfg.pop("env", None)
 
         datamodule_cfg = hydra.utils.instantiate(datamodule_cfg)
 
-        # now put the env_dataset config back, so the datamodule can instantiate it
-        datamodule_cfg.env_dataset = env_cfg
+        # now put the env config back, so the datamodule can instantiate it
+        datamodule_cfg.dataset = dataset_cfg
+        datamodule_cfg.env = env_cfg
 
     # instantiate the TrajectoryDataModule itself, but not recursively
     datamodule: TrajectoryDataModule = hydra.utils.instantiate(
@@ -93,3 +97,25 @@ def instantiate_datamodule(datamodule_cfg: DictConfig) -> "TrajectoryDataModule"
     )
 
     return datamodule
+
+
+def get_dataset_class(dataset_cfg: DictConfig) -> "type[TrajectoryDataset]":
+
+    if "_target_" in dataset_cfg:
+        DatasetCls = dataset_cfg.pop("_target_")
+        if isinstance(DatasetCls, str):
+            DatasetCls = hydra.utils.get_object(DatasetCls)
+        return DatasetCls
+
+    backend = dataset_cfg.pop("backend")
+    if backend.lower() == "hdf5":
+        from environments.base_dataset import Hdf5Dataset
+
+        return Hdf5Dataset
+
+    if backend.lower() == "memmap":
+        from environments.base_dataset import MemmapDataset
+
+        return MemmapDataset
+
+    raise ValueError(f"Unsupported backend: {backend}")

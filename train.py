@@ -53,8 +53,8 @@ def train(cfg: DictConfig) -> None:
     datamodule: TrajectoryDataModule = instantiate_datamodule(cfg.data)
 
     # manually run prepare data and setup so we can use dataset specs for model creation
-    log.debug("Loading training data...")
-    datamodule.prepare_data()
+    log.debug("Preparing and setting up data...")
+    datamodule.prepare_data(stage="fit")
     datamodule.setup(stage="fit")
 
     # instantiate agent

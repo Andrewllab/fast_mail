@@ -12,7 +12,7 @@ from torch_geometric.utils import one_hot, scatter
 
 from environments.specs import DataSpecs
 from transforms.base_transform import KeyMapping, Transform
-from utils.pyg import update_ptr
+from utils.pyg import update_batch_metadata
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ class GridSamplePointCloud(Transform):
                         item = item.to(default_dtype) / 255.0
                     data[key] = scatter(item, c, dim=0, reduce="mean")
 
-        data = update_ptr(data)
+        data = update_batch_metadata(data)
 
         num_points = data.ptr[1:] - data.ptr[:-1]
         if (num_points == 0).any():

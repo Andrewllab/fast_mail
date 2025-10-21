@@ -18,11 +18,11 @@ paths:
   debug_preprocessed_dir: $TMPDIR/debug_preprocessed_data
 
 data:
-  dataset:
-     overwrite_preprocessed: True  # don't crash just because zipped datasets are out of date
-     # Don't modify the path according to ${data.name}, since this crashes for multirun with different datasets
-     # The preprocessed data gets deleted after the job anyway, so it doesn't matter
-     preprocessed_dir: ${paths.preprocessed_dir}/preprocessed
+  preprocess:
+    # Don't modify the path according to ${data.name}, since this crashes for multirun with different datasets
+    # The preprocessed data gets deleted after the job anyway, so it doesn't matter
+    root_dir: ${paths.preprocessed_dir}/preprocessed
+    overwrite: True  # don't crash just because zipped datasets are out of date
 
 hydra:
   launcher:
@@ -31,15 +31,15 @@ hydra:
 
       # get the relative path inside the preprocessed_dir where the dataset expects the preprocessed data
       # (e.g. PREPROCESS_PATH="metaquest3_2025-07-24/multiview_image")
-      - PREPROCESS_NAME=$(realpath --canonicalize-missing --no-symlinks --relative-to=${paths.preprocessed_dir} ${data.dataset.preprocessed_dir})
+      - PREPROCESS_NAME=$(realpath --canonicalize-missing --no-symlinks --relative-to=${paths.preprocessed_dir} ${data.preprocess.root_dir})
       - echo "PREPROCESS_NAME=$PREPROCESS_NAME"
 
       # Note: this path gets resolved twice. First hydra resolves ${paths.preprocessed_dir} on the login node, then
       # bash resolves $TMPDIR inside the job
-      - mkdir -pv ${data.dataset.preprocessed_dir}
+      - mkdir -pv ${data.preprocess.root_dir}
       - if [[ -f ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst ]]; then
-      -   echo "$(date '+%F_%H:%M:%S') - Extracting ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst to ${data.dataset.preprocessed_dir}..."
-      -   tar -I "zstd -T0" -xf ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst -C ${data.dataset.preprocessed_dir}
+      -   echo "$(date '+%F_%H:%M:%S') - Extracting ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst to ${data.preprocess.root_dir}..."
+      -   tar -I "zstd -T0" -xf ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst -C ${data.preprocess.root_dir}
       -   echo "$(date '+%F_%H:%M:%S') - Done."
       - else
       -   echo "No zipped preprocessed data found at ${paths.zipped_preprocessed_dir}/$PREPROCESS_NAME.tar.zst"

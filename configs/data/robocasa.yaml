@@ -2,20 +2,16 @@ defaults:
   - default
 
 task_suite: robocasa
-task: ???
-name: robocasa
+
+action_seq_len: 20
+obs_seq_len: 1
 
 dataset:
   _target_: environments.datasets.robocasa_dataset_v2.RoboCasaDataset
-  _partial_: True  # requires transforms at runtime
-  root_dir: ???
-  preprocessed_dir: ???
-  trajs_per_task: 1.0 # fraction of trajectories to use per task
-  action_seq_len: 20
-  obs_seq_len: 1
+  load_subset: null
+  subfolders: null
 
-env_dataset:
-  _target_: environments.gym_env_dataset.GymEnvDataset
+env:
   env:
     _target_: environments.simulation.robocasa.build_env.make 
     _recursive_: False 
@@ -72,8 +68,6 @@ env_dataset:
         max_steps_per_episode: 400 # https://github.com/xiaogangjia/depth_vla/blob/4b034a6cacf28b039e0c3d9c6ddaacff5b57f926/configs/robocasa_config.yaml#L235
 
   num_envs: 1
-  num_episodes: 10  # evaluate on 20 episodes
+  num_episodes: 20  # evaluate on 20 episodes
   action_horizon: null  # use all predicted actions
-  fps: null  # run as fast as RoboCasa can manage
-
-device: cpu
+  fps: null  # run as fast as the simulation  can manage

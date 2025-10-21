@@ -1,20 +1,24 @@
 from __future__ import annotations
 
+import functools
 import itertools
 import logging
-from typing import Any, Callable, Literal
+import re
+import shutil
+from typing import Any, Literal
 
 import hydra
 import lightning as L
 import torch.nn as nn
 from gymnasium import Wrapper
 from gymnasium.wrappers import RecordVideo
+from hydra.errors import InstantiationException
 from omegaconf import DictConfig
 from tensordict import NonTensorData, TensorDict, is_leaf_nontensor
 from torch import device
 from torch.utils.data import DataLoader, Subset, random_split
 
-from environments.base_dataset import DeviceType, TrajectoryDataset
+from environments.base_dataset import TrajectoryDataset
 from environments.collate import update_collate_fn_map
 from environments.gym_env_dataset import GymEnvDataset
 from environments.specs import DataSpecs
@@ -24,19 +28,26 @@ from transforms.base_transform import (
     ReversibleTransform,
     Sequential,
     TransformPartialsDict,
+    get_transforms_config,
     init_transforms,
 )
+from utils.instantiators import get_dataset_class
+from utils.paths import resolve_path
 
 log = logging.getLogger(__name__)
+
+
+class EmptyPointCloudError(Exception):
+    pass
 
 
 class TrajectoryDataModule(L.LightningDataModule):
     def __init__(
         self,
-        dataset: Callable | None = None,
-        batch_size: int | None = None,
-        device: DeviceType = "disk",
-        preprocess_transforms: TransformPartialsDict | None = None,
+        dataset: DictConfig,
+        action_seq_len: int,
+        obs_seq_len: int,
+        batch_size: int | None,
         cpu_transforms: TransformPartialsDict | None = None,
         cpu_batch_transforms: TransformPartialsDict | None = None,
         gpu_batch_transforms: TransformPartialsDict | None = None,
@@ -44,13 +55,14 @@ class TrajectoryDataModule(L.LightningDataModule):
         pin_memory: bool = False,
         prefetch_factor: int | None = None,
         eval_mode: Literal["env", "dataset"] | float | None = None,
-        env_dataset: DictConfig | None = None,
+        env: DictConfig | None = None,
+        **preprocess_cfgs: DictConfig,
     ):
         super().__init__()
-        self._dataset = dataset
+        self.dataset_cfg = dataset
+        self.action_seq_len = action_seq_len
+        self.obs_seq_len = obs_seq_len
         self.batch_size = batch_size
-        self.device = device
-        self._preprocess_transforms = preprocess_transforms
         self._cpu_transforms = cpu_transforms
         self._cpu_batch_transforms = cpu_batch_transforms
         self._gpu_batch_transforms = gpu_batch_transforms
@@ -58,14 +70,21 @@ class TrajectoryDataModule(L.LightningDataModule):
         self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
         self.eval_mode = eval_mode
-        self._env = env_dataset
+        self.env_cfg = env
 
-        if device not in ("disk", "cpu") and (
-            cpu_transforms is not None or cpu_batch_transforms is not None
-        ):
-            raise ValueError(
-                f"CPU transforms are not supported when dataset is stored on GPU."
+        # sort by number of "pre" prefixes
+        preprocess_cfgs = dict(
+            sorted(
+                preprocess_cfgs.items(),
+                key=lambda kv: self.preprocess_keyfunc(kv[0]),
             )
+        )
+        # filter out empty preprocessing steps
+        self.preprocess_cfgs = {
+            key: cfg
+            for key, cfg in preprocess_cfgs.items()
+            if get_transforms_config(cfg)
+        }
 
         self.dataset: TrajectoryDataset | Subset | None = None
         self.eval_dataset: TrajectoryDataset | Subset | None = None
@@ -73,24 +92,217 @@ class TrajectoryDataModule(L.LightningDataModule):
 
         self.env: GymEnvDataset | None = None
 
-    def setup(self, stage: str) -> None:
+    @staticmethod
+    def preprocess_keyfunc(key: str) -> int:
+        # Matches strings like "process", "preprocess", "prepreprocess", etc.
+        match = re.fullmatch(r"^(pre)*process$", key)
+        if not match:
+            raise ValueError(f"Invalid key format: {key!r}")
+        return key.count("pre")
 
-        if stage == "fit" or self.eval_mode == "dataset":
-            # we need the dataset if we are training or if we are evaluating
-            # on some complete dataset
+    def prepare_data(self, stage: str | None = None) -> None:
+        # TODO: skip preprocess if it's already been run in this process before
 
-            if stage == "fit" and self.eval_mode == "dataset":
-                raise ValueError(
-                    "Eval mode `dataset` is for evaluating on a complete dataset. To evaluate on a subset of the dataset, use a float value between 0 and 1."
+        if stage is None:
+            assert self.trainer is not None
+            stage = self.trainer.state.fn
+        needs_dataset, needs_env = self.needs_setup(stage, self.eval_mode)
+
+        if not needs_dataset or self.dataset is not None:
+            return
+
+        log.debug("Preparing data...")
+
+        # create minimal transform configs for testing if existing preprocessed
+        # data has matching transforms
+        transform_cfgs = {
+            key: get_transforms_config(cfg) for key, cfg in self.preprocess_cfgs.items()
+        }
+
+        # accumulate the transform ListConfigs in reverse order, i.e. the first
+        # step we consider is the last processing step, and therefore has the
+        # transforms of all previous steps applied before it
+        transform_cfgs = dict(
+            zip(
+                transform_cfgs.keys(),
+                reversed(list(itertools.accumulate(reversed(transform_cfgs.values())))),
+            )
+        )
+
+        # check which preprocessing steps need to be done, if any
+        for i, (key, preprocess_cfg) in enumerate(self.preprocess_cfgs.items()):
+
+            # remove this key, as it's only relevant for verification and the
+            # datasets don't expect it as an argument
+            overwrite = preprocess_cfg.pop("overwrite", False)
+
+            dataset_cfg = {
+                key: value
+                for key, value in preprocess_cfg.items()
+                if not isinstance(value, functools.partial) and value is not None
+            }
+
+            DatasetCls = get_dataset_class(dataset_cfg)
+            root_dir = resolve_path(dataset_cfg["root_dir"])
+
+            try:
+                # add some kind of file manifest for a more robust check
+                dataset = hydra.utils.instantiate(
+                    dataset_cfg,
+                    _target_=DatasetCls,
+                    _partial_=False,
+                    action_seq_len=self.action_seq_len,
+                    obs_seq_len=self.obs_seq_len,
                 )
 
+            except (FileNotFoundError, InstantiationException) as e:
+                if not (
+                    isinstance(e, FileNotFoundError)
+                    or isinstance(e.__cause__, FileNotFoundError)
+                ):
+                    raise e
+
+                if root_dir.is_dir() and any(root_dir.iterdir()):
+                    if overwrite:
+                        log.warning(
+                            f"Preprocessed directory {root_dir} is not empty. Overwriting..."
+                        )
+                        shutil.rmtree(root_dir)
+                    else:
+                        raise FileExistsError(
+                            f"Preprocessed directory {root_dir} is not empty (perhaps an incomplete earlier preprocessing run). Set overwrite=True to overwrite."
+                        )
+
+                continue
+
+            # check if the existing preprocessed data has the same transforms
+            old_config = dataset.preprocess_transforms_config
+            new_config = transform_cfgs[key]
+
+            if old_config != new_config:
+                if overwrite:
+                    log.warning(
+                        f"Preprocess config does not match existing preprocessed data in {root_dir}. Overwriting..."
+                    )
+                    log.warning(
+                        f"Old config:\n{old_config}\n\nNew config:\n{new_config}"
+                    )
+                    shutil.rmtree(root_dir)
+                    continue
+                else:
+                    log.warning(
+                        f"Old config:\n{old_config}\n\nNew config:\n{new_config}"
+                    )
+                    raise ValueError(
+                        f"Preprocess config does not match existing preprocessed data in {root_dir}. Set overwrite=True to overwrite."
+                    )
+
+            log.info(
+                f"Found {key}ed data in {root_dir} ({dataset.n_trajectories} trajectories)."
+            )
+            break
+
+        else:
+            # need to preprocess raw data
+            i += 1  # increment i to include the final preprocessing step
+
+            dataset_cfg = self.dataset_cfg
+            DatasetCls = get_dataset_class(dataset_cfg)
+            dataset = hydra.utils.instantiate(
+                dataset_cfg,
+                _target_=DatasetCls,
+                _partial_=False,
+                action_seq_len=self.action_seq_len,
+                obs_seq_len=self.obs_seq_len,
+            )
+            log.info(
+                f"Found raw data in {dataset.root_dir} ({dataset.n_trajectories} trajectories)."
+            )
+
+        # take only the preprocessing steps that need to be done, and reverse their order
+        preprocess_cfgs = dict(reversed(list(self.preprocess_cfgs.items())[:i]))
+
+        for i, (key, preprocess_cfg) in enumerate(preprocess_cfgs.items()):
+
+            dataset_cfg = {
+                key: value
+                for key, value in preprocess_cfg.items()
+                if not isinstance(value, functools.partial) and value is not None
+            }
+
+            DatasetCls = get_dataset_class(dataset_cfg)
+            root_dir = resolve_path(dataset_cfg["root_dir"])
+            log.info(f"Running {key} and saving to {root_dir}...")
+
+            root_dir.mkdir(parents=True, exist_ok=True)
+
+            specs = dataset.specs
+            transforms, specs = init_transforms(preprocess_cfg, specs)
+            assert isinstance(transforms, Compose)
+            assert specs == transforms[-1].specs
+
+            for idx in range(dataset.n_trajectories):
+                log.debug(f"Loading trajectory #{idx} of {dataset.n_trajectories}")
+                traj = dataset.get_trajectory(idx)
+                log.debug(
+                    "Processing trajectory "
+                    + (f"named {traj['name']} " if "name" in traj else "")
+                    + f"from {traj['path']}"
+                )
+                trajs = [traj]
+
+                for transform in transforms:
+                    next_trajs = []
+                    for traj in trajs:
+                        try:
+                            transformed = transform.call_trajectory(traj)
+                        except EmptyPointCloudError as e:
+                            log.warning(
+                                f"Skipping trajectory {traj['name']} due to empty point cloud after {transform.__class__.__name__}: {e}"
+                            )
+                            continue
+
+                        if isinstance(transformed, list):
+                            next_trajs.extend(transformed)
+                        else:
+                            next_trajs.append(transformed)
+
+                    trajs = next_trajs
+
+                for traj in trajs:
+                    DatasetCls.save_trajectory(traj, root_dir, specs)
+
+            # accumulate all transforms applied in all preprocessing steps so far
+            all_transforms = Compose(
+                *(list(dataset.preprocess_transforms) + list(transforms))
+            )
+            all_transforms_config = transform_cfgs[key]
+            DatasetCls.save_metadata(root_dir, all_transforms, all_transforms_config)
+
+            if i < len(preprocess_cfgs) - 1:
+                # create dataset object to act as the source for the next preprocessing step
+                dataset = hydra.utils.instantiate(
+                    dataset_cfg,
+                    _target_=DatasetCls,
+                    _partial_=False,
+                    action_seq_len=self.action_seq_len,
+                    obs_seq_len=self.obs_seq_len,
+                )
+
+    def setup(self, stage: str) -> None:
+
+        log.debug(f"Setting up Datamodule for {stage} stage")
+
+        needs_dataset, needs_env = self.needs_setup(stage, self.eval_mode)
+
+        if needs_dataset and self.dataset is None:
             self._instantiate_dataset()
 
-            if isinstance(self.eval_mode, float) and self.eval_dataset is None:
+            if isinstance(self.eval_mode, float):
                 # if we are using a subset of the training dataset for evaluation,
                 # we also need to split it first
                 training = 1 - self.eval_mode
-                log.debug(
+                log.info(
                     f"Using {self.eval_mode * 100}% of the dataset for evaluation (validation/testing/prediction) and {training * 100}% for training."
                 )
                 self.dataset, self.eval_dataset = random_split(
@@ -101,134 +313,176 @@ class TrajectoryDataModule(L.LightningDataModule):
                 # set it here
                 self.eval_dataset = self.dataset
 
-        elif stage in ("test", "predict") and isinstance(self.eval_mode, float):
-            raise ValueError(
-                "Eval mode with a float means evaluating on a subset of the data, and is only supported for training."
-            )
-
-        elif stage in ("validate", "test", "predict") and self.eval_mode is None:
-            raise ValueError(
-                "Eval mode is None, but validate/test/predict stage was called. Please set eval_mode to a valid value."
-            )
-
-        if self.eval_mode == "env":
+        if needs_env and self.env is None:
             # we need the environment if we are evaluating on an environment
             # we instantiate now to catch any errors before training starts
             self._instantiate_env_dataset()
 
+    @staticmethod
+    def needs_setup(stage: str, eval_mode: str | float | None) -> tuple[bool, bool]:
+        """Check if the datamodule needs to be set up for the given stage and
+        eval_mode.
+
+        Returns a tuple of booleans indicating whether the dataset and/or
+        environment need to be set up.
+        """
+        if stage == "fit" and eval_mode == "dataset":
+            raise ValueError(
+                "Eval mode `dataset` is for evaluating on a complete dataset. To evaluate on a subset of the dataset, use a float value between 0 and 1."
+            )
+
+        if stage in ("test", "predict") and isinstance(eval_mode, float):
+            raise ValueError(
+                "Eval mode with a float means evaluating on a subset of the data, and is only supported for training."
+            )
+
+        if stage in ("validate", "test", "predict") and eval_mode is None:
+            raise ValueError(
+                "Eval mode is None, but validate/test/predict stage was called. Please set eval_mode to a valid value."
+            )
+
+        # we need the dataset if we are training or if we are evaluating
+        # on some complete dataset
+        needs_dataset = stage == "fit" or eval_mode == "dataset"
+
+        # TODO: maybe only if stage is validate/test/predict?
+        needs_env = eval_mode == "env"
+
+        return needs_dataset, needs_env
+
+    def teardown(self, stage: str) -> None:
+        log.debug(f"Tearing down Datamodule after {stage} stage")
+        # TODO: maybe decide if the envs need to be destroyed and created for each validation
+        if self.env is not None:
+            self.env.teardown()
+
+    def close(self) -> None:
+        if self.env is not None:
+            self.env.close()
+
     def _instantiate_dataset(self) -> None:
-        if self.dataset is None:
-            if self._dataset is None:
-                raise ValueError("Dataset is not specified. Please provide a dataset.")
-            log.debug("Instantiating dataset...")
-            self.dataset = self._dataset(
-                device=self.device,
-                transforms=self._cpu_transforms,
-                preprocess_transforms=self._preprocess_transforms,
-            )
-            assert isinstance(self.dataset, TrajectoryDataset)
-            specs = self.dataset.specs
-            self.preprocess_transforms = self.dataset.preprocess_transforms
-            self.cpu_transforms = self.dataset.transform
+        log.debug("Instantiating dataset...")
 
-            log.debug("Instantiating cpu batch transforms...")
-            self.cpu_batch_transform, specs = init_transforms(
-                self._cpu_batch_transforms, specs
-            )
-            log.debug("Instantiating gpu batch transforms...")
-            self.gpu_batch_transform, specs = init_transforms(
-                self._gpu_batch_transforms, specs
-            )
-            self._specs = specs
+        if self.preprocess_cfgs:
+            preprocess_cfg = list(self.preprocess_cfgs.values())[0]
+            preprocess_cfg.pop("overwrite", False)
+            dataset_cfg = {
+                key: value
+                for key, value in preprocess_cfg.items()
+                if not isinstance(value, functools.partial) and value is not None
+            }
 
-            # add support for collating TensorDicts and torch geometric data in
-            # torch DataLoader
-            # do this here to ensure it is run on every node
-            update_collate_fn_map()
+        else:
+            dataset_cfg = self.dataset_cfg.copy()
+
+        DatasetCls = get_dataset_class(dataset_cfg)
+        self.dataset = hydra.utils.instantiate(
+            dataset_cfg,
+            _target_=DatasetCls,
+            _partial_=False,
+            action_seq_len=self.action_seq_len,
+            obs_seq_len=self.obs_seq_len,
+            item_transforms=self._cpu_transforms,
+        )
+
+        assert isinstance(self.dataset, TrajectoryDataset)
+        log.debug(f"Dataset contains {len(self.dataset)} samples in total.")
+        specs = self.dataset.specs
+        self.preprocess_transforms = self.dataset.preprocess_transforms
+        self.cpu_transforms = self.dataset.item_transforms
+
+        log.debug("Instantiating cpu batch transforms...")
+        self.cpu_batch_transform, specs = init_transforms(
+            self._cpu_batch_transforms, specs
+        )
+        log.debug("Instantiating gpu batch transforms...")
+        self.gpu_batch_transform, specs = init_transforms(
+            self._gpu_batch_transforms, specs
+        )
+        self._specs = specs
+
+        # add support for collating TensorDicts and torch geometric data in
+        # torch DataLoader
+        # we don't need this for the environment because we do not collate
+        # TensorDicts from envs
+        update_collate_fn_map()
 
     def _instantiate_env_dataset(self) -> None:
-        if self.env is None:
-            if self._env is None:
-                raise ValueError(
-                    "Evaluation environment is not specified. Please provide an environment dataset."
-                )
-            log.debug("Instantiating environment...")
-            # padding DictConfig avoids importing simulation modules until they are needed
-            self.env = hydra.utils.instantiate(self._env, _partial_=False)
-            specs = self.env.specs
-
-            # Move any transforms that would normally be in the dataset (i.e.
-            # preprocessing and cpu_transform) into cpu_batch_transforms. Any
-            # transforms that only work in preprocessing should implement a
-            # no-op __call__ method.
-            preprocess_transforms, specs = init_transforms(
-                self._preprocess_transforms, specs
+        if self.env_cfg is None:
+            raise ValueError(
+                "Evaluation environment is not specified. Please provide an environment dataset."
             )
-            cpu_transforms, specs = init_transforms(self._cpu_transforms, specs)
+        log.debug("Instantiating environment...")
+        self.env = hydra.utils.instantiate(
+            self.env_cfg,
+            _target_=GymEnvDataset,
+            _partial_=False,
+        )
+        specs = self.env.specs
 
-            # Filter out normalizing transforms, since they require running
-            # preprocessing first, but they also cannot have a no-op __call__
-            # method. The environment doesn't emit actions anyway (only
-            # observations), so we don't care.
-            preprocess_transforms = [
-                t
-                for t in preprocess_transforms
-                if not isinstance(t, NormalizingTransform)
-            ]
+        # Filter out normalizing transforms, since they require running
+        # preprocessing first, but they also cannot have a no-op __call__
+        # method. The environment doesn't emit actions anyway (only
+        # observations), so we don't care.
+        preprocess_cfgs = {
+            key: {
+                name: transform
+                for name, transform in cfg.items()
+                if isinstance(transform, functools.partial)
+                and not issubclass(transform.func, NormalizingTransform)
+            }
+            for key, cfg in self.preprocess_cfgs.items()
+        }
 
-            log.debug("Instantiating cpu batch transforms for environment...")
-            cpu_batch_transform, specs = init_transforms(
-                self._cpu_batch_transforms, specs
+        # instantiate transforms from each preprocessing step separately to not mess
+        # up ordering
+        # reverse the order, so that e.g. prepreprocess comes before preprocess
+        log.debug("Instantiating preprocess transforms for environment...")
+        preprocess_transforms = Compose(specs=specs)
+        for cfg in reversed(preprocess_cfgs.values()):
+            transforms, specs = init_transforms(cfg, specs)
+            assert isinstance(transforms, Compose)
+            preprocess_transforms += transforms
+
+        log.debug("Instantiating item transforms for environment...")
+        cpu_transforms, specs = init_transforms(self._cpu_transforms, specs)
+        preprocess_transforms += cpu_transforms
+
+        log.debug("Instantiating cpu batch transforms for environment...")
+        cpu_batch_transform, specs = init_transforms(self._cpu_batch_transforms, specs)
+
+        log.debug("Instantiating gpu batch transforms for environment...")
+        gpu_batch_transforms, specs = init_transforms(self._gpu_batch_transforms, specs)
+
+        # Move any transforms that would normally be in the dataset (i.e.
+        # preprocessing and cpu_transform) into cpu_batch_transforms. Any
+        # transforms that only work in preprocessing should implement a
+        # no-op __call__ method.
+        if cpu_batch_transform:
+            log.debug(
+                "Prepending preprocess and cpu transforms to cpu batch transforms for gym environment..."
+            )
+            self.env_cpu_batch_transform = preprocess_transforms + cpu_batch_transform
+            self.env_gpu_batch_transform = gpu_batch_transforms
+        else:
+            log.debug(
+                "No cpu transforms found for gym environment. Prepending preprocess to gpu batch transforms for gym environment"
+            )
+            self.env_cpu_batch_transform = cpu_batch_transform
+            self.env_gpu_batch_transform = preprocess_transforms + gpu_batch_transforms
+
+        # if we have both a dataset and an environment, we need to check if
+        # they have the same specs
+        if self._specs is None:
+            self._specs = specs
+        elif specs != self.specs:
+            raise ValueError(
+                "Specs of training dataset and environment dataset do not match. Please check your transforms."
             )
 
-            log.debug("Instantiating gpu batch transforms for environment...")
-            env_gpu_batch_transforms, specs = init_transforms(
-                self._gpu_batch_transforms, specs
-            )
-
-            if cpu_transforms or cpu_batch_transform:
-                log.debug(
-                    "Prepending preprocess and cpu transforms to cpu batch transforms for gym environment..."
-                )
-                env_cpu_batch_transform = (
-                    preprocess_transforms
-                    + list(cpu_transforms)
-                    + list(cpu_batch_transform)
-                )
-                cls = (
-                    Sequential
-                    if any(isinstance(t, nn.Module) for t in env_cpu_batch_transform)
-                    else Compose
-                )
-                self.env_cpu_batch_transform = Compose(*env_cpu_batch_transform)
-                self.env_gpu_batch_transform = env_gpu_batch_transforms
-            else:
-                log.debug(
-                    "No cpu transforms found for gym environment. Prepending preprocess to gpu batch transforms for gym environment"
-                )
-                env_gpu_batch_transform = preprocess_transforms + list(
-                    env_gpu_batch_transforms
-                )
-                self.env_cpu_batch_transform = Compose()
-                cls = (
-                    Sequential
-                    if any(isinstance(t, nn.Module) for t in env_gpu_batch_transform)
-                    else Compose
-                )
-                self.env_gpu_batch_transform = cls(*env_gpu_batch_transform)
-
-            # if we have both a dataset and an environment, we need to check if
-            # they have the same specs
-            if self._specs is None:
-                self._specs = specs
-            elif specs != self.specs:
-                raise ValueError(
-                    "Specs of training dataset and environment dataset do not match. Please check your transforms."
-                )
-                
-            # Set transforms to eval mode, as they will be used for evaluation
-            self.env_cpu_batch_transform.eval()
-            self.env_gpu_batch_transform.eval()
+        # Set transforms to eval mode, as they will be used for evaluation
+        self.env_cpu_batch_transform.eval()
+        self.env_gpu_batch_transform.eval()
 
     @property
     def specs(self) -> DataSpecs:
@@ -355,7 +609,6 @@ class TrajectoryDataModule(L.LightningDataModule):
             # we are training or evaluating. We need to do this here because
             # the transforms are shared for train and eval dataloaders
             self.cpu_batch_transform.train(mode=self.trainer.training)
-            batch = self.cpu_transforms(batch)
             return self.cpu_batch_transform(batch)
         elif self.eval_mode == "env":
             # For env evaluation, we always want the transforms to be in eval
@@ -435,15 +688,6 @@ class TrajectoryDataModule(L.LightningDataModule):
             log.warning(
                 f"Datamodule was asked to generate dataloaders for {stage}, but evaluation mode is None! Returning empty list..."
             )
-            return DataLoader([])
+            return DataLoader([])  # type: ignore
         else:
             raise ValueError(f"Invalid evaluation mode: {self.eval_mode}")
-
-    def teardown(self, stage: str) -> None:
-        log.debug(f"Called teardown in stage {stage}")
-        if self.env is not None:
-            self.env.teardown()
-
-    def close(self) -> None:
-        if self.env is not None:
-            self.env.close()

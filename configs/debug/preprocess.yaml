@@ -4,15 +4,16 @@ defaults:
   - verbose
 
 # overwrite task name so debugging logs are stored in separate folder
-job_type: preprocessing
+job_type: preprocess
 
-# disable callbacks and loggers during debugging
+# disable callbacks during debugging
 callbacks: null
-logger: null
 
 data:
-  dataset:
-    overwrite_preprocessed: True
+  prepreprocess:
+    overwrite: True
+  preprocess:
+    overwrite: True
 
 trainer:
   max_epochs: 1
