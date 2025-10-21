@@ -31,6 +31,7 @@ output_folder: configs/cameras/calibration
 # fused_pcd_save_path: ${paths.root_dir}/fused_pointcloud.ply
 
 # calibration settings
+min_acquisitions: 4
 stream_name: left
 extrinsics_convention: ros  # ros | world
 optimization_objective: euclidean

@@ -66,6 +66,7 @@ def main(cfg: DictConfig) -> None:
     do_recompute_depth = cfg.do_recompute_depth
     do_show_loaded = cfg.do_show_loaded
     do_render_fused_pcd = cfg.do_render_fused_pcd
+    min_acquisitions = cfg.get("min_acquisitions", 4)
 
     do_save_calibration = (output_folder := cfg.get("output_folder")) is not None
     do_save_fused_pcd = (
@@ -235,8 +236,18 @@ def main(cfg: DictConfig) -> None:
 
         return intrinsics, T_base2cam
 
-    # update calibration
-    intrinsics, extrinsics = calibrate(acquisitions, metadata)
+    if len(acquisitions) >= min_acquisitions:
+        # update calibration
+        intrinsics, extrinsics = calibrate(acquisitions, metadata)
+    else:
+        intrinsics = np.stack(
+            [
+                intrinsics_matrix_from_metadata(cam_metadata)
+                for cam_metadata in metadata.values()
+            ]
+        )
+        # identity extrinsics
+        extrinsics = np.stack([np.eye(4) for _ in metadata])
 
     # pygame setup
     if use_pygame:
@@ -307,8 +318,9 @@ def main(cfg: DictConfig) -> None:
             acquisitions.append(acquisition)
             save_acquisition(acquisition, acquisitions_folder, len(acquisitions) - 1)
 
-            # update calibration
-            intrinsics, extrinsics = calibrate(acquisitions, metadata)
+            if len(acquisitions) >= min_acquisitions:
+                # update calibration
+                intrinsics, extrinsics = calibrate(acquisitions, metadata)
 
             # reset the clock, so that the next interval starts from here
             clock.tick(fps)
