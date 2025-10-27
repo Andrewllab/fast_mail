@@ -13,7 +13,6 @@ from torch.optim.optimizer import Optimizer
 from agents.base_agent import BaseAgent
 from agents.edm_diffusion.gc_sampling import NoiseScheduleType, SamplerType
 from agents.edm_diffusion.noise_distributions import NoiseDistributionType
-from agents.edm_diffusion.utils import unsqueeze_to
 from environments.specs import DataSpecs
 from transforms.base_transform import (
     Compose,
@@ -21,6 +20,7 @@ from transforms.base_transform import (
     TransformPartial,
     TransformPartialsDict,
 )
+from utils.tensors import unsqueeze_to
 
 log = logging.getLogger(__name__)
 

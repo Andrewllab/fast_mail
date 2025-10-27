@@ -14,20 +14,6 @@ if TYPE_CHECKING:
     ShapeType = tuple[int, ...]
 
 
-def return_time_sigma_embedding_model(embedding_type, time_embed_dim, device):
-    """
-    Method returns an embedding model given the chosen type
-    """
-    if embedding_type == "GaussianFourier":
-        return GaussianFourierEmbedding(time_embed_dim, device)
-    elif embedding_type == "Sinusoidal":
-        return SinusoidalPosEmbedding(time_embed_dim, device)
-    elif embedding_type == "FourierFeatures":
-        return FourierFeatures(time_embed_dim, device)
-    else:
-        raise ValueError("Embedding not avaiable, please chose an existing one!")
-
-
 class GaussianFourierProjection(nn.Module):
     """Gaussian random features for encoding time steps."""
 
@@ -74,22 +60,6 @@ class GaussianFourierEmbedding(nn.Module):
         return self.embed(t)
 
 
-class SinusoidalPosEmbedding(nn.Module):
-
-    def __init__(self, time_embed_dim, device):
-        super().__init__()
-        self.device = device
-        self.embed = nn.Sequential(
-            SinusoidalPosEmb(time_embed_dim),
-            nn.Linear(time_embed_dim, time_embed_dim * 2),
-            nn.Mish(),
-            nn.Linear(time_embed_dim * 2, time_embed_dim),
-        ).to(self.device)
-
-    def forward(self, t):
-        return self.embed(t)
-
-
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
@@ -110,54 +80,3 @@ class PositionalEncoding(nn.Module):
         # not used in the final model
         x = x + self.pe[: x.shape[0], :]
         return self.dropout(x)
-
-
-class SinusoidalPosEmb(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
-
-    def forward(self, x):
-        device = x.device
-        half_dim = self.dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=device) * -emb)
-        emb = x[:, None] * emb[None, :]
-        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
-        return emb
-
-
-class InputEncoder(nn.Module):
-
-    def __init__(self, input_dim, latent_dim):
-        super().__init__()
-
-        self.input_dim = input_dim
-        self.latent_dim = latent_dim
-
-        self.emb = nn.Linear(self.input_dim, self.latent_dim)
-
-    def forward(self, x):
-        return self.emb(x)
-
-
-class TEncoder(nn.Module):
-
-    def __init__(self, input_dim, latent_dim):
-        super().__init__()
-
-        self.input_dim = input_dim
-        self.latent_dim = latent_dim
-
-        self.emb = nn.Linear(self.input_dim, self.latent_dim)
-
-    def forward(self, x):
-        return self.emb(x)
-
-
-def unsqueeze_to(x: Tensor, target: Tensor) -> Tensor:
-    """Appends dimensions to the end of a tensor until it has the same
-    dimensionality as the target.
-    """
-    n_unsqueeze = max(0, target.ndim - x.ndim)
-    return x[(...,) + (None,) * n_unsqueeze]

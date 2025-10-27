@@ -32,13 +32,14 @@ class DecoderOnlyNoise(nn.Module):
         seq_position_encoder: Callable[[int, int], Module] | None,
         sigma_encoder: Callable[[int], Module],
         action_head: Callable[[int, int], Module],
-        token_dim: int,
         dropout_prob: float,
         time_encode_obs: bool = True,
     ):
         super().__init__()
 
-        self.decoder = decoder
+        token_dim = specs.obs_embed_dim
+
+        self.decoder = decoder(token_dim)
         self.sigma_encoder = sigma_encoder(token_dim)
         self.action_head = action_head(token_dim, specs.action_dim)
 
@@ -81,7 +82,7 @@ class DecoderOnlyNoise(nn.Module):
         if dropout_prob > 0:
             self.drop = nn.Dropout(dropout_prob)
         else:
-            self.drop = lambda x: x
+            self.drop = nn.Identity()
 
         self.action_seq_len = specs.action_seq_len
 

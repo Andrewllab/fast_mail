@@ -1,0 +1,34 @@
+_target_: models.transformer.TransformerEncoder
+_partial_: True  # requires embed_dim argument
+n_layers: 4
+norm:
+  _target_: torch.nn.RMSNorm
+  _partial_: True
+  eps: 1e-6
+attention:
+  _target_: models.attention.MultiHeadSelfAttention
+  _partial_: True
+  n_heads: 4
+  dropout: 0.3
+  is_causal: False
+  bias: False
+  qk_norm:
+    _target_: torch.nn.RMSNorm
+    _partial_: True
+    eps: 1e-6
+residual_dropout: 0.1
+# not yet compatible with jagged tensors
+# mlp1:
+#   _target_: models.transformer.SwishGLU
+#   _partial_: True
+# activation: Identity
+mlp1:
+  _target_: torch.nn.Linear
+  _partial_: True
+activation: ReLU
+mlp_dropout: 0.1
+mlp2:
+  _target_: torch.nn.Linear
+  _partial_: True
+  bias: False
+norm_first: True

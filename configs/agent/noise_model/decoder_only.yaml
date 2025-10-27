@@ -1,5 +1,5 @@
 defaults:
-  - backbone@decoder: new_transformer
+  - backbone@decoder: transformer
   - time_encoder@seq_position_encoder: learned
   - sigma_encoder: beso
   - action_head: linear
@@ -13,5 +13,4 @@ _partial_: True
 # dataset: ???
 # obs_encoder: ???
 
-token_dim: 256
 dropout_prob: 0

@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import torch.nn as nn
+from torch import Tensor
 
 from models.pos_encoder import SinusoidalTokenPosEncoder
-
-if TYPE_CHECKING:
-    from torch import Tensor
 
 
 class BESO_SigmaEncoder(nn.Module):

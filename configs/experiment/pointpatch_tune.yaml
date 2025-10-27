@@ -1,8 +1,6 @@
 # @package _global_
 
 agent:
-  noise_model:
-    token_dim: ${embed_dim}
   obs_encoder:
     embed_dim: ${embed_dim}
     t10_patching:

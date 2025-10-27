@@ -10,7 +10,7 @@ from scipy import integrate
 from torch import Tensor, device, nn
 from tqdm.auto import tqdm, trange
 
-from . import utils
+from utils.tensors import unsqueeze_to
 
 DeviceType = device | str | int
 
@@ -123,7 +123,7 @@ def get_sigmas_vp(n, beta_d=19.9, beta_min=0.1, eps_s=1e-3, device="cpu"):
 
 def to_d(action, sigma, denoised):
     """Converts a denoiser output to a Karras ODE derivative."""
-    return (action - denoised) / utils.append_dims(sigma, action.ndim)
+    return (action - denoised) / unsqueeze_to(sigma, action)
 
 
 def default_noise_sampler(x):

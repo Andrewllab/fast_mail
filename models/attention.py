@@ -22,7 +22,6 @@ Modified from: https://github.com/mikaylagawarecki/transformer_tutorial_accompan
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn import RMSNorm
 
 
 class MultiHeadAttention(nn.Module):
@@ -50,7 +49,7 @@ class MultiHeadAttention(nn.Module):
         dropout: float = 0.0,
         is_causal: bool = False,
         bias: bool = False,
-        qk_norm_module: type[nn.Module] | None = None,
+        qk_norm: type[nn.Module] | None = None,
         device=None,
         dtype=None,
     ):
@@ -71,9 +70,9 @@ class MultiHeadAttention(nn.Module):
         self.E_head = E_total // n_heads
         self.bias = bias
 
-        if qk_norm_module is not None:
-            self.q_norm = qk_norm_module(self.E_head)
-            self.k_norm = qk_norm_module(self.E_head)
+        if qk_norm is not None:
+            self.q_norm = qk_norm(self.E_head)
+            self.k_norm = qk_norm(self.E_head)
         else:
             self.q_norm = self.k_norm = nn.Identity()
 
@@ -182,7 +181,7 @@ class MultiHeadSelfAttention(nn.Module):
         dropout: float = 0.0,
         is_causal: bool = False,
         bias: bool = False,
-        qk_norm_module: type[nn.Module] | None = None,
+        qk_norm: type[nn.Module] | None = None,
         device=None,
         dtype=None,
     ):
@@ -199,9 +198,9 @@ class MultiHeadSelfAttention(nn.Module):
         self.E_head = embed_dim // n_heads
         self.bias = bias
 
-        if qk_norm_module is not None:
-            self.q_norm = qk_norm_module(self.E_head)
-            self.k_norm = qk_norm_module(self.E_head)
+        if qk_norm is not None:
+            self.q_norm = qk_norm(self.E_head)
+            self.k_norm = qk_norm(self.E_head)
         else:
             self.q_norm = self.k_norm = nn.Identity()
 
