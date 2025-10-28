@@ -1,258 +1,29 @@
 """
-Script to extract observations from low-dimensional simulation states in a robocasa dataset.
-Adapted from robomimic's dataset_states_to_obs.py script.
+Script to extract/re-render observations from low-dimensional simulation states in pre-recorded robocasa dataset.
+Taken from and adapted: https://github.com/robocasa/robocasa/blob/main/robocasa/scripts/dataset_states_to_obs.py
 """
-import os
-import json
-from typing import OrderedDict
-import h5py
 import argparse
-import numpy as np
 from copy import deepcopy
+import json
+import h5py
+import os
 import multiprocessing
+import numpy as np
 import queue
+from tqdm import tqdm
 import time
 import traceback
-import gymnasium as gym
-from gymnasium import spaces
-from robosuite.wrappers import Wrapper
+from typing import OrderedDict
 
+from robosuite.utils import camera_utils
 import robocasa.utils.robomimic.robomimic_env_utils as EnvUtils
-
-# from robocasa.utils.env_utils import create_env
 import robocasa.utils.robomimic.robomimic_tensor_utils as TensorUtils
 import robocasa.utils.robomimic.robomimic_dataset_utils as DatasetUtils
-from tqdm import tqdm
-
-# from robomimic.utils.log_utils import log_warning
-from robosuite.utils import camera_utils
-
-
-# taken from and adapted: https://github.com/ARISE-Initiative/robosuite/blob/master/robosuite/wrappers/gym_wrapper.py
-class GymWrapper(Wrapper, gym.Env):
-    metadata = None
-    render_mode = "rgb_array"
-    """
-    Initializes a Gym wrapper for RoboCasa environments. Mimics many of the required functionalities of the Wrapper class
-    found in the gym.core module
-
-    Args:
-        env (RoboCasaEnv): The environment to wrap.
-        keys (None or list of str): If provided, each observation will
-            consist of concatenated keys from the wrapped environment's
-            observation dictionary. Defaults to proprio-state and object-state.
-        flatten_obs (bool):
-            Whether to flatten the observation dictionary into a 1d array. Defaults to True.
-
-    Raises:
-        AssertionError: [Object observations must be enabled if no keys]
-    """
-
-    def __init__(self, env, render_width, render_height, keys=None, flatten_obs=True):
-        # Run super method
-        super().__init__(env=env)
-        # Create name for gym
-        robots = "".join([type(robot.robot_model).__name__ for robot in self.env.robots])
-        self.name = robots + "_" + type(self.env).__name__
-
-        # choose a default camera / size for video if not provided
-        self._render_camera = (self.env.camera_names[0] if self.env.camera_names else "frontview")
-        self._render_width = render_width
-        self._render_height = render_height
-
-        # Get reward range
-        self.reward_range = (0, self.env.reward_scale)
-
-        if keys is None:
-            keys = []
-            # Add object obs if requested
-            if self.env.use_object_obs:
-                keys += ["object-state"]
-            # Add image obs if requested
-            if self.env.use_camera_obs:
-                keys += [f"{cam_name}_image" for cam_name in self.env.camera_names]
-            # Iterate over all robots to add to state
-            for idx in range(len(self.env.robots)):
-                keys += ["robot{}_proprio-state".format(idx)]
-        self.keys = keys
-
-        # Gym specific attributes
-        self.env.spec = None
-
-        # set up observation and action spaces
-        obs = self.env.reset()
-
-        # Whether to flatten the observation space
-        self.flatten_obs: bool = flatten_obs
-
-        if self.flatten_obs:
-            flat_ob = self._flatten_obs(obs)
-            self.obs_dim = flat_ob.size
-            high = np.inf * np.ones(self.obs_dim)
-            low = -high
-            self.observation_space = spaces.Box(low, high)
-        else:
-
-            def get_box_space(sample):
-                """Util fn to obtain the space of a single numpy sample data"""
-                if np.issubdtype(sample.dtype, np.integer):
-                    low = np.iinfo(sample.dtype).min
-                    high = np.iinfo(sample.dtype).max
-                elif np.issubdtype(sample.dtype, np.inexact):
-                    low = float("-inf")
-                    high = float("inf")
-                else:
-                    raise ValueError()
-                return spaces.Box(low=low, high=high, shape=sample.shape, dtype=sample.dtype)
-
-            self.observation_space = spaces.Dict({key: get_box_space(obs[key]) for key in self.keys})
-
-        low, high = self.env.action_spec
-        self.action_space = spaces.Box(low, high)
-
-    @property
-    def render_mode(self) -> str | None:
-        """Returns the :attr:`Env` :attr:`render_mode`."""
-        return "rgb_array"
-    
-    @property
-    def unwrapped(self) -> str | None:
-        return self.env
-
-    def _process_observation(self, obs_dict):
-        for key in obs_dict:
-            if "image" in key or "segmentation" in key:
-                obs_dict[key] = np.flip(obs_dict[key], axis=0)
-            elif "depth" in key:
-                obs_dict[key] = np.flip(obs_dict[key], axis=0)
-                obs_dict[key] = self._depthimg2Meters(obs_dict[key])
-
-        return obs_dict
-
-    # https://github.com/htung0101/table_dome/blob/master/table_dome_calib/utils.py#L160
-    def _depthimg2Meters(self, depth):
-        extent = self.sim.model.stat.extent
-        near = self.sim.model.vis.map.znear * extent
-        far = self.sim.model.vis.map.zfar * extent
-        image = near / (1 - depth * (1 - near / far))
-        return image
-
-    def _flatten_obs(self, obs_dict, verbose=False):
-        """
-        Filters keys of interest out and concatenate the information.
-
-        Args:
-            obs_dict (OrderedDict): ordered dictionary of observations
-            verbose (bool): Whether to print out to console as observation keys are processed
-
-        Returns:
-            np.array: observations flattened into a 1d array
-        """
-        ob_lst = []
-        for key in self.keys:
-            if key in obs_dict:
-                if verbose:
-                    print("adding key: {}".format(key))
-                ob_lst.append(np.array(obs_dict[key]).flatten())
-        return np.concatenate(ob_lst)
-
-    def _filter_obs(self, obs_dict) -> dict:
-        """
-        Filters keys of interest out of the observation dictionary, returning a filterd dictionary.
-        """
-        return {key: obs_dict[key] for key in self.keys if key in obs_dict}
-
-    def render(self):
-        """
-        Return an rgb_array for RecordVideo. Uses offscreen renderer.
-        """
-        frame = self.env.sim.render(
-            height=self._render_height,
-            width=self._render_width,
-            camera_name=self._render_camera,
-        )
-        # robocasa envs return upside-down frames -> flip vertically
-        frame = np.flip(frame, axis=0)
-        return frame
-    
-    def reset(self, seed=None, options=None):
-        """
-        Extends env reset method to return observation instead of normal OrderedDict and optionally resets seed
-
-        Returns:
-            2-tuple:
-                - (np.array) observations from the environment
-                - (dict) an empty dictionary, as part of the standard return format
-        """
-        if seed is not None:
-            if isinstance(seed, int):
-                np.random.seed(seed)
-            else:
-                raise TypeError("Seed must be an integer type!")
-        ob_dict = self.env.reset()
-        ob_dict = self._process_observation(ob_dict)
-        # obs = self._flatten_obs(ob_dict) if self.flatten_obs else self._filter_obs(ob_dict)
-        return ob_dict, {}
-
-    def reset_to(self, state):
-        ob_dict = self.env.reset_to(state)
-
-        ob_dict = self._process_observation(ob_dict)
-        # obs = self._flatten_obs(ob_dict) if self.flatten_obs else self._filter_obs(ob_dict)
-
-        return ob_dict, {}
-
-    def step(self, action):
-        """
-        Extends vanilla step() function call to return observation instead of normal OrderedDict.
-
-        Args:
-            action (np.array): Action to take in environment
-
-        Returns:
-            4-tuple:
-
-                - (np.array) observations from the environment
-                - (float) reward from the environment
-                - (bool) episode ending after reaching an env terminal state
-                - (bool) episode ending after an externally defined condition
-                - (dict) misc information
-        """
-        ob_dict, reward, terminated, info = self.env.step(action)
-        ob_dict = self._process_observation(ob_dict)
-
-        # obs = self._flatten_obs(ob_dict) if self.flatten_obs else self._filter_obs(ob_dict)
-        return ob_dict, reward, terminated, False, info
-
-    def compute_reward(self, achieved_goal, desired_goal, info):
-        """
-        Dummy function to be compatible with gym interface that simply returns environment reward
-
-        Args:
-            achieved_goal: [NOT USED]
-            desired_goal: [NOT USED]
-            info: [NOT USED]
-
-        Returns:
-            float: environment reward
-        """
-        # Dummy args used to mimic Wrapper interface
-        return self.env.reward()
-
-    def close(self):
-        """
-        wrapper for calling underlying env close function
-        """
-        self.env.close()
-
-    def _check_success(self):
-        return self.env.is_success()
-
 
 
 def record_cam_params(env, cam_names, W, H):
     """
-    Returns {cam: {intrinsics (3x3), extrinsics (4x4 camera->world), width, height}}
+    Returns {cam: {intrinsics (3x3), extrinsics (4x4 world frame), width, height}}
     """
     sim = env.base_env.sim
     camera_params = {}
@@ -267,49 +38,6 @@ def record_cam_params(env, cam_names, W, H):
             "height": int(H),
         }
     return camera_params
-
-
-
-def get_camera_info(
-    env,
-    camera_names=None, 
-    camera_height=84, 
-    camera_width=84,
-):
-    """
-    Helper function to get camera intrinsics and extrinsics for cameras being used for observations.
-    """
-
-    # TODO: make this function more general than just robosuite environments
-    assert EnvUtils.is_robosuite_env(env=env)
-
-    if camera_names is None:
-        return None
-
-    camera_info = dict()
-    for cam_name in camera_names:
-        K = env.get_camera_intrinsic_matrix(camera_name=cam_name, camera_height=camera_height, camera_width=camera_width)
-        R = env.get_camera_extrinsic_matrix(camera_name=cam_name) # camera pose in world frame
-        if "eye_in_hand" in cam_name:
-            # convert extrinsic matrix to be relative to robot eef control frame
-            assert cam_name.startswith("robot0")
-            eef_site_name = env.base_env.robots[0].controller.eef_name
-            eef_pos = np.array(env.base_env.sim.data.site_xpos[env.base_env.sim.model.site_name2id(eef_site_name)])
-            eef_rot = np.array(env.base_env.sim.data.site_xmat[env.base_env.sim.model.site_name2id(eef_site_name)].reshape([3, 3]))
-            eef_pose = np.zeros((4, 4)) # eef pose in world frame
-            eef_pose[:3, :3] = eef_rot
-            eef_pose[:3, 3] = eef_pos
-            eef_pose[3, 3] = 1.0
-            eef_pose_inv = np.zeros((4, 4))
-            eef_pose_inv[:3, :3] = eef_pose[:3, :3].T
-            eef_pose_inv[:3, 3] = -eef_pose_inv[:3, :3].dot(eef_pose[:3, 3])
-            eef_pose_inv[3, 3] = 1.0
-            R = R.dot(eef_pose_inv) # T_E^W * T_W^C = T_E^C
-        camera_info[cam_name] = dict(
-            intrinsics=K.tolist(),
-            extrinsics=R.tolist(),
-        )
-    return camera_info
 
 
 def extract_trajectory(
@@ -349,10 +77,10 @@ def extract_trajectory(
     H = int(args.camera_height)
     camera_names = list(args.camera_names)
     default_dynamic_camera_names = ["robot0_agentview_left", "robot0_agentview_right", "robot0_eye_in_hand"]
-    # split the cameras into static and moving
-    # !!! IMPORTANT: the left/right view cameras that are supposed to be static ARE ACTUALLY NOT STATIC! 
+    # split the cameras into static and dynamic
+    # !!! IMPORTANT: the left/right view cameras ARE ACTUALLY NOT STATIC! 
     # The robot-arm is attached to a mobiled platform that is not controlled, but it can move as a post-effect of the robot-arm movements.
-    # They are attached to the robot as they move as well when the mobile platform moves. 
+    # They are attached to the robot, so they move as well when the mobile platform moves. 
     # This means that all cameras should be perceived as dynamic which requires recording camera extrinsics over time for all cameras.
     # dynamic_cam_names = [c for c in camera_names if ("eye_in_hand" in c) or ("wrist" in c)]
     dynamic_cam_names = [cam_name for cam_name in default_dynamic_camera_names]
@@ -378,20 +106,20 @@ def extract_trajectory(
     traj_len = states.shape[0]
     # iteration variable @t is over "next obs" indices
     for t in tqdm(range(traj_len)):
-        # print(f"STATIC CAMERA PARAMS: {record_cam_params(env, static_cam_names, W, H)}")
         obs = deepcopy(env.reset_to({"states": states[t]}))
-        # flip images as RoboCasa's raw images are flipped, also convert depth to meters
+        # flip images as RoboCasa(MuJoCo)'s raw images are flipped, also convert depth to meters
         for key in obs:
-            if "image" in key:
-                obs[key] = np.flip(obs[key], axis=0)
-            elif "depth" in key:
+            # !!! IMPORTANT !!! don't flip RGB-images, already done in: robocasa/utils/robomimic/robomimic_env_wrapper.py
+            # if "image" in key:
+            #     obs[key] = np.flip(obs[key], axis=0)
+            if "depth" in key:
                 obs[key] = np.flip(obs[key], axis=0)
                 # https://github.com/ARISE-Initiative/robomimic/issues/203
                 # https://github.com/ARISE-Initiative/robosuite/blob/9f28fb930ba1a07bd4a9a833f8a6b68e318aaf34/robosuite/utils/camera_utils.py#L106
                 obs[key] = camera_utils.get_real_depth_map(env.base_env.sim, obs[key])
 
         if t == 0:
-            # !!! IMPORTANT: record static camera parameters after environment reset !!! 
+            # !!! IMPORTANT: record static camera parameters after environment reset to a particular state!!! 
             if static_cam_names:
                 static_camera_params = record_cam_params(env, static_cam_names, W, H)
                 for name in static_cam_names:
@@ -401,7 +129,6 @@ def extract_trajectory(
         if dynamic_cam_names:
             cam_parameters = record_cam_params(env, dynamic_cam_names, W, H)
             for name in dynamic_cam_names:
-                # dynamic_cam_logs[name]["intrinsics"].append(cam_parameters[name]["intrinsics"])
                 dynamic_cam_logs[name]["extrinsics"].append(cam_parameters[name]["extrinsics"])
 
         # extract datagen info
@@ -420,11 +147,9 @@ def extract_trajectory(
         if (done_mode == 1) or (done_mode == 2):
             # done = 1 at end of trajectory
             done = done or (t == traj_len)
-            # print(f"ENV DONE FIRST CASE: {done}")
         if (done_mode == 0) or (done_mode == 2):
             # done = 1 when s' is task success state
             done = done or env.is_success()["task"]
-            # print(f"ENV DONE SECOND CASE: {done}")
         done = int(done)
 
         # get the absolute action
@@ -449,32 +174,24 @@ def extract_trajectory(
            static_cam_logs[name]["intrinsics"].append(cam_parameters[name]["intrinsics"])
 
 
-    # # stack information about dynamic cameras
-    # if static_cam_names:
-    #     static_cam_params = {}
-    #     for name in static_cam_names:
-    #         # intrinsics_for_stacking = dynamic_cam_logs[name]["intrinsics"]
-    #         # extrinsics_for_stacking = dynamic_cam_logs[name]["extrinsics"]
-    #         # print(f"DYNAMIC CAM INTRINSICS SHAPE: {len(intrinsics_for_stacking), intrinsics_for_stacking[0].shape}")
-    #         # print(f"DYNAMIC CAM EXRINSICS SHAPE: {len(extrinsics_for_stacking), extrinsics_for_stacking[0].shape}")
-    #         intrinsics = np.stack(static_cam_logs[name]["intrinsics"], axis=0).astype(np.float32)  # (T,3,3)
-    #         extrinsics = np.stack(static_cam_logs[name]["extrinsics"], axis=0).astype(np.float32)  # (T,4,4)
-    #         static_cam_params[name] = {
-    #             "intrinsics": intrinsics,
-    #             "extrinsics": extrinsics,
-    #             "width": W,
-    #             "height": H,
-    #         }
-    #     traj["static_cameras"].append(static_cam_params)
+    # stack information about static cameras
+    if static_cam_names:
+        static_cam_params = {}
+        for name in static_cam_names:
+            intrinsics = np.stack(static_cam_logs[name]["intrinsics"], axis=0).astype(np.float32)  # (T,3,3)
+            extrinsics = np.stack(static_cam_logs[name]["extrinsics"], axis=0).astype(np.float32)  # (T,4,4)
+            static_cam_params[name] = {
+                "intrinsics": intrinsics,
+                "extrinsics": extrinsics,
+                "width": W,
+                "height": H,
+            }
+        traj["static_cameras"].append(static_cam_params)
 
     # stack information about dynamic cameras
     if dynamic_cam_names:
         dynamic_cam_params = {}
         for name in dynamic_cam_names:
-            # intrinsics_for_stacking = dynamic_cam_logs[name]["intrinsics"]
-            # extrinsics_for_stacking = dynamic_cam_logs[name]["extrinsics"]
-            # print(f"DYNAMIC CAM INTRINSICS SHAPE: {len(intrinsics_for_stacking), intrinsics_for_stacking[0].shape}")
-            # print(f"DYNAMIC CAM EXRINSICS SHAPE: {len(extrinsics_for_stacking), extrinsics_for_stacking[0].shape}")
             intrinsics = np.stack(dynamic_cam_logs[name]["intrinsics"], axis=0).astype(np.float32)  # (T,3,3)
             extrinsics = np.stack(dynamic_cam_logs[name]["extrinsics"], axis=0).astype(np.float32)  # (T,4,4)
             dynamic_cam_params[name] = {
@@ -486,9 +203,6 @@ def extract_trajectory(
         traj["dynamic_cameras"].append(dynamic_cam_params)
 
     # convert list of dict to dict of list for obs dictionaries (for convenient writes to hdf5 dataset)
-    # traj_obs = traj["obs"]
-    # print(f"TRAJECTORY OBSERVATIONS: {traj_obs}")
-    # print(f"TRAJECTORY OBSERVATIONS: {traj_obs}")
     traj["obs"] = TensorUtils.list_of_flat_dict_to_dict_of_list(traj["obs"])
     traj["datagen_info"] = TensorUtils.list_of_flat_dict_to_dict_of_list(
         traj["datagen_info"]
@@ -544,9 +258,6 @@ def write_traj_to_file(
                         "rewards", data=np.array(traj["rewards"])
                     )
                     ep_data_grp.create_dataset("dones", data=np.array(traj["dones"]))
-                    # ep_data_grp.create_dataset(
-                    #     "actions_abs", data=np.array(traj["actions_abs"])
-                    # )
                     for k in traj["obs"]:
                         if isinstance(traj["obs"][k], OrderedDict):
                             for kp in traj["obs"][k]:
@@ -587,21 +298,12 @@ def write_traj_to_file(
                                     compression="gzip",
                                 )
 
-                    # static_cameras = traj["static_cameras"]
-                    # dynamic_cameras = traj["dynamic_cameras"]
-                    # assert "static_cameras" in traj
-                    # assert "dynamic_cameras" in traj
-                    # print(f"CAMERA PARAMETERS: STATIC: {static_cameras}, DYNAMIC: {dynamic_cameras}")
                     if "static_cameras" in traj:
-                        # stat_cam_key = traj["static_cameras"]
-                        # print(f"KOMMST DU BEI STATIC CAMERAS: {stat_cam_key}")
                         try:
                             for camera_name in traj["static_cameras"][0].keys():
-                                # subkey_values = traj["static_cameras"][k]
-                                # print(f"writing static camera parameters: {k}, {subkey_values}")
                                 for camera_data_key, camera_data_value in traj["static_cameras"][0][camera_name].items():
                                     ep_data_grp.create_dataset(
-                                        "camera_params/static/{}/{}".format(camera_name, camera_data_key),
+                                        f"camera_params/static/{camera_name}/{camera_data_key}",
                                         data=camera_data_value,
                                     )
                         except IndexError as e:
@@ -609,12 +311,10 @@ def write_traj_to_file(
                             print(f"Attempt to store information about static cameras but there are no static cameras: {static_cam_info}.")
 
                     if "dynamic_cameras" in traj:
-                        # dyn_cam = traj["static_cameras"]
-                        # print(f"KOMMST DU BEI DYNAMIC CAMERAS: {dyn_cam}")
                         for camera_name in traj["dynamic_cameras"][0].keys():
                             for camera_data_key, camera_data_value in traj["dynamic_cameras"][0][camera_name].items(): 
                                 ep_data_grp.create_dataset(
-                                    "camera_params/dynamic/{}/{}".format(camera_name, camera_data_key),
+                                    f"camera_params/dynamic/{camera_name}/{camera_data_key}",
                                     data=camera_data_value,
                                 )
 
@@ -785,8 +485,6 @@ def extract_multiple_trajectories_with_error(
         env_meta["env_kwargs"]["generative_textures"] = "100p"
     if args.randomize_cameras:
         env_meta["env_kwargs"]["randomize_cameras"] = True
-    # env = create_env_with_wrappers(env_meta["env_name"], args)
-
 
     env_meta = DatasetUtils.get_env_metadata_from_dataset(dataset_path=args.dataset)
     if args.generative_textures:
@@ -800,9 +498,7 @@ def extract_multiple_trajectories_with_error(
         camera_width=args.camera_width,
         reward_shaping=args.shaped,
     )
-    # env = GymWrapper(env, render_width=args.camera_width, render_height=args.camera_height)
     start_time = time.time()
-
     # print("==== Using environment with the following metadata ====")
     # print(json.dumps(env.serialize(), indent=4))
     # print("")
@@ -866,9 +562,7 @@ def extract_multiple_trajectories_with_error(
 
             # store transitions
 
-            # IMPORTANT: keep name of group the same as source file, to make sure that filter keys are
-            #            consistent as well
-            # print("(process {}): ADD TO QUEUE index {}".format(process_num, ind))
+            # !!! IMPORTANT !!! keep name of group the same as source file, to make sure that filter keys are consistent as well
             mul_queue.put([ep, traj, process_num])
 
             ind = retrieve_new_index(process_num, current_work_array, work_queue, lock)
@@ -879,7 +573,6 @@ def extract_multiple_trajectories_with_error(
             print(traceback.format_exc())
             print("_" * 50)
             del env
-            # env = create_env_with_wrappers(env_meta["env_name"], args)
             env_meta = DatasetUtils.get_env_metadata_from_dataset(dataset_path=args.dataset)
             if args.generative_textures:
                 env_meta["env_kwargs"]["generative_textures"] = "100p"
@@ -892,26 +585,9 @@ def extract_multiple_trajectories_with_error(
                 camera_width=args.camera_width,
                 reward_shaping=args.shaped,
             )
-            # env = GymWrapper(env, render_width=args.cameras_width, render_height=args.cameras_height)
 
     f.close()
     print("Process {} finished".format(process_num))
-
-
-# def create_env_with_wrappers(env_name, args):
-#     base_env = create_env(
-#         env_name=env_name,
-#         camera_names=args.camera_names,
-#         camera_heights=args.camera_height,
-#         camera_widths=args.camera_width,
-#         camera_depths=True,
-#     )
-#     obs = base_env.reset()
-#     base_env.reset_to(obs["state"])
-
-#     env = GymWrapper(base_env, render_height=args.camera_height, render_width=args.camera_width)
-
-#     return env
 
 
 def dataset_states_to_obs_multiprocessing(args):
@@ -1116,10 +792,11 @@ if __name__ == "__main__":
         help="(optional) disable compressing observations with gzip option in hdf5",
     )
 
+    # !!! IMPORTANT !!! Don't use more than one processes as occaisionally the re-rendered trajectory is partially stored.  
     parser.add_argument(
         "--num_procs",
         type=int,
-        default=5,
+        default=1,
         help="number of parallel processes for extracting image obs",
     )
 

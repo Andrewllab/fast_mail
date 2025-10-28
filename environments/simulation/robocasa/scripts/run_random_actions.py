@@ -105,6 +105,7 @@ if __name__ == "__main__":
         list(SINGLE_STAGE_TASK_DATASETS) + list(MULTI_STAGE_TASK_DATASETS)
     )
     env = create_env(env_name=env_name)
+    # add to make videos: video_path="/tmp/test.mp4"
     info = run_random_rollouts(
         env, num_rollouts=3, num_steps=100, 
-    ) # add to make videos: video_path="/tmp/test.mp4"
+    ) 

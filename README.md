@@ -144,6 +144,19 @@ pip install numpy==1.23.3 moviepy
 python third_party/robocasa/robocasa/scripts/download_kitchen_assets.py
 ```
 
+Overview of [Atomic(Single-Stage)](https://robocasa.ai/docs/tasks_scenes_assets/atomic_tasks.html) and [Composite(Multi-Stage) Tasks](https://robocasa.ai/docs/tasks_scenes_assets/composite_tasks.html).
+
+[Download your desired dataset]((https://robocasa.ai/docs/use_cases/downloading_datasets.html)) based on the type of demonstrations: 
+
+```bash
+python -m robocasa.scripts.download_datasets --ds_types human_raw
+```
+
+(Optionally) If you want to include other observation modalities (e.g., depth) or use different observation resolution, you need to re-render already existing demos. Please check environments/simulation/robocasa/scripts/data_states_to_obs.py for all command-line options.
+
+```bash
+python environments/simulation/robocasa/scripts/data_states_to_obs.py --dataset ${ABSOLUTE_PATH_TO_HDF5_DEMO_FILE} --output_name ${NAME_RE_RENDERED_HDF5_DEMO_FILE} --camera_height 224 --camera_width 224  
+```
 
 ## ManiSkill
 
