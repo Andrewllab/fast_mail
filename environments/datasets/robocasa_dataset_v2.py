@@ -47,10 +47,11 @@ class RoboCasaDataset(CustomHdf5Dataset):
         self.obs_seq_len = obs_seq_len
 
         # no need to sort
-        self.files = list(self._root_dir.glob("**/*.hdf5"))
-        self.files = iglob_follow_symlinks(self._root_dir, "**/*.hdf5")
+        self.files = list(iglob_follow_symlinks(self._root_dir, "**/*.hdf5"))
 
         if subfolders is not None:
+            if isinstance(subfolders, str):
+                subfolders = (subfolders,)
             subfolders_set = set(subfolders)
             files = [file for file in self.files if set(file.parts) & subfolders_set]
             log.info(

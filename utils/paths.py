@@ -51,15 +51,15 @@ def iglob_follow_symlinks(root: Path, pattern: str, include_dirs: bool = False):
                 keep.append(d)
         dirnames[:] = keep
 
-        rel_dir = Path(dirpath).relative_to(root)
+        dir = Path(dirpath)  # .relative_to(root)
 
         if include_dirs:
             for d in dirnames:
-                rel = rel_dir / d
-                if rel.match(pattern):
-                    yield root / rel
+                p = dir / d
+                if p.match(pattern):
+                    yield p
 
         for f in filenames:
-            rel = rel_dir / f
-            if rel.match(pattern):
-                yield root / rel
+            p = dir / f
+            if p.match(pattern):
+                yield p

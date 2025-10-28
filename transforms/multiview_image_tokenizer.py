@@ -22,25 +22,20 @@ class MultiviewImageTokenizer(Transform, nn.Module):
         embed_dim: int,
         image_type: Literal["rgb", "depth", "rgbd"] = "rgb",
         shared_encoder: bool = False,
-        spatial_encoder: nn.Linear | None = None,
+        spatial_encoder: Callable[[int], nn.Linear] | None = None,
     ):
         super().__init__()
 
         if image_type == "rgb":
             stream_types = (RGBStream,)
-            in_channels = 3
-            if spatial_encoder:
+            if spatial_encoder is not None:
                 raise NotImplementedError(
                     "spatial_encoder is not implemented for rgb images"
                 )
         elif image_type == "depth":
             stream_types = (DepthStream,)
-            in_channels = 1 if spatial_encoder is None else spatial_encoder.out_features
         elif image_type == "rgbd":
             stream_types = (RGBStream, DepthStream)
-            in_channels = (
-                4 if spatial_encoder is None else 3 + spatial_encoder.out_features
-            )
         else:
             raise ValueError(
                 f"image_type must be one of 'rgb', 'depth', or 'rgbd', but got {image_type}"
@@ -88,6 +83,15 @@ class MultiviewImageTokenizer(Transform, nn.Module):
                 "All input streams must have the same time dimension."
                 f"Got {[stream.time for stream in input_streams]}"
             )
+
+        if spatial_encoder is not None:
+            in_channels = 1
+            spatial_encoder = spatial_encoder(in_channels)
+            in_channels = spatial_encoder.out_features
+        self.spatial_encoder = spatial_encoder
+
+        if "rgb" in image_type:
+            in_channels += 3
 
         # instantiate rgb model(s)
         if shared_encoder:

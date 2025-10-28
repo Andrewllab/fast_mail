@@ -61,11 +61,15 @@ class PointPatcher(Transform, nn.Module):
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def _call_one(self, nt_data: NonTensorData) -> Batch:
+    def _call_one(self, nt_data: NonTensorData) -> Data:
         data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
 
+        assert isinstance(data, Data)
         assert isinstance(data, Batch)
+
         pos, batch, color = data.pos, data.batch, data.x
+        assert pos is not None
+        assert batch is not None
 
         # pos: (B*N, 3)
         # center_idxs: (B*C)

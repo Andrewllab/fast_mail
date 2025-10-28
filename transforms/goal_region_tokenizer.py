@@ -21,22 +21,24 @@ class GoalRegionEncoder(Transform, nn.Module):
         specs: DataSpecs,
         model: Callable[[int, int], Module],
         embed_dim: int,
-        spatial_encoder: nn.Linear | None = None,
+        spatial_encoder: Callable[[int], nn.Linear] | None = None,
         obs_key: str = "goal_region",
     ):
         super().__init__()
 
-        goal_region_shape = specs.obs[obs_key].shape
-        if len(goal_region_shape) != 2:
-            raise ValueError(f"Goal region at key {obs_key} must be of shape [T, goal_dim]")
+        goal_region = specs.obs[obs_key]
+        match goal_region.shape:
+            case T, goal_dim if goal_dim == 3:
+                pass
+            case _:
+                raise ValueError(
+                    f"Goal region at key {obs_key} must be of shape [T, 3]"
+                )
 
-        T, goal_dim = goal_region_shape
-
-        assert goal_dim == 3, f"Goal region at key {obs_key} must have dimension 3, got {goal_dim}"
-
+        if spatial_encoder is not None:
+            spatial_encoder = spatial_encoder(goal_dim)
+            goal_dim = spatial_encoder.out_features
         self.spatial_encoder = spatial_encoder
-        if self.spatial_encoder is not None:
-            goal_dim = self.spatial_encoder.out_features
 
         # instantiate the model
         self.model = model(goal_dim, embed_dim)

@@ -28,8 +28,8 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
         embed_dim: int,
         image_encoder: Callable[[int, int], nn.Module] | None = None,
         fusion_type: Literal["6ch", "add", "cat"] | None = None,
-        shared_encoder: bool = False,  # BackCompat: set to False
-        spatial_encoder: nn.Linear | None = None,
+        shared_encoder: bool = False,
+        spatial_encoder: Callable[[int], nn.Linear] | None = None,
     ):
         super().__init__()
 
@@ -110,13 +110,14 @@ class MultiviewPointMapTokenizer(Transform, nn.Module):
                 f"Got {[stream.channels for stream in input_streams if isinstance(stream, PointMapStream)]}"
             )
 
-        self.spatial_encoder = spatial_encoder
-        if self.spatial_encoder is not None:
+        if spatial_encoder is not None:
             if fusion_type == "6ch":
                 raise NotImplementedError(
                     "A spatial encoder is not supported for 6ch fusion."
                 )
-            in_channels = self.spatial_encoder.out_features
+            spatial_encoder = spatial_encoder(in_channels)
+            in_channels = spatial_encoder.out_features
+        self.spatial_encoder = spatial_encoder
 
         # instantiate pointmap model(s)
         if shared_encoder:

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
 import math
+from typing import Literal
 
 import torch
 import torch.nn as nn
 from torch import Tensor
+
+log = logging.getLogger(__name__)
 
 
 class LearnableTokenEncoder(nn.Module):
@@ -212,30 +216,118 @@ class FourierFeatures(nn.Module):
 
     def __init__(
         self,
-        n_wavelengths: int,
-        max_wavelength: float,
-        min_wavelength: float,
-        cat_cartesian_coordinates: bool = False,
-        cartesian_dim: int = 3,
+        input_dim: int,
+        # embed_dim: int | None = None,
+        n_wavelengths: int | None = None,
+        max_wavelength: float | None = None,
+        min_wavelength: float | None = None,
+        interval: float | None = None,
+        learnable: bool = False,
+        cat_input_to_out: bool = False,
+        components: Literal["sin", "sincos"] = "sincos",
         scale: float = 1.0,
     ) -> None:
         super().__init__()
 
-        self.cartesian_dim = cartesian_dim
-        self.cat_cartesian_coordinates = cat_cartesian_coordinates
+        # if embed_dim is None:
+        #     assert n_wavelengths is not None
 
-        # frequencies increase exponentially from 1/max_wavelength to 1/min_wavelength
-        exponents = torch.linspace(
-            start=math.log(max_wavelength),
-            end=math.log(min_wavelength),
-            steps=n_wavelengths,
-        )
-        frequencies = torch.exp(-exponents)
+        #     embed_dim = feature_dim = input_dim * (
+        #         # sin and cos components for each frequency
+        #         # add 1 for the original coordinates if we are concatenating them
+        #         2 * n_wavelengths
+        #         + (1 if cat_input_to_out else 0)
+        #     )
+        #     padding_dim = 0
+        # else:
+        #     assert n_wavelengths is None
 
+        #     n_wavelengths = embed_dim // (input_dim * 2) - (
+        #         1 if cat_input_to_out else 0
+        #     )
+        #     feature_dim = input_dim * (
+        #         2 * n_wavelengths + (1 if cat_input_to_out else 0)
+        #     )
+        #     padding_dim = embed_dim - feature_dim
+
+        if interval is None:
+            assert n_wavelengths is not None
+            assert max_wavelength is not None
+            assert min_wavelength is not None
+
+            # frequencies increase exponentially from 1/max_wavelength to 1/min_wavelength
+            log_wavelengths = torch.linspace(
+                start=math.log(max_wavelength),
+                end=math.log(min_wavelength),
+                steps=n_wavelengths,
+            )
+
+            if len(log_wavelengths) >= 2:
+                interval = torch.exp(log_wavelengths[1] - log_wavelengths[0]).item()
+                log.debug(
+                    f"Using fourier features with {n_wavelengths} wavelengths from {max_wavelength} to {min_wavelength} with an interval of {interval}"
+                )
+
+        elif min_wavelength is None:
+            assert n_wavelengths is not None
+            assert max_wavelength is not None
+            assert interval is not None
+
+            log_wavelengths = torch.arange(n_wavelengths) * math.log(interval)
+            log_wavelengths += math.log(max_wavelength)
+
+            log.debug(
+                f"Using fourier features with {n_wavelengths} wavelengths from {max_wavelength} to {torch.exp(log_wavelengths[-1])} with an interval of {interval}"
+            )
+
+        elif max_wavelength is None:
+            assert n_wavelengths is not None
+            assert min_wavelength is not None
+            assert interval is not None
+
+            log_wavelengths = -torch.arange(n_wavelengths - 1, -1, -1) * math.log(
+                interval
+            )
+            log_wavelengths += math.log(min_wavelength)
+
+            log.debug(
+                f"Using fourier features with {n_wavelengths} wavelengths from {torch.exp(log_wavelengths[0])} to {min_wavelength} with an interval of {interval}"
+            )
+
+        else:
+            assert n_wavelengths is None
+            assert max_wavelength is not None
+            assert min_wavelength is not None
+            assert interval is not None
+
+            log_wavelengths = torch.arange(
+                math.log(max_wavelength), math.log(min_wavelength), math.log(interval)
+            )
+            n_wavelengths = len(log_wavelengths)
+
+            log.debug(
+                f"Using fourier features with {n_wavelengths} wavelengths from {max_wavelength} to {min_wavelength} with an interval of {interval}"
+            )
+
+        frequencies = torch.exp(-log_wavelengths)
         frequencies = frequencies * 2 * torch.pi * scale
+        self.register_buffer("frequencies", frequencies)
 
-        # unsqueeze to allow broadcasting input position with all frequencies
-        self.register_buffer("frequencies", frequencies.unsqueeze(dim=0))
+        # sin and cos components for each frequency
+        fourier_feature_dim = input_dim * 2 * n_wavelengths
+        # add 1 for the original coordinates if we are concatenating them
+        feature_dim = input_dim * (2 * n_wavelengths + (1 if cat_input_to_out else 0))
+        padding_dim = 0
+        embed_dim = feature_dim
+
+        self.input_dim = input_dim
+        self.cat_input_to_out = cat_input_to_out
+        self.embed_dim = embed_dim
+        self.padding_dim = padding_dim
+
+        if learnable:
+            self.linear = nn.Linear(fourier_feature_dim, fourier_feature_dim)
+        self.learnable = learnable
 
     def forward(self, pos: torch.Tensor) -> torch.Tensor:
 
@@ -246,23 +338,32 @@ class FourierFeatures(nn.Module):
         # take sin and code of each argument
         features = (arg.sin(), arg.cos())
 
-        if self.cat_cartesian_coordinates:
+        if self.learnable:
+            features = torch.cat(features, dim=-1)
+            features = torch.sin(self.linear(features))
+            features = (features,)
+
+        if self.cat_input_to_out:
             # concatenate the original coordinates with the sin/cos components
             features = (pos, *features)
 
-        return torch.cat(features, dim=-1)
+        if self.padding_dim > 0:
+            padding_shape = arg.shape[:-1] + (self.padding_dim,)
+            features = (*features, arg.new_zeros(padding_shape))
+
+        if len(features) > 1:
+            features = torch.cat(features, dim=-1)
+        else:
+            features = features[0]
+
+        return features
 
     @property
     def in_features(self) -> int:
         """Returns the input size of the model."""
-        return self.cartesian_dim
+        return self.input_dim
 
     @property
     def out_features(self) -> int:
         """Retuns the output size of the model."""
-        return self.cartesian_dim * (
-            # sin and cos components for each frequency
-            2 * self.frequencies.shape[-1]
-            # add 1 for the original coordinates if we are concatenating them
-            + (1 if self.cat_cartesian_coordinates else 0)
-        )
+        return self.embed_dim

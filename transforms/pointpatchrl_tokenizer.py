@@ -24,7 +24,7 @@ class PointPatchTokenizer(Transform, nn.Module):
         mlp_1: Callable[[int], nn.Linear],
         mlp_2: Callable[[int], nn.Linear],
         token_pos_encoder: Callable[[int, int], nn.Linear],
-        spatial_encoder: nn.Linear | None = None,
+        spatial_encoder: Callable[[int], nn.Linear] | None = None,
         pcd_key: str = "pcd",
     ):
         super().__init__()
@@ -43,9 +43,10 @@ class PointPatchTokenizer(Transform, nn.Module):
 
         point_dim = 3
 
+        if spatial_encoder is not None:
+            spatial_encoder = spatial_encoder(point_dim)
+            point_dim = spatial_encoder.out_features
         self.spatial_encoder = spatial_encoder
-        if self.spatial_encoder is not None:
-            point_dim = self.spatial_encoder.out_features
 
         self.token_pos_encoder = token_pos_encoder(point_dim, embed_dim)
 
@@ -87,8 +88,11 @@ class PointPatchTokenizer(Transform, nn.Module):
     def _call_one(self, nt_data: NonTensorData, obs_embed: Tensor | None) -> Tensor:
         data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
 
+        assert isinstance(data, Data)
         assert isinstance(data, Batch)
         center_pos, center_batch = data.pos, data.batch
+        assert center_pos is not None
+        assert center_batch is not None
         patch_pos, patch_color = data.patch_pos, data.get("patch_color")
 
         # features: (B*C, G, 3)
@@ -121,7 +125,8 @@ class PointPatchTokenizer(Transform, nn.Module):
         features = torch.max(features, dim=1).values  # features -> (B*C, D)
 
         # add encoding of the center position of the token to the token
-        features += self.token_pos_encoder(center_pos)
+        center_pos = self.token_pos_encoder(center_pos)
+        features += center_pos
 
         pcd_embed = pyg_to_nested_tensor(features, batch=center_batch)
 

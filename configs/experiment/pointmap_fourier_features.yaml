@@ -1,19 +1,15 @@
 # @package _global_
 
 defaults:
-  - /models/spatial_encoder@agent.obs_encoder.t10_image_tokenizer.spatial_encoder: conv_fourier_features
+  - /models/spatial_encoder@agent.obs_encoder.t10_image_tokenizer.spatial_encoder: learnable_conv_ff
 
 agent:
   obs_encoder:
     t10_image_tokenizer:
       spatial_encoder:
           n_wavelengths: ${n_wavelengths}
-          max_wavelength: ${max_wavelength}
-          min_wavelength: ${min_wavelength}
-          cat_cartesian_coordinates: ${cat_cartesian_coordinates}
+          cat_input_to_out: ${cat_input_to_out}
 
 # interpolate from top-level config for ease of use on command line
-n_wavelengths: 10
-max_wavelength: 2
-min_wavelength: 0.002
-cat_cartesian_coordinates: True
+n_wavelengths: 6
+cat_input_to_out: True

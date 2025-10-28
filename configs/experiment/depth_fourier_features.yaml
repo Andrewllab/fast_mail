@@ -11,10 +11,10 @@ agent:
         n_wavelengths: ${n_wavelengths}
         max_wavelength: ${max_wavelength}
         min_wavelength: ${min_wavelength}
-        cat_cartesian_coordinates: ${cat_cartesian_coordinates}
+        cat_input_to_out: ${cat_input_to_out}
 
 # interpolate from top-level config for ease of use on command line
 n_wavelengths: 4
 max_wavelength: 4.0
 min_wavelength: 0.1
-cat_cartesian_coordinates: True
+cat_input_to_out: True
