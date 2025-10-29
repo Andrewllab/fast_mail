@@ -1,0 +1,10 @@
+defaults:
+  - robocasa
+
+task: kitchen_buttons_dials
+name: kitchen_buttons_dials_20250920
+
+dataset:
+  root_dir: ${paths.data_dir}/robocasa/single_stage
+  # Pressing buttons: CoffeePressButton, TurnOnMicrowave, TurnOffMicrowave
+  subfolders: [CoffeePressButton, TurnOnMicrowave, TurnOffMicrowave]
