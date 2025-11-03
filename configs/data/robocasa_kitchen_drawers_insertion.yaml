@@ -1,11 +1,11 @@
 defaults:
   - robocasa
 
-task: kitchen_move
-name: kitchen_move_20250920
+task: kitchen_drawers_insertion
+name: kitchen_drawers_insertion_20250920
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage
-  # Opening and closing drawers: OpenDrawer, CloseDrawer
-  # Insertion: CoffeeSetupMug, CoffeeServeMug
-  subfolders: [OpenDrawer, CloseDrawer, CoffeeSetupMug, CoffeeServeMug]
+  # Opening and closing drawers: OpenDrawer,CloseDrawer
+  # Insertion: CoffeeSetupMug,CoffeeServeMug
+  subfolders: [OpenDrawer,CloseDrawer,CoffeeSetupMug,CoffeeServeMug]

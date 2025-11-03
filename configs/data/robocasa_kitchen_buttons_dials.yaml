@@ -6,7 +6,7 @@ name: kitchen_buttons_dials_20250920
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage
-  # Turning levers: TurnOnSinkFaucet, TurnOffSinkFaucet, TurnSinkSpout
-  # Twisting knobs: TurnOnStove, TurnOffStove
-  # Pressing buttons: CoffeePressButton, TurnOnMicrowave, TurnOffMicrowave
-  subfolders: [TurnOnSinkFaucet, TurnOffSinkFaucet, TurnSinkSpout, TurnOnStove, TurnOffStove, CoffeePressButton, TurnOnMicrowave, TurnOffMicrowave]
+  # Turning levers: TurnOnSinkFaucet,TurnOffSinkFaucet,TurnSinkSpout
+  # Twisting knobs: TurnOnStove,TurnOffStove
+  # Pressing buttons: CoffeePressButton,TurnOnMicrowave,TurnOffMicrowave
+  subfolders: [TurnOnSinkFaucet,TurnOffSinkFaucet,TurnSinkSpout,TurnOnStove,TurnOffStove,CoffeePressButton,TurnOnMicrowave,TurnOffMicrowave]

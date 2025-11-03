@@ -6,4 +6,4 @@ name: kitchen_doors_20250920
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_doors
-  # Opening and closing doors: OpenSingleDoor, CloseSingleDoor, OpenDoubleDoor, CloseDoubleDoor
+  # Opening and closing doors: OpenSingleDoor,CloseSingleDoor,OpenDoubleDoor,CloseDoubleDoor

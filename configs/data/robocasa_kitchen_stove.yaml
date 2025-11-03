@@ -6,4 +6,4 @@ name: kitchen_stove_20250920
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_stove
-  # Twisting knobs: TurnOnStove, TurnOffStove
+  # Twisting knobs: TurnOnStove,TurnOffStove
