@@ -1,3 +1,6 @@
-_target_: transforms.pointmap_normalize.PointMapNormalize
+_target_: transforms.pointmap_normalize.PointMapMaxMinNormalize
 _partial_: true
-do_reverse: false
+quantile: 1.0
+scale: 1.0
+clamp: False
+do_reverse: False

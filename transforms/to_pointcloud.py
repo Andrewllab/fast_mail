@@ -37,51 +37,61 @@ class ToPointCloud(Transform):
         self.warn_min_points = warn_min_points
         self.error_min_points = False
 
-        depth_specs = {
-            key: spec
+        depth_streams = {
+            (key, name): (spec, stream)
             for key, spec in specs.obs.items()
             if isinstance(spec, CameraSpec)
-            and any(isinstance(stream, DepthStream) for stream in spec.streams.values())
+            for name, stream in spec.streams.items()
+            if isinstance(stream, DepthStream)
         }
+        if not depth_streams:
+            raise ValueError("No depth streams found in specs")
 
-        multiview = len(depth_specs) > 1
+        keys = [key for (key, name) in depth_streams.keys()]
+        if len(keys) != len(set(keys)):
+            for key in keys:
+                if keys.count(key) > 1:
+                    raise ValueError(
+                        f"Multiple depth streams present from camera {key}"
+                    )
 
-        for key, spec in depth_specs.items():
-            name, depth_stream = next(
-                (name, stream)
-                for name, stream in spec.streams.items()
-                if isinstance(stream, DepthStream)
-            )
+        multiview = len(depth_streams) > 1
+
+        for (key, name), (cam_spec, depth_stream) in depth_streams.items():
             if depth_stream.intrinsics is None:
                 raise ValueError(
                     f"Depth stream at {key}.{name} does not have an intrinsics matrix."
                 )
 
-            rgb_streams = [
-                stream
-                for stream in spec.streams.values()
-                if isinstance(stream, RGBStream)
-            ]
+            if color:
+                rgb_names = [
+                    stream
+                    for stream in cam_spec.streams.values()
+                    if isinstance(stream, RGBStream)
+                ]
 
-            if color and not rgb_streams:
-                raise ValueError(
-                    f"Depth camera spec {key} is not an RGBCameraSpec. Cannot use color."
-                )
-            elif color and len(rgb_streams) > 1:
-                log.warning(
-                    f"Depth camera spec {key} has multiple RGB streams. Using {rgb_streams[0]} to color the point cloud."
-                )
+                if not rgb_names:
+                    raise ValueError(
+                        f"Depth camera spec {key} is not an RGBCameraSpec. Cannot use color."
+                    )
+                elif len(rgb_names) > 1:
+                    log.warning(
+                        f"Depth camera spec {key} has multiple RGB streams. Using {rgb_names[0]} to color the point cloud."
+                    )
 
-            if multiview and spec.extrinsics is None:
+            if multiview and cam_spec.extrinsics is None:
                 raise ValueError(
                     f"Depth camera {key} does not have an extrinsics matrix."
                 )
-            if spec.dynamic_pose_obs_key is not None and spec.extrinsics is None:
+            if (
+                cam_spec.dynamic_pose_obs_key is not None
+                and cam_spec.extrinsics is None
+            ):
                 raise ValueError(
-                    f"Dynamic pose obs key {spec.dynamic_pose_obs_key} is not supported for depth cameras without extrinsics."
+                    f"Dynamic pose obs key {cam_spec.dynamic_pose_obs_key} is not supported for depth cameras without extrinsics."
                 )
 
-        self._input_specs = depth_specs
+        self._depth_streams = depth_streams
 
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         obs_specs["pcd"] = PointCloudSpec(feature_dim=(6 if color else 3), color=color)
@@ -97,13 +107,7 @@ class ToPointCloud(Transform):
         all_masks = []  # if self.max_depth is not None, populate with masks
         all_rgb = []  # if self.color is True, populate with rgb
 
-        for key, spec in self._input_specs.items():
-
-            name, depth_stream = next(
-                (name, stream)
-                for name, stream in spec.streams.items()
-                if isinstance(stream, DepthStream)
-            )
+        for (key, name), (cam_spec, depth_stream) in self._depth_streams.items():
             depth = tensordict["obs", key, name]
 
             assert depth_stream.intrinsics is not None
@@ -113,10 +117,10 @@ class ToPointCloud(Transform):
                 depth_stream.intrinsics.intrinsic_matrix.to(depth.device),
                 is_ortho=depth_stream.orthogonal,
             )
-            if (extrinsics := spec.extrinsics) is not None:
+            if (extrinsics := cam_spec.extrinsics) is not None:
                 extrinsics = extrinsics.to(points.device)
 
-                if (pose_key := spec.dynamic_pose_obs_key) is not None:
+                if (pose_key := cam_spec.dynamic_pose_obs_key) is not None:
                     if not isinstance(pose_key, tuple):
                         pose_key = (pose_key,)
                     dynamic_extrinsics = tensordict[("obs",) + pose_key]
@@ -143,7 +147,7 @@ class ToPointCloud(Transform):
             if self.color:
                 name, rgb_stream = next(
                     (name, stream)
-                    for name, stream in spec.streams.items()
+                    for name, stream in cam_spec.streams.items()
                     if isinstance(stream, RGBStream)
                 )
                 rgb = tensordict["obs", key, name]

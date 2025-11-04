@@ -2,7 +2,7 @@
 
 defaults:
   - data: robocasa  # overwrite env config from training run
-  - /transforms@data.preprocess.t1_remove_inf_depth: remove_inf_depth
+  - /transforms@data.preprocess.t1_depth_remove_inf: depth_remove_inf
   # - data/wrappers@data.env.env.wrappers: record_video  # record videos
   # log test results to new wandb run, since test parameters affect results
   - logger: wandb

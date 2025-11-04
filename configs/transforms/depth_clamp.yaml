@@ -1,0 +1,3 @@
+_target_: transforms.depth_clamp.ClampDepth
+_partial_: True
+max: ???

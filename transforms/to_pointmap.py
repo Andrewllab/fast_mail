@@ -29,75 +29,79 @@ class ToPointMap(Transform):
         self.max_depth = max_depth
         self._out_key = out_key
 
-        depth_specs = {
-            key: spec
+        depth_streams = {
+            (key, name): (spec, stream)
             for key, spec in specs.obs.items()
             if isinstance(spec, CameraSpec)
-            and any(isinstance(stream, DepthStream) for stream in spec.streams.values())
+            for name, stream in spec.streams.items()
+            if isinstance(stream, DepthStream)
         }
+        if not depth_streams:
+            raise ValueError("No depth streams found in specs")
 
-        multiview = len(depth_specs) > 1
+        keys = [key for (key, name) in depth_streams.keys()]
+        if len(keys) != len(set(keys)):
+            for key in keys:
+                if keys.count(key) > 1:
+                    raise ValueError(
+                        f"Multiple depth streams present from camera {key}"
+                    )
+
+        multiview = len(depth_streams) > 1
 
         obs_specs = dict(specs.obs)
-        for key, spec in depth_specs.items():
-            name, depth_stream = next(
-                (name, stream)
-                for name, stream in spec.streams.items()
-                if isinstance(stream, DepthStream)
-            )
+        for (key, name), (cam_spec, depth_stream) in depth_streams.items():
             if depth_stream.intrinsics is None:
                 raise ValueError(
                     f"Depth stream at {key}.{name} does not have an intrinsics matrix."
                 )
 
             if color:
-                rgb_streams = [
+                rgb_names = [
                     name
-                    for name, stream in spec.streams.items()
+                    for name, stream in cam_spec.streams.items()
                     if isinstance(stream, RGBStream)
                 ]
 
-                if not rgb_streams:
+                if not rgb_names:
                     raise ValueError(
                         f"Camera spec {key} is not an RGBCameraSpec. Cannot use color."
                     )
-                elif len(rgb_streams) > 1:
+                elif len(rgb_names) > 1:
                     log.warning(
                         f"Camera spec '{key}' contains multiple RGB streams. "
-                        f"Only the first RGB stream {rgb_streams[0]} will be concatenated "
+                        f"Only the first RGB stream {rgb_names[0]} will be concatenated "
                         "to the pointmap feature channel"
                     )
 
-                rgb_name = rgb_streams[0]
-
-            if multiview and spec.extrinsics is None:
+            if multiview and cam_spec.extrinsics is None:
                 raise ValueError(
                     f"Depth camera {key} does not have an extrinsics matrix."
                 )
-            if spec.dynamic_pose_obs_key is not None and spec.extrinsics is None:
+            if (
+                cam_spec.dynamic_pose_obs_key is not None
+                and cam_spec.extrinsics is None
+            ):
                 raise ValueError(
-                    f"Dynamic pose obs key {spec.dynamic_pose_obs_key} is not supported for depth cameras without extrinsics."
+                    f"Dynamic pose obs key {cam_spec.dynamic_pose_obs_key} is not supported for depth cameras without extrinsics."
                 )
 
-            streams = dict(spec.streams)
-            streams.pop(name)  # Remove depth stream from streams
-            if color:
-                streams.pop(rgb_name)  # Remove RGB stream from streams
+            streams = dict(cam_spec.streams)
 
-            # Replace depth-stream with pointmap stream
+            # Add pointmap stream
             streams[self._out_key] = PointMapStream(
                 height=depth_stream.height,
                 width=depth_stream.width,
                 channels=6 if color else 3,
                 color=color,
-                time=spec.time,
+                time=cam_spec.time,
                 intrinsics=depth_stream.intrinsics,
-                extrinsics=spec.extrinsics,
+                extrinsics=cam_spec.extrinsics,
             )
 
-            obs_specs[key] = dataclasses.replace(spec, streams=streams)
+            obs_specs[key] = dataclasses.replace(cam_spec, streams=streams)
 
-        self._input_specs = depth_specs
+        self._depth_streams = depth_streams
         self._output_specs = specs.replace(obs=obs_specs)
 
     @property
@@ -107,14 +111,8 @@ class ToPointMap(Transform):
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         default_float_dtype = torch.get_default_dtype()
 
-        for key, spec in self._input_specs.items():
-
-            name, depth_stream = next(
-                (name, stream)
-                for name, stream in spec.streams.items()
-                if isinstance(stream, DepthStream)
-            )
-            depth = tensordict.pop(("obs", key, name))
+        for (key, name), (cam_spec, depth_stream) in self._depth_streams.items():
+            depth = tensordict["obs", key, name]
 
             assert depth_stream.intrinsics is not None
             # points: (..., H, W, 3)
@@ -123,10 +121,10 @@ class ToPointMap(Transform):
                 depth_stream.intrinsics.intrinsic_matrix.to(depth.device),
                 is_ortho=depth_stream.orthogonal,
             )
-            if (extrinsics := spec.extrinsics) is not None:
+            if (extrinsics := cam_spec.extrinsics) is not None:
                 extrinsics = extrinsics.to(point_map.device)
 
-                if (pose_key := spec.dynamic_pose_obs_key) is not None:
+                if (pose_key := cam_spec.dynamic_pose_obs_key) is not None:
                     if not isinstance(pose_key, tuple):
                         pose_key = (pose_key,)
                     dynamic_extrinsics = tensordict[("obs",) + pose_key]
@@ -145,10 +143,10 @@ class ToPointMap(Transform):
             if self.color:
                 name, rgb_stream = next(
                     (name, stream)
-                    for name, stream in spec.streams.items()
+                    for name, stream in cam_spec.streams.items()
                     if isinstance(stream, RGBStream)
                 )
-                rgb = tensordict.pop(("obs", key, name))
+                rgb = tensordict["obs", key, name]
 
                 if rgb_stream.channel_order == "CHW":
                     # convert to HWC order

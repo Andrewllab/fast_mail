@@ -1,0 +1,2 @@
+_target_: transforms.depth_remove_inf.RemoveInfDepth
+_partial_: True
