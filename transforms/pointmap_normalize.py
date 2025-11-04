@@ -4,6 +4,7 @@ import logging
 
 import torch
 import torch.nn as nn
+from torch import Tensor
 
 from environments.specs import CameraSpec, DataSpecs, DepthStream, PointMapStream
 from transforms.base_transform import NormalizingTransform
@@ -100,7 +101,7 @@ class PointMapMaxMinNormalize(NormalizingTransform, nn.Module):
                 max_points = points.max(dim=0).values
                 min_points = points.min(dim=0).values
             else:
-                max_points, min_points = points.quantile(self.quantiles, dim=0)
+                max_points, min_points = quantile(points, self.quantiles, dim=0)
 
             # accumulate max and min values
             self.max_points = torch.maximum(self.max_points, max_points)
@@ -146,3 +147,49 @@ class PointMapMaxMinNormalize(NormalizingTransform, nn.Module):
             pointmap.mul_(self.max_points - self.min_points).add_(self.min_points)
 
         return tensordict
+
+
+def quantile(
+    tensor: Tensor, q: float | Tensor, dim: int | None = None, keepdim: bool = False
+):
+    """
+    Computes the quantile of the input tensor along the specified dimension.
+
+    Unfortunately torch.quantile is very slow and has a limit of 16 million elements.
+    See: https://github.com/pytorch/pytorch/issues/64947
+    Modified from: https://github.com/pytorch/pytorch/issues/64947#issuecomment-2810054982
+
+    Parameters:
+    tensor (torch.Tensor): The input tensor.
+    q (float): The quantile to compute, should be a float between 0 and 1.
+    dim (int): The dimension to reduce. If None, the tensor is flattened.
+    keepdim (bool): Whether to keep the reduced dimension in the output.
+    Returns:
+    torch.Tensor: The quantile value(s) along the specified dimension.
+    """
+    q = torch.as_tensor(q, dtype=tensor.dtype, device=tensor.device)
+
+    assert (0 <= q).all() and (q <= 1).all()
+
+    if dim is None:
+        tensor = tensor.flatten()
+        dim = 0
+    elif dim > 0:
+        raise NotImplementedError
+
+    sorted_tensor, _ = torch.sort(tensor, dim=dim)
+    num_elements = sorted_tensor.size(dim)
+    index = q * (num_elements - 1)
+    lower_index = index.floor()
+    upper_index = (lower_index + 1).clamp(max=num_elements - 1)
+    # lower_value = sorted_tensor.select(dim, lower_index.long())
+    # upper_value = sorted_tensor.select(dim, upper_index.long())
+    lower_value = sorted_tensor[lower_index.long()]
+    upper_value = sorted_tensor[upper_index.long()]
+
+    # linear interpolation
+    weight = index - lower_index
+    weight = weight[(...,) + (None,) * (tensor.ndim - weight.ndim)]
+    quantile_value = (1 - weight) * lower_value + weight * upper_value
+
+    return quantile_value.unsqueeze(dim) if keepdim else quantile_value
