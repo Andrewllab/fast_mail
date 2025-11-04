@@ -103,7 +103,7 @@ class GridSamplePointCloud(Transform):
         num_points = data.ptr[1:] - data.ptr[:-1]
         if (num_points == 0).any():
             log.warning(
-                f"Some point clouds are empty after cropping. The number of points per batch element is: {num_points}"
+                f"Some point clouds are empty after voxel downsampling. The number of points per batch element is: {num_points}"
             )
 
         return data

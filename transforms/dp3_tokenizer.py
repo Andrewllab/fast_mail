@@ -87,6 +87,7 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
     def _call_one(self, nt_data: NonTensorData, obs_embed: Tensor | None) -> Tensor:
         data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
 
+        assert isinstance(data, Data)
         assert isinstance(data, Batch)
         pos, batch, color = data.pos, data.batch, data.x
         assert pos is not None
@@ -111,7 +112,7 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
         # features -> (B, D)
         features = self.mlp_2(features)
 
-        # features -> (B, 1, D)
+        # pcd_embed -> (B, 1, D)
         pcd_embed = features.unsqueeze(1)
 
         if obs_embed is None:

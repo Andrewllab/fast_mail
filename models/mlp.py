@@ -35,9 +35,9 @@ class MlpModel(nn.Module):
         in_features: int,
         out_features: int,
         hidden_sizes: int | Sequence[int] | None = None,
-        activation: Callable[[], nn.Module] | str | None = nn.ReLU,
         norm: Callable[[int | tuple[int, ...]], nn.Module] | str | None = None,
-        bias: bool = True,
+        activation: Callable[[], nn.Module] | str | None = nn.ReLU,
+        bias: bool | Sequence[bool] = True,
         dropout: float | None = None,
         norm_first: bool = True,
         plain_last: bool = True,
@@ -52,6 +52,15 @@ class MlpModel(nn.Module):
         else:
             hidden_sizes = list(hidden_sizes)
 
+        if not isinstance(bias, bool):
+            biases = list(bias)
+            if len(biases) != len(hidden_sizes) + 1:
+                raise ValueError(
+                    f"Length of `bias` vector ({len(biases)}) does not match number of layers {len(hidden_sizes) + 1}"
+                )
+        else:
+            biases = [bias] * (len(hidden_sizes) + 1)
+
         if not plain_last:
             hidden_sizes = hidden_sizes + [out_features]
 
@@ -63,9 +72,11 @@ class MlpModel(nn.Module):
             norm = getattr(nn, norm)
             assert issubclass(norm, nn.Module)
 
+        in_sizes = [in_features] + hidden_sizes[:-1]
+
         linears = [
-            nn.Linear(n_in, n_out)
-            for n_in, n_out in zip([in_features] + hidden_sizes[:-1], hidden_sizes)
+            nn.Linear(n_in, n_out, bias=b)
+            for n_in, n_out, b in zip(in_sizes, hidden_sizes, biases)
         ]
 
         sequence = list()
@@ -88,13 +99,23 @@ class MlpModel(nn.Module):
 
         if plain_last:
             last_size = hidden_sizes[-1] if hidden_sizes else in_features
-            sequence.append(nn.Linear(last_size, out_features, bias=bias))
+            sequence.append(nn.Linear(last_size, out_features, bias=biases[-1]))
 
         self.model = nn.Sequential(*sequence)
         self._out_features = hidden_sizes[-1] if out_features is None else out_features
 
     def forward(self, input: Tensor) -> Tensor:
-        return self.model(input)
+        if input.ndim > 2:
+            leading_dims = input.shape[:-1] if input.ndim > 2 else None
+            input = input.flatten(start_dim=0, end_dim=-2)
+        else:
+            leading_dims = None
+
+        output = self.model(input)
+
+        if leading_dims is not None:
+            output = output.unflatten(dim=0, sizes=leading_dims)
+        return output
 
     @property
     def in_features(self) -> int:

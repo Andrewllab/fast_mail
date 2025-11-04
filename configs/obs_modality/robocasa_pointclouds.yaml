@@ -9,10 +9,11 @@ defaults:
 
   - /transforms@data.preprocess.t99_cleanup: cleanup
 
-  - /transforms@data.gpu_batch_transforms.t1_voxel_downsample: pointcloud_downsample_voxel
+  - /transforms@data.gpu_batch_transforms.t1_sample_random: pointcloud_downsample_random
+  - /transforms@data.gpu_batch_transforms.t2_sample_voxel: pointcloud_downsample_voxel
 
   # apply jitter data augmentation
-  - /transforms@data.gpu_batch_transforms.t2_jitter: pointcloud_jitter
+  - /transforms@data.gpu_batch_transforms.t10_jitter: pointcloud_jitter
   
   # we don't need to normalize the pointclouds because they are already sort of
   # within the range [0, 1] after cropping
@@ -25,7 +26,7 @@ data:
 
     t5_to_pcd:
       color: False
-      max_depth: 5.0  # in meters
+      max_depth: 10.0  # in meters
       warn_min_points: 100
 
     t99_cleanup:
@@ -33,10 +34,15 @@ data:
       drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose]
 
   gpu_batch_transforms:
-    t1_voxel_downsample:
+    t1_sample_random:
+      # point clouds begin with (approx.) 224*224*3 = 150528 points
+      n_points: 32768
+
+    t2_sample_voxel:
+      # results in approx. 17000 points after downsampling
       size: 0.01
 
-    t2_jitter:
+    t10_jitter:
       max_sigma: 0.002  # slightly higher jitter for robocasa
 
 # disable the batch size finder for point clouds, because the data points 

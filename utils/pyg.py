@@ -5,7 +5,132 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch_geometric.data import Batch, Data
-from torch_geometric.utils import scatter
+from torch_geometric.typing import torch_cluster
+
+
+def batch2lengths(batch: Tensor, batch_size: int | None = None) -> Tensor:
+    """Convert batch vector to lengths vector.
+    Args:
+        batch (Tensor): Batch vector of shape (N,) which assigns each point to a
+            specific example in the batch.
+        batch_size (int, optional): The number of examples in the batch. If not
+            provided, it is inferred from the batch vector.
+    Returns:
+        Tensor: vector of the size of each batch element (batch_size,).
+
+    Reference: https://github.com/rusty1s/pytorch_cluster/blob/master/torch_cluster/fps.py#L99
+    """
+    batch_size = batch_size if batch_size is not None else batch.max().item() + 1
+    return batch.new_zeros(batch_size).scatter_add_(0, batch, torch.ones_like(batch))
+
+
+def batch2ptr(batch: Tensor, batch_size: int | None = None) -> Tensor:
+    """Convert batch vector to ptr vector.
+    Args:
+        batch (Tensor): Batch vector of shape (N,) which assigns each point to a
+            specific example in the batch.
+        batch_size (int, optional): The number of examples in the batch. If not
+            provided, it is inferred from the batch vector.
+    Returns:
+        Tensor: ptr vector of shape (batch_size + 1,) which indicates the start
+            index of each example in the batch, plus a final entry of N.
+
+    Reference: https://github.com/rusty1s/pytorch_cluster/blob/master/torch_cluster/fps.py#L102
+    """
+    lengths = batch2lengths(batch, batch_size)
+    ptr = batch.new_zeros(lengths.size(0) + 1)
+    torch.cumsum(lengths, dim=0, out=ptr[1:])
+    return ptr
+
+
+def ptr2lengths(ptr: Tensor) -> Tensor:
+    """Convert ptr vector to lengths vector.
+    Args:
+        ptr (Tensor): ptr vector of shape (batch_size + 1,) which indicates the start
+            index of each example in the batch, plus a final entry of N.
+    Returns:
+        Tensor: vector of the size of each batch element (batch_size,).
+    """
+    return ptr[1:] - ptr[:-1]
+
+
+def ptr2batch(ptr: Tensor) -> Tensor:
+    """Convert ptr vector to batch vector.
+    Args:
+        ptr (Tensor): ptr vector of shape (batch_size + 1,) which indicates the start
+            index of each example in the batch, plus a final entry of N.
+    Returns:
+        Tensor: Batch vector of shape (N,) which assigns each point to a
+            specific example in the batch.
+    """
+    lengths = ptr2lengths(ptr)
+    return torch.repeat_interleave(lengths)
+
+
+def offset2batch(offset: Tensor) -> Tensor:
+    """Convert offset vector to batch vector.
+    Args:
+        offset (Tensor): offset vector of shape (batch_size + 1,) which indicates the end
+            index of each example in the batch,
+    Returns:
+        Tensor: Batch vector of shape (N,) which assigns each point to a
+            specific example in the batch.
+    """
+    ptr = F.pad(offset, (1, 0), value=0).long()
+    return ptr2batch(ptr)
+
+
+def fps(
+    x: Tensor,
+    ptr: Tensor | None = None,
+    ratio: float | None = None,
+    n_points: int | None = None,
+    random_start: bool = True,
+) -> Tensor:
+    """Farthest point sampling (FPS) for point clouds in a batch.
+
+    Args:
+        x (Tensor): Point cloud coordinates of shape (N, D).
+        batch (Tensor): Batch vector of shape (N,) which assigns each point to a
+            specific example in the batch.
+        ratio (float): Ratio of points to sample.
+
+    Returns:
+        Tensor: Indices of the sampled points.
+    """
+    if ratio is not None and n_points is not None:
+        raise ValueError("Only one of ratio or n_points can be set.")
+
+    if ptr is None:
+        # create ptr vector for batch with single element
+        ptr = torch.tensor([0, x.size(0)], device=x.device)
+
+    if n_points is not None:
+        # compute a unique ratio per example in the batch
+        lengths = ptr[1:] - ptr[:-1]
+        # to avoid rounding issues, since pyg_fps uses ceil internally
+        ratio = (n_points - 0.01) / lengths
+        # ensure ratio does not exceed 1.0
+        ratio.clamp_(max=1.0)
+
+    elif ratio is not None:
+        pass
+
+    else:
+        raise ValueError("One of ratio or n_points must be set.")
+
+    # we call pyg_fps with ptr instead of batch to prevent it from recomputing
+    # ptr internally
+    indices = torch_cluster.fps(x, ratio=ratio, random_start=random_start, ptr=ptr)
+
+    if n_points is not None:
+        # ensure that we have exactly n_points per example
+        assert torch.all(
+            batch2lengths(ptr2batch(ptr)[indices])
+            == torch.clamp(torch.tensor(n_points, device=x.device), max=lengths)
+        )
+
+    return indices
 
 
 def apply_mask(data: Data, mask: Tensor) -> Data:
@@ -93,8 +218,7 @@ def update_batch_metadata(batch: Batch, update_batch_size: bool = False) -> Batc
     assert batch.batch is not None
 
     batch_size = None if update_batch_size else batch.batch_size
-    lengths = scatter(torch.ones_like(batch.batch), batch.batch, dim_size=batch_size)
-    batch.ptr = F.pad(lengths.cumsum(dim=0), (1, 0))
+    ptr = batch.ptr = batch2ptr(batch.batch, batch_size=batch_size)
 
     data_keys = [key for key in batch.keys() if key not in ("ptr", "batch")]
 
@@ -102,12 +226,19 @@ def update_batch_metadata(batch: Batch, update_batch_size: bool = False) -> Batc
     batch._slice_dict = {key: batch.ptr.clone() for key in data_keys}
 
     if update_batch_size:
-        batch._num_graphs = lengths.numel()
+        batch._num_graphs = ptr.numel() - 1
 
         # for homogeneous data, inc_dict is zero for each field
-        batch._inc_dict = {key: lengths.new_zeros() for key in data_keys}
+        batch._inc_dict = {key: ptr.new_zeros(ptr.size(0) - 1) for key in data_keys}
     else:
-        assert batch._num_graphs == lengths.numel()
+        assert batch._num_graphs == ptr.numel() - 1
+        for key in data_keys:
+            if key in batch._inc_dict:
+                assert torch.all(batch._inc_dict[key] == 0)
+                assert batch._inc_dict[key].shape == (ptr.size(0) - 1,)
+            else:
+                # a new key-value pair was added
+                batch._inc_dict[key] = ptr.new_zeros(ptr.size(0) - 1)
         assert all(torch.all(batch._inc_dict[key] == 0) for key in data_keys)
 
     return batch
@@ -151,9 +282,7 @@ def unreduce_batch(batch: Mapping[str, Tensor]) -> Batch:
         store[key] = batch[key]
 
     store.ptr = ptr
-    # recreate batch from ptr
-    lengths = ptr[1:] - ptr[:-1]
-    store.batch = torch.repeat_interleave(lengths)
+    store.batch = ptr2batch(ptr)  # recreate batch from ptr
 
     out._num_graphs = ptr.numel() - 1
     # for homogeneous data, slice_dict is the same as ptr for each field

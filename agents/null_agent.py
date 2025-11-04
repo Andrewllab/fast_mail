@@ -27,6 +27,7 @@ class NullAgent(BaseAgent):
         self,
         obs_encoder: TransformPartialsDict,
         specs: DataSpecs,
+        goal_encoder: TransformPartialsDict | None = None,
         fps: float | None = 30.0,
         null_action: Sequence[float] | None = None,
         replay_data: DictConfig | None = None,
@@ -34,6 +35,7 @@ class NullAgent(BaseAgent):
         reverse_transform: Compose | None = None,
     ):
         obs_encoder = hydra.utils.instantiate(obs_encoder)
+        goal_encoder = hydra.utils.instantiate(goal_encoder)
 
         super().__init__(
             model=lambda specs: None,
@@ -41,6 +43,7 @@ class NullAgent(BaseAgent):
             optimizer=None,
             lr_scheduler=None,
             specs=specs,
+            goal_encoder=goal_encoder,
             normalizer=normalizer,
             reverse_transform=reverse_transform,
         )

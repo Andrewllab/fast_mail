@@ -93,10 +93,10 @@ class PointPatchTokenizer(Transform, nn.Module):
         center_pos, center_batch = data.pos, data.batch
         assert center_pos is not None
         assert center_batch is not None
-        patch_pos, patch_color = data.patch_pos, data.get("patch_color")
+        point_pos, patch_color = data.relative_pos, data.x
 
         # features: (B*C, G, 3)
-        features = patch_pos
+        features = point_pos
 
         if self.spatial_encoder is not None:
             # features -> (B*C, G, D)

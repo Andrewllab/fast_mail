@@ -1,0 +1,3 @@
+_target_: transforms.pointcloud_downsample_random.RandomSamplePointCloud
+_partial_: True
+n_points: ???

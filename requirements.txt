@@ -21,3 +21,4 @@ ftfy
 bitsandbytes  # for 8-bit optimizers
 timm  # for vision transformers
 regex  # for CLIP tokenizer
+spconv-cu120 # for PCM tokenizer

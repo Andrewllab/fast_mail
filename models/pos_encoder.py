@@ -367,3 +367,20 @@ class FourierFeatures(nn.Module):
     def out_features(self) -> int:
         """Retuns the output size of the model."""
         return self.embed_dim
+
+    def extra_repr(self):
+        wavelengths = 2 * torch.pi / self.frequencies
+        # remove the "tensor()" from the repr string
+        wavelengths_s = repr(wavelengths)[7:-1]
+
+        s = ", ".join(
+            [
+                f"in_features={self.in_features}",
+                f"out_features={self.out_features}",
+                f"wavelengths={wavelengths_s}",
+                f"learnable={self.learnable}",
+                f"cat_input_to_out={self.cat_input_to_out}",
+            ]
+        )
+
+        return s

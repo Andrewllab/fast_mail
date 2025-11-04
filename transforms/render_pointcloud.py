@@ -73,8 +73,6 @@ class RenderPointCloud(ctx.Process, Transform):
 
         if (color := data.x) is not None:
             color = color.cpu().numpy()
-            if color.dtype == np.uint8:
-                color = color.astype(np.float32) / 255.0
 
         self.send_to_child(
             (
@@ -229,7 +227,9 @@ class RenderPointCloud(ctx.Process, Transform):
                                 points = o3d.utility.Vector3dVector(points)
                                 color = data["color"]
                                 if color is not None:
-                                    color = o3d.utility.Vector3dVector(color.numpy())
+                                    if color.dtype == np.uint8:
+                                        color = color.astype(np.float32) / 255.0
+                                    color = o3d.utility.Vector3dVector(color)
 
                                 if name in geometries:
                                     pcd = geometries[name]
@@ -243,7 +243,7 @@ class RenderPointCloud(ctx.Process, Transform):
                                     pcd = o3d.geometry.PointCloud(points)
                                     if color is not None:
                                         pcd.colors = color
-                                    vis.add_geometry(pcd, reset_bounding_box=False)
+                                    vis.add_geometry(pcd)
                                     geometries[name] = pcd
 
                             case "CoordinateFrame":

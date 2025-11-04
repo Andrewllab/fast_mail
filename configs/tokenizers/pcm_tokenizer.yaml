@@ -1,0 +1,37 @@
+# @package _global_
+
+# Reference:
+# https://github.com/HaoyiZhu/PointCloudMatters/blob/main/configs/exp_maniskill2_diffusion_policy/maniskill2_model/scratch_pointnet_pcd_wo_rgb.yaml
+
+name: pcm_pointnet_tokenizer
+_target_: transforms.pcm_pointnet_tokenizer.PCMPointNetTokenizer
+_partial_: True
+embed_dim: ${..embed_dim}
+n_patches: 2048
+patch_size: 16
+backbone:
+  _target_: models.mlp.MlpModel
+  _partial_: True
+  out_features: 96
+  hidden_sizes: [64, 64, 64, 128, 512]
+  bias: [False, False, False, False, False, True]
+point_mlp:
+  _target_: models.mlp.MlpModel
+  _partial_: True
+  out_features: 96
+patch_mlp:
+  _target_: models.mlp.MlpModel
+  _partial_: True
+  out_features: 96
+head_mlp:
+  _target_: models.mlp.MlpModel
+  _partial_: True
+norm:
+  _target_: torch.nn.BatchNorm1d
+  _partial_: True
+  eps: 1e-3
+  momentum: 0.01
+activation:
+  _target_: torch.nn.ReLU
+  _partial_: True
+  inplace: True

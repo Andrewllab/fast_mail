@@ -1,0 +1,6 @@
+# name: voxel_downsample_pointcloud
+_target_: transforms.pointcloud_downsample_fps.FpsSamplePointCloud
+_partial_: True
+ratio: null
+n_points: null
+random_start: True
