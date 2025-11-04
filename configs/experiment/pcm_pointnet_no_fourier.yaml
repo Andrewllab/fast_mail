@@ -1,0 +1,6 @@
+# @package _global_
+
+agent:
+  obs_encoder:
+    t10_tokenizer:
+      spatial_encoder: null
