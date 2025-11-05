@@ -111,7 +111,7 @@ class TrajectoryDataModule(L.LightningDataModule):
         if not needs_dataset or self.dataset is not None:
             return
 
-        log.debug("Preparing data...")
+        log.info("Preparing data...")
 
         # create minimal transform configs for testing if existing preprocessed
         # data has matching transforms
@@ -361,7 +361,7 @@ class TrajectoryDataModule(L.LightningDataModule):
             self.env.close()
 
     def _instantiate_dataset(self) -> None:
-        log.debug("Instantiating dataset...")
+        log.info("Instantiating dataset...")
 
         if self.preprocess_cfgs:
             preprocess_cfg = list(self.preprocess_cfgs.values())[0]
@@ -386,16 +386,20 @@ class TrajectoryDataModule(L.LightningDataModule):
         )
 
         assert isinstance(self.dataset, TrajectoryDataset)
-        log.debug(f"Dataset contains {len(self.dataset)} samples in total.")
+        log.info(f"Dataset contains {len(self.dataset)} samples in total.")
+        if hasattr(self.dataset, "slices"):
+            log.debug(
+                f"Dataset trajectories have the following lengths:\n{self.dataset.slices.traj_lengths}"
+            )
         specs = self.dataset.specs
         self.preprocess_transforms = self.dataset.preprocess_transforms
         self.cpu_transforms = self.dataset.item_transforms
 
-        log.debug("Instantiating cpu batch transforms...")
+        log.info("Instantiating cpu batch transforms...")
         self.cpu_batch_transform, specs = init_transforms(
             self._cpu_batch_transforms, specs
         )
-        log.debug("Instantiating gpu batch transforms...")
+        log.info("Instantiating gpu batch transforms...")
         self.gpu_batch_transform, specs = init_transforms(
             self._gpu_batch_transforms, specs
         )
@@ -412,7 +416,7 @@ class TrajectoryDataModule(L.LightningDataModule):
             raise ValueError(
                 "Evaluation environment is not specified. Please provide an environment dataset."
             )
-        log.debug("Instantiating environment...")
+        log.info("Instantiating environment...")
         self.env = hydra.utils.instantiate(
             self.env_cfg,
             _target_=GymEnvDataset,
@@ -437,21 +441,21 @@ class TrajectoryDataModule(L.LightningDataModule):
         # instantiate transforms from each preprocessing step separately to not mess
         # up ordering
         # reverse the order, so that e.g. prepreprocess comes before preprocess
-        log.debug("Instantiating preprocess transforms for environment...")
+        log.info("Instantiating preprocess transforms for environment...")
         preprocess_transforms = Compose(specs=specs)
         for cfg in reversed(preprocess_cfgs.values()):
             transforms, specs = init_transforms(cfg, specs)
             assert isinstance(transforms, Compose)
             preprocess_transforms += transforms
 
-        log.debug("Instantiating item transforms for environment...")
+        log.info("Instantiating item transforms for environment...")
         cpu_transforms, specs = init_transforms(self._cpu_transforms, specs)
         preprocess_transforms += cpu_transforms
 
-        log.debug("Instantiating cpu batch transforms for environment...")
+        log.info("Instantiating cpu batch transforms for environment...")
         cpu_batch_transform, specs = init_transforms(self._cpu_batch_transforms, specs)
 
-        log.debug("Instantiating gpu batch transforms for environment...")
+        log.info("Instantiating gpu batch transforms for environment...")
         gpu_batch_transforms, specs = init_transforms(self._gpu_batch_transforms, specs)
 
         # Move any transforms that would normally be in the dataset (i.e.
@@ -558,7 +562,7 @@ class TrajectoryDataModule(L.LightningDataModule):
             from callbacks.action_writer import ActionWriter
             from callbacks.video_metadata_writer import VideoMetadataWriter
 
-            log.info("Adding ActionWriter callback for env dataset.")
+            log.debug("Adding ActionWriter callback for env dataset.")
             callbacks.append(ActionWriter(self.env))
 
             wrappers = []
@@ -571,7 +575,9 @@ class TrajectoryDataModule(L.LightningDataModule):
             video_recorders = [w for w in wrappers if isinstance(w, RecordVideo)]
             if video_recorders:
                 assert len(video_recorders) == 1
-                log.info("Adding VideoMetadataWriter callback for RecordVideo wrapper.")
+                log.debug(
+                    "Adding VideoMetadataWriter callback for RecordVideo wrapper."
+                )
                 callbacks.append(VideoMetadataWriter(video_recorders[0]))
 
         return callbacks
