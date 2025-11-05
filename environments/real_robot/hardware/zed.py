@@ -58,13 +58,6 @@ class Zed(BaseCamera):
 
         self._connect()
 
-    @property
-    def height_width(self) -> tuple[int, int]:
-        """
-        Returns the height and width of the camera image.
-        """
-        return self._height_width
-
     def _connect(self):
         """
         Connects to this instance.
@@ -117,12 +110,7 @@ class Zed(BaseCamera):
         assert obs["depth"].shape[:2] == (height, width)
         self._height_width = (height, width)
 
-        if self._intrinsics is not None:
-            intrinsics = self._intrinsics
-        else:
-            # if intrinsics are not provided, get them from the camera
-            intrinsics = self.get_intrinsics()
-
+        intrinsics = self.intrinsics
         assert (intrinsics["height"], intrinsics["width"]) == self._height_width
 
         self._spec = CameraSpec(

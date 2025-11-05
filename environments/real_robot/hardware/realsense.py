@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 class RealSense(BaseCamera):
     RECORDING_HEIGHT = 480
     RECORDING_WIDTH = 640
+    _height_width = (RECORDING_HEIGHT, RECORDING_WIDTH)
 
     def __init__(
         self,
@@ -48,13 +49,6 @@ class RealSense(BaseCamera):
         )
 
         self._connect()
-
-    @property
-    def height_width(self) -> tuple[int, int]:
-        """
-        Returns the height and width of the camera image.
-        """
-        return self.RECORDING_HEIGHT, self.RECORDING_WIDTH
 
     def _connect(self):
         """
@@ -139,12 +133,7 @@ class RealSense(BaseCamera):
         for _ in range(self.warm_start):
             self._get_frameset()
 
-        if self._intrinsics is not None:
-            intrinsics = self._intrinsics
-        else:
-            # if intrinsics are not provided, get them from the camera
-            intrinsics = self.get_intrinsics()
-
+        intrinsics = self.intrinsics
         assert intrinsics["height"] == self.RECORDING_HEIGHT
         assert intrinsics["width"] == self.RECORDING_WIDTH
 
@@ -233,17 +222,13 @@ class RealSense(BaseCamera):
         return self.align.process(frameset)
 
     def get_rgb(self) -> np.ndarray:
-        """
-        Returns the RGB image as a numpy array.
-        """
+        """Returns the RGB image (ndarray: [H, W, 3], np.uint8)."""
         frameset = self._get_frameset()
         rgb_frame = frameset.get_color_frame()
         return np.asanyarray(rgb_frame.get_data())
 
     def get_depth(self) -> np.ndarray:
-        """
-        Returns the depth image as a numpy array in millimeters.
-        """
+        """Returns the depth map in meters (ndarray: [H, W], np.float32)."""
         frameset = self._get_frameset()
         depth_frame = frameset.get_depth_frame()
         depth = np.asanyarray(depth_frame.get_data(), dtype=np.float32)
@@ -251,8 +236,14 @@ class RealSense(BaseCamera):
         return depth
 
     def get_observation(self) -> dict[str, float | np.ndarray]:
-        """
-        returns color image as np.ndarray [h, w, 3] with RGB[0-255] and depth as np.ndarray [h, w] in millimeters
+        """Returns a dict of observed values:
+        {
+            "time": (float) current time in seconds
+            "rgb": (ndarray: [H, W, 3], np.uint8) RGB image
+            "depth": (ndarray: [H, W], np.float32) depth map in meters
+            "left": (ndarray: [H, W], np.uint8) intensity map from left IR camera
+            "right": (ndarray: [H, W], np.uint8) intensity map from right IR camera
+        }
         """
         frameset = self._get_frameset()
 
