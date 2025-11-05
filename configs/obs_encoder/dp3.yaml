@@ -1,6 +1,8 @@
 # @package _global_
 
 defaults:
+  - /transforms@data.gpu_batch_transforms.t9_sample_fps: pointcloud_downsample_fps
+
   - /tokenizers@agent.obs_encoder.t10_tokenizer: dp3_tokenizer
   - /models/spatial_encoder@agent.obs_encoder.t10_tokenizer.spatial_encoder: fourier_features
   
@@ -21,6 +23,10 @@ agent:
         cat_input_to_out: False
 
 data:
+  gpu_batch_transforms:
+    t9_sample_fps:
+      n_points: 2048  # original uses 1024
+
   batch_size: ${floor_div:${platform.batch_size},8}  # 1/8 of typical batch size
 
 logger:

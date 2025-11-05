@@ -18,12 +18,19 @@ log = logging.getLogger(__name__)
 
 
 class DiffusionPolicy3DTokenizer(Transform, nn.Module):
+    """Tokenizer based on the paper `3D Diffusion Policy: Generalizable
+    Visuomotor Policy Learning via Simple 3D Representations`
+    <https://arxiv.org/abs/2403.03954>`__ .
+
+    Reference: https://github.com/YanjieZe/3D-Diffusion-Policy/blob/master/3D-Diffusion-Policy/diffusion_policy_3d/model/vision/pointnet_extractor.py
+    """
+
     def __init__(
         self,
         specs: DataSpecs,
         embed_dim: int,
         mlp_1: Callable[[int], nn.Linear],
-        mlp_2: Callable[[int], nn.Linear],
+        mlp_2: Callable[[int, int], nn.Linear],
         spatial_encoder: Callable[[int], nn.Linear] | None = None,
         pcd_key: str = "pcd",
     ):
@@ -53,12 +60,13 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
 
         self.mlp_1 = mlp_1(point_dim)
         self.aggr = MaxAggregation()
-        self.mlp_2 = mlp_2(embed_dim)
-
-        if self.mlp_1.out_features != self.mlp_2.in_features:
-            raise ValueError(
-                f"The last layer of mlp_1 (size {self.mlp_1.out_features}) must equal the first layer of mlp_2 (size {self.mlp_2.in_features})"
-            )
+        self.mlp_2 = mlp_2(
+            self.mlp_1.out_features,
+            embed_dim,
+            # apply norm but not activation after final layer
+            plain_last=False,
+            activation=None,
+        )
 
         new_spec = EmbedSpec(embed_dim=embed_dim, n_tokens=1)
 

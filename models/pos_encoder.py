@@ -265,7 +265,7 @@ class FourierFeatures(nn.Module):
             if len(log_wavelengths) >= 2:
                 interval = torch.exp(log_wavelengths[1] - log_wavelengths[0]).item()
                 log.debug(
-                    f"Using fourier features with {n_wavelengths} wavelengths from {max_wavelength} to {min_wavelength} with an interval of {interval}"
+                    f"Using fourier features with {n_wavelengths} wavelengths from {max_wavelength} to {min_wavelength} with an interval of {interval:.3f}"
                 )
 
         elif min_wavelength is None:

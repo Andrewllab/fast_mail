@@ -1,5 +1,3 @@
-# @package _global_
-
 # Reference:
 # https://github.com/HaoyiZhu/PointCloudMatters/blob/main/configs/exp_maniskill2_diffusion_policy/maniskill2_model/scratch_pointnet_pcd_wo_rgb.yaml
 

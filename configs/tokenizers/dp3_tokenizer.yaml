@@ -1,15 +1,15 @@
-defaults:
-  - /models/pos_projection@spatial_encoder: null
+# Reference:
+# https://github.com/YanjieZe/3D-Diffusion-Policy/blob/master/3D-Diffusion-Policy/diffusion_policy_3d/config/dp3.yaml
+# https://github.com/YanjieZe/3D-Diffusion-Policy/blob/master/3D-Diffusion-Policy/diffusion_policy_3d/model/vision/pointnet_extractor.py#L109
 
 name: dp3_tokenizer
 _target_: transforms.dp3_tokenizer.DiffusionPolicy3DTokenizer
 _partial_: True
-
 embed_dim: ${..embed_dim}
 mlp_1:
   _target_: models.mlp.MlpModel
   _partial_: True  # requires in_features
-  hidden_sizes: [64, 128]
+  hidden_sizes: [128, 256]  # original uses [64, 128]
   out_features: 256
   activation: ReLU
   norm: LayerNorm
@@ -17,8 +17,5 @@ mlp_1:
 mlp_2:
   # MLP 2 is just a linear layer and a LayerNorm
   _target_: models.mlp.MlpModel
-  _partial_: True  # requires out_features
-  _args_: ["${...mlp_1.out_features}"]  # in_features must be out_features of mlp_1
-  activation: null
+  _partial_: True  # requires in_features and out_features
   norm: LayerNorm
-  plain_last: False
