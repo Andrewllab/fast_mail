@@ -64,7 +64,10 @@ def test(cfg: DictConfig) -> None:
 
         # merge the agent and data configs, with the current config taking precedence
         agent_cfg = OmegaConf.merge(train_cfg.agent, agent_cfg)
-        train_cfg.data.pop("env", None)  # train and evaluate data configs might differ
+        # pop the env config from training, effectively ignoring it
+        # sometimes merging can have unintended results, and we just want to
+        # use the current env config
+        train_cfg.data.pop("env", None)
         data_cfg = OmegaConf.merge(train_cfg.data, data_cfg)
 
         # modify the _target_ to point to the module's load_from_checkpoint method
@@ -74,6 +77,7 @@ def test(cfg: DictConfig) -> None:
         with open_dict(cfg):
             cfg.agent = agent_cfg
             cfg.data = data_cfg
+            cfg.train_platform = train_cfg.platform
 
     update_wandb_config(cfg, train_tags, train_notes)
 
