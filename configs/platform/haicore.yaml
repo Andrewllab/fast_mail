@@ -12,7 +12,7 @@ platform:
 hydra:
   launcher:
     account: anthropomatik  # not sure if this is needed
-    timeout_min: 1440  # 24 hours
+    timeout_min: 2880  # 48 hours
     partition: normal  # normal and advanced are almost identical, and both have GPUs
     gres: gpu:full:1  # haicore supports requesting fractions of a GPU, so this must be used to request a full GPU
     cpus_per_task: 38

@@ -11,7 +11,7 @@ platform:
 hydra:
   launcher:
     account: hk-project-p0022253
-    timeout_min: 1440  # 24 hours
+    timeout_min: 2880  # 48 hours
     partition: accelerated
     exclude: null # add any broken nodes here
     constraint: LSDF  # needed for the LSDF to be mounted on compute nodes
