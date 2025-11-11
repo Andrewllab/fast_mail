@@ -1,3 +1,0 @@
-_target_: transforms.translational_jitter.VariableTranslationalJitter
-_partial_: True
-max_sigma: 0.001  # in meters

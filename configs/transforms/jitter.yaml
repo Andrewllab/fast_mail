@@ -1,0 +1,6 @@
+_target_: transforms.jitter.RandomTranslationalJitter
+_partial_: True
+sigma: ???  # in meters
+distribution: uniform
+random_sigma: True
+clamp_depth_nonnegative: False

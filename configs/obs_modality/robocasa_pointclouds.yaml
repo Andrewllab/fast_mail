@@ -13,7 +13,7 @@ defaults:
   - /transforms@data.gpu_batch_transforms.t2_sample_voxel: pointcloud_downsample_voxel
 
   # apply jitter data augmentation
-  - /transforms@data.gpu_batch_transforms.t10_jitter: pointcloud_jitter
+  - /transforms@data.gpu_batch_transforms.t10_jitter: jitter
   
   # we don't need to normalize the pointclouds because they are already sort of
   # within the range [0, 1] after cropping
@@ -22,7 +22,8 @@ defaults:
 data:
   # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess:
-    root_dir: ${paths.preprocessed_dir}/robocasa/${data.task}_pointclouds
+    # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
+    root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_pointclouds
 
     t5_to_pcd:
       color: False
@@ -43,7 +44,7 @@ data:
       size: 0.01
 
     t10_jitter:
-      max_sigma: 0.002  # slightly higher jitter for robocasa
+      sigma: 0.002  # slightly higher jitter for robocasa
 
 # disable the batch size finder for point clouds, because the data points 
 # don't have a consistent memory size

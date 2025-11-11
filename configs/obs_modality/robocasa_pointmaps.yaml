@@ -15,14 +15,15 @@ defaults:
   - /transforms@data.preprocess.t99_cleanup: cleanup
 
   # apply jitter data augmentation
-  - /transforms@data.gpu_batch_transforms.t2_jitter: translational_jitter
+  - /transforms@data.gpu_batch_transforms.t2_jitter: jitter
 
   # apply ImageNet normalization
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
 
 data:
   preprocess:
-    root_dir: ${paths.preprocessed_dir}/robocasa/${data.task}_pointmaps
+    # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
+    root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_pointmaps
 
     t5_to_pointmap:
       color: False  # to use 6-channel fusion, use sim_pointmaps_6ch config
@@ -42,4 +43,4 @@ data:
 
   gpu_batch_transforms:
     t2_jitter:
-      max_sigma: 0.002
+      sigma: 0.002
