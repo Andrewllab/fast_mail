@@ -459,12 +459,12 @@ class DataSpecs:
         obs: Mapping[str, Spec],
         action: ActionSpec,
         goal: Mapping[str, Spec] | None = None,
-        lengths: Sequence[int] | None = None,
+        traj_lengths: Sequence[int] | None = None,
     ):
         self._obs = frozendict(obs)
         self._action = action
         self._goal = frozendict(goal) if goal is not None else None
-        self._lengths = list(lengths) if lengths is not None else []
+        self._lengths = list(traj_lengths) if traj_lengths is not None else []
 
     def __repr__(self) -> str:
         args = (
@@ -473,7 +473,7 @@ class DataSpecs:
             dict(self._goal) if self._goal is not None else None,
             self._lengths,
         )
-        return "DataSpecs(obs={}, action={}, goal={}, lengths={})".format(*args)
+        return "DataSpecs(obs={}, action={}, goal={}, traj_lengths={})".format(*args)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, DataSpecs):
@@ -491,7 +491,7 @@ class DataSpecs:
             "obs": self._obs,
             "action": self._action,
             "goal": self._goal,
-            "lengths": self._lengths,
+            "traj_lengths": self._lengths,
         }
         default_kwargs.update(kwargs)
 
@@ -528,15 +528,13 @@ class DataSpecs:
         return self._goal
 
     @property
-    def lengths(self) -> list[int]:
+    def traj_lengths(self) -> list[int]:
         # copy the list to avoid mutation
         return list(self._lengths)
 
-    def append_length(self, length: int) -> None:
-        self._lengths.append(length)
-
-    def extend_lengths(self, lengths: Sequence[int]) -> None:
-        self._lengths.extend(lengths)
+    @traj_lengths.setter
+    def traj_lengths(self, traj_lengths: Sequence[int]) -> None:
+        self._lengths[:] = traj_lengths
 
     @property
     def state_dim(self) -> int | None:

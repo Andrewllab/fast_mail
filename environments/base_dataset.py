@@ -180,6 +180,7 @@ class Hdf5Dataset(TrajectoryDataset):
 
     @property
     def specs(self) -> DataSpecs:
+        self._specs.traj_lengths = self.slices.traj_lengths
         return self._specs
 
     @property
@@ -331,6 +332,7 @@ class CustomHdf5Dataset(TrajectoryDataset):
 
     @property
     def specs(self) -> DataSpecs:
+        self._specs.traj_lengths = self.slices.traj_lengths
         return self._specs
 
     @property
@@ -408,6 +410,7 @@ class MemmapDataset(TrajectoryDataset):
 
     @property
     def specs(self) -> DataSpecs:
+        self._specs.traj_lengths = self.slices.traj_lengths
         return self._specs
 
     @property

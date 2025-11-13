@@ -4,7 +4,7 @@ import math
 import os
 import os.path as osp
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 from omegaconf import DictConfig, OmegaConf, open_dict
@@ -112,3 +112,77 @@ def patch_load_from_checkpoint(
     cfg["_args_"] = args
 
     return cfg
+
+
+def merge_data_configs(cfg: DictConfig, other: DictConfig) -> DictConfig:
+
+    obj_keys = ["dataset", "env"]
+
+    for key in obj_keys:
+        if key not in other:
+            # nothing to merge
+            continue
+
+        subcfg = other[key]
+        subkeys = flatten_keys(subcfg)
+
+        if "_target_" in subkeys or key not in cfg:
+            # If the other subcfg contains a key anywhere called "_target_", then
+            # this entire subconfig has been overridden. Replace value cfg with
+            # value in other
+            cfg[key] = subcfg
+
+        else:
+            # Only specific hyperparameters have been overwritten, so use the
+            # standard merge algorithm. This keeps anything in cfg that isn't
+            # explicitly overwritten
+            cfg[key] = OmegaConf.merge(cfg[key], subcfg)
+
+    transform_keys = [
+        "cpu_transforms",
+        "cpu_batch_transforms",
+        "gpu_batch_transforms",
+    ] + [k for k in other.keys() if "process" in k]
+
+    for key in transform_keys:
+        if key not in other:
+            continue
+
+        subcfg = other[key]
+        subkeys = flatten_keys(subcfg)
+
+        # # TODO: better algorithm for merging transform configs
+        # # TODO: is there any way to detect if transforms should be replaced or merged?
+        # if "_target_" in subkeys or key not in cfg:
+        #     # If the other subcfg contains a key anywhere called "_target_", then
+        #     # this entire subconfig has been overridden. Replace value cfg with
+        #     # value in other
+        #     cfg[key] = subcfg
+
+        # else:
+        #     # Only specific hyperparameters have been overwritten, so use the
+        #     # standard merge algorithm. This keeps anything in cfg that isn't
+        #     # explicitly overwritten
+        #     cfg[key] = OmegaConf.merge(cfg[key], subcfg)
+
+        cfg[key] = OmegaConf.merge(cfg[key], subcfg)
+
+    primitive_keys = [
+        k for k in other.keys() if k not in obj_keys and k not in transform_keys
+    ]
+
+    primitive_cfg = OmegaConf.masked_copy(other, primitive_keys)
+    cfg = OmegaConf.merge(cfg, primitive_cfg)
+
+    return cfg
+
+
+def flatten_keys(cfg: Mapping[str, Any]) -> list[str]:
+    keys = []
+    for key, value in cfg.items():
+        if isinstance(value, Mapping):
+            keys.extend(flatten_keys(value))
+        else:
+            keys.append(key)
+
+    return keys

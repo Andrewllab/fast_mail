@@ -56,7 +56,7 @@ class EvaluatePredictedTrajectories(Callback):
         predicted_actions = torch.cat(self.predicted_actions, dim=0)
 
         action_seq_len = target_actions.shape[1]
-        traj_lengths = trainer.datamodule.specs.lengths
+        traj_lengths = trainer.datamodule.specs.traj_lengths
         samples_per_trajectory = torch.tensor(traj_lengths) - (action_seq_len - 1)
         assert samples_per_trajectory.sum() == target_actions.shape[0]
         cumulative_samples = F.pad(torch.cumsum(samples_per_trajectory, dim=0), (1, 0))

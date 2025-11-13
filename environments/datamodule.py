@@ -279,6 +279,8 @@ class TrajectoryDataModule(L.LightningDataModule):
             all_transforms_config = transform_cfgs[key]
             DatasetCls.save_metadata(root_dir, all_transforms, all_transforms_config)
 
+            log.info(f"Finished {key} (data saved to {root_dir}).")
+
             if i < len(preprocess_cfgs) - 1:
                 # create dataset object to act as the source for the next preprocessing step
                 dataset = hydra.utils.instantiate(
@@ -386,12 +388,12 @@ class TrajectoryDataModule(L.LightningDataModule):
         )
 
         assert isinstance(self.dataset, TrajectoryDataset)
-        log.info(f"Dataset contains {len(self.dataset)} samples in total.")
-        if hasattr(self.dataset, "slices"):
-            log.debug(
-                f"Dataset trajectories have the following lengths:\n{self.dataset.slices.traj_lengths}"
-            )
         specs = self.dataset.specs
+        log.debug(
+            f"Dataset trajectories have the following lengths:\n{specs.traj_lengths}"
+        )
+        log.info(f"Dataset contains {len(self.dataset)} samples in total.")
+
         self.preprocess_transforms = self.dataset.preprocess_transforms
         self.cpu_transforms = self.dataset.item_transforms
 
