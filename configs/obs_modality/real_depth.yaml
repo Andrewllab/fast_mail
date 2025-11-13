@@ -1,18 +1,37 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess.t0_cleanup: cleanup
+  - /transforms@data.preprocess.t1_drop: cleanup
 
-  - /transforms@data.preprocess.t1_triangle_crop: triangle_crop_224x224
+  - /transforms@data.preprocess.t10_resize: image_resize
 
-  - /transforms@data.preprocess.t9_norm_depth: depth_normalize
+  - /transforms@data.preprocess.t11_crop_image: image_centercrop
 
-  - /transforms@data.gpu_batch_transforms.t90_depth_jitter: translational_jitter
+  - /transforms@data.preprocess.t20_triangle_crop: triangle_crop_224x224
+
+  # clamp infinite values after resizing to avoid interpolating with clamped
+  # depth values
+  - /transforms@data.preprocess.t60_clamp_depth: depth_clamp
+
+  - /transforms@data.gpu_batch_transforms.t10_jitter: jitter
 
 data:
   preprocess:
     root_dir: ${paths.preprocessed_dir}/real/${data.name}_depth
 
-    t0_cleanup:
+    t1_drop:
       keep_stream_types: depth
-      drop_keys: gripper_cam_transform
+      drop_keys: ee_transform
+
+    t10_resize:
+      shape: 224  # scale shortest side to 224 and keep aspect ratio
+
+    t11_crop_image:
+      shape: 224  # crop all streams to 224x224
+
+    t60_clamp_depth:
+      max: 10.0  # maximum depth in m
+
+  gpu_batch_transforms:
+    t10_jitter:
+      sigma: 0.001  # positional jitter in m
