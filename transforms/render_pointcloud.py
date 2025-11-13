@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import multiprocessing as mp
 import traceback
 
@@ -15,6 +16,7 @@ from transforms.base_transform import Transform
 from utils.math import quaternion_to_matrix
 
 ctx = mp.get_context("spawn")
+log = logging.getLogger(__name__)
 
 
 class RenderPointCloud(ctx.Process, Transform):
@@ -27,6 +29,7 @@ class RenderPointCloud(ctx.Process, Transform):
         render_ee_pose: bool = False,
         render_action: bool = False,
         pose_frame_size: float = 0.1,
+        log_pointcloud_size: bool = False,
         pcd_key: str = "pcd",
     ) -> None:
 
@@ -47,6 +50,7 @@ class RenderPointCloud(ctx.Process, Transform):
         self.width = width
         self.height = height
         self.frame_size = pose_frame_size
+        self.log_pointcloud_size = log_pointcloud_size
 
         self.render_camera_poses = render_camera_poses
         self.render_ee_pose = render_ee_pose
@@ -70,6 +74,9 @@ class RenderPointCloud(ctx.Process, Transform):
         points = data.pos
         assert points is not None
         points = points.cpu().numpy()  # rendering of cuda tensors is not supported
+
+        if self.log_pointcloud_size:
+            log.debug(f"Rendered point cloud has {len(points)} points")
 
         if (color := data.x) is not None:
             color = color.cpu().numpy()

@@ -30,6 +30,7 @@ from transforms.base_transform import (
     TransformPartialsDict,
     get_transforms_config,
     init_transforms,
+    key_pattern,
 )
 from utils.instantiators import get_dataset_class
 from utils.paths import resolve_path
@@ -136,17 +137,19 @@ class TrajectoryDataModule(L.LightningDataModule):
             # datasets don't expect it as an argument
             overwrite = preprocess_cfg.pop("overwrite", False)
 
+            # the dataset config is made by removing all transform configs,
+            # including those that are not partials or are set to None
             dataset_cfg = {
                 key: value
                 for key, value in preprocess_cfg.items()
-                if not isinstance(value, functools.partial) and value is not None
+                if not key_pattern.fullmatch(key)
             }
 
             DatasetCls = get_dataset_class(dataset_cfg)
             root_dir = resolve_path(dataset_cfg["root_dir"])
 
             try:
-                # add some kind of file manifest for a more robust check
+                # TODO: add some kind of file manifest for a more robust check
                 dataset = hydra.utils.instantiate(
                     dataset_cfg,
                     _target_=DatasetCls,
@@ -173,6 +176,7 @@ class TrajectoryDataModule(L.LightningDataModule):
                             f"Preprocessed directory {root_dir} is not empty (perhaps an incomplete earlier preprocessing run). Set overwrite=True to overwrite."
                         )
 
+                # Dataset not found. Continue search with next processing step.
                 continue
 
             # check if the existing preprocessed data has the same transforms
@@ -224,10 +228,12 @@ class TrajectoryDataModule(L.LightningDataModule):
 
         for i, (key, preprocess_cfg) in enumerate(preprocess_cfgs.items()):
 
+            # the dataset config is made by removing all transform configs,
+            # including those that are not partials or are set to None
             dataset_cfg = {
                 key: value
                 for key, value in preprocess_cfg.items()
-                if not isinstance(value, functools.partial) and value is not None
+                if not key_pattern.fullmatch(key)
             }
 
             DatasetCls = get_dataset_class(dataset_cfg)
@@ -365,13 +371,15 @@ class TrajectoryDataModule(L.LightningDataModule):
     def _instantiate_dataset(self) -> None:
         log.info("Instantiating dataset...")
 
+        # the dataset config is made by removing all transform configs,
+        # including those that are not partials or are set to None
         if self.preprocess_cfgs:
             preprocess_cfg = list(self.preprocess_cfgs.values())[0]
             preprocess_cfg.pop("overwrite", False)
             dataset_cfg = {
                 key: value
                 for key, value in preprocess_cfg.items()
-                if not isinstance(value, functools.partial) and value is not None
+                if not key_pattern.fullmatch(key)
             }
 
         else:

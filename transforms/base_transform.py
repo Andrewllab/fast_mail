@@ -401,19 +401,35 @@ TransformPartialsDict = Mapping[str, TransformPartial]
 # (?:[-,](\d+))?    — optional dash or comma followed by second group of digits
 # _                 — literal underscore
 # (.+)              — everything after the underscore
-pattern = re.compile(r"t(\d+)(?:[-,](\d+))?_(.+)")
+key_pattern = re.compile(r"t(\d+)(?:[-,](\d+))?_(.+)")
 
 
 def _item_to_sort_key(item: tuple[str, Any]) -> float:
     """Extracts a float from the first part of a key in a dictionary item."""
     key, _ = item
 
-    match = pattern.fullmatch(key)
+    match = key_pattern.fullmatch(key)
     if match:
         first_number = match.group(1)
         second_number = match.group(2)  # may be None
         ordinal = float(f"{first_number}.{second_number if second_number else 0}")
         return ordinal
+    else:
+        raise ValueError(
+            f"All transform keys must match the following pattern: t##_name or t##-##_name or t##,##_name. Got {key}"
+        )
+
+
+def _parse_key(key: str) -> tuple[str, str]:
+    match = key_pattern.fullmatch(key)
+    if match:
+        first_number = match.group(1)
+        second_number = match.group(2)  # may be None
+        name = match.group(3)
+        ordinal = first_number
+        if second_number is not None:
+            ordinal += "." + second_number
+        return ordinal, name
     else:
         raise ValueError(
             f"All transform keys must match the following pattern: t##_name or t##-##_name or t##,##_name. Got {key}"
@@ -445,13 +461,13 @@ def init_transforms(
     # by passing the transforms as an OrderedDict to torch.nn.Sequential, we
     # get the benefit of sane naming of transforms
     transform_instances = OrderedDict()
-    i = 1
     for key, partial in transforms.items():
 
         assert isinstance(partial, functools.partial)
-        name = pattern.fullmatch(key).group(3)
-        log.debug(f"Instantiating transform #{i} '{name}': <{partial.func.__name__}>")
-        i += 1
+        ordinal, name = _parse_key(key)
+        log.debug(
+            f"Instantiating transform #{ordinal} '{name}': <{partial.func.__name__}>"
+        )
 
         # instantiate the transform
         transform = partial(specs)
