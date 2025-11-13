@@ -44,65 +44,73 @@ class MultiviewImageTokenizer(Transform, nn.Module):
         self.stream_types = stream_types
         self.spatial_encoder = spatial_encoder
 
-        input_specs = {
-            key: spec
-            for key, spec in specs.obs.items()
-            if isinstance(spec, CameraSpec)
-            # all required stream types must be present in the spec
-            and all(
-                any(isinstance(stream, stream_type) for stream in spec.streams.values())
-                for stream_type in stream_types
-            )
-        }
-        self._input_specs = input_specs
+        # find all camera specs that contain at least one of each required
+        # stream type
+        input_specs = {}
+        for key, spec in specs.obs.items():
+            if not isinstance(spec, CameraSpec):
+                continue
 
-        # Check if camera specs contain multiple rgb streams and print out a warning
-        if RGBStream in stream_types:
-            for key, spec in input_specs.items():
-                rgb_streams = [
-                    name
+            cam_streams = {}
+
+            for stream_type in stream_types:
+                streams = [
+                    (name, stream)
                     for name, stream in spec.streams.items()
-                    if isinstance(stream, RGBStream)
+                    if isinstance(stream, stream_type)
                 ]
-                if len(rgb_streams) > 1:
+
+                if not streams:
+                    break
+
+                if len(streams) > 1:
                     log.warning(
-                        f"Camera spec '{key}' contains multiple RGB streams. "
-                        f"Only the first RGB stream {rgb_streams[0]} will be used"
+                        f"Camera spec '{key}' contains multiple {stream_type.__name__}s. "
+                        f"Only the first {stream_type.__name__} '{streams[0][0]}' will be used"
                     )
 
-        input_streams = [
-            stream
-            for spec in input_specs.values()
-            for stream in spec.streams.values()
-            if isinstance(stream, stream_types)
-        ]
+                name, stream = streams[0]
+                cam_streams[name] = (spec, stream)
+
+            else:
+                # at least one stream was found for every required type
+                input_specs[key] = cam_streams
 
         # verify that all streams have the same time dimension
-        if not all(stream.time == input_streams[0].time for stream in input_streams):
+        times = [
+            stream.time
+            for streams in input_specs.values()
+            for (spec, stream) in streams.values()
+        ]
+        if not all(time == times[0] for time in times):
             raise ValueError(
-                "All input streams must have the same time dimension."
-                f"Got {[stream.time for stream in input_streams]}"
+                f"All input streams must have the same time dimension. Got {times}"
             )
 
+        in_channels = 0
+        if DepthStream in self.stream_types:
+            in_channels += 1
+
         if spatial_encoder is not None:
-            in_channels = 1
             spatial_encoder = spatial_encoder(in_channels)
             in_channels = spatial_encoder.out_features
         self.spatial_encoder = spatial_encoder
 
-        if "rgb" in image_type:
+        if RGBStream in self.stream_types:
             in_channels += 3
 
         # instantiate rgb model(s)
         if shared_encoder:
             # verify that all streams have the same resolution
-            if not all(
-                stream.height_width == input_streams[0].height_width
-                for stream in input_streams
-            ):
+            height_widths = [
+                stream.height_width
+                for streams in input_specs.values()
+                for (spec, stream) in streams.values()
+            ]
+            if not all(hw == height_widths[0] for hw in height_widths):
                 raise ValueError(
-                    "All input streams must have the same height and width when using a shared encoder."
-                    f"Got {[stream.height_width for stream in input_streams]}"
+                    "All input streams must have the same height and width when using a shared encoder. "
+                    f"Got {height_widths}"
                 )
 
             self.model = image_encoder(in_channels, embed_dim)
@@ -123,6 +131,8 @@ class MultiviewImageTokenizer(Transform, nn.Module):
             assert isinstance(embed_spec, EmbedSpec)
             new_spec = embed_spec.concat(new_spec)
         obs_specs["embed"] = new_spec
+
+        self._input_specs = input_specs
         self._output_specs = specs.replace(obs=obs_specs)
 
     @property
@@ -133,14 +143,10 @@ class MultiviewImageTokenizer(Transform, nn.Module):
         default_float_dtype = torch.get_default_dtype()
 
         imgs = []
-        for key, spec in self._input_specs.items():
-            # TODO: loop across stream types and find the first matching stream for each
-            streams = []
-            found = {stream_type: False for stream_type in self.stream_types}
-            for name, stream in spec.streams.items():
-                if not isinstance(stream, self.stream_types) or found[type(stream)]:
-                    continue
+        for key, streams in self._input_specs.items():
 
+            cam_imgs = []
+            for name, (spec, stream) in streams.items():
                 image = tensordict["obs", key, name]
 
                 if stream.channel_order == "HWC":
@@ -165,16 +171,14 @@ class MultiviewImageTokenizer(Transform, nn.Module):
                 if image.dtype == torch.uint8:
                     image = image.to(dtype=default_float_dtype).div(255)
 
-                found[type(stream)] = True
+                cam_imgs.append(image)
 
-                streams.append(image)
-
-            if len(streams) > 1:
+            if len(cam_imgs) > 1:
                 # stack rgb and depth in channel dimension
-                imgs.append(torch.cat(streams, dim=-3))
-                assert len(streams) <= 2
+                imgs.append(torch.cat(cam_imgs, dim=-3))
+                assert len(cam_imgs) <= 2
             else:
-                imgs.append(streams[0])
+                imgs.append(cam_imgs[0])
 
         if self.shared_encoder:
             # pass all rgb obs to rgb model

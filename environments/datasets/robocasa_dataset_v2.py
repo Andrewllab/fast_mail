@@ -135,7 +135,7 @@ class RoboCasaDataset(CustomHdf5Dataset):
         camera_poses = traj["camera_params"]["dynamic"]
 
         # TODO: does it use less memory if we explicitly convert to torch tensors first?
-        traj = TensorDict(
+        td = TensorDict(
             {
                 "obs": {
                     "left_cam": {
@@ -183,9 +183,9 @@ class RoboCasaDataset(CustomHdf5Dataset):
         )
 
         # add a batch dimension so we can index
-        traj["obs"].auto_batch_size_(batch_dims=1)
+        td["obs"].auto_batch_size_(batch_dims=1)
 
-        return traj
+        return td
 
     def _load_specs(self) -> None:
         _, _, traj = self.trajs[0]

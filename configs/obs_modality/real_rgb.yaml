@@ -1,12 +1,16 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess.t0_cleanup: cleanup
+  - /transforms@data.preprocess.t0_cleanup_for_rgb: cleanup
 
-  - /transforms@data.preprocess.t1_triangle_crop: triangle_crop_224x224
+  - /transforms@data.preprocess.t1_resize: image_resize
 
-  # apply color jitter before normalization
-  - /transforms@data.gpu_batch_transforms.t90_color_jitter: image_jitter_color
+  - /transforms@data.preprocess.t2_crop_image: image_centercrop
+
+  - /transforms@data.preprocess.t5_triangle_crop: triangle_crop_224x224
+
+  # # apply color jitter before normalization
+  # - /transforms@data.gpu_batch_transforms.t90_color_jitter: image_jitter_color
 
   # apply ImageNet normalization
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
@@ -15,6 +19,13 @@ data:
   preprocess:
     root_dir: ${paths.preprocessed_dir}/real/${data.name}_rgb
 
-    t0_cleanup:
+    t0_cleanup_for_rgb:
       keep_stream_types: rgb
-      drop_keys: gripper_cam_transform
+      drop_stream_names: [right]  # drop right rgb stream from the zeds
+      drop_keys: ee_transform
+
+    t1_resize:
+      shape: 224  # scale shortest side to 224 and keep aspect ratio
+
+    t2_crop_image:
+      shape: 224  # crop all streams to 224x224

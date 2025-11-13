@@ -18,9 +18,8 @@ agent:
   noise_model:
     decoder:
       n_layers: 6
-      layer_module:
-        attention_module:
-          n_heads: 8
+      attention:
+        n_heads: 8
 
 logger:
   wandb:
