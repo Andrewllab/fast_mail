@@ -39,6 +39,7 @@ class RealRobotDataset(CustomHdf5Dataset):
         obs_seq_len: int,
         item_transforms: TransformPartialsDict | None = None,
         load_subset: int | float | Sequence[int] | None = None,
+        subfolders: Sequence[str] | None = None,
         extrinsics: Mapping[str, Mapping[str, list[list[float]]]] | None = None,
     ):
         self._root_dir = resolve_path(root_dir)
@@ -49,15 +50,24 @@ class RealRobotDataset(CustomHdf5Dataset):
         # Recursively search for h5 files
         # Data collector saves files with datetime pattern: YYYY_MM_DD-HH_MM_SS.h5
         files = list(iglob_follow_symlinks(self._root_dir, "**/*.h5"))
-        files = list(sorted(files, key=self.filename_keyfunc))
+        self.files = list(sorted(files, key=self.filename_keyfunc))
 
-        if not files:
+        if subfolders is not None:
+            if isinstance(subfolders, str):
+                subfolders = (subfolders,)
+            subfolders_set = set(subfolders)
+            files = [file for file in self.files if set(file.parts) & subfolders_set]
+            log.info(
+                f"Loading only data in the following subfolders: {list(subfolders)} ({len(files)} files out of {len(self.files)} total)"
+            )
+            self.files = files
+
+        if not self.files:
             raise FileNotFoundError(
                 f"No raw files found in {self._root_dir}. Please check the path."
             )
 
-        files = get_subset(files, load_subset)
-        self.files = files
+        self.files = get_subset(self.files, load_subset)
 
         self.trajs: list[tuple[Path, str, Group]] = [
             (file.relative_to(self._root_dir), file.stem, h5py.File(str(file), "r"))

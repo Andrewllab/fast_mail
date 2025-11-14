@@ -7,7 +7,7 @@ defaults:
 
   - /transforms@data.preprocess.t15_to_pcd: to_pointcloud
 
-  # - /transforms@data.preprocess.t20_crop_pcd: pointcloud_crop
+  - /transforms@data.preprocess.t20_crop_pcd: pointcloud_crop_real_tight
 
   # - /transforms@data.preprocess.t21_crop_table: pointcloud_crop_table
 
@@ -32,17 +32,7 @@ data:
 
     t15_to_pcd:
       color: False
-
-    t20_crop_pcd:
-      x_range: [0.1, 1.0]  # crop the robot base out of the observation
-      y_range: [-0.30, 0.25]  # crop out the curtains
-      z_range: [-0.05, 0.4]  # only remove things below the table, the table is removed by pointcloud_crop_table
-
-    t21_crop_table:
-      ransac_distance_threshold: 0.002
-      ransac_n: 3
-      num_iterations: 100
-      crop_threshold: 0.01
+      max_depth: 2.0  # in meters
 
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all

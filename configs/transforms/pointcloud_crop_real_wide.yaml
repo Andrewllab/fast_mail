@@ -1,0 +1,6 @@
+# name: crop_pointcloud
+_target_: transforms.pointcloud_crop.CropPointCloud
+_partial_: True
+x_range: [-0.1, 1.0]  # crop the robot base out of the observation
+y_range: [-0.35, 0.35]  # crop out the curtains
+z_range: [-0.05, 0.5]  # only remove things below the table, the table is removed by pointcloud_crop_table

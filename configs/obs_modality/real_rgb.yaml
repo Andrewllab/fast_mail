@@ -7,7 +7,7 @@ defaults:
 
   - /transforms@data.preprocess.t11_crop_image: image_centercrop
 
-  - /transforms@data.preprocess.t20_triangle_crop: triangle_crop_224x224
+  # - /transforms@data.preprocess.t20_triangle_crop: triangle_crop_224x224
 
   # # apply color jitter before normalization
   # - /transforms@data.gpu_batch_transforms.t90_color_jitter: image_jitter_color

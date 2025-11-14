@@ -1,7 +1,7 @@
 # name: crop_pointcloud
 _target_: transforms.pointcloud_crop_table.CropTablePointCloud
 _partial_: True
-ransac_distance_threshold: ???
-ransac_n: ???
-num_iterations: ???
-crop_threshold: ???
+ransac_distance_threshold: 0.002
+ransac_n: 3
+num_iterations: 100
+crop_threshold: 0.01

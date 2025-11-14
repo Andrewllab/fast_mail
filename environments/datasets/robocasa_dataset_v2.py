@@ -55,7 +55,7 @@ class RoboCasaDataset(CustomHdf5Dataset):
             subfolders_set = set(subfolders)
             files = [file for file in self.files if set(file.parts) & subfolders_set]
             log.info(
-                f"Loading only data in the following subfolders: {subfolders} ({len(files)} files out of {len(self.files)} total)"
+                f"Loading only data in the following subfolders: {list(subfolders)} ({len(files)} files out of {len(self.files)} total)"
             )
             self.files = files
 

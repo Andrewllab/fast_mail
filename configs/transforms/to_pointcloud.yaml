@@ -1,4 +1,5 @@
 _target_: transforms.to_pointcloud.ToPointCloud
 _partial_: True
 color: False
-max_depth: 1.0
+max_depth: 5.0
+warn_min_points: 100

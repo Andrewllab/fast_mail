@@ -7,7 +7,7 @@ defaults:
 
   - /transforms@data.preprocess.t11_crop_image: image_centercrop
 
-  - /transforms@data.preprocess.t20_triangle_crop: triangle_crop_224x224
+  # - /transforms@data.preprocess.t20_triangle_crop: triangle_crop_224x224
 
   # clamp infinite values after resizing to avoid interpolating with clamped
   # depth values
