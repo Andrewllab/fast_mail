@@ -2,17 +2,17 @@
 # usage: python predict.py -cn visualize_dataset
 
 defaults:
-  - data: one_leg_alr_20250724
+  - data: ???
   - agent: null_agent
   - callbacks: null
   - logger: null
   - python_logging: default
   - paths: default
   - hydra: default
-  - obs_modality: rgbd_imagenet
-  # - transforms@agent.obs_encoder.t9_render: render_cameras
-  # - obs_modality: sim_pointclouds
-  # - transforms@agent.obs_encoder.t9_render_pcd: render_pointcloud
+  - preprocessing: null
+  - obs_modality: null
+  - transforms@data.gpu_batch_transforms.t90_render: render_cameras
+  # - transforms@data.gpu_batch_transforms.t90_render_pcd: render_pointcloud
   - platform: default
   - optional local: default
   - debug: quick  # cannot use single_batch here, because we want to visualize the whole trajectory
@@ -29,33 +29,24 @@ data:
     load_subset: [0]  # load selected trajectory
 
   preprocess:
-
-    t2_resize_for_pcd:
-      shape: 256  # increase resolution for better visualization (but not too high, due to memory constraints)
-    
-    t3_to_pcd:
+    t15_to_pcd:
       color: True  # add colors to pointclouds, in case we render pointclouds
 
-    t4_crop_pcd:
-      x_range: [0.0, 1.0]  # increase to keep robot base in view
-      y_range: [-0.4, 0.4]
-      z_range: [0.004, 0.5]  # increase to keep robot arm in view
+    # don't remove any data streams, so we can visualize them
+    t1_drop: null
+    t99_cleanup: null
 
   gpu_batch_transforms:
-    t99_norm_image: null  # disable imagenet normalization of colors
+    t90_render:
+      stream_names: [rgb, depth]
 
-    t5_voxel_downsample:
-      size: 0.004  # increase resolution for better visualization
+    t90_render_pcd:
+      render_camera_poses: False
+      render_ee_pose: False
+      render_action: False
 
 agent:
-  fps: 15
-  obs_encoder:
-    t9_render:
-      stream_names: [rgb, depth]
-    t9_render_pcd:
-      render_camera_poses: False
-      render_ee_pose: True
-      render_action: True
+  fps: 10
 
 trainer:
   default_root_dir: ${paths.output_dir}
