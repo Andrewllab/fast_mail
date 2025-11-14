@@ -1,0 +1,64 @@
+# @package _global_
+
+defaults:
+  - /transforms@data.preprocess.t10_resize: image_resize
+
+  - /transforms@data.preprocess.t11_crop_image: image_centercrop
+
+  - /transforms@data.preprocess.t15_to_pcd: to_pointcloud
+
+  - /transforms@data.preprocess.t20_crop_pcd: pointcloud_crop_real_tight
+
+  # - /transforms@data.preprocess.t21_crop_table: pointcloud_crop_table
+
+  - /transforms@data.preprocess.t99_cleanup: cleanup
+
+  - /transforms@data.gpu_batch_transforms.t1_sample_random: pointcloud_downsample_random
+  - /transforms@data.gpu_batch_transforms.t2_sample_voxel: pointcloud_downsample_voxel
+
+  # - /transforms@data.gpu_batch_transforms.t6_denoise: pointcloud_denoise
+
+  - /transforms@data.gpu_batch_transforms.t10_jitter: jitter
+
+  # apply ImageNet normalization
+  - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
+
+data:
+  preprocess:
+    root_dir: ${paths.preprocessed_dir}/real/${data.name}_pointclouds_rgb
+
+    t10_resize:
+      shape: 224  # scale shortest side to 224 and keep aspect ratio
+  
+    t11_crop_image:
+      shape: 224  # crop all streams to 224x224
+
+    t15_to_pcd:
+      color: False
+      max_depth: 2.0  # in meters
+
+    t99_cleanup:
+      keep_stream_types: rgb
+      drop_stream_names: [right]  # drop right rgb stream from the zeds
+      drop_keys: ee_transform
+
+  gpu_batch_transforms:
+    t1_sample_random:
+      # point clouds begin with (approx.) 224*224*3 = 150528 points
+      n_points: 32768
+
+    t2_sample_voxel:
+      # results in approx. 17000-20000 points after downsampling
+      size: 0.006
+
+    t6_denoise:
+      nb_points: 5
+      radius: 0.01
+
+    t10_jitter:
+      sigma: 0.001
+
+# disable the batch size finder for point clouds, because the data points 
+# don't have a consistent memory size
+callbacks:
+  batch_size_finder: null

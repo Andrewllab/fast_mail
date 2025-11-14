@@ -6,9 +6,6 @@ defaults:
   - /tokenizers@agent.obs_encoder.t11_tokenizer: pointpatchrl_tokenizer
   - /models/spatial_encoder@agent.obs_encoder.t11_tokenizer.spatial_encoder: fourier_features
 
-  # apply ImageNet normalization
-  - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
-
   # RGB image tokenizer
   - /tokenizers@agent.obs_encoder.t10_image_tokenizer: image_tokenizer
   - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.image_encoder: timm_convnextv2
@@ -22,12 +19,12 @@ agent:
       shared_encoder: False
       image_type: rgb
       image_encoder:
-        pretrained: False
+        pretrained: True
 
     # pointpatchrl tokenizer
     t10_patching:
-      patch_size: 32
-      oversampling_ratio: 0.5
+      patch_size: 16
+      oversampling_ratio: 0.2
     t11_tokenizer:
       mlp_1:
         hidden_sizes: [128]
@@ -40,11 +37,6 @@ agent:
 data:
   batch_size: ${floor_div:${platform.batch_size},4}  # 1/4 of typical batch size
 
-  preprocess:
-    t9_cleanup:
-      keep_stream_types: [rgb]  # keep rgb streams
-      drop_stream_names: [right]  # but drop any right rgb streams if they exist
-
 logger:
   wandb:
-    tags: ["pointcloud+rgb", "pointpatchrl", "convnextv2"]
+    tags: ["pointcloud+rgb", "pointpatchrl+convnextv2"]
