@@ -478,6 +478,8 @@ class DataSpecs:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, DataSpecs):
             return False
+        if self is other:
+            return True
 
         return (
             self._obs == other._obs

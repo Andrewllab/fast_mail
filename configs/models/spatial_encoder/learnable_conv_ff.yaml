@@ -6,4 +6,5 @@ max_wavelength: 2.0
 min_wavelength: null
 interval: 0.5
 learnable: True
+mix_dimensions: True
 cat_input_to_out: True

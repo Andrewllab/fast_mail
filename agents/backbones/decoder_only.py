@@ -37,6 +37,11 @@ class DecoderOnlyNoise(nn.Module):
     ):
         super().__init__()
 
+        if time_encode_obs:
+            log.warning(
+                "`time_encode_obs` is set to True, so the decoder will add positional encodings to the observation embeddings. Make sure that the observation embeddings do not already contain positional encodings."
+            )
+
         token_dim = specs.obs_embed_dim
 
         self.decoder = decoder(token_dim)

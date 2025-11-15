@@ -1,0 +1,28 @@
+# @package _global_
+
+defaults:
+  # tokenize the rgb and depth images separately using two ConvNeXtv2s
+  - /tokenizers@agent.obs_encoder.t10_image_tokenizer: conv_tokenizer
+
+  - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.encoder: timm_convnextv2
+  - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.depth_encoder: timm_convnextv2
+
+agent:
+  obs_encoder:
+    embed_dim: 256
+    
+    t10_image_tokenizer:
+      image_type: ["rgb", "depth"]
+      encoder:
+        pretrained: True
+      depth_encoder:
+        pretrained: False
+      fusion_type: cat
+      shared_encoder: False
+
+data:
+  batch_size: ${floor_div:${platform.batch_size},2}  # 1/2 of typical batch size
+
+logger:
+  wandb:
+    tags: ["rgbd", "convnextv2"]

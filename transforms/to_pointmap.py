@@ -25,6 +25,11 @@ class ToPointMap(Transform):
         max_depth: float | None = None,
         out_key: str = "pointmap",
     ):
+        if color:
+            log.warning(
+                "Color channels will be concatenated to the pointmap features. Make sure that this is intended."
+            )
+
         self.color = color
         self.max_depth = max_depth
         self._out_key = out_key

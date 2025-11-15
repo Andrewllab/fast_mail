@@ -76,6 +76,9 @@ class MultiviewImageTokenizer(Transform, nn.Module):
                 # at least one stream was found for every required type
                 input_specs[key] = cam_streams
 
+        if not input_specs:
+            raise ValueError("No valid input specs found.")
+
         # verify that all streams have the same time dimension
         times = [
             stream.time

@@ -223,6 +223,7 @@ class FourierFeatures(nn.Module):
         min_wavelength: float | None = None,
         interval: float | None = None,
         learnable: bool = False,
+        mix_dimensions: bool = True,
         cat_input_to_out: bool = False,
         components: Literal["sin", "sincos"] = "sincos",
         scale: float = 1.0,
@@ -313,8 +314,6 @@ class FourierFeatures(nn.Module):
         frequencies = frequencies * 2 * torch.pi * scale
         self.register_buffer("frequencies", frequencies)
 
-        # sin and cos components for each frequency
-        fourier_feature_dim = input_dim * 2 * n_wavelengths
         # add 1 for the original coordinates if we are concatenating them
         feature_dim = input_dim * (2 * n_wavelengths + (1 if cat_input_to_out else 0))
         padding_dim = 0
@@ -326,26 +325,45 @@ class FourierFeatures(nn.Module):
         self.padding_dim = padding_dim
 
         if learnable:
+            # sin and cos components for each frequency
+            fourier_feature_dim = 2 * n_wavelengths
+            if mix_dimensions:
+                fourier_feature_dim *= input_dim
             self.linear = nn.Linear(fourier_feature_dim, fourier_feature_dim)
         self.learnable = learnable
+        self.mix_dimensions = mix_dimensions
 
     def forward(self, pos: torch.Tensor) -> torch.Tensor:
 
-        # multiply each coordinate by each frequency using broadcasting, then flatten
-        arg = pos.unsqueeze(-1) * self.frequencies
-        arg = torch.flatten(arg, start_dim=-2)
+        # multiply each coordinate by each frequency using broadcasting
+        # pos: (..., input_dim)
+        # arg: (..., input_dim, n_frequencies)
+        arg = pos.unsqueeze(dim=-1) * self.frequencies
 
         # take sin and code of each argument
         features = (arg.sin(), arg.cos())
 
         if self.learnable:
+            # concatenate sin(ωx) with cos(ωx) for each dimension
             features = torch.cat(features, dim=-1)
+
+            if self.mix_dimensions:
+                # flatten the last two dimensions to mix features of different coordinates
+                features = features.flatten(start_dim=-2)
+
             features = torch.sin(self.linear(features))
+
+            if self.mix_dimensions:
+                # unflatten back to (..., input_dim, 2 * n_frequencies)
+                features = features.unflatten(
+                    dim=-1, sizes=(pos.shape[-1], 2 * len(self.frequencies))
+                )
+
             features = (features,)
 
         if self.cat_input_to_out:
             # concatenate the original coordinates with the sin/cos components
-            features = (pos, *features)
+            features = (pos.unsqueeze(dim=-1), *features)
 
         if self.padding_dim > 0:
             padding_shape = arg.shape[:-1] + (self.padding_dim,)
@@ -355,6 +373,10 @@ class FourierFeatures(nn.Module):
             features = torch.cat(features, dim=-1)
         else:
             features = features[0]
+
+        # flatten the last two dimensions to mix features of different coordinates
+        # features -> (..., input_dim * D)
+        features = features.flatten(start_dim=-2)
 
         return features
 

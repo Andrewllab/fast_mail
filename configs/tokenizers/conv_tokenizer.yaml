@@ -1,0 +1,17 @@
+defaults:
+  - /models/vision_encoder@encoder: null
+  - /models/vision_encoder@depth_encoder: null
+  - /models/vision_encoder@pointmap_encoder: null
+  - /models/spatial_encoder@spatial_encoder: null
+
+name: convolutional tokenizer
+
+_target_: transforms.convolutional_tokenizer.ConvolutionalTokenizer
+_partial_: True
+embed_dim: ${..embed_dim}
+image_type: ???
+fusion_type: cat
+shared_encoder: False
+token_pos_encoder:
+  _target_: torch.nn.Embedding
+  _partial_: True  # requires num_embeddings and embedding_dim

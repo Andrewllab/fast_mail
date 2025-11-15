@@ -14,3 +14,6 @@ _partial_: True
 # obs_encoder: ???
 
 dropout_prob: 0
+
+# all tokenizers are responsible for their own token position encoding now
+time_encode_obs: False

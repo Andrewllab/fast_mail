@@ -26,7 +26,6 @@ data:
     root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_pointmaps
 
     t5_to_pointmap:
-      color: False  # to use 6-channel fusion, use sim_pointmaps_6ch config
       max_depth: null # in meters
 
     t6_pointmap_normalize:
