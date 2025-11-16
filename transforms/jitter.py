@@ -140,7 +140,11 @@ class RandomTranslationalJitter(Transform):
                 batch = Ellipsis
 
             sigma = self._get_sigma(pos, B=B)
-            sigma = sigma[batch]  # expand to assign a sigma to each point
+
+            if torch.is_tensor(sigma):
+                # for random sigma, expand to assign a sigma to each point
+                # if sigma is a scalar, this is unnecessary
+                sigma = sigma[batch]
 
             noise = self._get_noise(pos).mul_(sigma)
             pos.add_(noise)
@@ -151,7 +155,7 @@ class RandomTranslationalJitter(Transform):
         if self.random_sigma:
             shape = (B,) + (1,) * (tensor.ndim - 1)
             # ensure that sigma is on device
-            return tensor.new_empty(*shape).uniform_(0, self.sigma)
+            return tensor.new_empty(shape).uniform_(0, self.sigma)
         else:
             return self.sigma
 
