@@ -6,11 +6,17 @@ from typing import Literal, Mapping
 import gymnasium as gym
 import pygame
 import torch
-from environments.real_robot.hardware.base_camera import BaseCamera
-from environments.specs import ActionSpec, DataSpecs, ObsSpec, specs_to_spaces
 from omegaconf import DictConfig
 from polymetis import GripperInterface, RobotInterface
-from torchcontrol.policies import CartesianImpedanceControl, HybridJointImpedanceControl
+from torchcontrol.policies import (
+    CartesianImpedanceControl,
+    HybridJointImpedanceControl,
+    JointImpedanceControl,
+)
+
+from environments.real_robot.hardware.base_camera import BaseCamera
+from environments.real_robot.hardware.franka_control import HumanControl
+from environments.specs import ActionSpec, DataSpecs, ObsSpec, specs_to_spaces
 from utils.math import make_pose, normalize, quaternion_to_matrix
 
 ObsType = dict[str, torch.Tensor | dict[str, torch.Tensor]]
@@ -18,24 +24,30 @@ InfoType = dict[str, torch.Tensor]
 
 log = logging.getLogger(__name__)
 
-GRIPPER_POS_SCALE = 0.04 / 0.07886763662099838
-
 
 class RealRobotEnv(gym.Env):
     def __init__(
         self,
         robot: DictConfig,
         cameras: Mapping[str, BaseCamera] | None = None,
-        control_type: Literal["cartesian", "hybrid_joint", "joint_actions"] = "cartesian",
-        binary_gripper_state: bool = True,
+        action_type: Literal["joint", "cartesian"] = "joint",
+        impedance_type: Literal["joint", "cartesian", "hybrid_joint"] = "hybrid_joint",
+        human_control: bool = False,
     ):
-        self.control_type = control_type
-        self.binary_gripper_state = binary_gripper_state
-
-        # Initialize pygame for keyboard input
-        pygame.init()
-        self.screen = pygame.display.set_mode((100, 100))
-        pygame.display.set_caption("Robot Control - Press K to reset, Q to quit")
+        if action_type not in ("joint", "cartesian"):
+            raise ValueError('action_type must be either "joint" or "cartesian"')
+        if impedance_type not in ("joint", "cartesian", "hybrid_joint"):
+            raise ValueError(
+                'impedance_type must be either "joint", "cartesian", or "hybrid_joint"'
+            )
+        if action_type == "joint" and impedance_type not in ("joint", "hybrid_joint"):
+            # in other words, cartesian impedance control only works with cartesian actions
+            raise ValueError(
+                "Joint space actions require joint impedance or hybrid joint impedance control."
+            )
+        self.action_type = action_type
+        self.impedance_type = impedance_type
+        self.human_control = human_control
 
         self.arm = RobotInterface(
             name=robot.name,
@@ -70,24 +82,19 @@ class RealRobotEnv(gym.Env):
         self.cameras: Mapping[str, BaseCamera] = cameras or {}
 
         obs_specs = {
-            # we concatenate joint_pos and gripper_pos to get a shape of (T, 9) if binary_gripper_state is False
-            "robot_state": (
-                ObsSpec(elem_shape=(8,))
-                if self.binary_gripper_state
-                else ObsSpec(elem_shape=(9,))
-            ),
+            # joint pos (7,) + gripper_width (1,)
+            "robot_state": (ObsSpec(elem_shape=(8,))),
             # xyz + wxyz quaternion
             "ee_pose": ObsSpec(elem_shape=(7,)),
-            # gripper_cam_transform
-            "gripper_cam_transform": ObsSpec(elem_shape=(4, 4)),
-            "target_gripper_pos": ObsSpec(elem_shape=(1,)),  # for joint actions
+            # homogeneous transform of ee_pose
+            "ee_transform": ObsSpec(elem_shape=(4, 4)),
+            "target_gripper_pos": ObsSpec(elem_shape=(1,)),
         }
-        
-        if self.control_type == "cartesian" or self.control_type == "hybrid_joint":
-            # target_ee_pose is only used for cartesian/hybrid control
-            obs_specs["target_ee_pose"] = ObsSpec(elem_shape=(7,))
-        elif self.control_type == "joint_actions":
+
+        if action_type == "joint":
             obs_specs["target_joint_pos"] = ObsSpec(elem_shape=(7,))
+        elif action_type == "cartesian":
+            obs_specs["target_ee_pose"] = ObsSpec(elem_shape=(7,))
 
         camera_specs = {key: camera.spec for key, camera in self.cameras.items()}
 
@@ -96,12 +103,12 @@ class RealRobotEnv(gym.Env):
         if "gripper_cam" in camera_specs:
             camera_specs["gripper_cam"] = dataclasses.replace(
                 camera_specs["gripper_cam"],
-                dynamic_pose_obs_key="gripper_cam_transform",
+                dynamic_pose_obs_key="ee_transform",
             )
 
         obs_specs.update(camera_specs)
 
-        # absolute target pose (xyz + wxyz quaternion) + binary gripper command
+        # target joint position (7,) or target ee pose (7,) + target gripper width (1,)
         action = ActionSpec(action_dim=8)
 
         self._specs = DataSpecs(
@@ -111,60 +118,74 @@ class RealRobotEnv(gym.Env):
 
         self.observation_space, self.action_space = specs_to_spaces(self._specs)
 
+        # Tiny, borderless window so we can capture keys (must be focused at least once)
+        pygame.init()
+        pygame.display.set_mode((1, 1), pygame.NOFRAME)
+        pygame.display.set_caption(
+            "Robot Control - Press Esc/q for failure, Enter for success, Space to pause"
+        )
+        pygame.event.set_allowed([pygame.QUIT, pygame.KEYDOWN])
+        log.warning("Press Esc/q for failure, Enter for success, Space to pause")
+
     @property
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def should_quit(self) -> bool:
-        """Check for keyboard input and handle reset/quit commands"""
-        # Update the display to keep the window responsive
-        pygame.display.flip()
-
-        for event in pygame.event.get():
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_k:
-                log.info("Reset key pressed - will reset after current step")
-                return True
-            elif event.type == pygame.QUIT:
-                return True
-        return False
-
     def step(self, action: torch.Tensor) -> tuple[ObsType, float, bool, bool, InfoType]:
         action = action.cpu()
-        
-        if self.control_type in ["cartesian", "hybrid_joint"]:
-            pos = action[:3]
-            wxyz = action[3:7]
-            wxyz = normalize(wxyz)
-            gripper_command = action[7]
-            xyzw = torch.cat((wxyz[-3:], wxyz[:-3]), dim=0)
-        
-        if self.control_type == "cartesian":
-            self.arm.update_current_policy(
-                {"ee_pos_desired": pos, "ee_quat_desired": xyzw}
-            )
-        elif self.control_type == "hybrid_joint":
-            self.arm.update_desired_ee_pose(position=pos, orientation=xyzw)
-        elif self.control_type == "joint_actions":
-            joint_pos_target = action[:-1]
-            gripper_command = action[-1]
-            self.arm.update_desired_joint_positions(positions=joint_pos_target)
-        else:
-            raise ValueError(f"Unknown control type: {self.control_type}")
 
-        self.gripper.set_state(
-            gripper_command.item(), speed=self.gripper_speed, force=self.gripper_force
-        )
+        if self.action_type == "cartesian":
+            target_ee_pose = action[:7]  # xyz + wxyz quaternion
+            target_ee_pos = target_ee_pose[:3]
+            target_ee_wxyz = target_ee_pose[3:7]
+            target_ee_wxyz = normalize(target_ee_wxyz)
+            target_ee_xyzw = torch.cat(
+                (target_ee_wxyz[-3:], target_ee_wxyz[:-3]), dim=-1
+            )
+        elif self.action_type == "joint":
+            target_joint_pos = action[:7]
+
+        if self.human_control:
+            # in human control mode, we do not execute the actions from the policy
+            pass
+        elif self.impedance_type == "cartesian":
+            self.arm.update_current_policy(
+                {"ee_pos_desired": target_ee_pos, "ee_quat_desired": target_ee_xyzw}
+            )
+        # joint and hybrid joint impedance controllers
+        elif self.action_type == "cartesian":
+            self.arm.update_desired_ee_pose(
+                position=target_ee_pos, orientation=target_ee_xyzw
+            )
+        elif self.action_type == "joint":
+            self.arm.update_desired_joint_positions(positions=target_joint_pos)
+
+        target_gripper_state = action[7]
+        if not self.human_control:
+            self.gripper.set_state(
+                target_gripper_state.item(),
+                speed=self.gripper_speed,
+                force=self.gripper_force,
+            )
 
         obs = self._get_obs()
-        if self.control_type == "joint_actions":
-            obs["target_joint_pos"] = action[:-1]  # no target in joint space
-        elif self.control_type in ["cartesian", "hybrid_joint"]:
-            obs["target_ee_pose"] = action[:7]  # xyz + wxyz quaternion
-        obs["target_gripper_pos"] = action[-1].unsqueeze(0)
+        if self.action_type == "joint":
+            obs["target_joint_pos"] = target_joint_pos
+        elif self.action_type == "cartesian":
+            obs["target_ee_pose"] = target_ee_pose
+        obs["target_gripper_pos"] = target_gripper_state.unsqueeze(dim=0)
+
         info = self._get_info()
-        
-        should_quit = self.should_quit()
-        return obs, 0, should_quit, False, info
+        result = self._get_user_input()
+
+        if result == "success":
+            reward, terminated, truncated = 1.0, True, False
+        elif result == "fail":
+            reward, terminated, truncated = 0.0, False, True
+        else:
+            reward, terminated, truncated = 0.0, False, False
+
+        return obs, reward, terminated, truncated, info
 
     def reset(self, *, seed=None, options=None) -> tuple[ObsType, InfoType]:
         # open gripper and go home simultaneously
@@ -182,11 +203,13 @@ class RealRobotEnv(gym.Env):
         # wait for the arm to go home
         self.arm.go_home(time_to_go=self.reset_duration)
 
-        # wait a little longer in case the gripper is still movin
+        # wait a little longer in case the gripper is still moving
         time.sleep(1.0)
 
         # start the continuouos control policy
-        if self.control_type == "cartesian":
+        if self.human_control:
+            policy = HumanControl(self.arm, regularize=True)
+        elif self.impedance_type == "cartesian":
             policy = CartesianImpedanceControl(
                 joint_pos_current=self.arm.get_joint_positions(),
                 Kp=self.arm.Kx_default,
@@ -194,7 +217,7 @@ class RealRobotEnv(gym.Env):
                 robot_model=self.arm.robot_model,
                 ignore_gravity=self.arm.use_grav_comp,
             )
-        elif self.control_type == "hybrid_joint" or self.control_type == "joint_actions":
+        elif self.impedance_type == "hybrid_joint":
             policy = HybridJointImpedanceControl(
                 joint_pos_current=self.arm.get_joint_positions(),
                 Kq=self.arm.Kq_default,
@@ -204,23 +227,31 @@ class RealRobotEnv(gym.Env):
                 robot_model=self.arm.robot_model,
                 ignore_gravity=self.arm.use_grav_comp,
             )
+        elif self.impedance_type == "joint":
+            policy = JointImpedanceControl(
+                joint_pos_current=self.arm.get_joint_positions(),
+                Kp=self.arm.Kq_default,
+                Kd=self.arm.Kqd_default,
+                robot_model=self.arm.robot_model,
+                ignore_gravity=self.arm.use_grav_comp,
+            )
         else:
-            raise ValueError(f"Unknown control type: {self.control_type}")
+            raise ValueError(f"Unknown control type: {self.impedance_type}")
 
         # do not block until finished, since we want continuous control
         self.arm.send_torch_policy(policy, blocking=False)
 
+        log.info("Reset complete. Rollout paused. Press SPACE to unpause.")
+        self._get_user_input(paused=not self.human_control)
+
         obs = self._get_obs()
-        obs["target_gripper_pos"] = obs["robot_state"][-1].unsqueeze(0)
-        if self.control_type == "joint_actions":
-            obs["target_joint_pos"] = obs["robot_state"][:7]  # no target in joint space
-        elif self.control_type in ["cartesian", "hybrid_joint"]:
+        if self.action_type == "joint":
+            obs["target_joint_pos"] = obs["robot_state"][:7]
+        elif self.action_type == "cartesian":
             obs["target_ee_pose"] = obs["ee_pose"]
+        obs["target_gripper_pos"] = obs["robot_state"][-1:]
+
         info = self._get_info()
-        
-        # Wait a bit to ensure everything is settled
-        log.info("Reset complete, waiting 5s to ensure everything is settled...")
-        time.sleep(5.0)
 
         return obs, info
 
@@ -238,48 +269,30 @@ class RealRobotEnv(gym.Env):
 
     def _get_obs(self) -> ObsType:
         gripper_width = torch.tensor([self.gripper.get_state().width])
-        # gripper in isaaclab and in the real world have different maximum widths
-        gripper_width *= GRIPPER_POS_SCALE
 
-        state = self.arm.get_robot_state()
-        joint_pos = torch.tensor(state.joint_positions)
+        state = self.arm.get_state_dict()
 
-        if not self.binary_gripper_state:
-            robot_state = torch.cat(
-                (
-                    joint_pos,  # 7
-                    gripper_width,  # 1
-                    -gripper_width,  # 1
-                ),
-                dim=-1,
-            )
-        else:
-            thresh = (self.gripper_max_width * GRIPPER_POS_SCALE) / 2
-            factor = 1.0 if gripper_width > thresh else -1.0
-            robot_state = torch.cat(
-                [
-                    joint_pos,
-                    factor
-                    * torch.ones(1, dtype=joint_pos.dtype, device=joint_pos.device),
-                ],
-                dim=-1,
-            )
+        robot_state = torch.cat([state["joint_pos"], gripper_width], dim=-1)
 
-        ee_pos, ee_xyzw = self.arm.robot_model.forward_kinematics(joint_pos)
-        ee_wxyz = torch.cat((ee_xyzw[3:], ee_xyzw[:3]), dim=0)
-        ee_rot = quaternion_to_matrix(ee_wxyz)
+        ee_pose = state["ee_pose"]  # pos: (x,y,z) + quat: (x,y,z,w)
+
+        # rearrange the quaternion to w,x,y,z convention
+        ee_pos = ee_pose[:3]
+        ee_wxyz = torch.cat((ee_pose[6:], ee_pose[3:6]), dim=-1)
         ee_pose = torch.cat((ee_pos, ee_wxyz), dim=0)
-        gripper_cam_transform = make_pose(ee_pos, ee_rot)
+
+        ee_rot = quaternion_to_matrix(ee_wxyz)
+        ee_transform = make_pose(ee_pos, ee_rot)
 
         obs_dict = {
             key: camera.get_observation() for key, camera in self.cameras.items()
         }
 
+        # target values are added in step/reset methods
         obs_dict |= {
             "robot_state": robot_state,
             "ee_pose": ee_pose,
-            # target_ee_pose is added in step/reset methods
-            "gripper_cam_transform": gripper_cam_transform,
+            "ee_transform": ee_transform,
         }
 
         # TODO: convert to TensorDict once SyncVectorEnv has been removed
@@ -288,11 +301,41 @@ class RealRobotEnv(gym.Env):
     def _get_info(self) -> InfoType:
         return {}
 
+    def _get_user_input(
+        self, paused: bool = False
+    ) -> None | Literal["success", "fail"]:
+        """Check for keyboard input and handle reset/quit commands"""
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return "fail"
+                elif event.type == pygame.KEYDOWN:
+                    if event.key in (pygame.K_ESCAPE, pygame.K_q):
+                        log.info("Trajectory failed - will reset after current step")
+                        return "fail"
+                    elif event.key == pygame.K_RETURN:
+                        log.info("Trajectory succeeded - will reset after current step")
+                        return "success"
+                    elif event.key == pygame.K_SPACE:
+                        if paused:
+                            log.info("Rollout unpaused.")
+                            return None
+
+                        log.info("Rollout paused. Press SPACE to unpause.")
+                        paused = True
+
+            # no events to process
+            if paused:
+                time.sleep(0.1)
+            else:
+                return None
+
 
 from functools import partial
 
-from environments.wrappers import VectorToTorchWrapper
 from gymnasium.vector import AutoresetMode, SyncVectorEnv
+
+from environments.wrappers import VectorToTorchWrapper
 
 
 def make_env(**kwargs) -> gym.Env:

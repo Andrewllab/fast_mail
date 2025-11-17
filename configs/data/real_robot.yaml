@@ -2,22 +2,32 @@ defaults:
   - /cameras@env.env.cameras.front_left_cam: zed_mini_17008863
   - /cameras@env.env.cameras.front_right_cam: zed_mini_16055244
   - /cameras@env.env.cameras.gripper_cam: realsense_d405_218622270040
-  - /cameras/calibration@env.env.cameras: 2025-08-31
   - /robot@env.env.robot: panda4
   - _self_
+
+# These are defaults for visualizing the real robot environment.
+# They should be overwritten by dataset configs.
+name: real_robot
+action_seq_len: 1
+obs_seq_len: 1
+batch_size: 1
 
 env:
   _target_: environments.gym_env_dataset.GymEnvDataset
   env:
     _target_: environments.real_robot.real_robot_env.make_env
-    control_type: hybrid_joint
+    action_type: joint
+    impedance_type: hybrid_joint
     cameras:
       front_left_cam:
         name: front_left_cam
+        extrinsics: ${oc.select:data.dataset.extrinsics.front_left_cam.extrinsics,null}
       front_right_cam:
         name: front_right_cam
+        extrinsics: ${oc.select:data.dataset.extrinsics.front_right_cam.extrinsics,null}
       gripper_cam:
         name: gripper_cam
+        extrinsics: ${oc.select:data.dataset.extrinsics.gripper_cam.extrinsics,null}
     robot:
       home_pose: [  # joint positions
         0.005649,
@@ -28,6 +38,7 @@ env:
         2.159746,
         -0.908100,
       ]
+
   num_episodes: null  # run infinitely, although the real env has no timeout anyway
-  action_horizon: 5
-  fps: 5  # inference should probably be around 10fps on the real robot
+  action_horizon: null  # use all predicted actions
+  fps: 10  # inference should probably be around 10fps on the real robot

@@ -1,5 +1,6 @@
 defaults:
   - data: real_robot
+  - /cameras/calibration@data.env.env.cameras: 2025-09-16
   - agent: null_agent
   - callbacks:
   - logger:
@@ -7,7 +8,7 @@ defaults:
   - paths: default
   - hydra: default
   - obs_modality: real_pointclouds
-  - transforms@agent.obs_encoder.t9_render: render_pointcloud
+  - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
   - _self_
   - platform: default
   - optional local: default
@@ -17,6 +18,11 @@ defaults:
 job_type: visualize_real_robot
 
 data:
+  eval_mode: env
+  env:
+    env:
+      human_control: True  # allow the robot to move freely
+  
   gpu_batch_transforms:
     t3_to_pcd:
       color: True

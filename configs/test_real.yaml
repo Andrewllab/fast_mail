@@ -5,12 +5,9 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: checkpoint_dir_naming
-  # Render cameras after preprocessing but before normalization so
-  # we actually see something
-  # - transforms@data.preprocess.t99_render_cameras: render_cameras
-  #- transforms@data.preprocess.t99_render_pointcloud: render_pointcloud
-  # - /transforms@data.preprocess.t2-1_triangle_crop: triangle_crop_224x224
-  - obs_modality: prepreprocess_fs_224x224
+  # Render cameras after preprocessing but before normalization
+  # - transforms@data.gpu_batch_transforms.t9_render_cameras: render_cameras
+  # - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
   - _self_
   - platform: default
   - optional local: default
@@ -31,34 +28,25 @@ checkpoint:
   artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
   use_artifact: false  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
 
+agent:
+  num_sampling_steps: 10
+
 data:
   eval_mode: env
   env:
     action_horizon: 20
-    fps: 15
-    env:
-      cameras:
-        front_left_cam:
-          resolution: VGA
-        front_right_cam:
-          resolution: VGA
-      control_type: joint_actions
+    fps: 10
+
   preprocess:
-    # These transforms mess everything up when we load them from wandb
-    t0-0_cleanup: null
-    t1-3_triangle_crop: null
-    t9_cleanup: null
+    t1_drop: null
     t99_cleanup: null
 
-    # t98_to_pointcloud:
-    #   _target_: transforms.pointmap2pointcloud.PointMapToPointCloud
-    #   _partial_: True
-
-    t99_render_pcd:
+  gpu_batch_transforms:
+    t9_render_pcd:
       render_camera_poses: True
       render_ee_pose: True
 
-    t99_render_cameras:
+    t9_render_cameras:
       stream_names: ["rgb", "left", "depth"] # render all streams
 
 trainer:
