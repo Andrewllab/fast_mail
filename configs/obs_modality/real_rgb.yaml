@@ -21,7 +21,7 @@ data:
 
     t1_drop:
       keep_stream_types: rgb
-      drop_stream_names: [right]  # drop right rgb stream from the zeds
+      drop_stream_names: right  # drop right rgb stream from the zeds
       drop_keys: ee_transform
 
     t10_resize:

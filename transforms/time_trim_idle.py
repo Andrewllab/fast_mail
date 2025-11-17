@@ -6,13 +6,15 @@ import torch
 from tensordict import TensorDict
 
 from environments.specs import DataSpecs
-from transforms.base_transform import Transform
+from transforms.base_transform import Transform, TransformConstraint
 from utils.math import axis_angle_from_quat, subtract_frame_transforms
 
 log = logging.getLogger(__name__)
 
 
 class TrimIdleStart(Transform):
+    constraints = [TransformConstraint.TRAJECTORY_ONLY]
+
     def __init__(
         self,
         specs: DataSpecs,

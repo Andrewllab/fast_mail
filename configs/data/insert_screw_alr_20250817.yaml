@@ -14,4 +14,3 @@ obs_seq_len: 1
 dataset:
   _target_: environments.datasets.insert_screw_real_robot_v1.RealRobotDataset
   root_dir: ${paths.data_dir}/insert_one_leg/real_world_teleoperation/insert_screw_2025-08-17_fs_224x224
-  # gpu_preprocess_batch_size: ${platform.fs_preprocess_batch_size}  # TODO: move inside transform

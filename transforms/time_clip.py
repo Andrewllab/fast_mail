@@ -5,12 +5,14 @@ import logging
 from tensordict import TensorDict
 
 from environments.specs import DataSpecs
-from transforms.base_transform import Transform
+from transforms.base_transform import Transform, TransformConstraint
 
 log = logging.getLogger(__name__)
 
 
 class ClipTrajectoryLength(Transform):
+    constraints = [TransformConstraint.TRAJECTORY_ONLY]
+
     def __init__(
         self,
         specs: DataSpecs,

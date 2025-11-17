@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
+import torch
 import torch.nn as nn
 from omegaconf import ListConfig, OmegaConf
 from tensordict import TensorDict
@@ -39,6 +40,7 @@ class KeyMapping:
 
 
 class TransformConstraint(Enum):
+    TRAJECTORY_ONLY = auto()
     GPU_ONLY = auto()
 
 
@@ -256,8 +258,6 @@ class Compose(ReversibleTransform):
         self._transforms: dict[str, Transform] = {}  # similar to nn.Module._modules
 
         if len(transforms) == 1 and isinstance(transforms[0], Mapping):
-            # TODO: ensure that keys are unique, otherwise we silently skip
-            # transforms
             for key, transform in transforms[0].items():
                 self._transforms[key] = transform
         else:
@@ -291,6 +291,24 @@ class Compose(ReversibleTransform):
             return self._transforms[idx]
         elif isinstance(idx, (int, slice)):
             return list(self._transforms.values())[idx]
+        else:
+            raise TypeError(f"Expected idx to be an int, str or slice, got {type(idx)}")
+
+    def __setitem__(
+        self, idx: int | str | slice, transform: Transform | Sequence[Transform]
+    ) -> None:
+        if isinstance(idx, str):
+            assert isinstance(transform, Transform)
+            self._transforms[idx] = transform
+        elif isinstance(idx, (int, slice)):
+            key = list(self._transforms.keys())[idx]
+            if isinstance(key, list):
+                assert isinstance(transform, Sequence)
+                for k, t in zip(key, transform):
+                    self._transforms[k] = t
+            else:
+                assert isinstance(transform, Transform)
+                self._transforms[key] = transform
         else:
             raise TypeError(f"Expected idx to be an int, str or slice, got {type(idx)}")
 
@@ -391,6 +409,112 @@ class Sequential(nn.Module, Compose):
         return input
 
 
+DeviceType = torch.device | str | int
+
+
+class GpuExecutionWrapper(Transform):
+    def __init__(
+        self,
+        transform: Transform,
+        device: DeviceType | None = None,
+        batch_size: int | None = None,
+    ) -> None:
+        if (
+            TransformConstraint.TRAJECTORY_ONLY in transform.constraints
+            and batch_size is not None
+        ):
+            raise ValueError(
+                f"{transform.__class__.__name__} does not support execution in chunks."
+            )
+
+        device = device or getattr(transform, "device", None) or "cuda"
+        batch_size = batch_size or getattr(transform, "batch_size", None)
+
+        self._transform = transform
+        self.device = device
+        self.batch_size = batch_size
+
+    @property
+    def __class__(self):
+        # the wrapper pretends to be the same type as the wrapped transform
+        # so that isinstance(transform, nn.Module) is still True if the
+        # wrapped transform is an nn.Module.
+        return type(self._transform)
+
+    @property
+    def specs(self) -> DataSpecs:
+        return self._transform.specs
+
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        if self.batch_size is not None:
+            return self._call_in_chunks(tensordict)
+
+        # if no batch size is given, just move the entire tensordict to the GPU
+        return self._transform(tensordict.to(self.device)).cpu()
+
+    def call_trajectory(
+        self, tensordict: TensorDict
+    ) -> TensorDict | Sequence[TensorDict]:
+        if self.batch_size is not None:
+            # this method uses __call__ instead of call_trajectory, and we
+            # to assume that this has the same effect as call_trajectory,
+            # because we don't know how to handle multiple chunks returned
+            # for each input chunk.
+            return self._call_in_chunks(tensordict)
+
+        # if no batch size is given, just move the entire trajectory to the GPU
+        transformed = self._transform.call_trajectory(tensordict.to(self.device))
+
+        if isinstance(transformed, Sequence):
+            return [t.cpu() for t in transformed]
+        else:
+            return transformed.cpu()
+
+    def _call_in_chunks(self, tensordict: TensorDict) -> TensorDict:
+
+        # Split up a trajectory into chunks that fit into GPU memory,
+        # apply the transform to each chunk, and concatenate the results
+        to_chunk, rest = tensordict.split_keys(["obs", "action", "ref_action"])
+        to_chunk.auto_batch_size_(batch_dims=1)
+        assert to_chunk.ndim == 1
+
+        log.debug(
+            f"Applying transform {self._transform.__class__.__name__} on trajectory of length {to_chunk.shape[0]} in chunks of size {self.batch_size} on {self.device} device..."
+        )
+
+        # for memory reasons, we don't want to store each transformed chunk
+        # in memory and concatenate at the end
+        for i in range(0, to_chunk.shape[0], self.batch_size):
+            chunk = to_chunk[i : i + self.batch_size]
+
+            # add the chunked fields back to the non-chunked fields
+            # we assume that the transform does not modify the other fields
+            # or the tensordict itself
+            input_td = rest.clone()
+            input_td.update(chunk)
+
+            # We don't call transform.call_trajectory here because we are
+            # not operating on an entire trajectory
+            transformed = self._transform(input_td.to(self.device)).cpu()
+
+            # Write back immediately to avoid accumulating large tensors in memory
+            # `update` doesn't work because transformed only contains a chunk
+            # `update_at_` doesn't work because the tensordicts may not have
+            # matching structure if the transform added any new fields
+            to_chunk[i : i + self.batch_size] = transformed.select("obs", "action")
+
+            # Free up cache
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        tensordict.update(to_chunk)
+
+        return tensordict
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({repr(self._transform)})"
+
+
 TransformPartial = Callable[[DataSpecs], Transform]
 TransformPartialsDict = Mapping[str, TransformPartial]
 
@@ -465,7 +589,7 @@ def init_transforms(
 
         assert isinstance(partial, functools.partial)
         ordinal, name = _parse_key(key)
-        log.debug(
+        log.info(
             f"Instantiating transform #{ordinal} '{name}': <{partial.func.__name__}>"
         )
 
@@ -474,7 +598,10 @@ def init_transforms(
         assert isinstance(transform, Transform)
         # update the specs
         specs = transform.specs
-        transform_instances[name] = transform
+
+        key = f"{ordinal}_{name}"
+        assert key not in transform_instances
+        transform_instances[key] = transform
 
     cls = (
         Sequential

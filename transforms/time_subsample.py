@@ -5,10 +5,12 @@ from typing import Literal
 from tensordict import TensorDict
 
 from environments.specs import DataSpecs
-from transforms.base_transform import Transform
+from transforms.base_transform import Transform, TransformConstraint
 
 
 class SubsampleTrajectory(Transform):
+    constraints = [TransformConstraint.TRAJECTORY_ONLY]
+
     def __init__(
         self,
         specs: DataSpecs,
@@ -22,7 +24,7 @@ class SubsampleTrajectory(Transform):
     @property
     def specs(self) -> DataSpecs:
         return self._specs
-    
+
     def __call__(self, tensordict: TensorDict) -> list[TensorDict]:
         # This gets called when running with an environment, where the
         # preprocess transforms get rolled into the cpu_batch_transforms.

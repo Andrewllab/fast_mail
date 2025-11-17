@@ -24,9 +24,11 @@ from environments.gym_env_dataset import GymEnvDataset
 from environments.specs import DataSpecs
 from transforms.base_transform import (
     Compose,
+    GpuExecutionWrapper,
     NormalizingTransform,
     ReversibleTransform,
     Sequential,
+    TransformConstraint,
     TransformPartialsDict,
     get_transforms_config,
     init_transforms,
@@ -123,7 +125,7 @@ class TrajectoryDataModule(L.LightningDataModule):
         # accumulate the transform ListConfigs in reverse order, i.e. the first
         # step we consider is the last processing step, and therefore has the
         # transforms of all previous steps applied before it
-        transform_cfgs = dict(
+        cumulative_transform_cfgs = dict(
             zip(
                 transform_cfgs.keys(),
                 reversed(list(itertools.accumulate(reversed(transform_cfgs.values())))),
@@ -131,7 +133,7 @@ class TrajectoryDataModule(L.LightningDataModule):
         )
 
         # check which preprocessing steps need to be done, if any
-        for i, (key, preprocess_cfg) in enumerate(self.preprocess_cfgs.items()):
+        for step, (key, preprocess_cfg) in enumerate(self.preprocess_cfgs.items()):
 
             # remove this key, as it's only relevant for verification and the
             # datasets don't expect it as an argument
@@ -181,7 +183,7 @@ class TrajectoryDataModule(L.LightningDataModule):
 
             # check if the existing preprocessed data has the same transforms
             old_config = dataset.preprocess_transforms_config
-            new_config = transform_cfgs[key]
+            new_config = cumulative_transform_cfgs[key]
 
             if old_config != new_config:
                 if overwrite:
@@ -208,7 +210,7 @@ class TrajectoryDataModule(L.LightningDataModule):
 
         else:
             # need to preprocess raw data
-            i += 1  # increment i to include the final preprocessing step
+            step += 1  # increment step to include the final preprocessing step
 
             dataset_cfg = self.dataset_cfg
             DatasetCls = get_dataset_class(dataset_cfg)
@@ -224,9 +226,9 @@ class TrajectoryDataModule(L.LightningDataModule):
             )
 
         # take only the preprocessing steps that need to be done, and reverse their order
-        preprocess_cfgs = dict(reversed(list(self.preprocess_cfgs.items())[:i]))
+        preprocess_cfgs = dict(reversed(list(self.preprocess_cfgs.items())[:step]))
 
-        for i, (key, preprocess_cfg) in enumerate(preprocess_cfgs.items()):
+        for step, (key, preprocess_cfg) in enumerate(preprocess_cfgs.items()):
 
             # the dataset config is made by removing all transform configs,
             # including those that are not partials or are set to None
@@ -238,7 +240,7 @@ class TrajectoryDataModule(L.LightningDataModule):
 
             DatasetCls = get_dataset_class(dataset_cfg)
             root_dir = resolve_path(dataset_cfg["root_dir"])
-            log.info(f"Running {key} and saving to {root_dir}...")
+            log.info(f"Running {key}ing and saving to {root_dir}...")
 
             root_dir.mkdir(parents=True, exist_ok=True)
 
@@ -247,17 +249,25 @@ class TrajectoryDataModule(L.LightningDataModule):
             assert isinstance(transforms, Compose)
             assert specs == transforms[-1].specs
 
+            # Wrap any transforms that need to be executed on the GPU.
+            # First we create a copy of the transforms list, since we don't want
+            # to save the wrapped transforms as metadata, only the originals.
+            _transforms = list(transforms)
+            for j, transform in enumerate(_transforms):
+                if TransformConstraint.GPU_ONLY in transform.constraints:
+                    _transforms[j] = GpuExecutionWrapper(transform)
+
             for idx in range(dataset.n_trajectories):
-                log.debug(f"Loading trajectory #{idx} of {dataset.n_trajectories}")
+                log.debug(f"Loading trajectory #{idx} of {dataset.n_trajectories}...")
                 traj = dataset.get_trajectory(idx)
                 log.debug(
-                    "Processing trajectory "
+                    f"{key.title()}ing trajectory "
                     + (f"named {traj['name']} " if "name" in traj else "")
-                    + f"from {traj['path']}"
+                    + f"from {traj['path']}..."
                 )
                 trajs = [traj]
 
-                for transform in transforms:
+                for transform in _transforms:
                     next_trajs = []
                     for traj in trajs:
                         try:
@@ -279,15 +289,16 @@ class TrajectoryDataModule(L.LightningDataModule):
                     DatasetCls.save_trajectory(traj, root_dir, specs)
 
             # accumulate all transforms applied in all preprocessing steps so far
-            all_transforms = Compose(
-                *(list(dataset.preprocess_transforms) + list(transforms))
+            cumulative_transforms = dataset.preprocess_transforms + transforms
+
+            cumulative_transform_cfg = cumulative_transform_cfgs[key]
+            DatasetCls.save_metadata(
+                root_dir, cumulative_transforms, cumulative_transform_cfg
             )
-            all_transforms_config = transform_cfgs[key]
-            DatasetCls.save_metadata(root_dir, all_transforms, all_transforms_config)
 
-            log.info(f"Finished {key} (data saved to {root_dir}).")
+            log.info(f"Finished {key}ing (data saved to {root_dir}).")
 
-            if i < len(preprocess_cfgs) - 1:
+            if step < len(preprocess_cfgs) - 1:
                 # create dataset object to act as the source for the next preprocessing step
                 dataset = hydra.utils.instantiate(
                     dataset_cfg,

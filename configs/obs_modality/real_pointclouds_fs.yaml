@@ -1,9 +1,7 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess.t10_resize: image_resize
-
-  - /transforms@data.preprocess.t11_crop_image: image_centercrop
+  - real_prepreprocess_fs_224x224
 
   - /transforms@data.preprocess.t15_to_pcd: to_pointcloud
 
@@ -20,26 +18,16 @@ defaults:
 
   - /transforms@data.gpu_batch_transforms.t10_jitter: jitter
 
-  # apply ImageNet normalization
-  - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
-
 data:
   preprocess:
-    root_dir: ${paths.preprocessed_dir}/real/${data.name}_pointclouds_rgb
-
-    t10_resize:
-      shape: 224  # scale shortest side to 224 and keep aspect ratio
-  
-    t11_crop_image:
-      shape: 224  # crop all streams to 224x224
+    root_dir: ${paths.preprocessed_dir}/real/${data.name}_pointclouds
 
     t15_to_pcd:
       color: False
       max_depth: 2.0  # in meters
 
     t99_cleanup:
-      keep_stream_types: rgb
-      drop_stream_names: right  # drop right rgb stream from the zeds
+      keep_stream_types: []  # keep no stream types, i.e. remove all
       drop_keys: ee_transform
 
   gpu_batch_transforms:

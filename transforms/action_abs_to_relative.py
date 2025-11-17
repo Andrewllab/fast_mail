@@ -7,7 +7,7 @@ import torch.nn as nn
 from tensordict import TensorDict
 
 from environments.specs import DataSpecs
-from transforms.base_transform import ReversibleTransform
+from transforms.base_transform import ReversibleTransform, TransformConstraint
 from utils.math import combine_frame_transforms, normalize, subtract_frame_transforms
 
 
@@ -19,6 +19,8 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
     chunk) or the last action (target ee_pose) (where last means the time step
     prior to the beginning of the chunk).
     """
+
+    constraints = [TransformConstraint.TRAJECTORY_ONLY]
 
     def __init__(
         self,
@@ -152,6 +154,7 @@ class AbsoluteActionToRelative(ReversibleTransform, nn.Module):
     action (target ee_poses) in the trajectory.
     """
 
+    constraints = [TransformConstraint.TRAJECTORY_ONLY]
     ref_pose: torch.Tensor
 
     def __init__(

@@ -7,7 +7,7 @@ from tensordict import TensorDict
 
 from environments.specs import CameraSpec, DataSpecs, DepthStream
 from third_party.FoundationStereo.core.utils.utils import InputPadder
-from transforms.base_transform import Transform, TransformConstraint
+from transforms.base_transform import DeviceType, Transform, TransformConstraint
 from utils.paths import resolve_path
 from utils.tensor_rt import get_metadata, load_engine, run_inference
 
@@ -22,9 +22,13 @@ class FoundationStereo(Transform):
         engine_path: str,
         cam_keys: str | Sequence[str] | None = None,
         remove_invisible: bool = True,
+        preprocess_device: DeviceType = "cuda",
+        preprocess_batch_size: int | None = None,
     ) -> None:
 
         self.remove_invisible = remove_invisible
+        self.preprocess_device = preprocess_device
+        self.preprocess_batch_size = preprocess_batch_size
 
         # Load tensorRT engine
         self.engine_path = engine_path
@@ -48,10 +52,10 @@ class FoundationStereo(Transform):
         assert all(size == shapes[0] for size in shapes)
         fs_shape = shapes[0]
 
-        self.batch_size = fs_shape[0]
-        if self.batch_size not in (len(self._input_specs), 1):
+        self._batch_size = fs_shape[0]
+        if self._batch_size not in (len(self._input_specs), 1):
             raise ValueError(
-                f"Batch size of TensorRT model {self.batch_size} must either match the number of cameras ({len(self._input_specs)}) or be 1"
+                f"Batch size of TensorRT model {self._batch_size} must either match the number of cameras ({len(self._input_specs)}) or be 1"
             )
 
         # instantiate functions to pad the inputs
@@ -74,8 +78,12 @@ class FoundationStereo(Transform):
                 if isinstance(stream, DepthStream)
             ]
             # we assume one camera can have at most one depth stream
-            assert len(depth_names) == 1
-            depth_name = depth_names[0]
+            if len(depth_names) > 1:
+                raise ValueError("A camera spec cannot have multiple depth streams.")
+            elif len(depth_names) == 1:
+                depth_name = depth_names[0]
+            else:
+                depth_name = "depth"
 
             streams = dict(spec.streams)  # copy streams for local modification
             depth_stream = DepthStream(
@@ -128,6 +136,14 @@ class FoundationStereo(Transform):
         if self._engine is None or self._context is None:
             self._engine, self._context = load_engine(resolve_path(self.engine_path))
         return self._context
+
+    @property
+    def device(self) -> DeviceType:
+        return self.preprocess_device
+
+    @property
+    def batch_size(self) -> int | None:
+        return self.preprocess_batch_size
 
     def __getstate__(self):
         """Custom pickle method - exclude engine and context."""
@@ -202,9 +218,9 @@ class FoundationStereo(Transform):
         lefts, rights = self.padder.pad(lefts, rights)
 
         # (N*B, 3, H, W) -> (n_batches, batch_size, 3, H, W)
-        # since self.batch_size is either 1 or N, we can always group into batches like this
-        lefts = lefts.unflatten(dim=0, sizes=(-1, self.batch_size))
-        rights = rights.unflatten(dim=0, sizes=(-1, self.batch_size))
+        # since self._batch_size is either 1 or N, we can always group into batches like this
+        lefts = lefts.unflatten(dim=0, sizes=(-1, self._batch_size))
+        rights = rights.unflatten(dim=0, sizes=(-1, self._batch_size))
 
         disps = []
         for left_batch, right_batch in zip(lefts, rights):

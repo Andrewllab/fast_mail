@@ -1,37 +1,30 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.prepreprocess.t1_resize_fs: image_resize
-  - /transforms@data.prepreprocess.t2_crop_image_fs: image_centercrop
+  - /transforms@data.prepreprocess.t0_drop_depth: cleanup
 
   # replace measured depth with FoundationStereo depth
   - /transforms@data.prepreprocess.t3_foundationstereo: foundation_stereo
 
+  # remove streams we don't need to reduce datasize and compute
   # TODO: verify that multiple cleanup transforms don't overwrite each other in env transforms
-  - /transforms@data.prepreprocess.t4_cleanup: cleanup
+  - /transforms@data.prepreprocess.t4_cleanup_stereo: cleanup
 
   - /transforms@data.prepreprocess.t5_resize: image_resize
 
   - /transforms@data.prepreprocess.t6_crop_image: image_centercrop
-
-  # remove infinite values (set them to zero) after resizing, so we don't average
-  # with zero values and get weird depth values
-  - /transforms@data.prepreprocess.t8_remove_inf_depth: remove_inf_depth
 
 data:
   prepreprocess:
     backend: hdf5
     root_dir: ${append_to_stem:${data.dataset.root_dir},_fs_224x224}
 
-    t1_resize_fs:
-      shape: 480  # for FoundationStereo, scale shortest side to 480 and keep aspect ratio
+    t0_drop_depth:
+      drop_stream_types: depth
 
-    t2_crop_image_fs:
-      shape: [480, 640]  # crop images wider than 640
-
-    t4_cleanup:
-      drop_stream_types: [ir]  # drop IR streams from the realsense
-      drop_stream_names: [right]  # drop right rgb stream from the zeds
+    t4_cleanup_stereo:
+      drop_stream_types: ir  # drop IR streams from the realsense
+      drop_stream_names: right  # drop right rgb stream from the zeds
 
     t5_resize:
       shape: 224  # scale shortest side to 224 and keep aspect ratio

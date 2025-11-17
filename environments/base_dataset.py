@@ -341,10 +341,12 @@ class CustomHdf5Dataset(TrajectoryDataset):
 
     @property
     def preprocess_transforms(self) -> Compose:
+        # empty Compose transform, since this is the raw data
         return Compose(specs=self._specs)
 
     @property
     def preprocess_transforms_config(self) -> ListConfig:
+        # empty transforms config, since this is the raw data
         return OmegaConf.create([])
 
     def __len__(self) -> int:
@@ -616,12 +618,12 @@ def get_subset(
             # do not index less than 1 file
             subset = max(1, subset)
 
-        log.debug(
+        log.info(
             f"Loading only {subset} trajectories out of {len(files)} total trajectories found."
         )
         return files[:subset]
 
-    log.debug(
+    log.info(
         f"Loading the following trajectories out of {len(files)} total trajectories found: {subset}"
     )
     return [files[i] for i in subset]
