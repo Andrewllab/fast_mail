@@ -1,0 +1,5 @@
+_target_: transforms.render_image_diff.RenderImageDiff
+_partial_: True
+cam_name: front_left_cam
+stream_name: left
+image_path: $PROJECT_ROOT/data_artifacts/mean_reset_obs/drawer_20251113/drawer_average_first_frame.png

@@ -8,7 +8,8 @@ defaults:
   - paths: default
   - hydra: default
   - obs_modality: real_pointclouds
-  - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
+  - transforms@data.gpu_batch_transforms.t90_render_pcd: render_pointcloud
+  - transforms@data.gpu_batch_transforms.t90_render_diff: render_image_diff
   - _self_
   - platform: default
   - optional local: default
@@ -23,9 +24,22 @@ data:
     env:
       human_control: True  # allow the robot to move freely
   
+  preprocess:
+    t15_to_pcd:
+      color: True  # add colors to pointclouds, in case we render pointclouds
+
+    # don't remove any data streams, so we can visualize them
+    t1_drop: null
+    t99_cleanup: null
+
   gpu_batch_transforms:
-    t3_to_pcd:
-      color: True
+    t90_render:
+      stream_names: [rgb, depth]
+
+    t90_render_pcd:
+      render_camera_poses: False
+      render_ee_pose: False
+      render_action: False
 
 trainer:
   default_root_dir: ${paths.output_dir}
