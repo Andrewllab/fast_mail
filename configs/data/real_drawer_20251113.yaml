@@ -16,3 +16,8 @@ dataset:
   _target_: environments.datasets.real_dataset_v3.RealRobotDataset
   root_dir: ${paths.data_dir}/drawer/drawer_20251113
   subfolders: null
+
+env:
+  env:
+    action_type: joint
+    impedance_type: hybrid_joint

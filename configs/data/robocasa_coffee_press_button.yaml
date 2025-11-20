@@ -7,3 +7,7 @@ name: coffee_press_button_20250920
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_coffee
   subfolders: CoffeePressButton
+
+env:
+  env:
+    env_name: CoffeePressButton

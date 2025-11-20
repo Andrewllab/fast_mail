@@ -1,0 +1,9 @@
+defaults:
+  - robocasa
+
+task: kitchen_pnp
+name: kitchen_pnp_20251114
+
+dataset:
+  root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_pnp
+  # Pick and place: PnPCabToCounter,PnPCounterToMicrowave,PnPCounterToStove,PnPSinkToCounter,PnPCounterToCab,PnPCounterToSink,PnPMicrowaveToCounter,PnPStoveToCounter

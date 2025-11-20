@@ -7,3 +7,7 @@ name: coffee_serve_mug_20250920
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_coffee
   subfolders: CoffeeServeMug
+
+env:
+  env:
+    env_name: CoffeeServeMug
