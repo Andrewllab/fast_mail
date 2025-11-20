@@ -86,7 +86,9 @@ class RealRobotDataset(CustomHdf5Dataset):
 
         if item_transforms is not None:
             log.debug("Instantiating item transforms...")
-        self.transform, self._specs = init_transforms(item_transforms, self._specs)
+        self._item_transforms, self._specs = init_transforms(
+            item_transforms, self._specs
+        )
 
     def get_trajectory(self, traj_idx: int) -> TensorDict:
         path, name, traj = self.trajs[traj_idx]

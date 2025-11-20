@@ -170,7 +170,7 @@ class Hdf5Dataset(TrajectoryDataset):
 
         if item_transforms is not None:
             log.debug("Instantiating item transforms...")
-        self._item_transform, self._specs = init_transforms(
+        self._item_transforms, self._specs = init_transforms(
             item_transforms, self._specs
         )
 
@@ -185,7 +185,7 @@ class Hdf5Dataset(TrajectoryDataset):
 
     @property
     def item_transforms(self) -> Compose:
-        return self._item_transform
+        return self._item_transforms
 
     @property
     def preprocess_transforms(self) -> Compose:
@@ -253,7 +253,7 @@ class Hdf5Dataset(TrajectoryDataset):
         relative_path = self.files[traj_idx].relative_to(self._root_dir)
         td["path"] = str(relative_path)
 
-        td = self._item_transform(td)
+        td = self._item_transforms(td)
         return td
 
     def get_trajectory(self, traj_idx: int) -> TensorDict:
@@ -322,7 +322,7 @@ class Hdf5Dataset(TrajectoryDataset):
 class CustomHdf5Dataset(TrajectoryDataset):
     _root_dir: Path
     _specs: DataSpecs
-    _item_transform: Compose
+    _item_transforms: Compose
     slices: TrajectorySlices
     trajs: list
 
@@ -337,7 +337,7 @@ class CustomHdf5Dataset(TrajectoryDataset):
 
     @property
     def item_transforms(self) -> Compose:
-        return self._item_transform
+        return self._item_transforms
 
     @property
     def preprocess_transforms(self) -> Compose:
@@ -402,7 +402,7 @@ class MemmapDataset(TrajectoryDataset):
 
         if item_transforms is not None:
             log.debug("Instantiating item transforms...")
-        self._item_transform, self._specs = init_transforms(
+        self._item_transforms, self._specs = init_transforms(
             item_transforms, self._specs
         )
 
@@ -417,7 +417,7 @@ class MemmapDataset(TrajectoryDataset):
 
     @property
     def item_transforms(self) -> Compose:
-        return self._item_transform
+        return self._item_transforms
 
     @property
     def preprocess_transforms(self) -> Compose:
@@ -469,7 +469,7 @@ class MemmapDataset(TrajectoryDataset):
         relative_path = self.files[traj_idx].relative_to(self._root_dir)
         td["path"] = str(relative_path)
 
-        td = self._item_transform(td)
+        td = self._item_transforms(td)
         return td
 
     def get_trajectory(self, traj_idx: int) -> TensorDict:

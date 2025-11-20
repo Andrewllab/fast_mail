@@ -133,6 +133,7 @@ class TrajectoryDataModule(L.LightningDataModule):
         )
 
         # check which preprocessing steps need to be done, if any
+        step = -1
         for step, (key, preprocess_cfg) in enumerate(self.preprocess_cfgs.items()):
 
             # remove this key, as it's only relevant for verification and the
@@ -212,7 +213,7 @@ class TrajectoryDataModule(L.LightningDataModule):
             # need to preprocess raw data
             step += 1  # increment step to include the final preprocessing step
 
-            dataset_cfg = self.dataset_cfg
+            dataset_cfg = self.dataset_cfg.copy()
             DatasetCls = get_dataset_class(dataset_cfg)
             dataset = hydra.utils.instantiate(
                 dataset_cfg,
