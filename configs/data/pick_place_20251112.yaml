@@ -5,7 +5,7 @@ defaults:
   - /cameras/calibration@dataset.extrinsics: 2025-09-16
   - real_robot
 
-task_suite: toy
+task_suite: real
 task: pick_and_place
 name: pick_place_20251112
 
