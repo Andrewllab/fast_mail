@@ -12,9 +12,9 @@ from torch.optim.optimizer import Optimizer
 
 from environments.specs import DataSpecs
 from transforms.base_transform import (
+    KEY_PATTERN,
     Compose,
     Sequential,
-    TransformPartial,
     TransformPartialsDict,
     init_transforms,
 )
@@ -145,6 +145,32 @@ class BaseAgent(L.LightningModule):
                     del state_dict[key]
 
     def on_load_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        state_dict = checkpoint["state_dict"]
+
+        # BackCompat
+        for full_name in self.obs_encoder.keys():
+            match = KEY_PATTERN.match("t" + full_name)  # add back the t prefix
+            assert match is not None
+            short_name = match.group(3)
+            assert short_name is not None
+
+            for key in list(state_dict.keys()):
+                # only consider submodules of the obs_encoder, as this is where
+                # the transforms are
+                if "obs_encoder" not in key:
+                    continue
+
+                # if the key contains the old short name without the ordinal
+                # prefix, replace it with the full name
+                if "." + short_name in key:
+                    log.debug(
+                        "Replacing `%s` with `%s` in state dict key %s",
+                        short_name,
+                        full_name,
+                        key,
+                    )
+                    state_dict[key.replace(short_name, full_name)] = state_dict.pop(key)
+
         if self.ema_decay > 0:
             # we have instantiated the model, but we only have weights for the
             # ema_model, so we have to instantiate a dummy AveragedModel to wrap
@@ -174,7 +200,6 @@ class BaseAgent(L.LightningModule):
 
             # duplicate all state dict entries for ema_model and ema_obs_encoder
             # with entries for model and obs_encoder
-            state_dict = checkpoint["state_dict"]
             for key in list(state_dict.keys()):
                 if key.startswith("_ema_model.module"):
                     new_key = key.replace("_ema_model.module.", "_model.")

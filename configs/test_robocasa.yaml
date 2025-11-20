@@ -9,8 +9,8 @@ defaults:
   - python_logging: default
   - paths: default
   - hydra: checkpoint_dir_naming
-  # - transforms@data.gpu_batch_transforms.t9_render: render_cameras
-  # - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
+  # - transforms@data.gpu_batch_transforms.t90_render: render_cameras
+  # - transforms@data.gpu_batch_transforms.t90_render_pcd: render_pointcloud
   - _self_
   - platform: default
   - optional local: default
@@ -23,7 +23,7 @@ checkpoint:
   # either specify a complete checkpoint path...
   log_dir:
   # ...or specify the wandb run name
-  wandb_run_id:
+  wandb_run_id:  # REPLACE with desired wandb run id
   # project and entity are only needed if they differ from the settings in the wandb logger config
   wandb_project: 3d-sim2real
   wandb_entity: alr-3d-sim2real
@@ -41,6 +41,7 @@ data:
     action_horizon: 20  # modify if desired
 
     env:
+      env_name:  # REPLACE with desired environment name
       wrappers:
         record_video:
           num_episodes: ${data.env.num_episodes}  # number of episodes to record
@@ -52,9 +53,9 @@ data:
     t99_cleanup: null  # disable cleanup transform added by default
 
   gpu_batch_transforms:
-    t9_render:
+    t90_render:
       stream_names: [rgb, depth]
-    t9_render_pcd:
+    t90_render_pcd:
       render_camera_poses: True
       render_ee_pose: False
       render_action: False

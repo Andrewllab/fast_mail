@@ -23,6 +23,7 @@ from environments.collate import update_collate_fn_map
 from environments.gym_env_dataset import GymEnvDataset
 from environments.specs import DataSpecs
 from transforms.base_transform import (
+    KEY_PATTERN,
     Compose,
     GpuExecutionWrapper,
     NormalizingTransform,
@@ -32,7 +33,6 @@ from transforms.base_transform import (
     TransformPartialsDict,
     get_transforms_config,
     init_transforms,
-    key_pattern,
 )
 from utils.instantiators import get_dataset_class
 from utils.paths import resolve_path
@@ -145,7 +145,7 @@ class TrajectoryDataModule(L.LightningDataModule):
             dataset_cfg = {
                 key: value
                 for key, value in preprocess_cfg.items()
-                if not key_pattern.fullmatch(key)
+                if not KEY_PATTERN.fullmatch(key)
             }
 
             DatasetCls = get_dataset_class(dataset_cfg)
@@ -236,7 +236,7 @@ class TrajectoryDataModule(L.LightningDataModule):
             dataset_cfg = {
                 key: value
                 for key, value in preprocess_cfg.items()
-                if not key_pattern.fullmatch(key)
+                if not KEY_PATTERN.fullmatch(key)
             }
 
             DatasetCls = get_dataset_class(dataset_cfg)
@@ -391,7 +391,7 @@ class TrajectoryDataModule(L.LightningDataModule):
             dataset_cfg = {
                 key: value
                 for key, value in preprocess_cfg.items()
-                if not key_pattern.fullmatch(key)
+                if not KEY_PATTERN.fullmatch(key)
             }
 
         else:

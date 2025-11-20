@@ -318,6 +318,9 @@ class Compose(ReversibleTransform):
     def __iter__(self) -> Iterator[Transform]:
         return iter(self._transforms.values())
 
+    def keys(self) -> Iterator[str]:
+        return self._transforms.keys()
+
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         for t in self._transforms.values():
             tensordict = t(tensordict)
@@ -525,14 +528,14 @@ TransformPartialsDict = Mapping[str, TransformPartial]
 # (?:[-,](\d+))?    — optional dash or comma followed by second group of digits
 # _                 — literal underscore
 # (.+)              — everything after the underscore
-key_pattern = re.compile(r"t(\d+)(?:[-,](\d+))?_(.+)")
+KEY_PATTERN = re.compile(r"t(\d+)(?:[-,](\d+))?_(.+)")
 
 
 def _item_to_sort_key(item: tuple[str, Any]) -> float:
     """Extracts a float from the first part of a key in a dictionary item."""
     key, _ = item
 
-    match = key_pattern.fullmatch(key)
+    match = KEY_PATTERN.fullmatch(key)
     if match:
         first_number = match.group(1)
         second_number = match.group(2)  # may be None
@@ -545,7 +548,7 @@ def _item_to_sort_key(item: tuple[str, Any]) -> float:
 
 
 def _parse_key(key: str) -> tuple[str, str]:
-    match = key_pattern.fullmatch(key)
+    match = KEY_PATTERN.fullmatch(key)
     if match:
         first_number = match.group(1)
         second_number = match.group(2)  # may be None
