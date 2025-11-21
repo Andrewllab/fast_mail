@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import itertools
 import logging
+import math
 import os
 import pickle
 import re
+import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import MutableMapping, Sequence, TypeVar
+from typing import MutableMapping, Sequence, TypeVar, cast
 
 import h5py
 import numpy as np
@@ -31,6 +34,8 @@ log = logging.getLogger(__name__)
 
 
 class TrajectoryDataset(Dataset, ABC):
+
+    slices: TrajectorySlices
 
     TRANSFORMS_PKL_FILE = "transforms.pkl"
     TRANSFORMS_CFG_FILE = "transforms_cfg.yaml"
@@ -91,35 +96,24 @@ class TrajectoryDataset(Dataset, ABC):
 
         return transforms, transforms_cfg
 
-    @abstractmethod
     def __len__(self) -> int:
-        pass
+        return len(self.slices)
+
+    @property
+    def n_trajectories(self) -> int:
+        return self.slices.n_trajectories
 
     @abstractmethod
     def __getitem__(self, idx: int) -> TensorDict:
-        pass
-
-    @property
-    @abstractmethod
-    def n_trajectories(self) -> int:
         pass
 
     @abstractmethod
     def get_trajectory(self, traj_idx: int) -> TensorDict:
         pass
 
-    def get_chunk(self, idx: slice) -> TensorDict:
-        raise NotImplementedError
-
     @classmethod
     def save_trajectory(
         cls, traj: TensorDict, root_dir: Path, specs: DataSpecs
-    ) -> None:
-        raise NotImplementedError
-
-    @classmethod
-    def save_chunk(
-        cls, traj: TensorDict, file: Path, idx: slice, specs: DataSpecs
     ) -> None:
         raise NotImplementedError
 
@@ -174,13 +168,16 @@ class Hdf5Dataset(TrajectoryDataset):
             item_transforms, self._specs
         )
 
+        # e.g. dataset rollout requires knowing how long the trajectories are
+        # in the dataset
+        self._specs.traj_lengths = self.slices.traj_lengths
+
     @property
     def root_dir(self) -> Path:
         return self._root_dir
 
     @property
     def specs(self) -> DataSpecs:
-        self._specs.traj_lengths = self.slices.traj_lengths
         return self._specs
 
     @property
@@ -194,13 +191,6 @@ class Hdf5Dataset(TrajectoryDataset):
     @property
     def preprocess_transforms_config(self) -> ListConfig:
         return self._preprocess_transforms_config
-
-    def __len__(self) -> int:
-        return len(self.slices)
-
-    @property
-    def n_trajectories(self) -> int:
-        return len(self.trajs)
 
     def __getitem__(self, idx: int) -> TensorDict:
         traj_idx, obs_slice, action_slice = self.slices[idx]
@@ -324,7 +314,6 @@ class CustomHdf5Dataset(TrajectoryDataset):
     _specs: DataSpecs
     _item_transforms: Compose
     slices: TrajectorySlices
-    trajs: list
 
     @property
     def root_dir(self) -> Path:
@@ -332,6 +321,8 @@ class CustomHdf5Dataset(TrajectoryDataset):
 
     @property
     def specs(self) -> DataSpecs:
+        # e.g. dataset rollout requires knowing how long the trajectories are
+        # in the dataset
         self._specs.traj_lengths = self.slices.traj_lengths
         return self._specs
 
@@ -348,13 +339,6 @@ class CustomHdf5Dataset(TrajectoryDataset):
     def preprocess_transforms_config(self) -> ListConfig:
         # empty transforms config, since this is the raw data
         return OmegaConf.create([])
-
-    def __len__(self) -> int:
-        return len(self.slices)
-
-    @property
-    def n_trajectories(self) -> int:
-        return len(self.trajs)
 
     def __getitem__(self, idx: int) -> TensorDict:
         raise NotImplementedError
@@ -406,13 +390,16 @@ class MemmapDataset(TrajectoryDataset):
             item_transforms, self._specs
         )
 
+        # e.g. dataset rollout requires knowing how long the trajectories are
+        # in the dataset
+        self._specs.traj_lengths = self.slices.traj_lengths
+
     @property
     def root_dir(self) -> Path:
         return self._root_dir
 
     @property
     def specs(self) -> DataSpecs:
-        self._specs.traj_lengths = self.slices.traj_lengths
         return self._specs
 
     @property
@@ -426,13 +413,6 @@ class MemmapDataset(TrajectoryDataset):
     @property
     def preprocess_transforms_config(self) -> ListConfig:
         return self._preprocess_transforms_config
-
-    def __len__(self) -> int:
-        return len(self.slices)
-
-    @property
-    def n_trajectories(self) -> int:
-        return len(self.trajs)
 
     def __getitem__(self, idx: int) -> TensorDict:
         traj_idx, obs_slice, action_slice = self.slices[idx]
@@ -546,7 +526,7 @@ class TrajectorySlices:
         obs_seq_len: int,
         action_seq_len: int,
     ) -> None:
-        self.traj_lengths = traj_lengths
+        self._traj_lengths = np.asarray(traj_lengths)
         self.obs_seq_len = obs_seq_len
         self.action_seq_len = action_seq_len
 
@@ -554,11 +534,10 @@ class TrajectorySlices:
         # of the observation to the action of the actions
         self.window_size = obs_seq_len + action_seq_len - 1
 
-        self._samples_per_traj = [
-            traj_length - self.window_size + 1
-            for traj_length in self.traj_lengths
-            if traj_length >= self.window_size
-        ]
+        # ignore any trajectories that are shorter than obs_seq_len + action_seq_len - 1
+        self._samples_per_traj = np.maximum(
+            self._traj_lengths - self.window_size + 1, 0
+        )
 
         # this array defines the upper bound of indices that correspond to each
         # trajectory
@@ -572,12 +551,34 @@ class TrajectorySlices:
         # as the trajectory is not shorter than the window size
         return self._upper_bounds[-1]
 
-    def __getitem__(self, idx: int) -> tuple[int, slice, slice]:
+    @property
+    def traj_lengths(self) -> list[int]:
+        return self._traj_lengths[self._samples_per_traj > 0].tolist()
+
+    @property
+    def n_trajectories(self) -> int:
+        return (self._samples_per_traj > 0).sum().item()
+
+    def to_offset(
+        self, idx: int | list[int] | np.ndarray
+    ) -> tuple[int | np.ndarray, int | np.ndarray]:
         # find which trajectory the idx belongs to by sorting into upper bounds
         traj_idx = np.searchsorted(self._upper_bounds, idx, side="right")
 
         # find offset within the trajectory by subtracting the lower bound
-        obs_start = idx - self._lower_bounds[traj_idx]
+        offset = idx - self._lower_bounds[traj_idx]
+        return traj_idx, offset
+
+    def to_idx(
+        self,
+        traj_idx: int | list[int] | np.ndarray,
+        offset: int | list[int] | np.ndarray,
+    ) -> int | np.ndarray:
+        return self._lower_bounds[traj_idx] + offset
+
+    def __getitem__(self, idx: int) -> tuple[int, slice, slice]:
+        traj_idx, offset = self.to_offset(idx)
+        obs_start = offset
 
         # index `obs_seq_len` many observations at the start of the window
         # we always need a slice because we always expect a time dimension
@@ -595,6 +596,145 @@ class TrajectorySlices:
 
     def __repr__(self) -> str:
         return f"TrajectorySlices(traj_lengths={self.traj_lengths}, obs_seq_len={self.obs_seq_len}, action_seq_len={self.action_seq_len})"
+
+
+class TrajectorySubset(TrajectoryDataset):
+    r"""
+    Subset of a TrajectoryDataset at specified indices.
+
+    Args:
+        dataset (TrajectoryDataset): The whole Dataset
+        intraj_indicesdices (sequence): Indices of the trajectories selected for subset
+    """
+
+    def __init__(self, dataset: TrajectoryDataset, traj_indices: Sequence[int]) -> None:
+        self.dataset = dataset
+        self._traj_indices = np.asarray(traj_indices)
+
+        # zero out of the lengths are trajectories that are not in this subset
+        traj_lengths = [
+            (n if i in traj_indices else 0)
+            for i, n in enumerate(self.dataset.slices.traj_lengths)
+        ]
+
+        self.slices = TrajectorySlices(
+            traj_lengths=traj_lengths,
+            obs_seq_len=self.dataset.slices.obs_seq_len,
+            action_seq_len=self.dataset.slices.action_seq_len,
+        )
+
+    @property
+    def traj_indices(self) -> list[int]:
+        return self._traj_indices.tolist()
+
+    @property
+    def root_dir(self) -> Path:
+        return self.dataset.root_dir
+
+    @property
+    def specs(self) -> DataSpecs:
+        return self.dataset.specs
+
+    @property
+    def item_transforms(self) -> Compose:
+        return self.dataset.item_transforms
+
+    @property
+    def preprocess_transforms(self) -> Compose:
+        return self.dataset.preprocess_transforms
+
+    @property
+    def preprocess_transforms_config(self) -> ListConfig:
+        return self.dataset.preprocess_transforms_config
+
+    def _convert_idx(self, idx: int | list[int] | np.ndarray) -> int | np.ndarray:
+        traj_idx, offset = self.slices.to_offset(idx)
+        # check that every computed traj_idx is part of the subset
+        assert (traj_idx == self._traj_indices[:, None]).any(axis=0).all()
+        idx = self.dataset.slices.to_idx(traj_idx, offset)
+        return idx
+
+    def __getitem__(self, idx):
+        if isinstance(idx, list):
+            return self.dataset[[self._convert_idx(i) for i in idx]]
+        return self.dataset[self._convert_idx(idx)]
+
+    def __getitems__(self, indices: list[int]) -> list:
+        # add batched sampling support when parent dataset supports it.
+        # see torch.utils.data._utils.fetch._MapDatasetFetcher
+        if callable(getattr(self.dataset, "__getitems__", None)):
+            return self.dataset.__getitems__(self._convert_idx(indices))  # type: ignore[attr-defined]
+        else:
+            return [self.dataset[idx] for idx in self._convert_idx(indices)]
+
+    def get_trajectory(self, traj_idx: int) -> TensorDict:
+        return self.dataset.get_trajectory(self._traj_indices[traj_idx])
+
+
+def random_traj_split(
+    dataset: TrajectoryDataset,
+    lengths: Sequence[int] | Sequence[float],
+    generator: torch.Generator | None = torch.default_generator,
+) -> list[TrajectorySubset]:
+    r"""
+    Randomly split a dataset into non-overlapping new datasets of given lengths.
+
+    If a list of fractions that sum up to 1 is given,
+    the lengths will be computed automatically as
+    floor(frac * len(dataset.n_trajectories)) for each fraction provided.
+
+    After computing the lengths, if there are any remainders, 1 count will be
+    distributed in round-robin fashion to the lengths
+    until there are no remainders left.
+
+    Optionally fix the generator for reproducible results, e.g.:
+
+    Example:
+        >>> # xdoctest: +SKIP
+        >>> generator1 = torch.Generator().manual_seed(42)
+        >>> generator2 = torch.Generator().manual_seed(42)
+        >>> random_split(range(10), [3, 7], generator=generator1)
+        >>> random_split(range(30), [0.3, 0.3, 0.4], generator=generator2)
+
+    Args:
+        dataset (Dataset): Dataset to be split
+        lengths (sequence): lengths or fractions of splits to be produced
+        generator (Generator): Generator used for the random permutation.
+    """
+    if math.isclose(sum(lengths), 1) and sum(lengths) <= 1:
+        subset_lengths: list[int] = []
+        for i, frac in enumerate(lengths):
+            if frac < 0 or frac > 1:
+                raise ValueError(f"Fraction at index {i} is not between 0 and 1")
+            n_items_in_split = int(
+                math.floor(dataset.n_trajectories * frac)  # type: ignore[arg-type]
+            )
+            subset_lengths.append(n_items_in_split)
+        remainder = dataset.n_trajectories - sum(subset_lengths)  # type: ignore[arg-type]
+        # add 1 to all the lengths in round-robin fashion until the remainder is 0
+        for i in range(remainder):
+            idx_to_add_at = i % len(subset_lengths)
+            subset_lengths[idx_to_add_at] += 1
+        lengths = subset_lengths
+        for i, length in enumerate(lengths):
+            if length == 0:
+                warnings.warn(
+                    f"Length of split at index {i} is 0. "
+                    f"This might result in an empty dataset."
+                )
+
+    # Cannot verify that dataset is Sized
+    if sum(lengths) != dataset.n_trajectories:  # type: ignore[arg-type]
+        raise ValueError(
+            "Sum of input lengths does not equal the length of the input dataset!"
+        )
+
+    indices = torch.randperm(sum(lengths), generator=generator).tolist()  # type: ignore[arg-type, call-overload]
+    lengths = cast(Sequence[int], lengths)
+    return [
+        TrajectorySubset(dataset, indices[offset - length : offset])
+        for offset, length in zip(itertools.accumulate(lengths), lengths)
+    ]
 
 
 T = TypeVar("T")

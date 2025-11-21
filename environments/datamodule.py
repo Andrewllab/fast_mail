@@ -9,16 +9,20 @@ from typing import Any, Literal
 
 import hydra
 import lightning as L
+import torch
 import torch.nn as nn
 from gymnasium import Wrapper
 from gymnasium.wrappers import RecordVideo
 from hydra.errors import InstantiationException
 from omegaconf import DictConfig
 from tensordict import NonTensorData, TensorDict, is_leaf_nontensor
-from torch import device
 from torch.utils.data import DataLoader, Subset, random_split
 
-from environments.base_dataset import TrajectoryDataset
+from environments.base_dataset import (
+    TrajectoryDataset,
+    TrajectorySubset,
+    random_traj_split,
+)
 from environments.collate import update_collate_fn_map
 from environments.gym_env_dataset import GymEnvDataset
 from environments.specs import DataSpecs
@@ -58,6 +62,7 @@ class TrajectoryDataModule(L.LightningDataModule):
         pin_memory: bool = False,
         prefetch_factor: int | None = None,
         eval_mode: Literal["env", "dataset"] | float | None = None,
+        eval_traj_subset: bool = True,
         env: DictConfig | None = None,
         **preprocess_cfgs: DictConfig,
     ):
@@ -73,6 +78,7 @@ class TrajectoryDataModule(L.LightningDataModule):
         self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
         self.eval_mode = eval_mode
+        self.eval_traj_subset = eval_traj_subset
         self.env_cfg = env
 
         # sort by number of "pre" prefixes
@@ -89,8 +95,8 @@ class TrajectoryDataModule(L.LightningDataModule):
             if get_transforms_config(cfg)
         }
 
-        self.dataset: TrajectoryDataset | Subset | None = None
-        self.eval_dataset: TrajectoryDataset | Subset | None = None
+        self.dataset: TrajectoryDataset | TrajectorySubset | Subset | None = None
+        self.eval_dataset: TrajectoryDataset | TrajectorySubset | Subset | None = None
         self._specs: DataSpecs | None = None
 
         self.env: GymEnvDataset | None = None
@@ -323,11 +329,20 @@ class TrajectoryDataModule(L.LightningDataModule):
                 # we also need to split it first
                 training = 1 - self.eval_mode
                 log.info(
-                    f"Using {self.eval_mode * 100}% of the dataset for evaluation (validation/testing/prediction) and {training * 100}% for training."
+                    f"Using {self.eval_mode * 100}% of the trajectories in the dataset for evaluation (validation/testing/prediction) and {training * 100}% for training."
                 )
-                self.dataset, self.eval_dataset = random_split(
-                    self.dataset, [training, self.eval_mode]
-                )
+                if self.eval_traj_subset:
+                    self.dataset, self.eval_dataset = random_traj_split(
+                        self.dataset, [training, self.eval_mode]
+                    )
+                    log.debug(
+                        f"The following {self.eval_dataset.n_trajectories} trajectories will be used for evaluation:\n{self.eval_dataset.traj_indices} "
+                    )
+                else:
+                    self.dataset, self.eval_dataset = random_split(
+                        self.dataset, [training, self.eval_mode]
+                    )
+
             elif self.eval_mode == "dataset":
                 # if we are using a complete dataset for evaluation, we need to
                 # set it here
@@ -644,7 +659,7 @@ class TrajectoryDataModule(L.LightningDataModule):
             return self.env_cpu_batch_transform(batch)
 
     def transfer_batch_to_device(
-        self, batch: Any, device: device, dataloader_idx: int
+        self, batch: Any, device: torch.device, dataloader_idx: int
     ) -> Any:
 
         batch = super().transfer_batch_to_device(batch, device, dataloader_idx)
