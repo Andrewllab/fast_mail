@@ -1,0 +1,6 @@
+defaults:
+  - transformer
+
+n_layers: 6
+attention:
+  n_heads: 8
