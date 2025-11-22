@@ -526,7 +526,7 @@ class TrajectorySlices:
         obs_seq_len: int,
         action_seq_len: int,
     ) -> None:
-        self._traj_lengths = np.asarray(traj_lengths)
+        self._traj_lengths = np.array(traj_lengths)
         self.obs_seq_len = obs_seq_len
         self.action_seq_len = action_seq_len
 
@@ -609,13 +609,13 @@ class TrajectorySubset(TrajectoryDataset):
 
     def __init__(self, dataset: TrajectoryDataset, traj_indices: Sequence[int]) -> None:
         self.dataset = dataset
-        self._traj_indices = np.asarray(traj_indices)
+        self._traj_indices = np.array(traj_indices)
 
         # zero out of the lengths are trajectories that are not in this subset
-        traj_lengths = [
-            (n if i in traj_indices else 0)
-            for i, n in enumerate(self.dataset.slices.traj_lengths)
-        ]
+        traj_lengths = np.array(self.dataset.slices.traj_lengths)
+        traj_lengths[
+            np.isin(np.arange(len(traj_lengths)), self._traj_indices, invert=True)
+        ] = 0
 
         self.slices = TrajectorySlices(
             traj_lengths=traj_lengths,

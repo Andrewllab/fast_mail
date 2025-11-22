@@ -264,8 +264,9 @@ class TrajectoryDataModule(L.LightningDataModule):
                 if TransformConstraint.GPU_ONLY in transform.constraints:
                     _transforms[j] = GpuExecutionWrapper(transform)
 
-            for idx in range(dataset.n_trajectories):
-                log.debug(f"Loading trajectory #{idx} of {dataset.n_trajectories}...")
+            n_trajs = dataset.n_trajectories
+            for idx in range(n_trajs):
+                log.debug(f"Loading trajectory #{idx + 1} of {n_trajs}...")
                 traj = dataset.get_trajectory(idx)
                 log.debug(
                     f"{key.title()}ing trajectory "

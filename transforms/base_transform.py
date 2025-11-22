@@ -101,7 +101,7 @@ class Transform(ABC, metaclass=TransformModuleMeta):
             key_mappings = self.key_mappings
         except NotImplementedError as e:
             raise NotImplementedError(
-                "A transform must either define a key_mappings property or implement __call__."
+                "A Transform must either define a `_call_one` method and `key_mappings` property or implement `__call__`."
             ) from e
 
         for idx, key_mapping in enumerate(key_mappings):
@@ -130,7 +130,9 @@ class Transform(ABC, metaclass=TransformModuleMeta):
         return tensordict
 
     def _call_one(self, *args: Any, **kwargs: Any) -> Any:
-        raise NotImplementedError
+        raise NotImplementedError(
+            "A Transform must either define a `_call_one` method and `key_mappings` property or implement `__call__`."
+        )
 
     # a transform may also inherit from torch.nn.Module, and therefore have a
     # forward method in this case, the metaclass ensures that the __call__
@@ -169,7 +171,7 @@ class ReversibleTransform(Transform):
             key_mappings = self.reverse_key_mappings
         except NotImplementedError as e:
             raise NotImplementedError(
-                "A transform must either define a key_mappings property or implement __call__."
+                "A ReversibleTransform must either define a `_reverse_one` method and a `key_mappings` property (and maybe a `reverse_key_mappings` property) or implement `reverse`."
             ) from e
 
         for idx, key_mapping in enumerate(key_mappings):
@@ -200,7 +202,7 @@ class ReversibleTransform(Transform):
     def _reverse_one(self, *args: Any, **kwargs: Any) -> Any:
         """Reverses the transformation applied by this transform for a single key mapping."""
         raise NotImplementedError(
-            "ReversibleTransform must implement reverse_one method to reverse the transformation for a single key mapping."
+            "A ReversibleTransform must either define a `_reverse_one` method and a `key_mappings` property (and maybe a `reverse_key_mappings` property) or implement `reverse`."
         )
 
 

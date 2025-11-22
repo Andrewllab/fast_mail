@@ -1,0 +1,3 @@
+_target_: transforms.action_binarize_gripper.BinarizeGripperActions
+_partial_: True
+threshold: 0.04  # 4cm, half the nominal width of the Franka gripper
