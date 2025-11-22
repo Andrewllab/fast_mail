@@ -1,0 +1,17 @@
+_target_: transforms.goal_from_foldername.GoalTextFromFolderName
+_partial_: True
+current_task: null
+goal_mapping:
+  # drawer
+  top: put the red cube in the top drawer
+  bottom: put the red cube in the bottom drawer
+  # stack task
+  blue_in_purple: stack the blue cup in the purple cup
+  orange_in_red: stack the orange cup in the red cup
+  red_in_blue: stack the red cup in the blue cup
+  yellow_in_orange: stack the yellow cup in the orange cup
+  # arrange
+  blue_cup: put the blue cup in the coffee machine
+  orange_cup: put the orange cup in the coffee machine
+  pink_bowl: put the pink bowl in the coffee machine
+  red_cup: put the red cup in the coffee machine

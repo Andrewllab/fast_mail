@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from agents.encoders.clip import build_model, load_clip, tokenize
+from models.clip.clip import build_model, load_clip, tokenize
 
 
 class LangClip(nn.Module):

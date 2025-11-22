@@ -3,5 +3,11 @@
 defaults:
   - /transforms@data.preprocess.t0_trim_idle: time_trim_idle
 
+  # add a goal text based on the folder name of the demonstration
+  - /transforms@data.preprocess.t8_add_goal: goal_from_foldername
+
   # normalize absolute actions so that they lie within [-1,1]
   - /transforms@data.preprocess.t9_normalize_actions: action_norm_minmax
+
+  # compute a goal embedding token from the goal text
+  - /tokenizers@agent.goal_encoder.t1_goal_embedding: clip_goal_embedding

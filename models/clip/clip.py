@@ -18,7 +18,7 @@ from PIL import Image
 from torchvision.transforms import CenterCrop, Compose, Normalize, Resize, ToTensor
 from tqdm import tqdm
 
-from agents.encoders.clip_tokenizer import SimpleTokenizer as _Tokenizer
+from .clip_tokenizer import SimpleTokenizer as _Tokenizer
 
 try:
     from torchvision.transforms import InterpolationMode
