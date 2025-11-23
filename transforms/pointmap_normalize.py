@@ -77,7 +77,7 @@ class PointMapMaxMinNormalize(NormalizingTransform, nn.Module):
         return self._specs
 
     def call_trajectory(self, tensordict):
-        for (key, name), (cam_spec, depth_stream) in self.streams.items():
+        for (key, name), (cam_spec, pm_stream) in self.streams.items():
             pointmap: torch.Tensor = tensordict["obs", key, name]
 
             # (..., H, W, C) -> (N, C)

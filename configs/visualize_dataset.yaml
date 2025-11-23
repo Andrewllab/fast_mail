@@ -38,7 +38,8 @@ data:
 
   gpu_batch_transforms:
     t90_render:
-      stream_names: [rgb, depth]
+      stream_types: [rgb, depth]
+      stream_names: [rgb, left, depth]
 
     t90_render_pcd:
       render_camera_poses: False

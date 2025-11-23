@@ -10,6 +10,7 @@ from environments.specs import (
     CameraSpec,
     DataSpecs,
     DepthStream,
+    ImageStream,
     PointMapStream,
     RGBStream,
 )
@@ -22,51 +23,97 @@ from utils.rendering import (
     tile_images,
 )
 
+STREAM_TYPES = {
+    "rgb": RGBStream,
+    "depth": DepthStream,
+    "pointmap": PointMapStream,
+    "ir": ImageStream,
+}
+
 
 class RenderCameras(Transform):
     def __init__(
         self,
         specs: DataSpecs,
+        stream_types: str | Sequence[str] | None = None,
         stream_names: str | Sequence[str] | None = None,
         min_depth: float | None = None,
         max_depth: float | None = None,
         depth_colormap: str = "magma",
         show_stream_names: bool = True,
     ) -> None:
+        # TODO: extend tile_images to specify a particular coordinate for each
+        # stream, e.g. each camera is its own column/row but they may have
+        # different numbers of streams
+
         input_specs = {
-            key: spec for key, spec in specs.obs.items() if isinstance(spec, CameraSpec)
+            key: {name: (spec, stream) for name, stream in spec.streams.items()}
+            for key, spec in specs.obs.items()
+            if isinstance(spec, CameraSpec)
         }
 
-        if isinstance(stream_names, str):
-            stream_names = [stream_names]
+        if stream_types is not None:
+            if isinstance(stream_types, str):
+                stream_types = [stream_types]
 
-        input_streams = [
-            stream
-            for spec in input_specs.values()
-            for name, stream in spec.streams.items()
-            if (stream_names is None or name in stream_names)
-            and not isinstance(stream, PointMapStream)
+            stream_classes = tuple(
+                STREAM_TYPES[stream_type.lower()] for stream_type in stream_types
+            )
+            input_specs = {
+                key: {
+                    name: (spec, stream)
+                    for name, (spec, stream) in streams.items()
+                    # exact type match because ImageStream is the base class for others
+                    if type(stream) in stream_classes
+                }
+                for key, streams in input_specs.items()
+            }
+
+        if stream_names is not None:
+            if isinstance(stream_names, str):
+                stream_names = [stream_names]
+
+            input_specs = {
+                key: {
+                    name: (spec, stream)
+                    for name, (spec, stream) in streams.items()
+                    if name in stream_names
+                }
+                for key, streams in input_specs.items()
+            }
+
+        height_widths = [
+            stream.height_width
+            for streams in input_specs.values()
+            for (spec, stream) in streams.values()
         ]
+        if not height_widths:
+            raise ValueError(
+                f"No matching image streams found for with types {stream_types} and names {stream_names}."
+            )
 
-        n_images = len(input_streams)
-        if n_images == 0:
-            raise ValueError("No camera specs found.")
-
-        height_widths = [stream.height_width for stream in input_streams]
         if not all(hw == height_widths[0] for hw in height_widths):
             raise ValueError(
                 f"All camera streams must have the same height and width, but got {height_widths}"
             )
 
+        streams_per_camera = [len(streams) for streams in input_specs.values()]
+        if not all(n == streams_per_camera[0] for n in streams_per_camera):
+            streams_per_camera = {
+                key: len(streams) for key, streams in input_specs.items()
+            }
+            raise ValueError(
+                f"All cameras must have the same number of selected streams, but got {streams_per_camera}"
+            )
+
+        self.input_specs = input_specs
         height, width = height_widths[0]
         self.width = width
         self.height = height
         # self.tiled_height, self.tiled_width = find_tiling(n_images)
         self.tiled_width = len(input_specs)  # number of cameras
-        self.tiled_height = n_images // self.tiled_width
+        self.tiled_height = len(height_widths) // self.tiled_width
 
-        self._input_specs = input_specs
-        self.stream_names = stream_names
         self.min_depth = min_depth
         self.max_depth = max_depth
         self.depth_colormap = depth_colormap
@@ -97,15 +144,12 @@ class RenderCameras(Transform):
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         images = []
         stream_names = []
-        for key, spec in self._input_specs.items():
-            for name, stream in spec.streams.items():
-                if self.stream_names is not None and name not in self.stream_names:
-                    continue
-                elif isinstance(stream, PointMapStream):
-                    continue
 
+        for key, streams in self.input_specs.items():
+            for name, (spec, stream) in streams.items():
                 image = tensordict["obs", key, name]
                 image = image[0, -1].cpu().numpy()  # remove batch and time dimensions
+
                 if isinstance(stream, RGBStream):
                     image = rgb_to_renderable(image, stream.channel_order)
                 elif isinstance(stream, DepthStream):

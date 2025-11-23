@@ -741,20 +741,32 @@ T = TypeVar("T")
 
 
 def get_subset(
-    files: Sequence[T], subset: int | float | Sequence[int] | None
+    files: Sequence[T], subset: int | float | Sequence[int] | Sequence[str] | None
 ) -> Sequence[T]:
-    """Get a subset of files based on the specified subset percentage."""
     if subset is None:
         return files
 
-    if isinstance(subset, (int, float)):
+    if isinstance(subset, Sequence) and isinstance(subset[0], str):
+        log.info(
+            f"Loading the following trajectories out of {len(files)} total trajectories found: {subset}"
+        )
 
+        if isinstance(files[0], Path):
+            return [file for file in files if file.name in subset]
+
+        if isinstance(files[0], str):
+            return [file for file in files if file in subset]
+
+        raise NotImplementedError(
+            f"Cannot select subset {subset} for items of type {type(files[0])}."
+        )
+
+    if isinstance(subset, (int, float)):
         if isinstance(subset, float):
             # if subset is a percentage, convert it to an integer
             subset = int(len(files) * subset)
 
         if isinstance(subset, int):
-
             # do not index less than 1 file
             subset = max(1, subset)
 

@@ -20,10 +20,26 @@ class BinarizeGripperActions(Transform):
     and there is no way for the model to know what the original action was.
     There is no need to reverse this transform since the binarized target width
     can be sent to the environment as-is.
+
+    Args:
+        specs (DataSpecs): data specs
+        threshold (float | None): threshold for binarization. If None, half the
+            maximum gripper width in the trajectory is used.
+        open_width (float): width to set when gripper is open.
+        hysteris_steps (int): number of steps to use for hysteresis check. If
+            there are state changes that happen more frequently than this number
+            of steps, a warning is logged.
     """
 
-    def __init__(self, specs: DataSpecs, threshold: float, hysteris_steps: int = 30):
+    def __init__(
+        self,
+        specs: DataSpecs,
+        threshold: float | None = None,
+        open_width: float = 0.08,
+        hysteris_steps: int = 30,
+    ):
         self.threshold = threshold
+        self.open_width = open_width
         self.hysteris_steps = hysteris_steps
         self._specs = specs
 
@@ -36,8 +52,12 @@ class BinarizeGripperActions(Transform):
         if "action" in tensordict:
             gripper_action = tensordict["action"][..., -1]
 
-            # binarize gripper action to be either 0 or 2*threshold
-            closed = gripper_action < self.threshold
+            if self.threshold is None:
+                threshold = (gripper_action.max() / 2).item()
+            else:
+                threshold = self.threshold
+
+            closed = gripper_action < threshold
             state_changes = closed[1:] ^ closed[:-1]
             log.debug(
                 "Trajectory %sfrom %s has %s changes of state of the gripper.",
@@ -66,7 +86,7 @@ class BinarizeGripperActions(Transform):
                 )
 
             gripper_action[closed] = 0.0
-            gripper_action[~closed] = self.threshold * 2
+            gripper_action[~closed] = self.open_width
 
             if "ref_action" in tensordict:
                 tensordict["ref_action"][..., -1] = gripper_action
