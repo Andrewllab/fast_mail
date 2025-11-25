@@ -1,16 +1,17 @@
 # @package _global_
 
 defaults:
+  - /transforms@data.preprocess.t10_resize: image_resize
+
   - /transforms@data.preprocess.t15_to_pcd: to_pointcloud
+  
+  - /transforms@data.preprocess.t20_crop_pcd: pointcloud_crop_maniskill
 
-  # we can't crop tightly around the scene because each scene is in a different location in the world frame
-  # points very far away (>100m) are removed by the max_depth of the to_pointcloud transform
-
-  # no need to apply random transform for robocasa, since this is in the dataset already
+  # # disable random transforms for now
+  # - /transforms@data.preprocess.t7_random_transform: pointcloud_random_transform
 
   - /transforms@data.preprocess.t99_cleanup: cleanup
 
-  - /transforms@data.gpu_batch_transforms.t1_sample_random: pointcloud_downsample_random
   - /transforms@data.gpu_batch_transforms.t2_sample_voxel: pointcloud_downsample_voxel
 
   # apply jitter data augmentation
@@ -24,28 +25,26 @@ data:
   # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_pointclouds
+    root_dir: ${paths.preprocessed_dir}/maniskill/${data.name}_pointclouds
+
+    t10_resize:
+      shape: 128  # scale shortest side to 128 and keep aspect ratio
 
     t15_to_pcd:
       color: False
-      max_depth: 10.0  # in meters
+      max_depth: 2.0  # in meters
       warn_min_points: 100
 
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
-      drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose]
+      drop_keys: [base_cam_transform, gripper_cam_transform]
 
   gpu_batch_transforms:
-    t1_sample_random:
-      # point clouds begin with (approx.) 224*224*3 = 150528 points
-      n_points: 32768
-
     t2_sample_voxel:
-      # results in approx. 17000 points after downsampling
-      size: 0.01
+      size: 0.006
 
     t10_jitter:
-      sigma: 0.002  # slightly higher jitter for robocasa
+      sigma: 0.002
 
 # disable the batch size finder for point clouds, because the data points 
 # don't have a consistent memory size

@@ -2,14 +2,18 @@
 # LiftPegUpright, PokeCube, PullCube, PushCube, PickCube, RollBall
 
 import logging
+import os
 from pathlib import Path
+from typing import Sequence
 
+import h5py
 import numpy as np
 import torch
+from h5py import Group
 from tensordict import TensorDict
 
-from environments.base_dataset import TrajectoryDataset, keyfunc
-from environments.specs import (  # TextSpec,
+from environments.base_dataset import CustomHdf5Dataset, TrajectorySlices, get_subset
+from environments.specs import (
     ActionSpec,
     CameraSpec,
     DataSpecs,
@@ -19,6 +23,7 @@ from environments.specs import (  # TextSpec,
     PinholeCameraIntrinsic,
     RGBStream,
 )
+from transforms.base_transform import TransformPartialsDict, init_transforms
 from utils.math import (
     convert_camera_frame_orientation_convention,
     make_pose,
@@ -26,6 +31,7 @@ from utils.math import (
     quaternion_to_matrix,
     unmake_pose,
 )
+from utils.paths import iglob_follow_symlinks, resolve_path
 
 log = logging.getLogger(__name__)
 
@@ -51,205 +57,181 @@ def _convert_extrinsics_convention(
     return extrinsics_target
 
 
-class ManiSkillDataset(TrajectoryDataset):
-    def __init__(self, *args, **kwargs):
-        self._specs = None
-        super().__init__(*args, **kwargs)
+class ManiSkillDataset(CustomHdf5Dataset):
+    def __init__(
+        self,
+        root_dir: os.PathLike,
+        action_seq_len: int,
+        obs_seq_len: int,
+        item_transforms: TransformPartialsDict | None = None,
+        load_subset: int | float | Sequence[int] | None = None,
+        subfolders: Sequence[str] | None = None,
+    ):
+        self._root_dir = resolve_path(root_dir)
+        self.action_seq_len = action_seq_len
+        self.obs_seq_len = obs_seq_len
 
-    def find_raw_files(self) -> list[Path]:
-        files = list(self.root_dir.glob("*.h5"))
+        files = iglob_follow_symlinks(self._root_dir, "**/*.h5")
+        self.files = list(sorted(files, key=self.filename_keyfunc))
 
-        if not files:
+        if subfolders is not None:
+            if isinstance(subfolders, str):
+                subfolders = (subfolders,)
+            subfolders_set = set(subfolders)
+            files = [file for file in self.files if set(file.parts) & subfolders_set]
+            log.info(
+                f"Loading only data in the following subfolders: {list(subfolders)} ({len(files)} files out of {len(self.files)} total)"
+            )
+            self.files = files
+
+        if not self.files:
             raise FileNotFoundError(
-                f"No raw files found in {self.root_dir}. Please check the path."
+                f"No raw files found in {self._root_dir}. Please check the path."
             )
 
-        files = list(sorted(files, key=keyfunc))
-        return files
+        # TODO: take identical subset of the contents of each subfolder
+        self.files = get_subset(self.files, load_subset)
 
-    def load_from_raw_file(self, filepath: Path) -> TensorDict:
-        log.debug(f"Loading trajectory from file {filepath}")
+        self.trajs: list[tuple[Path, str, Group]] = [
+            (file.relative_to(self._root_dir), file.stem, h5py.File(str(file), "r"))
+            for file in self.files
+        ]
 
-        # Load the raw data from the file
-        traj = TensorDict.from_h5(str(filepath), mode="r")  # readonly
+        traj_lengths = [len(traj["actions"]) for _, _, traj in self.trajs]
 
-        if self._specs is None:
-            log.debug(
-                f"Inferring dataset specs by inspecting trajectory from file {filepath}"
-            )
-            self._load_specs(traj)
+        self.slices = TrajectorySlices(
+            traj_lengths,
+            obs_seq_len=obs_seq_len,
+            action_seq_len=action_seq_len,
+        )
 
-        extrinsics = traj["obs", "sensor_param", "base_camera", "cam2world_gl"][:-1]
+        self._load_specs()
+
+        if item_transforms is not None:
+            log.debug("Instantiating item transforms...")
+        self._item_transforms, self._specs = init_transforms(
+            item_transforms, self._specs
+        )
+
+    def get_trajectory(self, traj_idx: int) -> TensorDict:
+        path, name, traj = self.trajs[traj_idx]
+
+        base_camera = traj["obs"]["sensor_data"]["base_camera"]
+        rgb = base_camera["rgb"][:-1]
+        # squeeze channel dimension and convert depth from float64 to float32 and from mm to m
+        depth = base_camera["depth"][:-1, ..., 0].astype(np.float32) / 1000.0
+
+        extrinsics = traj["obs"]["sensor_param"]["base_camera"]["cam2world_gl"][:-1]
+        extrinsics = torch.from_numpy(extrinsics)
         extrinsics_ros = _convert_extrinsics_convention(extrinsics, target="ros")
 
-        # gripper_cam_extrinsics_gl = traj["obs", "sensor_param", "hand_camera", "cam2world_gl"][:-1]
-        # gripper_cam_extrinsics_ros = _convert_extrinsics_convention(
-        #     gripper_cam_extrinsics_gl, target="ros"
-        # )
+        action = traj["actions"][...]
+
+        # verify that goal does not change over time
+        goal_region = traj["env_states"]["actors"]["goal_region"]
+        assert np.array_equiv(goal_region[...], goal_region[0])
 
         traj = TensorDict(
             {
                 "obs": {
-                    "base_camera": {
-                        "rgb": traj["obs", "sensor_data", "base_camera", "rgb"][:-1],
-                        "depth": traj["obs", "sensor_data", "base_camera", "depth"][
-                            :-1
-                        ].squeeze(-1)
-                        / 1000.0,
-                    },
-                    # "hand_camera": {
-                    #     "rgb": traj["obs", "sensor_data", "hand_camera", "rgb"][:-1],
-                    #     "depth": traj["obs", "sensor_data", "hand_camera", "depth"][:-1].squeeze(-1)/1000.0,
-                    # },
-                    "robot_state": traj["obs", "agent", "qpos"][:-1],
-                    "ee_pose": traj["obs", "extra", "tcp_pose"][:-1],
-                    "base_cam_pose": extrinsics_ros,
-                    "goal_region": traj["env_states", "actors", "goal_region"][:-1, :3],
-                    # assume that goal_region is always static
-                    # "gripper_cam_transform": gripper_cam_extrinsics_ros,
+                    "base_camera": {"rgb": rgb, "depth": depth},
+                    "robot_state": traj["obs"]["agent"]["qpos"][:-1],
+                    "ee_pose": traj["obs"]["extra"]["tcp_pose"][:-1],
+                    "base_cam_transform": extrinsics_ros,
+                    "goal_region": goal_region[:-1, :3],
                 },
-                "action": traj["actions"],
+                "action": action,
+                "ref_action": action.copy(),
                 "goal": {
-                    # "text": str(traj["goal", "text"]),
-                    "embed": traj["goal", "preprocessed_embedding"],
+                    "embed": traj["goal"]["preprocessed_embedding"][...],
                 },
+                "path": str(path),
+                "name": name,
             },  # type: ignore
         )
 
         return traj
 
-    def _load_specs(self, data: TensorDict | None = None) -> None:
-        if data is None:
-            filepath = self.find_raw_files()[0]
-            log.debug(
-                f"Inferring dataset specs by inspecting trajectory from file {filepath}"
-            )
-            data = TensorDict.from_h5(str(filepath), mode="r")
+    def _load_specs(self) -> None:
+        _, _, traj = self.trajs[0]
 
-        rgb_shape = data["obs", "sensor_data", "base_camera", "rgb"].shape
-        assert len(rgb_shape) == 4
-        assert rgb_shape[-1] == 3
-        depth_shape = data["obs", "sensor_data", "base_camera", "depth"].shape
-        assert len(depth_shape) == 4
-        assert depth_shape[-1] == 1
-        height, width, channels = rgb_shape[1:]
-        intrinsics = data["obs", "sensor_param", "base_camera", "intrinsic_cv"][0]
+        obs_specs = {}
+        T = len(traj["actions"])
+
+        base_camera = traj["obs"]["sensor_data"]["base_camera"]
+
+        rgb = base_camera["rgb"]
+        match rgb.shape:
+            case (t, height, width, 3) if t == T + 1:
+                pass
+            case _:
+                raise ValueError(
+                    f"Expected rgb stream from base_camera to have shape ({T+1}, H, W, 3), got {rgb.shape}"
+                )
+
+        depth = base_camera["depth"]
+        match depth.shape:
+            case (t, h, w, 1) if t == T + 1 and h == height and w == width:
+                pass
+            case _:
+                raise ValueError(
+                    f"Expected left camera depth images to have shape ({T+1}, {height}, {width}, 1), got {depth.shape}"
+                )
+
+        intrinsics = traj["obs"]["sensor_param"]["base_camera"]["intrinsic_cv"]
+        assert intrinsics.shape == (T + 1, 3, 3)
+        # verify that intrinsics do not change over time
+        assert np.array_equiv(intrinsics[...], intrinsics[0])
 
         base_cam = CameraSpec(
             streams={
-                "rgb": RGBStream(height, width, channels, channel_order="HWC"),
+                "rgb": RGBStream(height, width, 3, channel_order="HWC"),
                 "depth": DepthStream(height, width),
             },
             time=self.obs_seq_len,
             intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
-                intrinsics, height=height, width=width
+                intrinsics[0], height=height, width=width
             ),
             extrinsics=torch.eye(4, dtype=torch.float32),
-            dynamic_pose_obs_key="base_cam_pose",
+            dynamic_pose_obs_key="base_cam_transform",
         )
-
-        # # hand cam
-        # rgb_shape = data["obs", "sensor_data", "hand_camera", "rgb"].shape
-        # assert len(rgb_shape) == 4
-        # assert rgb_shape[-1] == 3
-        # depth_shape = data["obs", "sensor_data", "hand_camera", "depth"].shape
-        # assert len(depth_shape) == 4
-        # assert depth_shape[-1] == 1
-        # assert rgb_shape[:-1] == depth_shape[:-1]
-        # height, width, channels = rgb_shape[1:]
-        # intrinsics = data["obs", "sensor_param", "hand_camera","intrinsic_cv"][0]
-        # # gripper_cam_transform provides complete transform to camera
-        # extrinsics = torch.eye(4, dtype=torch.float32)
-
-        # hand_cam = CameraSpec(
-        #     streams={
-        #         "rgb": RGBStream(height, width, channels, channel_order="HWC"),
-        #         "depth": DepthStream(height, width),
-        #     },
-        #     time=self.obs_seq_len,
-        #     intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
-        #         intrinsics, height=height, width=width
-        #     ),
-        #     dynamic_pose_obs_key="gripper_cam_transform", # TODO: check if changing this leads to problems
-        #     # gripper_cam_transform provides complete transform to camera
-        #     extrinsics=extrinsics,
-        # )
+        obs_specs["base_camera"] = base_cam
 
         # robot state
-        joint_pos = data["obs", "agent", "qpos"]
-        assert joint_pos.ndim == 2
-        assert joint_pos.shape[-1] == 9
-        robot_state = ObsSpec(elem_shape=(joint_pos.shape[-1],), time=self.obs_seq_len)
+        joint_pos = traj["obs"]["agent"]["qpos"]
+        assert joint_pos.shape == (T + 1, 9)
+        obs_specs["robot_state"] = ObsSpec(elem_shape=(9,), time=self.obs_seq_len)
 
         # goal region
-
-        goal_region = data["env_states", "actors", "goal_region"]
-        assert goal_region.ndim == 2
-        assert goal_region.shape[-1] == 13
-        goal_region = ObsSpec(
-            elem_shape=(3,), time=self.obs_seq_len
-        )
+        goal_region = traj["env_states"]["actors"]["goal_region"]
+        assert goal_region.shape == (T + 1, 13)
+        obs_specs["goal_region"] = ObsSpec(elem_shape=(3,), time=self.obs_seq_len)
 
         # end-effector pose
-        ee_pose = data["obs", "extra", "tcp_pose"]
-        assert ee_pose.ndim == 2
-        assert ee_pose.shape[-1] == 7
-        # we concatenate ee_pos and ee_quat to get a shape of (T, 7)
-        ee_pose = ObsSpec(elem_shape=(ee_pose.shape[-1],), time=self.obs_seq_len)
-        target_ee_pose = ObsSpec(
-            elem_shape=(ee_pose.shape[-1],), time=self.action_seq_len
+        ee_pose = traj["obs"]["extra"]["tcp_pose"]
+        assert ee_pose.shape == (T + 1, 7)
+        # we concatenate ee_pos and ee_quat to get a shape of (7,)
+        obs_specs["ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
+        obs_specs["target_ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
+
+        # base_cam_transform
+        transform = traj["obs"]["sensor_param"]["base_camera"]["cam2world_gl"]
+        assert transform.shape == (T + 1, 4, 4)
+        obs_specs["base_cam_transform"] = ObsSpec(
+            elem_shape=(4, 4), time=self.obs_seq_len
         )
-
-        # base_cam_pose
-        transform = data["obs", "sensor_param", "base_camera", "cam2world_gl"][0]
-        assert transform.ndim == 2
-        assert transform.shape[-2:] == (4, 4)
-        base_cam_pose = ObsSpec(elem_shape=(4, 4), time=self.obs_seq_len)
-
-        # # gripper_cam_transform
-        # transform = data["obs", "sensor_param", "hand_camera", "cam2world_gl"][0]
-        # assert transform.ndim == 2
-        # assert transform.shape[-2:] == (4, 4)
-        # gripper_cam_transform = ObsSpec(elem_shape=(4, 4), time=self.obs_seq_len)
 
         # actions
-        assert data["actions"].ndim == 2
-        assert data["actions"].shape[-1] == 8
-        action = ActionSpec(
-            action_dim=data["actions"].shape[-1], time=self.action_seq_len
-        )
+        actions = traj["actions"]
+        assert actions.shape == (T, 8)
+        action = ActionSpec(action_dim=8, time=self.action_seq_len)
 
-        # assert data["goal", "text"].ndim == 0
-        # # assert isinstance(data["goal", "text"], str)
-        # # assert data["goal", "text"].shape[0] < 78, "Goal text exceeds clips maximum length of 77 characters."
-        # text = TextSpec()
-
-        assert data["goal", "preprocessed_embedding"].ndim == 2
-        assert data["goal", "preprocessed_embedding"].shape[1] == 1024
-        goal = EmbedSpec(
-            embed_dim=data["goal", "preprocessed_embedding"].shape[1], n_tokens=1
-        )
+        goal_embed = traj["goal"]["preprocessed_embedding"]
+        assert goal_embed.shape == (1, 1024)
+        goal = EmbedSpec(embed_dim=1024, n_tokens=1)
 
         self._specs = DataSpecs(
-            obs={
-                "base_camera": base_cam,
-                # "hand_camera": hand_cam,
-                "robot_state": robot_state,
-                "goal_region": goal_region,
-                "ee_pose": ee_pose,
-                "target_ee_pose": target_ee_pose,
-                "base_cam_pose": base_cam_pose,
-                # "gripper_cam_transform": gripper_cam_transform,
-            },
+            obs=obs_specs,
             action=action,
-            goal={
-                # "text": text,
-                "embed": goal,
-            },
+            goal={"embed": goal},
         )
-
-    def get_specs(self) -> DataSpecs:
-        if self._specs is None:
-            self._load_specs()
-        assert self._specs is not None
-        return self._specs

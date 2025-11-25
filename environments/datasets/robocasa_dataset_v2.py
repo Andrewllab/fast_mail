@@ -11,12 +11,7 @@ import torch
 from h5py import Group
 from tensordict import TensorDict
 
-from environments.base_dataset import (
-    CustomHdf5Dataset,
-    TrajectorySlices,
-    get_subset,
-    iglob_follow_symlinks,
-)
+from environments.base_dataset import CustomHdf5Dataset, TrajectorySlices, get_subset
 from environments.specs import (
     ActionSpec,
     CameraSpec,
@@ -27,7 +22,7 @@ from environments.specs import (
     RGBStream,
 )
 from transforms.base_transform import TransformPartialsDict, init_transforms
-from utils.paths import resolve_path
+from utils.paths import iglob_follow_symlinks, resolve_path
 
 log = logging.getLogger(__name__)
 
