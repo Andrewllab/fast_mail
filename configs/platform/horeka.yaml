@@ -10,7 +10,7 @@ platform:
 
 hydra:
   launcher:
-    account: hk-project-p0022253
+    account: hk-project-p0024023
     timeout_min: 2880  # 48 hours
     partition: accelerated
     exclude: null # add any broken nodes here
