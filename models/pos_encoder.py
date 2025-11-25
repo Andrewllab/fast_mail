@@ -417,7 +417,7 @@ class GaussianRandomFourierFeatures(nn.Module):
         axis_aligned: bool = False,
         learnable_frequencies: bool = False,
         linear_transform: bool = False,
-        cat_input_to_out: bool = False,
+        cat_input_to_out: bool = False,  # TODO: remove to skip_connection
         # components: Literal["sin", "sincos"] = "sincos",
         scale: float = 1.0,
     ) -> None:
@@ -487,7 +487,7 @@ class GaussianRandomFourierFeatures(nn.Module):
 
         if self.cat_input_to_out:
             # concatenate the original coordinates with the sin/cos components
-            features = (pos.unsqueeze(dim=-1), *features)
+            features = (pos, *features)
 
         if self.padding_dim > 0:
             padding_shape = arg.shape[:-1] + (self.padding_dim,)
