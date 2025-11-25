@@ -406,3 +406,125 @@ class FourierFeatures(nn.Module):
         )
 
         return s
+
+
+class GaussianRandomFourierFeatures(nn.Module):
+    def __init__(
+        self,
+        input_dim: int,
+        n_wavelengths: int,
+        rff_sigma: float,
+        axis_aligned: bool = False,
+        learnable_frequencies: bool = False,
+        linear_transform: bool = False,
+        cat_input_to_out: bool = False,
+        # components: Literal["sin", "sincos"] = "sincos",
+        scale: float = 1.0,
+    ) -> None:
+        super().__init__()
+
+        if axis_aligned:
+            frequencies = torch.randn(n_wavelengths) * rff_sigma
+        else:
+            # each frequency is a random vector in R^input_dim
+            # sample input_dim times as many frequencies so that we have the
+            # embed dim as for axis-aligned case
+            frequencies = torch.randn(input_dim, input_dim * n_wavelengths) * rff_sigma
+
+        frequencies = frequencies * 2 * torch.pi * scale
+        self.frequencies = nn.Parameter(
+            frequencies, requires_grad=learnable_frequencies
+        )
+
+        # add 1 for the original coordinates if we are concatenating them
+        feature_dim = input_dim * (2 * n_wavelengths + (1 if cat_input_to_out else 0))
+        padding_dim = 0
+        embed_dim = feature_dim
+
+        if linear_transform:
+            # sin and cos components for each frequency
+            fourier_feature_dim = 2 * n_wavelengths
+            if not axis_aligned:
+                fourier_feature_dim *= input_dim
+            self.linear = nn.Linear(fourier_feature_dim, fourier_feature_dim)
+        else:
+            self.linear = None
+
+        self.input_dim = input_dim
+        self.cat_input_to_out = cat_input_to_out
+        self.embed_dim = embed_dim
+        self.padding_dim = padding_dim
+        self.axis_aligned = axis_aligned
+
+    def forward(self, pos: torch.Tensor) -> torch.Tensor:
+
+        if self.axis_aligned:
+            # multiply each coordinate by each frequency using broadcasting
+            # pos: (..., input_dim, 1) * (n_frequencies)
+            # arg: (..., input_dim, n_frequencies)
+            arg = pos.unsqueeze(dim=-1) * self.frequencies
+
+        else:
+            # matrix multiply coordinates with frequency vectors
+            # pos: (..., input_dim) @ (input_dim, n_frequencies)
+            # arg: (..., n_frequencies)
+            arg = pos @ self.frequencies
+
+        # concatenate sin(ωx) and cos(ωx) of each feature
+        # if axis-aligned, each coordinate is kept separate
+        # features: (..., input_dim, 2 * n_frequencies) or (..., 2 * n_frequencies)
+        features = torch.cat((arg.sin(), arg.cos()), dim=-1)
+
+        # optional linear transform of the features (dimensionality not changed)
+        if self.linear is not None:
+            features = self.linear(features).sin()
+
+        if self.axis_aligned:
+            # features -> (..., input_dim * 2 * n_frequencies)
+            features = features.flatten(start_dim=-2)
+
+        features = (features,)
+
+        if self.cat_input_to_out:
+            # concatenate the original coordinates with the sin/cos components
+            features = (pos.unsqueeze(dim=-1), *features)
+
+        if self.padding_dim > 0:
+            padding_shape = arg.shape[:-1] + (self.padding_dim,)
+            features = (*features, arg.new_zeros(padding_shape))
+
+        if len(features) > 1:
+            features = torch.cat(features, dim=-1)
+        else:
+            features = features[0]
+
+        return features
+
+    @property
+    def in_features(self) -> int:
+        """Returns the input size of the model."""
+        return self.input_dim
+
+    @property
+    def out_features(self) -> int:
+        """Retuns the output size of the model."""
+        return self.embed_dim
+
+    def extra_repr(self):
+        wavelengths = 2 * torch.pi / self.frequencies
+        # remove the "tensor()" from the repr string
+        wavelengths_s = repr(wavelengths)[7:-1]
+
+        s = ", ".join(
+            [
+                f"in_features={self.in_features}",
+                f"out_features={self.out_features}",
+                f"axis_aligned={self.axis_aligned}",
+                f"wavelengths={wavelengths_s}",
+                f"learnable_frequencies={self.frequencies.requires_grad}",
+                f"linear_transform={self.linear is not None}",
+                f"cat_input_to_out={self.cat_input_to_out}",
+            ]
+        )
+
+        return s
