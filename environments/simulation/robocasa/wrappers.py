@@ -417,10 +417,10 @@ class RoboCasaPreProcess(gym.Wrapper):
         reward = torch.tensor([reward], dtype=torch.float32)
 
         # raw RoboCasa terminated values always False
-        assert not terminated
+        # assert not terminated
         # raw value always False, there is no truncated in robosuite envs
         # necessary as robocasa/robosuite environment doesn't have a maximum episode steps
-        assert not truncated
+        # assert not truncated
         if self._current_env_step >= self._max_steps_per_episode:
             truncated = True
 
@@ -428,7 +428,7 @@ class RoboCasaPreProcess(gym.Wrapper):
 
         info["success"] = torch.tensor([success], dtype=torch.bool)
         # raw RoboCasa terminated values always False, so just use success as a termination.
-        terminated = torch.tensor([success], dtype=torch.bool)
+        terminated = torch.tensor([success or terminated], dtype=torch.bool)
         truncated = torch.tensor([truncated], dtype=torch.bool)
 
         obs = self._preprocess_obs(obs)
