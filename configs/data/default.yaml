@@ -7,5 +7,5 @@ pin_memory: ${platform.pin_memory}
 prefetch_factor: ${platform.prefetch_factor}
 preprocess:
   # default root dir, overwrite for specific modalities so they don't overwrite each other
-  root_dir: ${paths.preprocessed_dir}/${data.name}_default
+  root_dir: ${paths.preprocessed_dir}/${oc.select:data.name,unknown}_base
   backend: ${platform.preprocess_backend}
