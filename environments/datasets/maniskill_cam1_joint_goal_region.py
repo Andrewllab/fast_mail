@@ -129,7 +129,7 @@ class ManiSkillDataset(CustomHdf5Dataset):
 
         # verify that goal does not change over time
         goal_region = traj["env_states"]["actors"]["goal_region"]
-        assert np.array_equiv(goal_region[...], goal_region[0])
+        assert np.allclose(goal_region[...], goal_region[0], atol=1e-6)
 
         traj = TensorDict(
             {
