@@ -3,7 +3,8 @@ import os
 import os.path as osp
 from typing import Callable
 
-import gymnasium
+import gymnasium as gym
+import numpy as np
 import torch
 from gymnasium.core import ActType, ObsType
 from gymnasium.logger import warn
@@ -60,7 +61,7 @@ class VectorToTorchWrapper(VectorWrapper):
 class RecordMultiEpisodeVideo(RecordVideo):
     def __init__(
         self,
-        env: gymnasium.Env[ObsType, ActType],
+        env: gym.Env[ObsType, ActType],
         video_folder: str,
         episode_trigger: Callable[[int], bool] | None = None,
         num_episodes: int = 1,
@@ -174,3 +175,38 @@ class RecordMultiEpisodeVideo(RecordVideo):
 
             assert wandb.run is not None
             wandb.run.log({"test/rollouts": self.rollouts_table})
+
+
+class EmptyPointCloudChecker(gym.Wrapper):
+    """
+    A wrapper that checks if the point cloud observation is empty (i.e., has no valid points).
+    If the point cloud is empty, the environment is reset.
+    """
+
+    def __init__(
+        self,
+        env: gym.Env[ObsType, ActType],
+        min_points: int,
+        max_depth: float,
+    ):
+        super().__init__(env)
+        self.min_points = min_points
+        self.max_depth = max_depth
+
+    def step(self, action: ActType):
+        obs, reward, terminated, truncated, info = super().step(action)
+
+        n_points = 0
+        for key, value in obs.items():
+            if "depth" in key:
+                n_points += (
+                    np.logical_and(0 < value, value < self.max_depth).sum().item()
+                )
+
+        if n_points < self.min_points:
+            log.warning(
+                f"Fewer than {self.min_points} are within max depth of {self.max_depth} ({n_points} points). Terminating episode."
+            )
+            terminated = True
+
+        return obs, reward, terminated, truncated, info

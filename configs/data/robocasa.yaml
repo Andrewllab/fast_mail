@@ -2,6 +2,7 @@ defaults:
   - default
 
 task_suite: robocasa
+name:  # dummy name for interpolation of dataset paths
 
 action_seq_len: 20
 obs_seq_len: 1
@@ -28,6 +29,12 @@ env:
         _partial_: True  # requires 'env' argument
         render_width: 768
         render_height: 512
+      empty_pcd_checker:
+        _target_: environments.wrappers.EmptyPointCloudChecker
+        _partial_: True  # requires 'env' argument
+        # for patch size of 32, we need at least 32 points to form complete patches
+        min_points: 32
+        max_depth: 10.0  # max depth to consider points valid
       # robosuite:
       #   _target_: environments.simulation.robocasa.wrappers.RobosuiteWrapper
       #   _partial_: True  # requires 'env' argument
