@@ -1,21 +1,34 @@
-import sys
-import os
 import argparse
-import h5py
-import numpy as np
-import matplotlib.pyplot as plt
 import glob
+import os
+import sys
 from pathlib import Path
 
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+import h5py
+import matplotlib.pyplot as plt
+import numpy as np
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, project_root)
 
-parser = argparse.ArgumentParser(description="Inject a pre-processed goal embedding into an HDF5 file.")
-parser.add_argument("--folderpath", type=str, required=True, help="Path to the folder containing all .h5 files")
-parser.add_argument("--out-prefix", type=str, required=True, help="Prefix for the name of the generated heatmaps")
+parser = argparse.ArgumentParser(
+    description="Inject a pre-processed goal embedding into an HDF5 file."
+)
+parser.add_argument(
+    "--folderpath",
+    type=str,
+    required=True,
+    help="Path to the folder containing all .h5 files",
+)
+parser.add_argument(
+    "--out-prefix",
+    type=str,
+    required=True,
+    help="Prefix for the name of the generated heatmaps",
+)
 args = parser.parse_args()
 
-in_files = glob.glob(os.path.join(args.folderpath, "**","*.h5"), recursive=True)
+in_files = glob.glob(os.path.join(args.folderpath, "**", "*.h5"), recursive=True)
 
 first_images = []
 
@@ -33,7 +46,7 @@ for in_file in in_files:
 
 avg_image = np.mean(np.stack(first_images, axis=0), axis=0).astype(np.uint8)
 plt.imshow(avg_image)
-plt.axis('off')
+plt.axis("off")
 plt.title("Average of First Frames")
 plt.show()
 

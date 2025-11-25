@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Mapping
 
+import numpy as np
 from tensordict import TensorDict
 
 from environments.specs import DataSpecs
@@ -45,5 +46,5 @@ class GoalTextFromFolderName(Transform):
                 "Tensordict does not contain `path` and current_task is unset."
             )
 
-        tensordict["goal", self.key] = goal_text
+        tensordict["goal", self.key] = np.array([goal_text])
         return tensordict
