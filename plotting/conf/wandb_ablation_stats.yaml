@@ -1,0 +1,11 @@
+entity: alr-3d-sim2real
+project: 3d-sim2real
+
+# List of checkpoint run IDs to analyze
+checkpoint_run_ids: []
+
+# Expected number of runs per checkpoint
+expected_runs_per_checkpoint: 8
+
+# Optional: limit number of runs to fetch per query (safety)
+per_page: null
