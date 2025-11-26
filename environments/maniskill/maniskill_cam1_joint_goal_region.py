@@ -24,37 +24,10 @@ from environments.specs import (
     RGBStream,
 )
 from transforms.base_transform import TransformPartialsDict, init_transforms
-from utils.math import (
-    convert_camera_frame_orientation_convention,
-    make_pose,
-    matrix_to_quaternion,
-    quaternion_to_matrix,
-    unmake_pose,
-)
+from utils.math import convert_camera_frame_transform_convention
 from utils.paths import iglob_follow_symlinks, resolve_path
 
 log = logging.getLogger(__name__)
-
-
-def _convert_extrinsics_convention(
-    extrinsics_gl: torch.Tensor, target: str = "world"
-) -> torch.Tensor:
-    """
-    Converts a batch of 4x4 extrinsic from opengl to a target (ros or world).
-    """
-    pos, rot_mat_gl = unmake_pose(extrinsics_gl)
-
-    quat_gl_wxyz = matrix_to_quaternion(rot_mat_gl)
-
-    quat_target_wxyz = convert_camera_frame_orientation_convention(
-        quat_gl_wxyz, origin="opengl", target=target
-    )
-
-    rot_mat_target = quaternion_to_matrix(quat_target_wxyz)
-
-    extrinsics_target = make_pose(pos, rot_mat_target)
-
-    return extrinsics_target
 
 
 class ManiSkillDataset(CustomHdf5Dataset):
@@ -123,7 +96,9 @@ class ManiSkillDataset(CustomHdf5Dataset):
 
         extrinsics = traj["obs"]["sensor_param"]["base_camera"]["cam2world_gl"][:-1]
         extrinsics = torch.from_numpy(extrinsics)
-        extrinsics_ros = _convert_extrinsics_convention(extrinsics, target="ros")
+        extrinsics = convert_camera_frame_transform_convention(
+            extrinsics, origin="opengl", target="ros"
+        )
 
         action = traj["actions"][...]
 
@@ -137,7 +112,7 @@ class ManiSkillDataset(CustomHdf5Dataset):
                     "base_camera": {"rgb": rgb, "depth": depth},
                     "robot_state": traj["obs"]["agent"]["qpos"][:-1],
                     "ee_pose": traj["obs"]["extra"]["tcp_pose"][:-1],
-                    "base_cam_transform": extrinsics_ros,
+                    "base_cam_transform": extrinsics,
                     "goal_region": goal_region[:-1, :3],
                 },
                 "action": action,

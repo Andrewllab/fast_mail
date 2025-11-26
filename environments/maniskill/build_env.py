@@ -8,17 +8,15 @@ from omegaconf import DictConfig
 
 log = logging.getLogger(__name__)
 
-import mani_skill.envs
 
-
-def make_maniskill_env(
+def make(
     env_id: str,
     num_envs: int,
     obs_mode: str,
     control_mode: str,
     render_mode: Optional[str] = None,
     wrappers: Optional[DictConfig] = None,
-    #max_episode_steps: int = 500,
+    # max_episode_steps: int = 500,
     **kwargs,
 ):
     """
@@ -34,6 +32,7 @@ def make_maniskill_env(
                   Each wrapper must have '_target_' and '_partial_: True'.
         **kwargs: Additional keyword arguments for gym.make().
     """
+    import mani_skill.envs
 
     log.info(f"Building ManiSkill env '{env_id}'...")
 
@@ -43,7 +42,7 @@ def make_maniskill_env(
         obs_mode=obs_mode,
         control_mode=control_mode,
         render_mode=render_mode,
-        #max_episode_steps=max_episode_steps,
+        # max_episode_steps=max_episode_steps,
         **kwargs,
     )
 

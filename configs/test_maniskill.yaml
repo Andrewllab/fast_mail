@@ -1,15 +1,15 @@
 # usage: python test.py -cn test_maniskill
 
 defaults:
-  - data: maniskill_plug_charger  # BackCompat: overwrite environment and preprocessing configs
+  - data: maniskill_cam1_joint_delta_pos_w_goal  # BackCompat
   # - data/wrappers@data.env.env.wrappers: record_video  # record videos
   # log test results to new wandb run, since test parameters affect results
   - logger: wandb
   - python_logging: default
   - paths: default
   - hydra: checkpoint_dir_naming
-  # - transforms@data.preprocess.t0-99_render: render_cameras
-  # - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
+  # - transforms@data.gpu_batch_transforms.t90_render: render_cameras
+  # - transforms@data.gpu_batch_transforms.t90_render_pcd: render_pointcloud
   - _self_
   - platform: default
   - optional local: default
@@ -22,11 +22,11 @@ checkpoint:
   # either specify a complete checkpoint path...
   log_dir:
   # ...or specify the wandb run name
-  wandb_run_id: 
+  wandb_run_id:  # REPLACE with desired wandb run id
   # project and entity are only needed if they differ from the settings in the wandb logger config
   wandb_project: 3d-sim2real
   wandb_entity: alr-3d-sim2real
-  epochs: all  # options: last, all, last_n (default: last)
+  epochs: [89, 119, 149]  # options: last, all, last_n (default: last)
   artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
   use_artifact: False  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
 
@@ -40,20 +40,19 @@ data:
     action_horizon: 10  # modify if desired
 
     env:
+      env_id:  # REPLACE with desired environment name
       wrappers:
         record_video:
           num_episodes: ${data.env.num_episodes}  # number of episodes to record
           fps: 60  # increase if the videos are too long
   
   preprocess:
-    t9_cleanup: null
     t99_cleanup: null  # disable cleanup transform added by default
 
-    t0-99_render:
-      stream_names: [rgb, depth]
-
   gpu_batch_transforms:
-    t9_render_pcd:
+    t90_render:
+      stream_names: [rgb, depth]
+    t90_render_pcd:
       render_camera_poses: True
       render_ee_pose: False
       render_action: False

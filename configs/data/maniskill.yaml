@@ -3,22 +3,21 @@ defaults:
 
 task_suite: maniskill
 
+obs_seq_len: 1
+
 env:
   env:
-    _target_: environments.simulation.maniskill.build_maniskill_env.make_maniskill_env
+    _target_: environments.maniskill.build_env.make
     _recursive_: False  # don't try to import any targets for wrappers, in case IsaacLab is not installed
-    # env_id: PlugCharger-v1 # TODO: make this
+    env_id: null  # placeholder
     num_envs: 1
     obs_mode: rgbd  # 'state', 'pointcloud'
     render_mode: all
     wrappers:
-      # gym_compatibility:
-      #   _target_: environments.simulation.maniskill.wrappers.ManiSkillGymWrapper
-      #   _partial_: True  # requires 'env' argument
       preprocess:
-        _target_: environments.simulation.maniskill.wrappers.ManiSkillPreProcess
+        _target_: environments.maniskill.wrappers.ManiSkillPreProcess
         _partial_: True  # requires 'env' argument
-        obs_seq_len: 
+        obs_seq_len: ${data.obs_seq_len}
 
   num_envs: ${.env.num_envs}
   num_episodes: 20  # evaluate on 20 episodes

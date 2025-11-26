@@ -70,7 +70,7 @@ env:
       robocasa_preprocess:
         _target_: environments.simulation.robocasa.wrappers.RoboCasaPreProcess
         _partial_: True  # requires 'env' argument
-        obs_seq_len: 1
+        obs_seq_len: ${data.obs_seq_len}
         max_steps_per_episode: 400 # https://github.com/xiaogangjia/depth_vla/blob/4b034a6cacf28b039e0c3d9c6ddaacff5b57f926/configs/robocasa_config.yaml#L235
 
   num_envs: 1

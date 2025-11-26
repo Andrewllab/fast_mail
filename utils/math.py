@@ -1571,6 +1571,85 @@ Orientation Conversions
 """
 
 
+def convert_camera_frame_matrix_convention(
+    rot: torch.Tensor,
+    origin: Literal["opengl", "ros", "world"] = "opengl",
+    target: Literal["opengl", "ros", "world"] = "ros",
+) -> torch.Tensor:
+    r"""Converts a rotation matrix representing a rotation from one convention to another.
+
+    In USD, the camera follows the ``"opengl"`` convention. Thus, it is always in **Y up** convention.
+    This means that the camera is looking down the -Z axis with the +Y axis pointing up , and +X axis pointing right.
+    However, in ROS, the camera is looking down the +Z axis with the +Y axis pointing down, and +X axis pointing right.
+    Thus, the camera needs to be rotated by :math:`180^{\circ}` around the X axis to follow the ROS convention.
+
+    .. math::
+
+        T_{ROS} = \begin{bmatrix} 1 & 0 & 0 & 0 \\ 0 & -1 & 0 & 0 \\ 0 & 0 & -1 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix} T_{USD}
+
+    On the other hand, the typical world coordinate system is with +X pointing forward, +Y pointing left,
+    and +Z pointing up. The camera can also be set in this convention by rotating the camera by :math:`90^{\circ}`
+    around the X axis and :math:`-90^{\circ}` around the Y axis.
+
+    .. math::
+
+        T_{WORLD} = \begin{bmatrix} 0 & 0 & -1 & 0 \\ -1 & 0 & 0 & 0 \\ 0 & 1 & 0 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix} T_{USD}
+
+    Thus, based on their application, cameras follow different conventions for their orientation. This function
+    converts a quaternion from one convention to another.
+
+    Possible conventions are:
+
+    - :obj:`"opengl"` - forward axis: -Z - up axis +Y - Offset is applied in the OpenGL (Usd.Camera) convention
+    - :obj:`"ros"`    - forward axis: +Z - up axis -Y - Offset is applied in the ROS convention
+    - :obj:`"world"`  - forward axis: +X - up axis +Z - Offset is applied in the World Frame convention
+
+    Args:
+        rot: Rotation matrix of shape (..., 3, 3) in source convention.
+        origin: Convention to convert from. Defaults to "opengl".
+        target: Convention to convert to. Defaults to "ros".
+
+    Returns:
+        Rotation matrix of shape (..., 3, 3) in target convention
+    """
+    if target == origin:
+        return rot.clone()
+
+    rotm = rot.clone()  # avoid in-place modification
+
+    # -- unify input type by converting to opengl convention
+    if origin == "ros":
+        # convert from ros to opengl convention
+        rotm[:, :, 2] = -rotm[:, :, 2]
+        rotm[:, :, 1] = -rotm[:, :, 1]
+    elif origin == "world":
+        # convert from world (x forward and z up) to opengl convention
+        rotm = torch.matmul(
+            rotm,
+            euler_to_matrix(
+                torch.tensor([math.pi / 2, -math.pi / 2, 0], device=rot.device),
+                "XYZ",
+            ),
+        )
+
+    # -- convert to target convention
+    if target == "ros":
+        # convert from opengl to ros convention
+        rotm[:, :, 2] = -rotm[:, :, 2]
+        rotm[:, :, 1] = -rotm[:, :, 1]
+    elif target == "world":
+        # convert from opengl to world (x forward and z up) convention
+        rotm = torch.matmul(
+            rotm,
+            euler_to_matrix(
+                torch.tensor([math.pi / 2, -math.pi / 2, 0], device=rot.device),
+                "XYZ",
+            ).T,
+        )
+
+    return rotm
+
+
 def convert_camera_frame_orientation_convention(
     orientation: torch.Tensor,
     origin: Literal["opengl", "ros", "world"] = "opengl",
@@ -1615,49 +1694,58 @@ def convert_camera_frame_orientation_convention(
     if target == origin:
         return orientation.clone()
 
-    # -- unify input type
-    if origin == "ros":
-        # convert from ros to opengl convention
-        rotm = quaternion_to_matrix(orientation)
-        rotm[:, :, 2] = -rotm[:, :, 2]
-        rotm[:, :, 1] = -rotm[:, :, 1]
-        # convert to opengl convention
-        quat_gl = matrix_to_quaternion(rotm)
-    elif origin == "world":
-        # convert from world (x forward and z up) to opengl convention
-        rotm = quaternion_to_matrix(orientation)
-        rotm = torch.matmul(
-            rotm,
-            euler_to_matrix(
-                torch.tensor([math.pi / 2, -math.pi / 2, 0], device=orientation.device),
-                "XYZ",
-            ),
-        )
-        # convert to isaac-sim convention
-        quat_gl = matrix_to_quaternion(rotm)
-    else:
-        quat_gl = orientation
+    rotm = quaternion_to_matrix(orientation)
+    rotm = convert_camera_frame_matrix_convention(rotm, origin, target)
+    return matrix_to_quaternion(rotm)
 
-    # -- convert to target convention
-    if target == "ros":
-        # convert from opengl to ros convention
-        rotm = quaternion_to_matrix(quat_gl)
-        rotm[:, :, 2] = -rotm[:, :, 2]
-        rotm[:, :, 1] = -rotm[:, :, 1]
-        return matrix_to_quaternion(rotm)
-    elif target == "world":
-        # convert from opengl to world (x forward and z up) convention
-        rotm = quaternion_to_matrix(quat_gl)
-        rotm = torch.matmul(
-            rotm,
-            euler_to_matrix(
-                torch.tensor([math.pi / 2, -math.pi / 2, 0], device=orientation.device),
-                "XYZ",
-            ).T,
-        )
-        return matrix_to_quaternion(rotm)
-    else:
-        return quat_gl.clone()
+
+def convert_camera_frame_transform_convention(
+    transform: torch.Tensor,
+    origin: Literal["opengl", "ros", "world"] = "opengl",
+    target: Literal["opengl", "ros", "world"] = "ros",
+) -> torch.Tensor:
+    r"""Converts a transform matrix representing a rotation from one convention to another.
+
+    In USD, the camera follows the ``"opengl"`` convention. Thus, it is always in **Y up** convention.
+    This means that the camera is looking down the -Z axis with the +Y axis pointing up , and +X axis pointing right.
+    However, in ROS, the camera is looking down the +Z axis with the +Y axis pointing down, and +X axis pointing right.
+    Thus, the camera needs to be rotated by :math:`180^{\circ}` around the X axis to follow the ROS convention.
+
+    .. math::
+
+        T_{ROS} = \begin{bmatrix} 1 & 0 & 0 & 0 \\ 0 & -1 & 0 & 0 \\ 0 & 0 & -1 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix} T_{USD}
+
+    On the other hand, the typical world coordinate system is with +X pointing forward, +Y pointing left,
+    and +Z pointing up. The camera can also be set in this convention by rotating the camera by :math:`90^{\circ}`
+    around the X axis and :math:`-90^{\circ}` around the Y axis.
+
+    .. math::
+
+        T_{WORLD} = \begin{bmatrix} 0 & 0 & -1 & 0 \\ -1 & 0 & 0 & 0 \\ 0 & 1 & 0 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix} T_{USD}
+
+    Thus, based on their application, cameras follow different conventions for their orientation. This function
+    converts a quaternion from one convention to another.
+
+    Possible conventions are:
+
+    - :obj:`"opengl"` - forward axis: -Z - up axis +Y - Offset is applied in the OpenGL (Usd.Camera) convention
+    - :obj:`"ros"`    - forward axis: +Z - up axis -Y - Offset is applied in the ROS convention
+    - :obj:`"world"`  - forward axis: +X - up axis +Z - Offset is applied in the World Frame convention
+
+    Args:
+        transform: Transform matrix of shape (..., 4, 4) in source convention.
+        origin: Convention to convert from. Defaults to "opengl".
+        target: Convention to convert to. Defaults to "ros".
+
+    Returns:
+        Transform matrix of shape (..., 4, 4) in target convention
+    """
+    if target == origin:
+        return transform.clone()
+
+    pos, rotm = unmake_pose(transform)
+    rotm = convert_camera_frame_matrix_convention(rotm, origin, target)
+    return make_pose(pos, rotm)
 
 
 def create_rotation_matrix_from_view(

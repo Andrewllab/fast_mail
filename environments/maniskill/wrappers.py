@@ -1,61 +1,37 @@
-import torch
-import gymnasium as gym
-from tensordict import TensorDict
-from pathlib import Path
 import logging
+import os
+from pathlib import Path
+
+import gymnasium as gym
+import torch
+from tensordict import TensorDict
 
 from environments.specs import (
     ActionSpec,
     CameraSpec,
-    RGBStream,
-    DepthStream,
     DataSpecs,
-    PinholeCameraIntrinsic,
-    ObsSpec,
+    DepthStream,
     EmbedSpec,
+    ObsSpec,
+    PinholeCameraIntrinsic,
+    RGBStream,
 )
-
-from utils.math import (
-    convert_camera_frame_orientation_convention,
-    make_pose,
-    matrix_to_quaternion,
-    quaternion_to_matrix,
-    unmake_pose,
-)
+from utils.math import convert_camera_frame_transform_convention
 
 log = logging.getLogger(__name__)
 
-
-def _convert_extrinsics_convention(
-    extrinsics_gl: torch.Tensor, target: str = "world"
-) -> torch.Tensor:
-    """
-    Converts a batch of 4x4 extrinsic from opengl to a target (ros or world).
-    """
-    pos, rot_mat_gl = unmake_pose(extrinsics_gl)
-
-    quat_gl_wxyz = matrix_to_quaternion(rot_mat_gl)
-
-    quat_target_wxyz = convert_camera_frame_orientation_convention(
-        quat_gl_wxyz, origin="opengl", target=target
-    )
-
-    rot_mat_target = quaternion_to_matrix(quat_target_wxyz)
-
-    extrinsics_target = make_pose(pos, rot_mat_target)
-
-    return extrinsics_target
+EMBEDDINGS_DIR = Path(__file__).parent / "goals" / "preprocessed_embeddings"
 
 
 class ManiSkillPreProcess(gym.Wrapper):
     def __init__(
         self,
-        env,
-        obs_seq_len,
-        embeddings_dir: str = "environments/simulation/maniskill/utils/preprocessed_embeddings",
+        env: gym.Env,
+        obs_seq_len: int,
+        embeddings_dir: os.PathLike = EMBEDDINGS_DIR,
     ):
         super().__init__(env)
-        self._obs_seq_len = obs_seq_len
+        self.obs_seq_len = obs_seq_len
 
         env_id = self.env.unwrapped.spec.id
         embedding_path = Path(embeddings_dir) / f"{env_id}.pt"
@@ -76,7 +52,7 @@ class ManiSkillPreProcess(gym.Wrapper):
         log.debug("Building DataSpecs in __init__...")
         action_spec = ActionSpec(action_dim=self.env.action_space.shape[-1], time=1)
 
-        obs_spec = {}
+        obs_specs = {}
 
         goal_embedding_shape = self.goal_embedding.shape
         n_tokens = goal_embedding_shape[1]
@@ -85,12 +61,21 @@ class ManiSkillPreProcess(gym.Wrapper):
         goal_embed_spec = EmbedSpec(embed_dim=embed_dim, n_tokens=n_tokens)
         goal_specs_dict = {"embed": goal_embed_spec}
 
+        env_state = self.env.get_state_dict()
+
+        if "goal_region" in env_state["actors"]:
+            goal_region = env_state["actors"]["goal_region"]
+            assert goal_region.shape == (1, 13)
+            obs_specs["goal_region"] = ObsSpec(elem_shape=(3,), time=self.obs_seq_len)
+
         raw_obs_space = self.env.observation_space
 
         if "agent" in raw_obs_space.keys():
             qpos_shape = raw_obs_space["agent"]["qpos"].shape
             agent_dim = qpos_shape[-1]
-            obs_spec["robot_state"] = ObsSpec(elem_shape=(agent_dim,), time=1)
+            obs_specs["robot_state"] = ObsSpec(
+                elem_shape=(agent_dim,), time=self.obs_seq_len
+            )
 
         if "sensor_data" in raw_obs_space.keys():
             for cam_name, cam_space in raw_obs_space["sensor_data"].items():
@@ -119,33 +104,32 @@ class ManiSkillPreProcess(gym.Wrapper):
                     )
 
                 if cam_name == "hand_camera":
-                    obs_spec[cam_name] = CameraSpec(
+                    obs_specs[cam_name] = CameraSpec(
                         streams=streams,
-                        time=self._obs_seq_len,
+                        time=self.obs_seq_len,
                         intrinsics=static_intrinsics,
                         extrinsics=torch.eye(4, dtype=torch.float32),
                         dynamic_pose_obs_key="gripper_cam_transform",
                     )
-                else:
-                    extrinsics_gl = initial_obs["sensor_param"][cam_name][
-                        "cam2world_gl"
-                    ][0]
-
-                    extrinsics_ros = _convert_extrinsics_convention(
-                        extrinsics_gl.unsqueeze(0), target="ros"
-                    ).squeeze(0)
-
-                    obs_spec[cam_name] = CameraSpec(
+                elif cam_name == "base_camera":
+                    obs_specs[cam_name] = CameraSpec(
                         streams=streams,
-                        time=self._obs_seq_len,
+                        time=self.obs_seq_len,
                         intrinsics=static_intrinsics,
-                        extrinsics=extrinsics_ros,
+                        extrinsics=torch.eye(4, dtype=torch.float32),
+                        dynamic_pose_obs_key="base_cam_transform",
                     )
 
-        obs_spec["ee_pose"] = ObsSpec(elem_shape=(7,), time=1)
-        obs_spec["gripper_cam_transform"] = ObsSpec(elem_shape=(4, 4), time=1)
+        obs_specs["ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
+        # obs_specs["target_ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
+        obs_specs["gripper_cam_transform"] = ObsSpec(
+            elem_shape=(4, 4), time=self.obs_seq_len
+        )
+        obs_specs["base_cam_transform"] = ObsSpec(
+            elem_shape=(4, 4), time=self.obs_seq_len
+        )
 
-        self.specs = DataSpecs(obs=obs_spec, action=action_spec, goal=goal_specs_dict)
+        self.specs = DataSpecs(obs=obs_specs, action=action_spec, goal=goal_specs_dict)
         log.debug("Successfully built DataSpecs.")
 
     def _preprocess_obs(self, obs):
@@ -154,6 +138,12 @@ class ManiSkillPreProcess(gym.Wrapper):
         batch_size = self.env.unwrapped.num_envs
 
         processed_obs["goal"] = TensorDict({"embed": self.goal_embedding})
+
+        env_state = self.env.get_state_dict()
+
+        if "goal_region" in env_state["actors"]:
+            goal_region = env_state["actors"]["goal_region"][:, :3]
+            processed_obs["goal_region"] = goal_region
 
         if "agent" in obs:
             robot_state = obs["agent"]["qpos"]
@@ -175,24 +165,18 @@ class ManiSkillPreProcess(gym.Wrapper):
                 processed_obs[cam_name] = TensorDict(camera_td, batch_size=[batch_size])
 
             if "hand_camera" in obs["sensor_data"]:
-                extrinsics_gl = obs["sensor_param"]["hand_camera"]["cam2world_gl"]
-                extrinsics_ros = _convert_extrinsics_convention(
-                    extrinsics_gl, target="ros"
+                extrinsics = obs["sensor_param"]["hand_camera"]["cam2world_gl"]
+                extrinsics = convert_camera_frame_transform_convention(
+                    extrinsics, origin="opengl", target="ros"
                 )
-                processed_obs["gripper_cam_transform"] = extrinsics_ros
+                processed_obs["gripper_cam_transform"] = extrinsics
 
             if "base_camera" in obs["sensor_data"]:
-                assert torch.allclose(
-                    self.specs.obs["base_camera"].extrinsics,
-                    _convert_extrinsics_convention(
-                        obs["sensor_param"]["base_camera"]["cam2world_gl"], target="ros"
-                    ),
+                extrinsics = obs["sensor_param"]["base_camera"]["cam2world_gl"]
+                extrinsics = convert_camera_frame_transform_convention(
+                    extrinsics, origin="opengl", target="ros"
                 )
-
-        # if "sensor_param" in obs:
-        #     processed_obs["sensor_param"] = TensorDict.from_dict(
-        #         obs["sensor_param"], batch_size=[batch_size]
-        #     ).float()
+                processed_obs["base_cam_transform"] = extrinsics
 
         return TensorDict(processed_obs, batch_size=batch_size).to(self.device)
 
