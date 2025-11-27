@@ -13,7 +13,7 @@ dataset:
 
 env:
   env:
-    env_id: PokeCube-v1 # PokeCube-v1, PushCube-v1, PullCube-v1, RollBall-v1
+    env_id: PokeCube-v1  # PokeCube-v1,PushCube-v1,PullCube-v1,RollBall-v1
     sim_backend: physx_cuda
     control_mode: pd_joint_delta_pos
     sensor_configs:

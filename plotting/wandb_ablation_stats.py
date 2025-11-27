@@ -105,7 +105,7 @@ def main(cfg: DictConfig) -> None:
 
     checkpoint_means_arr = np.array(checkpoint_means, dtype=np.float32)
     overall_mean = checkpoint_means_arr.mean().item()
-    overall_std = checkpoint_means_arr.std(ddof=0).item()
+    overall_std = checkpoint_means_arr.std(ddof=1).item()
 
     logging.info("\n=== Overall results ===")
     logging.info(f"Number of checkpoints included: {len(checkpoint_means)}")
