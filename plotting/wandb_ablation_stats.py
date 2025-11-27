@@ -1,5 +1,3 @@
-# analyze_checkpoints.py
-
 import logging
 
 import hydra
@@ -7,11 +5,11 @@ import numpy as np
 import wandb
 from omegaconf import DictConfig
 
+EXPECTED_NUM_CHECKPOINTS = 3
+
 
 @hydra.main(version_base=None, config_path="conf", config_name="wandb_ablation_stats")
 def main(cfg: DictConfig) -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-
     checkpoint_run_ids = cfg.checkpoint_run_ids
     expected_runs_per_checkpoint = cfg.expected_runs_per_checkpoint
 
@@ -49,33 +47,39 @@ def main(cfg: DictConfig) -> None:
         num_runs = len(runs)
         logging.info(f"Found {num_runs} runs for checkpoint {checkpoint_id}")
 
-        if num_runs != expected_runs_per_checkpoint:
-            logging.warning(
-                f"Expected {expected_runs_per_checkpoint} runs for checkpoint "
-                f"{checkpoint_id}, but found {num_runs}. Skipping this checkpoint."
-            )
-            continue
+        # if num_runs != expected_runs_per_checkpoint:
+        #     logging.warning(
+        #         f"Expected {expected_runs_per_checkpoint} runs for checkpoint "
+        #         f"{checkpoint_id}, but found {num_runs}. Skipping this checkpoint."
+        #     )
+        #     continue
 
         # Collect success.max for each run
         success_values = []
         for run in runs:
+            if run.state != "finished":
+                logging.warning(
+                    f"Run {run.id} (name={run.name}) is not finished (state={run.state}); "
+                    f"skipping this run."
+                )
+                continue
+
             success = run.summary.get("success")
             if success is not None:
-                value = success.get("max")
+                success = success.get("max")
 
-            if value is None:
+            else:
                 logging.warning(
                     f"Run {run.id} (name={run.name}) has no 'success.max' in summary; skipping this run."
                 )
                 continue
 
-            # You said it should be scalar — we can assert that
-            if isinstance(value, (int, float)):
-                success_values.append(value)
+            if isinstance(success, (int, float)):
+                success_values.append(success)
             else:
                 logging.warning(
                     f"Run {run.id} (name={run.name}) has non-scalar 'success.max' "
-                    f"({type(value)}); skipping this run."
+                    f"({type(success)}); skipping this run."
                 )
 
         if len(success_values) != expected_runs_per_checkpoint:
@@ -97,9 +101,9 @@ def main(cfg: DictConfig) -> None:
         checkpoint_means.append(checkpoint_mean)
 
     # Aggregate across checkpoints
-    if not checkpoint_means:
+    if len(checkpoint_means) != EXPECTED_NUM_CHECKPOINTS:
         logging.error(
-            "No checkpoints with valid data were processed. Nothing to report."
+            f"Expected {EXPECTED_NUM_CHECKPOINTS} checkpoints with valid data but got {len(checkpoint_means)}."
         )
         return
 
