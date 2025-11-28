@@ -48,6 +48,10 @@ class EmptyPointCloudError(Exception):
     pass
 
 
+class EmptyTrajectoryError(Exception):
+    pass
+
+
 class TrajectoryDataModule(L.LightningDataModule):
     def __init__(
         self,

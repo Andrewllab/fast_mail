@@ -1,0 +1,8 @@
+_target_: transforms.time_trim_idle.TrimIdle
+_partial_: True
+action_type: cartesian
+pos_threshold: 1e-6
+rot_threshold: 1e-5
+gripper_threshold: 1e-6
+trim_type: start
+margin: 10
