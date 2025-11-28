@@ -4,3 +4,5 @@ agent:
   obs_encoder:
     t11_tokenizer:
       spatial_encoder: null
+
+has_fourier: False

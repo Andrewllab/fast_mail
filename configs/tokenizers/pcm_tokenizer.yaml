@@ -33,3 +33,6 @@ activation:
   _target_: torch.nn.ReLU
   _partial_: True
   inplace: True
+token_pos_encoder:
+  _target_: torch.nn.Embedding
+  _partial_: True  # requires num_embeddings and embedding_dim

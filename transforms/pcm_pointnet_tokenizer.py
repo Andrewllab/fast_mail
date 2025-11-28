@@ -45,6 +45,7 @@ class PCMPointNetTokenizer(Transform, nn.Module):
         fps_random_start: bool = True,
         pre_sample: bool = False,
         pcd_key: str = "pcd",
+        token_pos_encoder: Callable[[int, int], nn.Module] | None = None,
     ):
         super().__init__()
 
@@ -115,6 +116,12 @@ class PCMPointNetTokenizer(Transform, nn.Module):
         self.n_patches = n_patches
         self.patch_size = patch_size
         self.fps_random_start = fps_random_start
+
+        # create encoder for token position
+        if token_pos_encoder is None:
+            log.warning("No token position encoder provided. Using nn.Embedding.")
+            token_pos_encoder = nn.Embedding
+        self.token_pos_encoder = token_pos_encoder(1, embed_dim)
 
         new_spec = EmbedSpec(embed_dim=embed_dim, n_tokens=1)
         obs_specs = dict(specs.obs)
@@ -232,16 +239,23 @@ class PCMPointNetTokenizer(Transform, nn.Module):
         # max pool over all patches in each batch element
         features = self.max_aggr(features, index=batch)
 
-        # pcd_embed -> (B, D)
-        pcd_embed = self.head_mlp(features)
+        # features -> (B, D)
+        features = self.head_mlp(features)
 
-        # pcd_embed -> (B, 1, D)
-        pcd_embed = pcd_embed.unsqueeze(dim=1)
+        # features -> (B, 1, D)
+        features = features.unsqueeze(dim=1)
+
+        # add encoding of the token position to the token
+        token_indices = torch.arange(1, dtype=torch.long, device=features.device)
+        token_pos_embed = self.token_pos_encoder(token_indices)
+        features += token_pos_embed
 
         if obs_embed is None:
-            return pcd_embed
+            return features
 
-        return cat_nested([obs_embed, pcd_embed], dim=-2)
+        # concatenate along N dimension of embedding
+        # obs_embed: (B, N, D)
+        return cat_nested([obs_embed, features], dim=-2)
 
     def __repr__(self) -> str:
         return (

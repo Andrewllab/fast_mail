@@ -22,6 +22,7 @@ class RobotStateEncoder(Transform, nn.Module):
         model: Callable[[int, int], Module],
         embed_dim: int,
         obs_key: str = "robot_state",
+        token_pos_encoder: Callable[[int, int], nn.Module] | None = None,
     ):
         super().__init__()
 
@@ -34,10 +35,15 @@ class RobotStateEncoder(Transform, nn.Module):
         # instantiate the model
         self.model = model(M, embed_dim)
 
-        # each time step produces a single token
-        new_spec = EmbedSpec(embed_dim=embed_dim, n_tokens=T)
+        # create encoder for token position
+        if token_pos_encoder is None:
+            log.warning("No token position encoder provided. Using nn.Embedding.")
+            token_pos_encoder = nn.Embedding
+        self.token_pos_encoder = token_pos_encoder(T, embed_dim)
 
         # create a modified specs object for the output
+        # each time step produces a single token
+        new_spec = EmbedSpec(embed_dim=embed_dim, n_tokens=T)
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         if "embed" in obs_specs:
             # if embedding sequence has fixed length, increase length to account for state tokens
@@ -64,13 +70,20 @@ class RobotStateEncoder(Transform, nn.Module):
 
     def _call_one(self, robot_state: Tensor, obs_embed: Tensor | None) -> Tensor:
         # (B, T, M) -> (B, N, D)
-        state_emb = self.model(robot_state)
+        features = self.model(robot_state)
+
+        # add encoding of the token position to each token
+        N = features.shape[1]
+        token_indices = torch.arange(N, dtype=torch.long, device=features.device)
+        token_pos_embed = self.token_pos_encoder(token_indices)
+        features += token_pos_embed
 
         if obs_embed is None:
-            return state_emb
+            return features
 
-        if obs_embed.is_nested:
-            return cat_nested([obs_embed, state_emb], dim=-2)
+        # concatenate along N dimension of embedding
+        # obs_embed: (B, N, D)
+        return cat_nested([obs_embed, features], dim=-2)
 
-        # concatenate along N dimension of embedding, keeping tokens from the same time step together
-        return torch.cat([obs_embed, state_emb], dim=-2)
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(model={self.model})"

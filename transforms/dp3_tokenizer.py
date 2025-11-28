@@ -33,6 +33,7 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
         mlp_2: Callable[[int, int], nn.Linear],
         spatial_encoder: Callable[[int], nn.Linear] | None = None,
         pcd_key: str = "pcd",
+        token_pos_encoder: Callable[[int, int], nn.Module] | None = None,
     ):
         super().__init__()
 
@@ -68,9 +69,14 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
             activation=None,
         )
 
-        new_spec = EmbedSpec(embed_dim=embed_dim, n_tokens=1)
+        # create encoder for token position
+        if token_pos_encoder is None:
+            log.warning("No token position encoder provided. Using nn.Embedding.")
+            token_pos_encoder = nn.Embedding
+        self.token_pos_encoder = token_pos_encoder(1, embed_dim)
 
         # create a modified specs object for the output
+        new_spec = EmbedSpec(embed_dim=embed_dim, n_tokens=1)
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         if "embed" in obs_specs:
             embed_spec = obs_specs["embed"]
@@ -120,11 +126,16 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
         # features -> (B, D)
         features = self.mlp_2(features)
 
-        # pcd_embed -> (B, 1, D)
-        pcd_embed = features.unsqueeze(1)
+        # features -> (B, 1, D)
+        features = features.unsqueeze(1)
+
+        # add encoding of the token position to the token
+        token_indices = torch.arange(1, dtype=torch.long, device=features.device)
+        token_pos_embed = self.token_pos_encoder(token_indices)
+        features += token_pos_embed
 
         if obs_embed is None:
-            return pcd_embed
+            return features
 
         # concatenate along N dimension of embedding
         # obs_embed: (B, N, D)

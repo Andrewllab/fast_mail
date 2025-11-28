@@ -16,11 +16,6 @@ agent:
         out_features: 256
         activation: ReLU
         norm: LayerNorm
-      spatial_encoder:
-        n_wavelengths: 8
-        max_wavelength: 4.0
-        min_wavelength: 0.06
-        cat_input_to_out: False
 
 data:
   gpu_batch_transforms:
@@ -32,3 +27,7 @@ data:
 logger:
   wandb:
     tags: ["pointcloud", "dp3"]
+
+modality: pointcloud
+encoder: DP3
+has_fourier: True

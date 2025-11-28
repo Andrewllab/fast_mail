@@ -28,3 +28,7 @@ data:
 logger:
   wandb:
     tags: ["pointcloud", "pointpatchrl"]
+
+modality: pointcloud
+encoder: PointPatch
+has_fourier: True

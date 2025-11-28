@@ -1,9 +1,11 @@
-name: linear_robot_state_tokenizer
+name: 2 layer MLP
 _target_: transforms.robot_state_tokenizer.RobotStateEncoder
 _partial_: True
 model:
-  _target_: torch.nn.Linear
-  _partial_: True
+  _target_: models.mlp.MlpModel
+  _partial_: True  # requires in_features
+  hidden_sizes: [256]
+  activation: GELU
 embed_dim: ${..embed_dim}
 token_pos_encoder:
   _target_: torch.nn.Embedding

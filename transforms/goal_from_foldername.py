@@ -46,5 +46,6 @@ class GoalTextFromFolderName(Transform):
                 "Tensordict does not contain `path` and current_task is unset."
             )
 
-        tensordict["goal", self.key] = np.array([goal_text])
+        # tensordict["goal", self.key] = np.array([goal_text])
+        tensordict["goal", self.key] = goal_text
         return tensordict

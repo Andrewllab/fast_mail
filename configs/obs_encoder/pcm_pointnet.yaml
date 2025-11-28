@@ -18,3 +18,7 @@ data:
 logger:
   wandb:
     tags: ["pointcloud", "pcm_pointnet"]
+
+modality: pointcloud
+encoder: PCM PointNet
+has_fourier: True

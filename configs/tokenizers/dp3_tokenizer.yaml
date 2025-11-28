@@ -19,3 +19,6 @@ mlp_2:
   _target_: models.mlp.MlpModel
   _partial_: True  # requires in_features and out_features
   norm: LayerNorm
+token_pos_encoder:
+  _target_: torch.nn.Embedding
+  _partial_: True  # requires num_embeddings and embedding_dim
