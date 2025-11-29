@@ -29,7 +29,9 @@ class RandomGoalEmbedding(NormalizingTransform, nn.Module):
         return self._output_specs
 
     def make_model(self):
-        log.warning("Creating random goal embedding model")
+        log.info(
+            f"Creating random goal embedding model for {len(self.goal_texts)} unique goals."
+        )
         self.goal_texts = {text: idx for idx, text in enumerate(self.goal_texts.keys())}
         self.model = nn.Embedding(
             len(self.goal_texts), self._output_specs.goal["embed"].embed_dim

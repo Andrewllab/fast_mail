@@ -11,7 +11,7 @@ from transforms.base_transform import ReversibleTransform, TransformConstraint
 from utils.math import combine_frame_transforms, normalize, subtract_frame_transforms
 
 
-class AbsoluteActionToRelativeChunk(ReversibleTransform):
+class AbsoluteTaskActionsToRelativeChunk(ReversibleTransform):
     """Preprocess transforms for converting actions (target ee_poses) from
     the world (robot base) frame into action chunks, where the actions in each
     chunk are relative to their own reference frame. This reference frame can
@@ -98,12 +98,15 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
 
         tensordict["action"] = rel_action
 
+        # TODO: slice obs to match the new action shape
+
         return tensordict
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         # This gets called when running with an environment, where the
-        # preprocess transforms get rolled into the cpu_batch_transforms.
+        # preprocess transforms get rolled into the other transforms.
         # We don't need to do anything, since there are no actions to transform.
+        assert not self.training
         return tensordict
 
     def reverse(self, tensordict: TensorDict) -> TensorDict:
@@ -147,7 +150,11 @@ class AbsoluteActionToRelativeChunk(ReversibleTransform):
         return tensordict
 
 
-class AbsoluteActionToRelative(ReversibleTransform, nn.Module):
+# BackCompat
+AbsoluteActionToRelativeChunk = AbsoluteTaskActionsToRelativeChunk
+
+
+class AbsoluteTaskActionsFrameTransform(ReversibleTransform, nn.Module):
     """Preprocess transforms for converting actions (target ee_poses) from
     the world (robot base) frame to be relative to some reference frame. This
     reference frame can be the first ee_pose in the trajectory or the first
@@ -178,8 +185,9 @@ class AbsoluteActionToRelative(ReversibleTransform, nn.Module):
 
     def forward(self, tensordict: TensorDict) -> TensorDict:
         # This gets called when running with an environment, where the
-        # preprocess transforms get rolled into the cpu_batch_transforms.
+        # preprocess transforms get rolled into the other transforms.
         # We don't need to do anything, since there are no actions to transform.
+        assert not self.training
         return tensordict
 
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
@@ -268,5 +276,109 @@ class AbsoluteActionToRelative(ReversibleTransform, nn.Module):
         abs_action = torch.cat((abs_pos, abs_quat, gripper_command), dim=-1)
         abs_action = abs_action.unflatten(dim=0, sizes=leading_dims)
         tensordict["action"] = abs_action
+
+        return tensordict
+
+
+# BackCompat
+AbsoluteActionToRelative = AbsoluteTaskActionsFrameTransform
+
+
+class AbsoluteJointActionsToDelta(ReversibleTransform):
+    """Preprocess transform for converting actions (target joint positions)
+    from absolute positions to deltas relative to the current joint positions.
+    """
+
+    constraints = [TransformConstraint.TRAJECTORY_ONLY]
+
+    def __init__(
+        self,
+        specs: DataSpecs,
+        reference: Literal["joint_pos", "target_joint_pos"],
+        joint_pos_key: str = "joint_pos",
+        target_joint_pos_key: str = "target_joint_pos",
+    ):
+        if reference not in ["joint_pos", "target_joint_pos"]:
+            raise ValueError(f"Unknown reference: {reference}")
+
+        if target_joint_pos_key not in specs.obs:
+            raise ValueError(
+                f"Target joint position key '{target_joint_pos_key}' not found in specs."
+            )
+
+        self._specs = specs
+        self.reference = reference
+        self.joint_pos_key = joint_pos_key
+        self.target_joint_pos_key = target_joint_pos_key
+
+    @property
+    def specs(self) -> DataSpecs:
+        return self._specs
+
+    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
+
+        action = tensordict["action"]
+        target_joint_pos = action[..., :-1]  # exclude gripper command
+
+        # verify that target_joint_pos in the action matches the one in the obs
+        target_joint_pos2 = tensordict["obs", self.target_joint_pos_key]
+        assert torch.allclose(target_joint_pos, target_joint_pos2)
+        current_joint_pos = tensordict["obs", self.joint_pos_key]
+
+        if self.reference == "joint_pos":
+            delta_joint_pos = target_joint_pos - current_joint_pos
+
+        elif self.reference == "target_joint_pos":
+            delta_joint_pos = torch.zeros_like(target_joint_pos)
+            delta_joint_pos[1:] = target_joint_pos[1:] - target_joint_pos[:-1]
+
+            # # for the first time step, use the current joint positions as the
+            # # reference
+            # delta_joint_pos[0] = target_joint_pos[0] - current_joint_pos[0]
+
+            # we leave the first delta as zero, since there is a sizeable offset
+            # between target and current joint positions at the first time step
+
+        else:
+            raise ValueError(f"Unknown reference: {self.reference}")
+
+        action[..., :-1] = delta_joint_pos
+
+        return tensordict
+
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        # This gets called when running with an environment, where the
+        # preprocess transforms get rolled into the other transforms.
+        # We don't need to do anything, since there are no actions to transform.
+        assert not self.training
+        return tensordict
+
+    def reverse(self, tensordict: TensorDict) -> TensorDict:
+
+        action = tensordict["action"]
+        assert action.ndim == 3  # [B, T, num_joints]
+        delta_joint_pos = action[..., :-1]  # exclude gripper command
+
+        # accumulate the deltas across the action chunk
+        delta_chunk = delta_joint_pos.cumsum(dim=1)
+
+        if self.reference == "joint_pos":
+            current_joint_pos = tensordict["obs", self.joint_pos_key]
+            assert current_joint_pos.ndim == 3  # [B, T, num_joints]
+
+            # broadcast current_joint_pos to match delta_chunk shape
+            target_joint_pos = delta_chunk + current_joint_pos[:, -1:]
+
+        elif self.reference == "target_joint_pos":
+            current_target_pos = tensordict["obs", self.target_joint_pos_key]
+            assert current_target_pos.ndim == 3  # [B, T, num_joints]
+
+            # broadcast current_joint_pos to match delta_chunk shape
+            target_joint_pos = delta_chunk + current_target_pos
+
+        else:
+            raise ValueError(f"Unknown reference: {self.reference}")
+
+        action[..., :-1] = target_joint_pos
 
         return tensordict

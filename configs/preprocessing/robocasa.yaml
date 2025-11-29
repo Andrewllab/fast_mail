@@ -1,5 +1,0 @@
-# @package _global_
-
-defaults:
-  # normalize absolute actions so that they lie within [-1,1]
-  - /transforms@data.preprocess.t9_normalize_actions: action_norm_minmax

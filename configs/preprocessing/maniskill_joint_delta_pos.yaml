@@ -1,5 +1,0 @@
-# @package _global_
-
-defaults:
-  # normalize relative actions so that the max magnitude of each action dimension is 1.0
-  - /transforms@data.preprocess.t0-9_normalize_actions: action_norm_max

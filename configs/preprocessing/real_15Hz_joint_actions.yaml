@@ -1,9 +1,0 @@
-# @package _global_
-
-defaults:
-  - /transforms@data.preprocess.t0_gripper_actions: action_binarize_gripper
-
-  # - /transforms@data.preprocess.t1_trim_idle: time_trim_idle
-
-  # normalize absolute actions so that they lie within [-1,1]
-  - /transforms@data.preprocess.t9_normalize_actions: action_norm_minmax

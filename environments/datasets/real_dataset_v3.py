@@ -69,6 +69,9 @@ class RealRobotDataset(CustomHdf5Dataset):
 
         self.files = get_subset(self.files, load_subset)
 
+        if not self.files:
+            raise ValueError(f"Subset {load_subset} resulted in zero files.")
+
         self.trajs: list[tuple[Path, str, Group]] = [
             (file.relative_to(self._root_dir), file.stem, h5py.File(str(file), "r"))
             for file in self.files
@@ -160,12 +163,13 @@ class RealRobotDataset(CustomHdf5Dataset):
                         "left": traj["obs"]["gripper_cam"]["frames"]["left"][...],
                         "right": traj["obs"]["gripper_cam"]["frames"]["right"][...],
                     },
+                    "joint_pos": joint_pos,
                     "robot_state": robot_state,
                     "ee_pose": ee_pose,
-                    "target_ee_pose": target_ee_pose,
+                    "ee_transform": ee_transform,
                     "target_joint_pos": target_joint_pos,
                     "target_gripper_pos": target_gripper_pos,
-                    "ee_transform": ee_transform,
+                    "target_ee_pose": target_ee_pose,
                 },
                 "action": action,
                 "ref_action": action.clone(),
@@ -183,7 +187,7 @@ class RealRobotDataset(CustomHdf5Dataset):
         _, _, traj = self.trajs[0]
 
         obs_specs = {}
-        T = traj["obs"]["left_cam"]["frames"]["left"].shape[0]
+        T = len(traj["obs"]["proprioception"]["joint_pos"])
 
         # static Zed Mini cameras
         for cam in ["left_cam", "right_cam"]:
@@ -300,6 +304,7 @@ class RealRobotDataset(CustomHdf5Dataset):
         gripper_pos = traj["obs"]["proprioception"]["gripper_pos"]
         assert gripper_pos.shape == (T,)
         # we concatenate joint_pos and gripper_pos to get a shape of (T, 8)
+        obs_specs["joint_pos"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
         obs_specs["robot_state"] = ObsSpec(elem_shape=(8,), time=self.obs_seq_len)
 
         # ee_pose
@@ -309,6 +314,11 @@ class RealRobotDataset(CustomHdf5Dataset):
         assert ee_quat.shape == (T, 4)
         # we concatenate ee_pos and ee_quat to get a shape of (T, 7)
         obs_specs["ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
+
+        # ee_transform
+        transform = traj["obs"]["gripper_cam"]["frames"]["dynamic_extrinsics"]
+        assert transform.shape == (T, 4, 4)
+        obs_specs["ee_transform"] = ObsSpec(elem_shape=(4, 4), time=self.obs_seq_len)
 
         # target_joint_pos
         target_joint_pos = traj["action"]["joint_pos"]
@@ -328,11 +338,6 @@ class RealRobotDataset(CustomHdf5Dataset):
         assert ee_pos.shape == (T, 3)
         assert ee_quat.shape == (T, 4)
         obs_specs["target_ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
-
-        # ee_transform
-        transform = traj["obs"]["gripper_cam"]["frames"]["dynamic_extrinsics"]
-        assert transform.shape == (T, 4, 4)
-        obs_specs["ee_transform"] = ObsSpec(elem_shape=(4, 4), time=self.obs_seq_len)
 
         # actions
         # concatenate target_joint_pos and target_gripper_pos to get action

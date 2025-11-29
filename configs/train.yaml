@@ -15,8 +15,10 @@ defaults:
   - hydra: default
   - _self_
   - preprocessing: null
-  - obs_modality: rgbd_imagenet
-  - obs_encoder: rgb_resnet18
+  - actions: null
+  - goals: null
+  - obs_modality: null
+  - obs_encoder: ???
   - experiment: null
   - platform: default
   - optional local: default

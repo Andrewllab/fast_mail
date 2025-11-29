@@ -1,0 +1,11 @@
+# @package _global_
+
+data:
+  gpu_batch_transforms:
+    # compute a goal embedding token from the goal text
+    # compute goal embeddings online to provide "data augmentation", since the embeddings
+    # are not deterministic
+    # since we don't optimize this model, it doesn't need to be in agent
+    t45_goal_embedding:
+      _target_: transforms.goal_embedding.ClipGoalEmbedding
+      _partial_: True

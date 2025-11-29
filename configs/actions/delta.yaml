@@ -1,0 +1,8 @@
+# @package _global_
+
+data:
+  preprocess:
+    # normalize delta actions so that the max magnitude in each dimension is 1.0
+    t9_normalize_actions:
+      _target_: transforms.action_norm_max.ActionNormMaxMagnitude
+      _partial_: True   

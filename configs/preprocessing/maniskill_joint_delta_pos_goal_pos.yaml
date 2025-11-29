@@ -1,7 +1,0 @@
-# @package _global_
-
-defaults:
-  # normalize relative actions so that the max magnitude of each action dimension is 1.0
-  - /transforms@data.preprocess.t9_normalize_actions: action_norm_max
-
-  - /tokenizers@agent.obs_encoder.t20_goal_region: goal_region_tokenizer

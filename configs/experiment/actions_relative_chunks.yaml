@@ -1,8 +1,0 @@
-# @package _global_
-
-defaults:
-  # convert actions to chunks of absolute target poses relative to the current frame
-  - /transforms@data.preprocess.t0-5_relative_actions: action_abs_to_relative_chunk
-  
-  # normalize relative actions so that the max magnitude of each action dimension is 1.0
-  - override /transforms@data.preprocess.t0-9_normalize_actions: action_norm_max

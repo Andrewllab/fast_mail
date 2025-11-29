@@ -75,6 +75,9 @@ class RoboCasaDataset(CustomHdf5Dataset):
                 ]
             )
 
+        if not self.trajs:
+            raise ValueError(f"Subset {load_subset} resulted in zero trajectories.")
+
         traj_lengths = [len(traj["actions"]) for _, _, traj in self.trajs]
 
         self.slices = TrajectorySlices(
@@ -110,8 +113,11 @@ class RoboCasaDataset(CustomHdf5Dataset):
         ee_pos = traj["obs"]["robot0_eef_pos"][...].astype(np.float32)
         # shape: (T, 4), float32
         ee_quat = traj["obs"]["robot0_eef_quat"][...].astype(np.float32)
-        # remove joint dims related to static mobile platform
+        # remove action dims related to static mobile platform
         action = traj["actions"][:, :7].astype(np.float32)
+
+        # ensure we are not ignoring any relevant actions
+        assert np.allclose(traj["actions"][:, 7:], np.array([0, 0, 0, 0, -1]))
 
         robot_state = torch.cat(
             (
@@ -135,6 +141,7 @@ class RoboCasaDataset(CustomHdf5Dataset):
         td = TensorDict(
             {
                 "obs": {
+                    # cameras
                     "left_cam": {
                         # shape: (T, H, W, 3), uint8
                         "rgb": traj["obs"]["robot0_agentview_left_image"][...],
@@ -153,20 +160,19 @@ class RoboCasaDataset(CustomHdf5Dataset):
                         # shape: (T, H, W), float32
                         "depth": traj["obs"]["robot0_eye_in_hand_depth"][..., 0],
                     },
-                    "ee_pose": ee_pose,  # shape: (T, 7), float32
-                    "robot_state": robot_state,  # shape: (T, 9), float32
-                    # shape: (T, 4, 4)
+                    # camera poses (shape: (T, 4, 4))
                     "left_cam_pose": camera_poses["robot0_agentview_left"][
                         "extrinsics"
                     ][...],
-                    # shape: (T, 4, 4)
                     "right_cam_pose": camera_poses["robot0_agentview_right"][
                         "extrinsics"
                     ][...],
-                    # shape: (T, 4, 4)
                     "gripper_cam_pose": camera_poses["robot0_eye_in_hand"][
                         "extrinsics"
                     ][...],
+                    "joint_pos": joint_pos,  # shape: (T, 7), float32
+                    "robot_state": robot_state,  # shape: (T, 9), float32
+                    "ee_pose": ee_pose,  # shape: (T, 7), float32
                 },
                 "action": action,
                 "ref_action": action.copy(),
@@ -253,6 +259,7 @@ class RoboCasaDataset(CustomHdf5Dataset):
         gripper_pos = traj["obs"]["robot0_gripper_qpos"]
         assert gripper_pos.shape == (T, 2)
         # we concatenate joint_pos and gripper_pos to get a shape of (T, 9)
+        obs_specs["joint_pos"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
         obs_specs["robot_state"] = ObsSpec(elem_shape=(9,), time=self.obs_seq_len)
 
         # end-effector pose
@@ -262,11 +269,9 @@ class RoboCasaDataset(CustomHdf5Dataset):
         assert ee_quat.shape == (T, 4)
         # we concatenate ee_pos and ee_quat to get a shape of (T, 7)
         obs_specs["ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
-        obs_specs["target_ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
 
-        # !!! NOTE: JOINT-SPACE control actions !!!
         assert traj["actions"].shape == (T, 12)
-        # ignore joint dims related to static mobile platform
+        # ignore action dims related to static mobile platform
         action = ActionSpec(action_dim=7, time=self.action_seq_len)
 
         goal_specs = {"text": ObsSpec(elem_shape=(), time=None)}

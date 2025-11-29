@@ -1,0 +1,14 @@
+# @package _global_
+
+data:
+  preprocess:
+    # convert absolute joint actions to delta joint action
+    t8_absolute_to_delta_actions:
+      _target_: transforms.action_abs_to_relative.AbsoluteJointActionsToDelta
+      _partial_: True
+      reference: target_joint_pos
+
+    # normalize delta actions so that the max magnitude in each dimension is 1.0
+    t9_normalize_actions:
+      _target_: transforms.action_norm_max.ActionNormMaxMagnitude
+      _partial_: True   

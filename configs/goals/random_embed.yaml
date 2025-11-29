@@ -1,0 +1,10 @@
+# @package _global_
+
+data:
+  preprocess:
+    # assign a random goal embedding to each unique goal text
+    # do this during preprocessing so we know how many unique goals there are
+    t45_goal_embedding:
+      _target_: transforms.goal_embed_random.RandomGoalEmbedding
+      _partial_: True
+      embed_dim: 256  # no sense in making this larger than the embed_dim of the transformer

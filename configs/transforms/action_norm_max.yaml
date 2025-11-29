@@ -1,2 +1,0 @@
-_target_: transforms.action_norm_max.ActionNormMaxMagnitude
-_partial_: True
