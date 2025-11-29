@@ -1,0 +1,3 @@
+_target_: transforms.goal_embed_random.RandomGoalEmbedding
+_partial_: True
+embed_dim: 256  # no sense in making this larger than the embed_dim of the transformer

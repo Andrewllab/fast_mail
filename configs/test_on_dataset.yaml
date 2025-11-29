@@ -1,7 +1,7 @@
 # usage: python test.py -cn test_on_dataset
 
 defaults:
-  - data: one_leg_alr_20250724
+  - data: null
   - callbacks: null  # TODO: test eval_trajectories
   - logger:
   - python_logging: default

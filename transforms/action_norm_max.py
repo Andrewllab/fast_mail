@@ -46,6 +46,11 @@ class ActionNormMaxMagnitude(NormalizingTransform, nn.Module):
         return [KeyMapping(in_keys="action", out_keys="action")]
 
     def _call_one(self, action: Tensor) -> Tensor:
+        if not self.training:
+            # during rollout, there are no incoming actions to normalize, we
+            # only need to unnormalize
+            return action
+
         if (self.max_actions == 0.0).any():
             log.warning(
                 "Some dimensions of the action space have a max magnitude of zero. This will cause NaN values after action normalization."
@@ -112,6 +117,11 @@ class ActionNormMinMax(NormalizingTransform, nn.Module):
         return [KeyMapping(in_keys="action", out_keys="action")]
 
     def _call_one(self, action: Tensor) -> Tensor:
+        if not self.training:
+            # during rollout, there are no incoming actions to normalize, we
+            # only need to unnormalize
+            return action
+
         if (self.range_actions == 0.0).any():
             log.warning(
                 "Some dimensions of the action space have a range of zero. This will cause NaN values after action normalization."

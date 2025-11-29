@@ -1,8 +1,8 @@
 # @package _global_
 
 defaults:
-  # normalize absolute actions so that they lie within [-1,1]
-  - /transforms@data.preprocess.t9_normalize_actions: action_norm_minmax
+  # add a goal text based on the folder name of the demonstration
+  - /transforms@data.preprocess.t8_add_goal: goal_from_foldername_real
 
   # compute a goal embedding token from the goal text
   # compute goal embeddings online to provide "data augmentation", since the embeddings

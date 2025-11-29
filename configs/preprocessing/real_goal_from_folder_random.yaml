@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  # add a goal text based on the folder name of the demonstration
+  - /transforms@data.preprocess.t8_add_goal: goal_from_foldername_real
+
+  # assign a random goal embedding to each unique goal text
+  # do this during preprocessing so we know how many unique goals there are
+  - /transforms@data.preprocess.t8-1_goal_embedding: goal_embedding_random
