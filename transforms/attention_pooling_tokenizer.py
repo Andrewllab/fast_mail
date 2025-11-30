@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from functools import partial
+from typing import Callable, Mapping
 
 import torch.nn as nn
 from torch import Tensor
 
 from environments.specs import DataSpecs, EmbedSpec
+from models.attention import MultiHeadAttention, MultiHeadSelfAttention
 from models.transformer import AttentionPoolingLayer, TransformerEncoder
 from transforms.base_transform import KeyMapping, Transform
 
@@ -21,7 +23,7 @@ class AttentionPoolingTokenizer(Transform, nn.Module):
         n_layers: int,
         n_tokens: int,
         norm: type[nn.Module],
-        attention: type[nn.Module],
+        attention: Mapping | Callable[..., nn.Module],
         residual_dropout: float | Callable[[], nn.Module],
         mlp1: type[nn.Module],
         activation: type[nn.Module] | str,
@@ -29,14 +31,37 @@ class AttentionPoolingTokenizer(Transform, nn.Module):
         mlp2: type[nn.Module],
         norm_first: bool,
         token_pos_encoder: Callable[[int, int], nn.Module] | None = None,
+        input_key: str = "embed",
+        output_key: str = "embed",
     ):
         super().__init__()
+
+        if input_key not in specs.obs:
+            raise ValueError(f"Key {input_key} not found in specs.obs")
+        input_dim = specs.obs[input_key].embed_dim
+
+        self.input_key = input_key
+        self.output_key = output_key
+
+        if isinstance(attention, Mapping):
+            attention_kwargs = {**attention}
+        elif isinstance(attention, partial):
+            attention_kwargs = (
+                attention.keywords if attention.keywords is not None else {}
+            )
+        else:
+            raise ValueError(
+                "attention must be a Mapping or a functools.partial instance"
+            )
+
+        self_attention = partial(MultiHeadSelfAttention, **attention_kwargs)
+        cross_attention = partial(MultiHeadAttention, **attention_kwargs)
 
         self.transformer = TransformerEncoder(
             embed_dim=embed_dim,
             n_layers=n_layers,
             norm=norm,
-            attention=attention,
+            attention=self_attention,
             residual_dropout=residual_dropout,
             mlp1=mlp1,
             activation=activation,
@@ -46,10 +71,11 @@ class AttentionPoolingTokenizer(Transform, nn.Module):
         )
 
         self.pooling = AttentionPoolingLayer(
-            embed_dim=embed_dim,
+            input_dim=input_dim,
+            output_dim=embed_dim,
             n_tokens=n_tokens,
             norm=norm,
-            attention=attention,
+            attention=cross_attention,
             residual_dropout=residual_dropout,
             mlp1=mlp1,
             activation=activation,
@@ -69,18 +95,16 @@ class AttentionPoolingTokenizer(Transform, nn.Module):
         # create a modified specs object for the output
         new_spec = EmbedSpec(embed_dim=embed_dim, n_tokens=n_tokens)
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
-        if "embed" not in obs_specs:
-            raise ValueError("Input specs must contain an 'embed' spec to pool.")
-        if specs.obs["embed"].embed_dim != embed_dim:
-            raise ValueError(
-                f"Input embed spec has embed_dim {specs.obs['embed'].embed_dim}, but tokenizer embed_dim is {embed_dim}"
-            )
-        obs_specs["embed"] = new_spec
+        obs_specs[output_key] = new_spec
         self._output_specs = specs.replace(obs=obs_specs)
 
     @property
     def key_mappings(self) -> list[KeyMapping]:
-        return [KeyMapping(in_keys=[("obs", "embed")], out_keys=[("obs", "embed")])]
+        return [
+            KeyMapping(
+                in_keys=[("obs", self.input_key)], out_keys=[("obs", self.output_key)]
+            )
+        ]
 
     @property
     def specs(self) -> DataSpecs:
@@ -89,12 +113,6 @@ class AttentionPoolingTokenizer(Transform, nn.Module):
     def _call_one(self, obs_embed: Tensor) -> Tensor:
         obs_embed = self.transformer(obs_embed)
         obs_embed = self.pooling(obs_embed)
-
-        if obs_embed.is_nested:
-            # TODO: we could convert back to a normal tensor if we wanted,
-            # which may improve performance
-            pass
-
         obs_embed = self.final_norm(obs_embed)
         return obs_embed
 

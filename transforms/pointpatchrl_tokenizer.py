@@ -25,21 +25,23 @@ class PointPatchTokenizer(Transform, nn.Module):
         mlp_2: Callable[[int], nn.Linear],
         token_pos_encoder: Callable[[int, int], nn.Linear],
         spatial_encoder: Callable[[int], nn.Linear] | None = None,
-        pcd_key: str = "pcd",
+        input_key: str = "pcd",
+        output_key: str = "embed",
     ):
         super().__init__()
 
-        self._input_key = pcd_key
         try:
-            self._input_spec = specs.obs[pcd_key]
+            self._input_spec = specs.obs[input_key]
         except KeyError:
             raise ValueError(
-                f"Key {pcd_key} not found in specs. Available keys: {list(specs.obs.keys())}"
+                f"Key {input_key} not found in specs. Available keys: {list(specs.obs.keys())}"
             )
         if not isinstance(self._input_spec, PointCloudSpec):
             raise ValueError(
-                f"Key {pcd_key} is not a point cloud spec. Found {self._input_spec.type}"
+                f"Key {input_key} is not a point cloud spec. Found {self._input_spec.type}"
             )
+        self.input_key = input_key
+        self.output_key = output_key
 
         point_dim = 3
 
@@ -76,8 +78,8 @@ class PointPatchTokenizer(Transform, nn.Module):
     def key_mappings(self) -> list[KeyMapping]:
         return [
             KeyMapping(
-                in_keys=[("obs", self._input_key), ("obs", "embed")],
-                out_keys=[("obs", "embed")],
+                in_keys=[("obs", self.input_key), ("obs", self.output_key)],
+                out_keys=[("obs", self.output_key)],
             )
         ]
 

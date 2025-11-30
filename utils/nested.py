@@ -7,6 +7,11 @@ from torch_geometric.utils import scatter
 
 
 def cat_nested(tensors: Sequence[Tensor], dim: int = 0) -> Tensor:
+    r"""Concatenates a sequence of nested tensors along a given dimension.
+    If none of the tensors are nested, this is equivalent to :meth:`torch.cat`.
+    """
+    # TODO: can this be done more efficiently by manipulating offsets and values?
+
     if not any(t.is_nested for t in tensors):
         return torch.cat(tensors, dim=dim)
 
@@ -21,6 +26,46 @@ def cat_nested(tensors: Sequence[Tensor], dim: int = 0) -> Tensor:
     ]
 
     return torch.nested.as_nested_tensor(elems, layout=torch.jagged)
+
+
+def as_nested_view(tensor: Tensor) -> Tensor:
+    r"""Returns a nested tensor view of the input strided tensor without
+    copying data.
+    """
+    B, L = tensor.shape[:2]
+    offsets = torch.arange(0, (B + 1) * L, step=L, device=tensor.device)
+    tensor = tensor.flatten(0, 1)
+    return torch.nested.nested_tensor_from_jagged(tensor, offsets=offsets)
+
+
+def to_strided_tensor(
+    x: Tensor,
+    padding: float | None = None,
+    output_size: tuple[int, ...] | None = None,
+    out: Tensor | None = None,
+) -> Tensor:
+    r"""Converts a nested tensor to a strided ("dense") tensor. If all elements
+    in the jagged dimension have the same length, this is done without copying
+    by reshaping the values tensor. Otherwise, the nested tensor is converted
+    by padding the elements to the same length.
+    """
+    offsets, values = x.offsets(), x.values()
+    lengths = offsets[1:] - offsets[:-1]
+
+    if torch.all(lengths == lengths[0]):
+        # all sequences have the same length, return a reshaped tensor
+        B = x.size(0)
+        L = lengths[0]
+        return values.unflatten(0, (B, L))
+
+    else:
+        if padding is None:
+            raise ValueError(
+                "padding value must be provided when padding a nested tensor to a dense tensor"
+            )
+        return torch.nested.to_padded_tensor(
+            x, padding=padding, output_size=output_size, out=out
+        )
 
 
 def pyg_to_nested_tensor(

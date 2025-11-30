@@ -10,8 +10,6 @@ norm:
   _partial_: True
   eps: 1e-6
 attention:
-  _target_: models.attention.MultiHeadAttention
-  _partial_: True
   n_heads: 4
   dropout: 0.3
   is_causal: False
