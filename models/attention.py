@@ -42,10 +42,10 @@ class MultiHeadAttention(nn.Module):
     def __init__(
         self,
         E_q: int,
-        E_k: int,
-        E_v: int,
-        E_total: int,
         n_heads: int,
+        E_k: int | None = None,
+        E_v: int | None = None,
+        E_total: int | None = None,
         dropout: float = 0.0,
         is_causal: bool = False,
         bias: bool = False,
@@ -54,6 +54,9 @@ class MultiHeadAttention(nn.Module):
         dtype=None,
     ):
         factory_kwargs = {"device": device, "dtype": dtype}
+        E_k = E_q if E_k is None else E_k
+        E_v = E_q if E_v is None else E_v
+        E_total = E_q if E_total is None else E_total
         super().__init__()
         self.n_heads = n_heads
         self.dropout = dropout
@@ -79,9 +82,9 @@ class MultiHeadAttention(nn.Module):
     def forward(
         self,
         query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attn_mask=None,
+        key: torch.Tensor | None = None,
+        value: torch.Tensor | None = None,
+        attn_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Forward pass; runs the following process:
@@ -102,6 +105,10 @@ class MultiHeadAttention(nn.Module):
         """
         # Step 1. Apply input projection
         if self._qkv_same_embed_dim:
+            if key is None and value is None:
+                key = query
+                value = query
+
             if query is key and key is value:
                 result = self.packed_proj(query)
                 query, key, value = torch.chunk(result, 3, dim=-1)
@@ -178,6 +185,7 @@ class MultiHeadSelfAttention(nn.Module):
         self,
         embed_dim: int,
         n_heads: int,
+        E_total: int | None = None,
         dropout: float = 0.0,
         is_causal: bool = False,
         bias: bool = False,
@@ -186,6 +194,7 @@ class MultiHeadSelfAttention(nn.Module):
         dtype=None,
     ):
         factory_kwargs = {"device": device, "dtype": dtype}
+        E_total = embed_dim if E_total is None else E_total
         super().__init__()
         self.n_heads = n_heads
         self.dropout = dropout
@@ -193,9 +202,9 @@ class MultiHeadSelfAttention(nn.Module):
         self.packed_proj = nn.Linear(
             embed_dim, embed_dim * 3, bias=bias, **factory_kwargs
         )
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs)
-        assert embed_dim % n_heads == 0, "Embedding dim is not divisible by n_heads"
-        self.E_head = embed_dim // n_heads
+        self.out_proj = nn.Linear(E_total, embed_dim, bias=bias, **factory_kwargs)
+        assert E_total % n_heads == 0, "Embedding dim is not divisible by n_heads"
+        self.E_head = E_total // n_heads
         self.bias = bias
 
         if qk_norm is not None:

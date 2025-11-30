@@ -1,0 +1,36 @@
+name: attention_pooling_tokenizer
+_target_: transforms.attention_pooling_tokenizer.AttentionPoolingTokenizer
+_partial_: True
+
+embed_dim: ${..embed_dim}
+n_layers: 1
+n_tokens: 3
+norm:
+  _target_: torch.nn.RMSNorm
+  _partial_: True
+  eps: 1e-6
+attention:
+  _target_: models.attention.MultiHeadAttention
+  _partial_: True
+  n_heads: 4
+  dropout: 0.3
+  is_causal: False
+  bias: False
+  qk_norm:
+    _target_: torch.nn.RMSNorm
+    _partial_: True
+    eps: 1e-6
+residual_dropout: 0.1
+mlp1:
+  _target_: torch.nn.Linear
+  _partial_: True
+activation: ReLU
+mlp_dropout: 0.1
+mlp2:
+  _target_: torch.nn.Linear
+  _partial_: True
+  bias: False
+norm_first: True
+token_pos_encoder:
+  _target_: torch.nn.Embedding
+  _partial_: True  # requires num_embeddings and embedding_dim

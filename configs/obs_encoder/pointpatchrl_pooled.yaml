@@ -1,0 +1,43 @@
+# @package _global_
+
+defaults:
+  # patch the pointcloud and tokenize the patches
+  - /tokenizers@agent.obs_encoder.t10_patching: pointpatcher
+  - /tokenizers@agent.obs_encoder.t11_tokenizer: pointpatchrl_tokenizer
+  - /models/spatial_encoder@agent.obs_encoder.t11_tokenizer.spatial_encoder: fourier_features
+  - /tokenizers@agent.obs_encoder.t12_pooling: attention_pooling_tokenizer
+
+# Below is just the default configuration copied here for convenience. Change as needed.
+agent:
+  obs_encoder:
+    embed_dim: 256
+    t10_patching:
+      patch_size: 16
+      oversampling_ratio: 0.2
+    t11_tokenizer:
+      mlp_1:
+        hidden_sizes: [128]
+        out_features: 256
+        activation: ReLU
+      mlp_2:
+        hidden_sizes: [512]
+        activation: ReLU
+    t12_pooling:
+      n_layers: 1
+      n_tokens: 3
+
+  # remove a layer from the noise model since the attention pooling already includes a layer
+  noise_model:
+    decoder:
+      n_layers: 3
+
+data:
+  batch_size: ${floor_div:${platform.batch_size},4}  # 1/4 of typical batch size
+
+logger:
+  wandb:
+    tags: ["pointcloud", "pointpatchrl+pooling"]
+
+modality: pointcloud
+encoder: PointPatchRL
+has_fourier: True

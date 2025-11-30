@@ -90,6 +90,72 @@ class TransformerEncoderLayer(nn.Module):
         return x
 
 
+class AttentionPoolingLayer(TransformerEncoderLayer):
+    def __init__(
+        self,
+        embed_dim: int,
+        n_tokens: int,
+        norm: type[nn.Module],
+        attention: type[nn.Module],
+        residual_dropout: float | Callable[[], nn.Module],
+        mlp1: type[nn.Module],
+        activation: type[nn.Module] | str,
+        mlp_dropout: float | Callable[[], nn.Module],
+        mlp2: type[nn.Module],
+        norm_first: bool,
+        device=None,
+        dtype=None,
+    ):
+        factory_kwargs = {"device": device, "dtype": dtype}
+
+        super().__init__(
+            embed_dim=embed_dim,
+            norm=norm,
+            attention=attention,
+            residual_dropout=residual_dropout,
+            mlp1=mlp1,
+            activation=activation,
+            mlp_dropout=mlp_dropout,
+            mlp2=mlp2,
+            norm_first=norm_first,
+            device=device,
+            dtype=dtype,
+        )
+
+        self.query_tokens = nn.Parameter(
+            torch.randn(n_tokens, embed_dim, **factory_kwargs)
+        )
+
+    def _sa_block(self, x, queries, attn_mask):
+        x = self.self_attn(queries, x, x, attn_mask=attn_mask)
+        return self.residual_dropout(x)
+
+    def forward(self, x, attn_mask=None):
+        """
+        Arguments:
+            src: (batch_size, seq_len, embed_dim)
+            attn_mask: (batch_size, seq_len, seq_len)
+        """
+        if x.is_nested:
+            # if any of the inputs are nested, we need to convert the query tokens
+            # to a nested tensor as well
+            queries = torch.nested.as_nested_tensor(
+                [self.query_tokens for _ in range(x.size(0))], layout=torch.jagged
+            )
+        else:
+            # x: (batch, sequence_len, dim)
+            # query_tokens: (num_tokens, dim) → add batch dimension
+            queries = self.query_tokens.unsqueeze(0).expand(x.size(0), -1, -1)
+
+        if self.norm_first:
+            x = queries + self._sa_block(self.norm1(x), queries, attn_mask=attn_mask)
+            x = x + self.ff_block(self.norm2(x))
+        else:
+            x = self.norm1(queries + self._sa_block(x, queries, attn_mask=attn_mask))
+            x = self.norm2(x + self.ff_block(x))
+        return x
+
+
 class TransformerEncoder(nn.Module):
     def __init__(
         self,
