@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - real_pointclouds
+
+data:
+  preprocess:
+    t15_to_pcd:
+      color: True
