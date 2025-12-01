@@ -13,6 +13,9 @@ from utils.math import axis_angle_from_quat, subtract_frame_transforms
 
 log = logging.getLogger(__name__)
 
+COMPARE_TYPE = Literal["joint_pos", "action"]
+TRIM_TYPE = Literal["start", "inside", "end"]
+
 
 class TrimIdle(Transform):
     """
@@ -38,8 +41,8 @@ class TrimIdle(Transform):
     def __init__(
         self,
         specs: DataSpecs,
-        compare: Sequence[Literal["joint_pos", "action"]],
-        trim_type: Sequence[Literal["start", "inside", "end"]],
+        compare: COMPARE_TYPE | Sequence[COMPARE_TYPE],
+        trim_type: TRIM_TYPE | Sequence[TRIM_TYPE],
         pos_threshold: float,
         gripper_threshold: float,
         rot_threshold: float | None = None,
@@ -48,6 +51,9 @@ class TrimIdle(Transform):
         margin: int = 0,
         error_empty_trajectories: bool = True,
     ):
+        if isinstance(compare, str):
+            compare = [compare]
+
         self.compare_action = "action" in compare
         self.compare_state = "joint_pos" in compare
 
@@ -55,6 +61,9 @@ class TrimIdle(Transform):
             raise ValueError(
                 "At least one of 'action' or 'joint_pos' must be in compare."
             )
+
+        if isinstance(trim_type, str):
+            trim_type = [trim_type]
 
         for t in trim_type:
             if t not in ["start", "inside", "end"]:

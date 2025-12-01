@@ -11,6 +11,9 @@ from torch import Tensor
 log = logging.getLogger(__name__)
 
 
+LINEAR_TRANSFORM_TYPE = Literal["axis-aligned", "non-axis-aligned"]
+
+
 class FourierFeaturesBase(nn.Module):
     def __init__(
         self,
@@ -18,8 +21,7 @@ class FourierFeaturesBase(nn.Module):
         n_wavelengths: int,
         axis_aligned: bool,
         embed_dim: int | None = None,
-        spe: bool = False,
-        spe_axis_aligned: bool | None = None,
+        linear_transform: bool | LINEAR_TRANSFORM_TYPE = False,
         components: Literal["sincos", "sin"] = "sincos",
         cat_input_to_out: bool = False,
     ) -> None:
@@ -45,26 +47,39 @@ class FourierFeaturesBase(nn.Module):
             padding_dim = 0
             embed_dim = feature_dim
 
-        if spe:
-            if not axis_aligned and spe_axis_aligned:
-                log.warning(
-                    "Axis-aligned SPE is not possible with non-axis-aligned frequencies. Setting spe_axis_aligned=False."
-                )
-                spe_axis_aligned = False
+        if linear_transform not in (True, False, "axis-aligned", "non-axis-aligned"):
+            raise ValueError(
+                "linear_transform must be one of True, False, 'axis-aligned', or 'non-axis-aligned'"
+            )
 
-            if spe_axis_aligned is None:
+        if linear_transform:
+            if linear_transform is True:
                 # match the axis_aligned setting by default
-                spe_axis_aligned = axis_aligned
+                transform_axis_aligned = axis_aligned
+            elif linear_transform == "axis-aligned":
+                transform_axis_aligned = True
+                if not axis_aligned:
+                    log.warning(
+                        "Axis-aligned linear transform is not possible with non-axis-aligned frequencies. Setting linear_transform='non-axis-aligned'."
+                    )
+                    transform_axis_aligned = False
+            elif linear_transform == "non-axis-aligned":
+                transform_axis_aligned = False
+            else:
+                assert False
 
-            spe_feature_dim = n_components * n_wavelengths
-            if not spe_axis_aligned:
-                spe_feature_dim *= input_dim
+            transform_feature_dim = n_components * n_wavelengths
+            if not transform_axis_aligned:
+                # if not axis-aligned, the features are flattened across input
+                # dimensions so they can be "mixed" by the linear layer
+                transform_feature_dim *= input_dim
 
-            self.spe_linear = nn.Linear(spe_feature_dim, spe_feature_dim)
-            self.spe_axis_aligned = spe_axis_aligned
+            self.linear = nn.Linear(transform_feature_dim, transform_feature_dim)
+            self.linear_axis_aligned = transform_axis_aligned
 
         else:
-            self.spe_linear = None
+            self.linear = None
+            self.linear_axis_aligned = None
 
         self.axis_aligned = axis_aligned
         self.components = components
@@ -98,16 +113,16 @@ class FourierFeaturesBase(nn.Module):
             # features: (..., input_dim, n_frequencies) or (..., input_dim * n_frequencies)
             features = arg.sin()
 
-        if self.spe_linear is not None:
-            if self.axis_aligned and not self.spe_axis_aligned:
+        if self.linear is not None:
+            if self.axis_aligned and not self.linear_axis_aligned:
                 # flatten Cartesian dimensions for linear layer
                 # features -> (..., n * input_dim * n_frequencies)
                 features = features.flatten(start_dim=-2)
 
             # linear transform of the features (dimensionality not changed)
-            features = self.spe_linear(features).sin()
+            features = self.linear(features).sin()
 
-            if self.axis_aligned and self.spe_axis_aligned:
+            if self.axis_aligned and self.linear_axis_aligned:
                 # flatten Cartesian dimensions to match the non-axis-aligned case
                 # features -> (..., n * input_dim * n_frequencies)
                 features = features.flatten(start_dim=-2)
@@ -176,9 +191,8 @@ class FourierFeatures(FourierFeaturesBase):
         min_wavelength: float | None = None,
         factor: float | None = None,
         embed_dim: int | None = None,
-        learn: Literal["frequencies", "logfrequencies", False] = False,
-        spe: bool = False,
-        spe_axis_aligned: bool = True,
+        learn: bool | Literal["frequencies", "logfrequencies"] = False,
+        linear_transform: bool | LINEAR_TRANSFORM_TYPE = False,
         components: Literal["sincos", "sin"] = "sincos",
         cat_input_to_out: bool = False,
     ) -> None:
@@ -230,16 +244,18 @@ class FourierFeatures(FourierFeaturesBase):
             n_wavelengths=n_wavelengths,
             axis_aligned=True,  # logspace frequencies are always axis-aligned
             embed_dim=embed_dim,
-            spe=spe,
-            spe_axis_aligned=spe_axis_aligned,
+            linear_transform=linear_transform,
             components=components,
             cat_input_to_out=cat_input_to_out,
         )
 
-        if learn not in ("frequencies", "logfrequencies", False):
+        if learn not in (True, "frequencies", "logfrequencies", False):
             raise ValueError(
                 "learn must be one of 'frequencies', 'logfrequencies', or False"
             )
+
+        if learn is True:
+            learn = "frequencies"
 
         if learn == "logfrequencies":
             self.log_frequencies = nn.Parameter(log_frequencies, requires_grad=True)
@@ -247,9 +263,7 @@ class FourierFeatures(FourierFeaturesBase):
             frequencies = torch.exp(log_frequencies)
             frequencies = 2 * torch.pi * frequencies
 
-            self.frequencies = nn.Parameter(
-                frequencies, requires_grad=learn == "frequencies"
-            )
+            self.frequencies = nn.Parameter(frequencies, requires_grad=bool(learn))
 
         self.learn = learn
         self.n_wavelengths = n_wavelengths
@@ -275,8 +289,10 @@ class FourierFeatures(FourierFeaturesBase):
 
         if self.learn:
             args.append(f"learn={self.learn}")
-        if self.spe_linear is not None:
-            args.append(f"SPE=True [axis-aligned={self.spe_axis_aligned}]")
+        if self.linear is not None:
+            args.append(
+                f"linear_transform={'axis-aligned' if self.linear_axis_aligned else 'non-axis-aligned'}"
+            )
 
         components = "sin/cos" if self.components == "sincos" else "sin"
         args.append(f"components={components}")
@@ -285,6 +301,13 @@ class FourierFeatures(FourierFeaturesBase):
         s = ",\n".join(args)
 
         return s
+
+    @property
+    def wavelengths(self) -> Tensor:
+        if self.learn == "logfrequencies":
+            return torch.exp(-self.log_frequencies)
+        else:
+            return (2 * torch.pi) / self.frequencies
 
 
 class RandomFourierFeatures(FourierFeaturesBase):
@@ -296,8 +319,7 @@ class RandomFourierFeatures(FourierFeaturesBase):
         n_wavelengths: int | None = None,
         axis_aligned: bool = False,
         learn: bool = False,
-        spe: bool = False,
-        spe_axis_aligned: bool | None = None,
+        linear_transform: bool | LINEAR_TRANSFORM_TYPE = False,
         components: Literal["sincos", "sin"] = "sincos",
         cat_input_to_out: bool = False,
     ) -> None:
@@ -327,8 +349,7 @@ class RandomFourierFeatures(FourierFeaturesBase):
             n_wavelengths=n_wavelengths,
             axis_aligned=axis_aligned,
             embed_dim=embed_dim,
-            spe=spe,
-            spe_axis_aligned=spe_axis_aligned,
+            linear_transform=linear_transform,
             components=components,
             cat_input_to_out=cat_input_to_out,
         )
@@ -355,25 +376,34 @@ class RandomFourierFeatures(FourierFeaturesBase):
         return super().forward(self.frequencies, pos)
 
     def extra_repr(self):
-        wavelengths = torch.linalg.norm(2 * torch.pi / self.frequencies, dim=0)
+        wavelengths = 2 * torch.pi / self.frequencies
+        if not self.axis_aligned:
+            # compute norms of the frequency vectors
+            assert wavelengths.size(0) == self.input_dim
+            wavelengths = torch.linalg.norm(wavelengths, dim=0)
+        else:
+            wavelengths = wavelengths.abs()
 
         args = [
             f"in_features={self.in_features}",
             f"out_features={self.out_features}",
-            f"wavelengths=N(0, {self.sigma:.1f}^2) [max/min=({wavelengths.max():.3f}, {wavelengths.min():.3f})]",
+            f"frequencies~N(0, {self.sigma:.1f}^2)",
+            f"wavelengths=[max={wavelengths.max():.3f}, min={wavelengths.min():.3f}]",
             f"axis_aligned={self.axis_aligned}",
         ]
 
         if self.learn:
             args.append(f"learn={self.learn}")
-        if self.spe_linear is not None:
-            args.append(f"SPE=True [axis-aligned={self.spe_axis_aligned}]")
+        if self.linear is not None:
+            args.append(
+                f"linear_transform={'axis-aligned' if self.linear_axis_aligned else 'non-axis-aligned'}"
+            )
 
         components = "sin/cos" if self.components == "sincos" else "sin"
         args.append(f"components={components}")
         args.append(f"cat_input_to_out={self.cat_input_to_out}")
 
-        s = ", ".join(args)
+        s = ",\n".join(args)
 
         return s
 

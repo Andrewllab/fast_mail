@@ -22,3 +22,7 @@ agent:
 logger:
   wandb:
     tags: ["rgb", "convnextv2"]
+
+modality: rgb
+encoder: ConvNeXtV2
+has_fourier: False
