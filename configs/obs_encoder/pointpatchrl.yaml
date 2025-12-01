@@ -29,6 +29,6 @@ logger:
   wandb:
     tags: ["pointcloud", "pointpatchrl"]
 
-modality: pointcloud
+# metadata
 encoder: PointPatch
 has_fourier: True

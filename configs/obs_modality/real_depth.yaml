@@ -35,3 +35,6 @@ data:
   gpu_batch_transforms:
     t10_jitter:
       sigma: 0.001  # positional jitter in m
+
+# metadata
+modality: depth

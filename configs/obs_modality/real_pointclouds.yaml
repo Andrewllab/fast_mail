@@ -58,3 +58,6 @@ data:
 # don't have a consistent memory size
 callbacks:
   batch_size_finder: null
+
+# metadata
+modality: pointcloud

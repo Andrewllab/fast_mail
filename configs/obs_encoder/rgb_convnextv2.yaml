@@ -23,6 +23,6 @@ logger:
   wandb:
     tags: ["rgb", "convnextv2"]
 
-modality: rgb
+# metadata
 encoder: ConvNeXtV2
 has_fourier: False

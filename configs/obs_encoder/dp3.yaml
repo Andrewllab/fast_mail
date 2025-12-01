@@ -29,6 +29,6 @@ logger:
   wandb:
     tags: ["pointcloud", "dp3"]
 
-modality: pointcloud
+# metadata
 encoder: DP3
 has_fourier: True

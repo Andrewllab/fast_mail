@@ -43,3 +43,6 @@ data:
   gpu_batch_transforms:
     t2_jitter:
       sigma: 0.002
+
+# metadata
+modality: pointmap

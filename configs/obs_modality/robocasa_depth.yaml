@@ -19,3 +19,5 @@ data:
       keep_stream_types: [depth]
       drop_keys: gripper_cam_transform
 
+# metadata
+modality: depth

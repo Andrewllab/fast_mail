@@ -38,6 +38,6 @@ logger:
   wandb:
     tags: ["pointcloud", "pointpatchrl+pooling"]
 
-modality: pointcloud
+# metadata
 encoder: PointPatchRL
 has_fourier: True

@@ -9,3 +9,6 @@ data:
     t45_goal_embedding:
       _target_: transforms.goal_embedding.ClipGoalEmbedding
       _partial_: True
+
+# metadata
+goals: CLIP embedding
