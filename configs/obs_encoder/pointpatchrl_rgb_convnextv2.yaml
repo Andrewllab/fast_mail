@@ -40,3 +40,7 @@ data:
 logger:
   wandb:
     tags: ["pointcloud+rgb", "pointpatchrl+convnextv2"]
+
+# metadata
+encoder: PointPatch+ConvNeXtV2
+has_fourier: True

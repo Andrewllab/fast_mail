@@ -29,3 +29,6 @@ data:
 
     t11_crop_image:
       shape: 224  # crop all streams to 224x224
+
+# metadata
+modality: rgb
