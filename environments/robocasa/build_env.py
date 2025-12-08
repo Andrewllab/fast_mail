@@ -1,6 +1,6 @@
 import functools
 import logging
-from typing import Any, Mapping
+from typing import Any, List, Mapping
 
 from gymnasium.vector import AsyncVectorEnv, AutoresetMode, SyncVectorEnv
 from gymnasium.wrappers import TimeLimit
@@ -28,6 +28,7 @@ def create_env(
     ],
     camera_widths=128,
     camera_heights=128,
+    camera_depths=False,
     seed=None,
     render_onscreen=False,
     # robocasa-related configs
@@ -44,20 +45,24 @@ def create_env(
     - always render depth when rendering cameras
     - disable use_camera_obs so we can control when to render cameras ourselves
     """
+    import robocasa
     import robosuite
     from robosuite.controllers import load_composite_controller_config
 
     controller_config = load_composite_controller_config(
         controller=None,
-        robot=robots if isinstance(robots, str) else robots[0],
+        robot="PandaOmron",
     )
 
     env_kwargs = dict(
         env_name=env_name,
-        # robosuite-related configs
-        robots=robots,
+        robots="PandaOmron",
         controller_configs=controller_config,
-        camera_names=camera_names,
+        camera_names=[
+            "robot0_agentview_left",
+            "robot0_agentview_right",
+            "robot0_eye_in_hand",
+        ],
         camera_widths=camera_widths,
         camera_heights=camera_heights,
         camera_depths=True,  # render RGBD
@@ -67,7 +72,6 @@ def create_env(
         use_object_obs=True,  # add proprioception to observation
         use_camera_obs=True,  # add rendered camera images to each observation
         seed=seed,
-        # robocasa-related configs
         obj_instance_split=obj_instance_split,
         generative_textures=generative_textures,
         randomize_cameras=randomize_cameras,
@@ -85,6 +89,7 @@ def make_one(
     env_name: str,
     img_height: int,
     img_width: int,
+    camera_names: List[str],
     seed: int | None = None,
     max_episode_steps: int | float | None | Mapping[str, int] = None,
     render_cam_name: str | None = "robot0_agentview_left",
@@ -114,11 +119,42 @@ def make_one(
 
     log.info(f"Building RoboCasa environment: '{env_name}'")
 
-    env = create_env(
+    import robocasa
+    import robosuite
+    from robosuite.controllers import load_composite_controller_config
+
+    controller_config = load_composite_controller_config(
+        controller=None,
+        robot="PandaOmron",
+    )
+
+    env_kwargs = dict(
         env_name=env_name,
+        # robosuite-related configs
+        robots="PandaOmron",
+        controller_configs=controller_config,
+        camera_names=[
+            "robot0_agentview_left",
+            "robot0_agentview_right",
+            "robot0_eye_in_hand",
+        ],
         camera_widths=img_width,
         camera_heights=img_height,
+        has_renderer=False,  # do not render in a viewer
+        has_offscreen_renderer=True,  # do render headless
+        ignore_done=True,  # no timeout
+        use_object_obs=True,
+        use_camera_obs=False,  # do not render all steps, just the ones we want
+        camera_depths=True,  # render RGBD
         seed=seed,
+        # robocasa-related configs
+        obj_instance_split=None,
+        generative_textures=None,
+        randomize_cameras=False,
+        layout_and_style_ids=None,
+        layout_ids=None,
+        style_ids=None,
+        translucent_robot=False,
     )
 
     camera_names = env.camera_names
