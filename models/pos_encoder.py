@@ -61,7 +61,7 @@ class LearnableTokenEncoder(nn.Module):
         return x
 
 
-class SinusoidalTokenPosEncoder(nn.Module):
+class SinusoidalSequencePosEncoder(nn.Module):
     """Positional encoding according to Attention Is All You Need.
     Compute a positional embedding to be added onto a token from the a token's
     position in the sequence. The embedding is sin/cos components with
@@ -92,6 +92,10 @@ class SinusoidalTokenPosEncoder(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         arg = x.unsqueeze(dim=-1) * self.frequencies
         return torch.cat((arg.sin(), arg.cos()), dim=-1)
+
+
+# BackCompat
+SinusoidalTokenPosEncoder = SinusoidalSequencePosEncoder
 
 
 class PointGPTCartesianPosEncoder(nn.Module):

@@ -68,6 +68,38 @@ class BesoAgent(BaseAgent):
 
         self.action_shape = self.specs.action.shape
 
+    def edm_preconditioning(
+        self, sigma: Tensor, action: Tensor
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Compute the EDM scaling factors depending on the noise level. These
+        factors adjust the learning objective to interpolate between predicting
+        the denoised actions when sigma is high and predicting the noise when
+        sigma is low. This ensures that the objective is roughly uniformly
+        difficult across noise levels.
+
+        See Table 1 in https://arxiv.org/pdf/2206.00364 for details.
+        """
+        c_skip = self.sigma_data**2 / (sigma**2 + self.sigma_data**2)
+        c_out = sigma * self.sigma_data / (sigma**2 + self.sigma_data**2) ** 0.5
+        c_in = 1 / (sigma**2 + self.sigma_data**2) ** 0.5
+
+        c_skip, c_out, c_in = [unsqueeze_to(c, action) for c in (c_skip, c_out, c_in)]
+
+        c_noise = sigma.log() / 4
+        return c_skip, c_out, c_in, c_noise
+
+    def forward(
+        self, obs: Tensor, action: Tensor, goal: Tensor, sigma: Tensor
+    ) -> Tensor:
+        """Predict the unnoised actions with the help of EDM preconditioning."""
+        if self.ema_decay > 0 and not self.training:
+            from torch.optim.swa_utils import AveragedModel
+
+            assert isinstance(self.model, AveragedModel)
+
+        c_skip, c_out, c_in, c_noise = self.edm_preconditioning(sigma, action)
+        return self.model(obs, action * c_in, goal, c_noise) * c_out + action * c_skip
+
     def training_step(self, batch, batch_idx) -> Tensor:
         """
         Computes the score matching loss given the perceptual embedding, latent goal, and desired actions.
@@ -81,12 +113,14 @@ class BesoAgent(BaseAgent):
 
         sigma = self.noise_distribution(shape=(len(action),), device=self.device)
         noise = torch.randn_like(action)
-
-        c_skip, c_out, c_in = [
-            unsqueeze_to(c, action) for c in self.get_scalings(sigma)
-        ]
         noised_input = action + noise * unsqueeze_to(sigma, action)
-        model_output = self.model(obs, noised_input * c_in, goal, sigma)
+
+        # We implement the loss with respect to the raw network output as in
+        # Equation 8 of https://arxiv.org/pdf/2206.00364. Note that lambda(sigma)
+        # is set by the authors to 1/c_out**2, such that each term has an equal
+        # weight in the MSE loss.
+        c_skip, c_out, c_in, c_noise = self.edm_preconditioning(sigma, action)
+        model_output = self.model(obs, noised_input * c_in, goal, c_noise)
         target = (action - c_skip * noised_input) / c_out
         loss = F.mse_loss(model_output, target)
 
@@ -157,32 +191,3 @@ class BesoAgent(BaseAgent):
 
     # validation and testing are identical
     test_step = validation_step
-
-    def get_scalings(self, sigma):
-        """
-        Compute the scalings for the denoising process.
-
-        Args:
-            sigma: The input sigma.
-        Returns:
-            The computed scalings for skip connections, output, and input.
-        """
-        c_skip = self.sigma_data**2 / (sigma**2 + self.sigma_data**2)
-        c_out = sigma * self.sigma_data / (sigma**2 + self.sigma_data**2) ** 0.5
-        c_in = 1 / (sigma**2 + self.sigma_data**2) ** 0.5
-        return c_skip, c_out, c_in
-
-    def forward(
-        self, obs: Tensor, action: Tensor, goal: Tensor, sigma: Tensor
-    ) -> Tensor:
-        """Predict the noise in action as part of sampling."""
-
-        c_skip, c_out, c_in = [
-            unsqueeze_to(c, action) for c in self.get_scalings(sigma)
-        ]
-        if self.ema_decay > 0:
-            from torch.optim.swa_utils import AveragedModel
-
-            assert isinstance(self.model, AveragedModel)
-
-        return self.model(obs, action * c_in, goal, sigma) * c_out + action * c_skip

@@ -1,7 +1,7 @@
 defaults:
   - backbone@decoder: transformer
   - time_encoder@seq_position_encoder: learned
-  - sigma_encoder: beso
+  - sigma_encoder: ddpm
   - action_head: linear
   - _self_
 

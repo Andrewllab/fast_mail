@@ -1,3 +1,0 @@
-name: beso
-_target_: agents.backbones.sigma_encoder.BESO_SigmaEncoder
-_partial_: True

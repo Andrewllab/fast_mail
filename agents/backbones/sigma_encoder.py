@@ -1,37 +1,21 @@
 from __future__ import annotations
 
-import torch.nn as nn
-from torch import Tensor
+import logging
 
-from models.pos_encoder import SinusoidalTokenPosEncoder
+log = logging.getLogger(__name__)
 
+log.warning(
+    f"Importing sigma encoder from deprecated path `agents/backbones/sigma_encoder.py.`"
+)
 
-class BESO_SigmaEncoder(nn.Module):
-    def __init__(self, embed_dim: int):
-        super().__init__()
+from models.sigma_encoders import DDPMSigmaEncoder
 
-        self.sigma_emb = nn.Sequential(
-            SinusoidalTokenPosEncoder(embed_dim),
-            nn.Linear(embed_dim, embed_dim * 2),
-            nn.Mish(),
-            nn.Linear(embed_dim * 2, embed_dim),
-        )
+# BackCompat
+DDPM_SigmaEncoder = DDPMSigmaEncoder
 
-    def forward(self, sigma: Tensor) -> Tensor:
-        sigma = sigma.log() / 4
-        sigma_emb = self.sigma_emb(sigma)
-        return sigma_emb
-
-
-class DDPM_SigmaEncoder(nn.Module):
-    def __init__(self, embed_dim: int):
-        super().__init__()
-        self.sigma_emb = nn.Sequential(
-            SinusoidalTokenPosEncoder(embed_dim),
-            nn.Linear(embed_dim, embed_dim * 2),
-            nn.Mish(),
-            nn.Linear(embed_dim * 2, embed_dim),
-        )
-
-    def forward(self, sigma: Tensor) -> Tensor:
-        return self.sigma_emb(sigma)
+# BackCompat
+# The only difference between BESO_SigmaEncoder and DDPM_SigmaEncoder was the
+# replacement of sigma by log(sigma)/4 in the forward pass. This has now been
+# subsumed into the BesoAgent's edm_preconditioning method, so we can
+# alias the two classes.
+BESO_SigmaEncoder = DDPMSigmaEncoder
