@@ -7,4 +7,3 @@ def unsqueeze_to(x: Tensor, target: Tensor) -> Tensor:
     """
     n_unsqueeze = max(0, target.ndim - x.ndim)
     return x[(...,) + (None,) * n_unsqueeze]
-    return x[(...,) + (None,) * n_unsqueeze]

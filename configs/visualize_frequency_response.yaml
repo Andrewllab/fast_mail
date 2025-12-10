@@ -1,0 +1,62 @@
+defaults:
+  - logger:
+  - python_logging: default
+  - paths: default
+  - hydra: default
+  - _self_
+  - platform: default
+  - optional local: default
+  - debug: verbose
+
+# task name, determines output directory path
+job_type: freq_response
+
+do_show: True
+do_tikz: True
+
+checkpoint_defaults:
+  # project and entity are only needed if they differ from the settings in the wandb logger config
+  wandb_project: 3d-sim2real
+  wandb_entity: alr-3d-sim2real
+  epochs: last  # options: last, all, last_n (default: last)
+
+checkpoints: [
+  {wandb_run_id: hqns9h68},  # base
+  {wandb_run_id: 490ob783},  # no FFs
+  {wandb_run_id: 3kegwtez},  # logspace + SPE
+  {wandb_run_id: pzz1m3s3},  # RFF
+  {wandb_run_id: qxjq2io7},  # RFF + learned
+  {wandb_run_id: btvlnpwk},  # RFF + SPE
+  {wandb_run_id: hnk6118s},  # RFF + Cartesian
+]
+
+frequency_response:
+  n_directions: 256
+  model_names: [spatial_encoder, mlp1, patch_pos_encoder]
+
+  defaults:
+
+  spatial_encoder:
+    point: [0, 0, 0]
+    min_wavelength: 0.01  # 1cm
+    n_steps: 1024
+    # max_wavelength = n_steps * min_wavelength / 2 = 1.92m
+    # radius = n_steps * min_wavelength / 4 = 0.96m
+    n_bins: 31  # number of wavelength bins for plotting
+
+  mlp1:
+    point: [0, 0, 0]
+    min_wavelength: 0.01  # 1cm
+    n_steps: 64
+    # max_wavelength = n_steps * min_wavelength / 2 = 1.92m
+    # radius = n_steps * min_wavelength / 4 = 0.96m
+    n_bins: 20  # number of wavelength bins for plotting
+
+  patch_pos_encoder:
+    # mean ee_pos coordinate over the training set
+    point: [2.4706602, -1.5671699,  1.2286468]
+    min_wavelength: 0.04  # 4cm
+    n_steps: 256
+    # max_wavelength = n_steps * min_wavelength / 2 = 3.84m
+    # radius = n_steps * min_wavelength / 4 = 1.92m
+    n_bins: 19  # number of wavelength bins for plotting

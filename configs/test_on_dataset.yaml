@@ -1,8 +1,8 @@
 # usage: python test.py -cn test_on_dataset
 
 defaults:
-  - data: null
-  - callbacks: null  # TODO: test eval_trajectories
+  - data: ???
+  - callbacks: null
   - logger:
   - python_logging: default
   - paths: default
@@ -17,9 +17,9 @@ job_type: test_on_dataset
 
 checkpoint:
   # either specify a complete checkpoint path...
-  log_dir:
+  log_dir: 
   # ...or specify the wandb run name
-  wandb_run_id:
+  wandb_run_id: 
   # project and entity are only needed if they differ from the settings in the wandb logger config
   wandb_project: 3d-sim2real
   wandb_entity: alr-3d-sim2real
@@ -29,8 +29,6 @@ checkpoint:
 
 data:
   eval_mode: dataset
-  # dataset:
-  #   action_seq_len: 10  # you may need to reprocess the dataset if you enable this
 
 trainer:
   default_root_dir: ${paths.output_dir}

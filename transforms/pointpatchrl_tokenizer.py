@@ -141,3 +141,48 @@ class PointPatchTokenizer(Transform, nn.Module):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(mlp_1={self.mlp_1},(mlp_2={self.mlp_2})"
+
+    @property
+    def point_encoders(self) -> dict[str, Callable[[Tensor], Tensor]]:
+
+        def mlp1(points: Tensor) -> Tensor:
+            """Encode individual points using mlp_1 (and spatial encoder if
+            present), exactly as in forward pass.
+            """
+            if self.spatial_encoder is not None:
+                points = self.spatial_encoder(points)
+            points = self.mlp_1(points)
+            return points
+
+        def patch_encoder(points: Tensor) -> Tensor:
+            """Encode individual points using mlp_1 and mlp_2 (and spatial encoder
+            if present), as if the patch only contained a single point. Max
+            pooling is skipped.
+            """
+            features = points
+            if self.spatial_encoder is not None:
+                features = self.spatial_encoder(features)
+            features = self.mlp_1(features)
+            # for a single point, we skip the max pooling step and just
+            # duplicate the features
+            features = torch.cat([features, features], dim=-1)
+            features = self.mlp_2(features)
+            return features
+
+        def patch_pos_encoder(points: Tensor) -> Tensor:
+            """Encode individual points as if they were patch centers, using
+            the token position encoder (and spatial encoder if present)."""
+            if self.spatial_encoder is not None:
+                points = self.spatial_encoder(points)
+            return self.token_pos_encoder(points)
+
+        callables = {
+            "mlp1": mlp1,
+            "patch_encoder": patch_encoder,
+            "patch_pos_encoder": patch_pos_encoder,
+        }
+
+        if self.spatial_encoder is not None:
+            callables["spatial_encoder"] = self.spatial_encoder
+
+        return callables
