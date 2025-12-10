@@ -175,3 +175,24 @@ class RandomTranslationalJitter(Transform):
             args.append(f"clamp_depth_nonnegative={self.clamp_depth_nonnegative}")
         s = ", ".join(args)
         return f"{self.__class__.__name__}({s})"
+
+
+# BackCompat
+def TranslationalJitter(specs, sigma):
+    return RandomTranslationalJitter(
+        specs, sigma=sigma, distribution="normal", random_sigma=False
+    )
+
+
+# BackCompat
+def VariableTranslationalJitter(specs, max_sigma):
+    return RandomTranslationalJitter(
+        specs, sigma=max_sigma, distribution="normal", random_sigma=True
+    )
+
+
+# BackCompat
+def JitterPointCloud(specs, max_sigma, pcd_keys="pcd"):
+    assert pcd_keys == "pcd"
+
+    return RandomTranslationalJitter(specs, sigma=max_sigma, distribution="uniform")

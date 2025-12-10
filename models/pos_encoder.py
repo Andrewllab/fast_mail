@@ -94,10 +94,6 @@ class SinusoidalSequencePosEncoder(nn.Module):
         return torch.cat((arg.sin(), arg.cos()), dim=-1)
 
 
-# BackCompat
-SinusoidalTokenPosEncoder = SinusoidalSequencePosEncoder
-
-
 class PointGPTCartesianPosEncoder(nn.Module):
     """Positional encoding used by PointGPT.
     Computes a positional embedding to be added onto a token from some

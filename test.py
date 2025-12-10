@@ -17,6 +17,7 @@ from loggers.wandb import resolve_checkpoint, update_wandb_config
 from utils.conf import (
     delete_keys_recursively,
     merge_data_configs,
+    patch_legacy_targets,
     patch_load_from_checkpoint,
     setup_resolvers,
 )
@@ -66,6 +67,10 @@ def test(cfg: DictConfig) -> None:
         # merge the agent and data configs, with the current config taking precedence
         agent_cfg = OmegaConf.merge(train_cfg.agent, agent_cfg)
         data_cfg = merge_data_configs(train_cfg.data, data_cfg)
+
+        # replace legacy _target_ with updated ones
+        agent_cfg = patch_legacy_targets(agent_cfg)
+        data_cfg = patch_legacy_targets(data_cfg)
 
         # modify the _target_ to point to the module's load_from_checkpoint method
         agent_cfg = patch_load_from_checkpoint(agent_cfg, checkpoint_path)

@@ -235,7 +235,3 @@ class TrimIdle(Transform):
         # We don't need to do anything, since we can only run during
         # preprocessing.
         return tensordict
-
-
-# BackCompat
-TrimIdleStart = TrimIdle

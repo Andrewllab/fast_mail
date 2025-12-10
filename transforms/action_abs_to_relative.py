@@ -150,10 +150,6 @@ class AbsoluteTaskActionsToRelativeChunk(ReversibleTransform):
         return tensordict
 
 
-# BackCompat
-AbsoluteActionToRelativeChunk = AbsoluteTaskActionsToRelativeChunk
-
-
 class AbsoluteTaskActionsFrameTransform(ReversibleTransform, nn.Module):
     """Preprocess transforms for converting actions (target ee_poses) from
     the world (robot base) frame to be relative to some reference frame. This
@@ -278,10 +274,6 @@ class AbsoluteTaskActionsFrameTransform(ReversibleTransform, nn.Module):
         tensordict["action"] = abs_action
 
         return tensordict
-
-
-# BackCompat
-AbsoluteActionToRelative = AbsoluteTaskActionsFrameTransform
 
 
 class AbsoluteJointActionsToDelta(ReversibleTransform):
