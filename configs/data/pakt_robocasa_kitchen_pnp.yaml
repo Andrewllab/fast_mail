@@ -1,0 +1,11 @@
+defaults:
+  - pakt_robocasa
+
+task: pakt_robocasa_PickPlaceCounterToStove
+name: pakt_robocasa_PickPlaceCounterToStove
+
+dataset:
+  root_dir: /mnt/LargeSandwich/kMPD/Datasets/robocasa_PickPlaceCounterToStove/demonstrations
+  subfolder_name: prepared_data_no_skip
+  # Pick and place: PnPCabToCounter,PnPCounterToMicrowave,PnPCounterToStove,PnPSinkToCounter,PnPCounterToCab,PnPCounterToSink,PnPMicrowaveToCounter,PnPStoveToCounter
+

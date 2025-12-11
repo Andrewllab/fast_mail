@@ -1,0 +1,16 @@
+name: pointpatch_tokenizer
+_target_: transforms.pakt_tokenizer.PaktTokenizer
+_partial_: True
+
+
+token_pos_encoder:
+  name: point_mae_position_encoder
+  _target_: models.pos_encoder.PointMAECartesianPosEncoder
+  _partial_: true
+  hidden_dim: 128
+
+embed_dim: ${..embed_dim}
+
+input_key: target_points
+output_key: target_embeddings
+

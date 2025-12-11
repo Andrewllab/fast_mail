@@ -1,0 +1,11 @@
+# @package _global_
+
+# defaults:
+
+# disable the batch size finder for point clouds, because the data points 
+# don't have a consistent memory size
+callbacks:
+  batch_size_finder: null
+
+# metadata
+modality: pointcloud
