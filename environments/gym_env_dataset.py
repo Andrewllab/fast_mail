@@ -28,6 +28,10 @@ class GymEnvDataset(IterableDataset):
         env: VectorEnv,
         num_episodes: int | None = 20,
     ):
+        # TODO: Once vectorization is properly factored out, we need to remove
+        # the calling of reset here, not least because we don't know how to
+        # merge the reset info with the info from the last step.
+
         self.env = env
         self.num_episodes = num_episodes
 

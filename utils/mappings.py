@@ -19,7 +19,9 @@ def unnest_dict(d: T, parent_key: str = "", sep: str = "/") -> T:
 U = TypeVar("U", bound=MutableMapping)
 
 
-def accumulate_dict(d1: U, d2: Mapping, aggr: Literal["sum", "max"] = "sum") -> U:
+def accumulate_dict(
+    d1: U, d2: Mapping, aggr: Literal["sum", "max", "min"] = "sum"
+) -> U:
     for key, value in d2.items():
         if key not in d1:
             d1[key] = value
@@ -28,6 +30,8 @@ def accumulate_dict(d1: U, d2: Mapping, aggr: Literal["sum", "max"] = "sum") -> 
                 d1[key] += value
             elif aggr == "max":
                 d1[key] = max(d1[key], value)
+            elif aggr == "min":
+                d1[key] = min(d1[key], value)
             else:
                 raise ValueError(f"Unknown aggregation method: {aggr}")
 
