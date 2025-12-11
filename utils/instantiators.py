@@ -101,13 +101,21 @@ def instantiate_datamodule(datamodule_cfg: DictConfig) -> "TrajectoryDataModule"
 
 def get_dataset_class(dataset_cfg: DictConfig) -> "type[TrajectoryDataset]":
 
+    # _target_ takes precedence over backend, but pop backend either way
+    # because it shouldn't be passed to the dataset constructor
+    backend = dataset_cfg.pop("backend", None)
+
     if "_target_" in dataset_cfg:
         DatasetCls = dataset_cfg.pop("_target_")
         if isinstance(DatasetCls, str):
             DatasetCls = hydra.utils.get_object(DatasetCls)
         return DatasetCls
 
-    backend = dataset_cfg.pop("backend")
+    if backend is None:
+        raise ValueError(
+            "Dataset config must have either a '_target_' or 'backend' field!"
+        )
+
     if backend.lower() == "hdf5":
         from environments.base_dataset import Hdf5Dataset
 
