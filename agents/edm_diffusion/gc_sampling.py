@@ -23,9 +23,8 @@ class SamplerType(Protocol):
     def __call__(
         self,
         model: nn.Module,
-        state: Tensor,
+        state: Any,
         action: Tensor,
-        goal: Any,
         sigmas: Tensor,
         scaler: ScalerType | None = None,
     ) -> Tensor: ...
@@ -203,14 +202,11 @@ class BrownianTreeNoiseSampler:
 @torch.no_grad()
 def sample_euler(
     model,
-    state: torch.Tensor,
+    state: Any,
     action: torch.Tensor,
-    goal: torch.Tensor,
-    sigmas,
+    sigmas: torch.Tensor,
     scaler=None,
-    extra_args=None,
     callback=None,
-    disable=None,
     s_churn=0.0,
     s_tmin=0.0,
     s_tmax=float("inf"),
@@ -228,9 +224,8 @@ def sample_euler(
     In contrast to the Heun variant, this variant does not compute a 2nd order correction step
     For S_churn=0 the solver is an ODE solver
     """
-    extra_args = {} if extra_args is None else extra_args
     s_in = action.new_ones([action.shape[0]])
-    for i in trange(len(sigmas) - 1, disable=disable):
+    for i in range(len(sigmas) - 1):
         gamma = (
             min(s_churn / (len(sigmas) - 1), 2**0.5 - 1)
             if s_tmin <= sigmas[i] <= s_tmax
@@ -243,9 +238,7 @@ def sample_euler(
         # print(action[:, -1, :])
         if gamma > 0:  # if gamma > 0, use additional noise level for computation
             action = action + eps * (sigma_hat**2 - sigmas[i] ** 2) ** 0.5
-        denoised = model(
-            state, action, sigma_hat * s_in, **extra_args
-        )  # compute denoised action
+        denoised = model(state, action, sigma_hat * s_in)  # compute denoised action
         d = to_d(action, sigma_hat, denoised)  # compute derivative
         if callback is not None:
             callback(
@@ -268,28 +261,24 @@ def sample_euler(
 @torch.no_grad()
 def sample_euler_ancestral(
     model,
-    state,
-    action,
-    sigmas,
+    state: Any,
+    action: torch.Tensor,
+    sigmas: torch.Tensor,
     scaler=None,
-    extra_args=None,
     callback=None,
-    disable=None,
     eta=1.0,
 ):
-    """
-    Ancestral sampling with Euler method steps.
+    r"""Ancestral sampling with Euler method steps.
 
     1. compute dx_{i}/dt at the current timestep
     2. get \sigma_{up} and \sigma_{down} from ancestral method
     3. compute x_{t-1} = x_{t} + dx_{t}/dt * \sigma_{down}
     4. Add additional noise after the update step x_{t-1} =x_{t-1} + z * \sigma_{up}
     """
-    extra_args = {} if extra_args is None else extra_args
     s_in = action.new_ones([action.shape[0]])
-    for i in trange(len(sigmas) - 1, disable=disable):
+    for i in range(len(sigmas) - 1):
         # compute x_{t-1}
-        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
+        denoised = model(state, action, sigmas[i] * s_in)
         # get ancestral steps
         sigma_down, sigma_up = get_ancestral_step(sigmas[i], sigmas[i + 1], eta=eta)
         if callback is not None:
@@ -316,22 +305,55 @@ def sample_euler_ancestral(
 
 
 @torch.no_grad()
+def sample_ddim(
+    model,
+    state: Any,
+    action: torch.Tensor,
+    sigmas: torch.Tensor,
+    scaler=None,
+    callback=None,
+):
+    """
+    DPM-Solver 1( or DDIM sampler"""
+    s_in = action.new_ones([action.shape[0]])
+    sigma_fn = lambda t: t.neg().exp()
+    t_fn = lambda sigma: sigma.log().neg()
+
+    for i in range(len(sigmas) - 1):
+        # predict the next action
+        denoised = model(state, action, sigmas[i] * s_in)
+        if callback is not None:
+            callback(
+                {
+                    "action": action,
+                    "i": i,
+                    "sigma": sigmas[i],
+                    "sigma_hat": sigmas[i],
+                    "denoised": denoised,
+                }
+            )
+        t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
+        h = t_next - t
+        action = (sigma_fn(t_next) / sigma_fn(t)) * action - (-h).expm1() * denoised
+        if scaler is not None:
+            action = scaler.clip_output(action)
+    return action
+
+
+@torch.no_grad()
 def sample_heun(
     model,
-    state,
-    action,
-    sigmas,
+    state: Any,
+    action: torch.Tensor,
+    sigmas: torch.Tensor,
     scaler=None,
-    extra_args=None,
     callback=None,
-    disable=None,
     s_churn=0.0,
     s_tmin=0.0,
     s_tmax=float("inf"),
     s_noise=1.0,
 ):
-    """
-    Implements Algorithm 2 (Heun steps) from Karras et al. (2022).
+    r"""Implements Algorithm 2 (Heun steps) from Karras et al. (2022).
     For S_churn =0 this is an ODE solver otherwise SDE
     Every update consists of these substeps:
     1. Addition of noise given the factor eps
@@ -341,9 +363,8 @@ def sample_heun(
 
     In contrast to the Euler variant, this variant computes a 2nd order correction step.
     """
-    extra_args = {} if extra_args is None else extra_args
     s_in = action.new_ones([action.shape[0]])
-    for i in trange(len(sigmas) - 1, disable=disable):
+    for i in range(len(sigmas) - 1):
         gamma = (
             min(s_churn / (len(sigmas) - 1), 2**0.5 - 1)
             if s_tmin <= sigmas[i] <= s_tmax
@@ -354,7 +375,7 @@ def sample_heun(
         # if gamma > 0, use additional noise level for computation ODE-> SDE Solver
         if gamma > 0:
             action = action + eps * (sigma_hat**2 - sigmas[i] ** 2) ** 0.5
-        denoised = model(state, action, sigma_hat * s_in, **extra_args)
+        denoised = model(state, action, sigma_hat * s_in)
         d = to_d(action, sigma_hat, denoised)
         if callback is not None:
             callback(
@@ -374,7 +395,7 @@ def sample_heun(
         else:
             # Heun's method
             action_2 = action + d * dt
-            denoised_2 = model(state, action_2, sigmas[i + 1] * s_in, **extra_args)
+            denoised_2 = model(state, action_2, sigmas[i + 1] * s_in)
             d_2 = to_d(action_2, sigmas[i + 1], denoised_2)
             d_prime = (d + d_2) / 2
             action = action + d_prime * dt
@@ -387,29 +408,25 @@ def sample_heun(
 @torch.no_grad()
 def sample_dpm_2(
     model,
-    state,
-    action,
-    sigmas,
+    state: Any,
+    action: torch.Tensor,
+    sigmas: torch.Tensor,
     scaler=None,
-    extra_args=None,
     callback=None,
-    disable=None,
     s_churn=0.0,
     s_tmin=0.0,
     s_tmax=float("inf"),
     s_noise=1.0,
 ):
-    """
-    A sampler inspired by DPM-Solver-2 and Algorithm 2 from Karras et al. (2022).
+    r"""A sampler inspired by DPM-Solver-2 and Algorithm 2 from Karras et al. (2022).
     SDE for S_churn!=0 and ODE otherwise
 
     1.
 
     Last denoising step is an Euler step
     """
-    extra_args = {} if extra_args is None else extra_args
     s_in = action.new_ones([action.shape[0]])
-    for i in trange(len(sigmas) - 1, disable=disable):
+    for i in range(len(sigmas) - 1):
         # compute stochastic gamma if s_churn > 0:
         gamma = (
             min(s_churn / (len(sigmas) - 1), 2**0.5 - 1)
@@ -423,7 +440,7 @@ def sample_dpm_2(
         if gamma > 0:
             action = action + eps * (sigma_hat**2 - sigmas[i] ** 2) ** 0.5
         # compute the derivative dx/dt at timestep t
-        denoised = model(state, action, sigma_hat * s_in, **extra_args)
+        denoised = model(state, action, sigma_hat * s_in)
         d = to_d(action, sigma_hat, denoised)
 
         if callback is not None:
@@ -448,7 +465,7 @@ def sample_dpm_2(
             dt_1 = sigma_mid - sigma_hat
             dt_2 = sigmas[i + 1] - sigma_hat
             action_2 = action + d * dt_1
-            denoised_2 = model(state, action_2, sigma_mid * s_in, **extra_args)
+            denoised_2 = model(state, action_2, sigma_mid * s_in)
             d_2 = to_d(action_2, sigma_mid, denoised_2)
             action = action + d_2 * dt_2
         if scaler is not None:
@@ -459,13 +476,11 @@ def sample_dpm_2(
 @torch.no_grad()
 def sample_dpm_2_ancestral(
     model,
-    state,
-    action,
-    sigmas,
+    state: Any,
+    action: torch.Tensor,
+    sigmas: torch.Tensor,
     scaler=None,
-    extra_args=None,
     callback=None,
-    disable=None,
     eta=1.0,
 ):
     """
@@ -477,10 +492,9 @@ def sample_dpm_2_ancestral(
     1. Compute dx_{i}/dt at the current timestep
 
     """
-    extra_args = {} if extra_args is None else extra_args
     s_in = action.new_ones([action.shape[0]])
-    for i in trange(len(sigmas) - 1, disable=disable):
-        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
+    for i in range(len(sigmas) - 1):
+        denoised = model(state, action, sigmas[i] * s_in)
         sigma_down, sigma_up = get_ancestral_step(sigmas[i], sigmas[i + 1], eta=eta)
         if callback is not None:
             callback(
@@ -503,7 +517,7 @@ def sample_dpm_2_ancestral(
             dt_1 = sigma_mid - sigmas[i]
             dt_2 = sigma_down - sigmas[i]
             action_2 = action + d * dt_1
-            denoised_2 = model(state, action_2, sigma_mid * s_in, **extra_args)
+            denoised_2 = model(state, action_2, sigma_mid * s_in)
             d_2 = to_d(action_2, sigma_mid, denoised_2)
             action = action + d_2 * dt_2
             action = action + torch.randn_like(action) * sigma_up
@@ -533,13 +547,11 @@ def linear_multistep_coeff(order, t, i, j):
 @torch.no_grad()
 def sample_lms(
     model,
-    state,
-    action,
-    sigmas,
+    state: Any,
+    action: torch.Tensor,
+    sigmas: torch.Tensor,
     scaler=None,
-    extra_args=None,
     callback=None,
-    disable=None,
     order=4,
 ):
     """
@@ -548,12 +560,11 @@ def sample_lms(
     1. compute x_{t-1} using the current noise level
     2. compute dx/dt at x_{t-1} using the current noise level
     """
-    extra_args = {} if extra_args is None else extra_args
     s_in = action.new_ones([action.shape[0]])
     sigmas_cpu = sigmas.detach().cpu().numpy()
     ds = []
-    for i in trange(len(sigmas) - 1, disable=disable):
-        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
+    for i in range(len(sigmas) - 1):
+        denoised = model(state, action, sigmas[i] * s_in)
         d = to_d(action, sigmas[i], denoised)
         ds.append(d)
         if len(ds) > order:
@@ -700,7 +711,7 @@ class DPMSolver(nn.Module):
         noise_sampler=None,
     ):
         noise_sampler = (
-            default_noise_sampler(x) if noise_sampler is None else noise_sampler
+            default_noise_sampler(action) if noise_sampler is None else noise_sampler
         )
         if not t_end > t_start and eta:
             raise ValueError("eta must be 0 for reverse sampling")
@@ -856,8 +867,8 @@ class DPMSolver(nn.Module):
 @torch.no_grad()
 def sample_dpm_fast(
     model,
-    state,
-    action,
+    state: Any,
+    action: torch.Tensor,
     sigma_min,
     sigma_max,
     n,
@@ -871,7 +882,7 @@ def sample_dpm_fast(
 ):
     """DPM-Solver-Fast (fixed step size). See https://arxiv.org/abs/2206.00927."""
     if sigma_min <= 0 or sigma_max <= 0:
-        raise ValueError("sigma_min and sigma_maactionmust not be 0")
+        raise ValueError("sigma_min and sigma_max must not be 0")
     with tqdm(total=n, disable=disable) as pbar:
         dpm_solver = DPMSolver(model, extra_args, eps_callback=pbar.update)
         if callback is not None:
@@ -895,174 +906,10 @@ def sample_dpm_fast(
 
 
 @torch.no_grad()
-def sample_dpmpp_2m(
-    model,
-    state,
-    action,
-    sigmas,
-    scaler=None,
-    extra_args=None,
-    callback=None,
-    disable=None,
-):
-    """DPM-Solver++(2M)."""
-    extra_args = {} if extra_args is None else extra_args
-    s_in = action.new_ones([action.shape[0]])
-    sigma_fn = lambda t: t.neg().exp()
-    t_fn = lambda sigma: sigma.log().neg()
-    old_denoised = None
-
-    for i in trange(len(sigmas) - 1, disable=disable):
-        # predict the next action
-        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
-        if callback is not None:
-            callback(
-                {
-                    "action": action,
-                    "i": i,
-                    "sigma": sigmas[i],
-                    "sigma_hat": sigmas[i],
-                    "denoised": denoised,
-                }
-            )
-        t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
-        h = t_next - t
-        if old_denoised is None or sigmas[i + 1] == 0:
-            action = (sigma_fn(t_next) / sigma_fn(t)) * action - (-h).expm1() * denoised
-        else:
-            h_last = t - t_fn(sigmas[i - 1])
-            r = h_last / h
-            denoised_d = (1 + 1 / (2 * r)) * denoised - (1 / (2 * r)) * old_denoised
-            action = (sigma_fn(t_next) / sigma_fn(t)) * action - (
-                -h
-            ).expm1() * denoised_d
-        old_denoised = denoised
-    return action
-
-
-@torch.no_grad()
-def sample_dpmpp_sde(
-    model,
-    state,
-    action,
-    sigmas,
-    extra_args=None,
-    callback=None,
-    disable=None,
-    eta=1.0,
-    s_noise=1.0,
-    scaler=None,
-    noise_sampler=None,
-    r=1 / 2,
-):
-    """DPM-Solver++ (stochastic)."""
-    x = action
-    sigma_min, sigma_max = sigmas[sigmas > 0].min(), sigmas.max()
-    noise_sampler = (
-        BrownianTreeNoiseSampler(x, sigma_min, sigma_max)
-        if noise_sampler is None
-        else noise_sampler
-    )
-    extra_args = {} if extra_args is None else extra_args
-    s_in = x.new_ones([x.shape[0]])
-    sigma_fn = lambda t: t.neg().exp()
-    t_fn = lambda sigma: sigma.log().neg()
-
-    for i in trange(len(sigmas) - 1, disable=disable):
-        denoised = model(state, x, sigmas[i] * s_in, **extra_args)
-        if callback is not None:
-            callback(
-                {
-                    "x": x,
-                    "i": i,
-                    "sigma": sigmas[i],
-                    "sigma_hat": sigmas[i],
-                    "denoised": denoised,
-                }
-            )
-        if sigmas[i + 1] == 0:
-            # Euler method
-            d = to_d(x, sigmas[i], denoised)
-            dt = sigmas[i + 1] - sigmas[i]
-            x = x + d * dt
-        else:
-            # DPM-Solver++
-            t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
-            h = t_next - t
-            s = t + h * r
-            fac = 1 / (2 * r)
-
-            # Step 1
-            sd, su = get_ancestral_step(sigma_fn(t), sigma_fn(s), eta)
-            s_ = t_fn(sd)
-            x_2 = (sigma_fn(s_) / sigma_fn(t)) * x - (t - s_).expm1() * denoised
-            x_2 = x_2 + noise_sampler(sigma_fn(t), sigma_fn(s)) * s_noise * su
-            denoised_2 = model(state, x_2, sigma_fn(s) * s_in, **extra_args)
-
-            # Step 2
-            sd, su = get_ancestral_step(sigma_fn(t), sigma_fn(t_next), eta)
-            t_next_ = t_fn(sd)
-            denoised_d = (1 - fac) * denoised + fac * denoised_2
-            x = (sigma_fn(t_next_) / sigma_fn(t)) * x - (
-                t - t_next_
-            ).expm1() * denoised_d
-            x = x + noise_sampler(sigma_fn(t), sigma_fn(t_next)) * s_noise * su
-            if scaler is not None:
-                x = scaler.clip_output(x)
-    return x
-
-
-@torch.no_grad()
-def sample_dpmpp_2_with_lms(
-    model,
-    state,
-    action,
-    sigmas,
-    scaler=None,
-    extra_args=None,
-    callback=None,
-    disable=None,
-):
-    """DPM-Solver++(2M)."""
-    extra_args = {} if extra_args is None else extra_args
-    s_in = action.new_ones([action.shape[0]])
-    sigma_fn = lambda t: t.neg().exp()
-    t_fn = lambda sigma: sigma.log().neg()
-    old_denoised = None
-
-    for i in trange(len(sigmas) - 1, disable=disable):
-        # predict the next action
-        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
-        if callback is not None:
-            callback(
-                {
-                    "action": action,
-                    "i": i,
-                    "sigma": sigmas[i],
-                    "sigma_hat": sigmas[i],
-                    "denoised": denoised,
-                }
-            )
-        t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
-        h = t_next - t
-        if old_denoised is None or sigmas[i + 1] == 0:
-            action = (sigma_fn(t_next) / sigma_fn(t)) * action - (-h).expm1() * denoised
-        else:
-            h_last = t - t_fn(sigmas[i - 1])
-            r = h_last / h
-            denoised_d = (1 + 1 / (2 * r)) * denoised - (1 / (2 * r)) * old_denoised
-            action = (sigma_fn(t_next) / sigma_fn(t)) * action - (
-                -h
-            ).expm1() * denoised_d
-        old_denoised = denoised
-    return action
-
-
-@torch.no_grad()
 def sample_dpm_adaptive(
     model,
-    state,
-    action,
+    state: Any,
+    action: torch.Tensor,
     sigma_min,
     sigma_max,
     extra_args=None,
@@ -1121,20 +968,17 @@ def sample_dpm_adaptive(
 @torch.no_grad()
 def sample_dpmpp_2s_ancestral(
     model,
-    state,
-    action,
-    sigmas,
+    state: Any,
+    action: torch.Tensor,
+    sigmas: torch.Tensor,
     scaler=None,
-    extra_args=None,
     callback=None,
-    disable=None,
     eta=1.0,
     s_noise=1.0,
     noise_sampler=None,
 ):
     """
     Ancestral sampling combined with DPM-Solver++(2S) second-order steps."""
-    extra_args = {} if extra_args is None else extra_args
     noise_sampler = (
         default_noise_sampler(action) if noise_sampler is None else noise_sampler
     )
@@ -1142,8 +986,8 @@ def sample_dpmpp_2s_ancestral(
     sigma_fn = lambda t: t.neg().exp()
     t_fn = lambda sigma: sigma.log().neg()
 
-    for i in trange(len(sigmas) - 1, disable=disable):
-        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
+    for i in range(len(sigmas) - 1):
+        denoised = model(state, action, sigmas[i] * s_in)
         sigma_down, sigma_up = get_ancestral_step(sigmas[i], sigmas[i + 1], eta=eta)
         if callback is not None:
             callback(
@@ -1167,7 +1011,7 @@ def sample_dpmpp_2s_ancestral(
             h = t_next - t
             s = t + r * h
             x_2 = (sigma_fn(s) / sigma_fn(t)) * action - (-h * r).expm1() * denoised
-            denoised_2 = model(state, x_2, sigma_fn(s) * s_in, **extra_args)
+            denoised_2 = model(state, x_2, sigma_fn(s) * s_in)
             action = (sigma_fn(t_next) / sigma_fn(t)) * action - (
                 -h
             ).expm1() * denoised_2
@@ -1179,28 +1023,92 @@ def sample_dpmpp_2s_ancestral(
 
 
 @torch.no_grad()
-def sample_ddim(
+def sample_dpmpp_sde(
     model,
-    state,
-    action,
-    sigmas,
-    scaler=None,
-    extra_args=None,
+    state: Any,
+    action: torch.Tensor,
+    sigmas: torch.Tensor,
     callback=None,
-    disable=None,
     eta=1.0,
+    s_noise=1.0,
+    scaler=None,
+    noise_sampler=None,
+    r=1 / 2,
 ):
-    """
-    DPM-Solver 1( or DDIM sampler"""
-    extra_args = {} if extra_args is None else extra_args
+    """DPM-Solver++ (stochastic)."""
+    x = action
+    sigma_min, sigma_max = sigmas[sigmas > 0].min(), sigmas.max()
+    noise_sampler = (
+        BrownianTreeNoiseSampler(x, sigma_min, sigma_max)
+        if noise_sampler is None
+        else noise_sampler
+    )
+    s_in = x.new_ones([x.shape[0]])
+    sigma_fn = lambda t: t.neg().exp()
+    t_fn = lambda sigma: sigma.log().neg()
+
+    for i in range(len(sigmas) - 1):
+        denoised = model(state, x, sigmas[i] * s_in)
+        if callback is not None:
+            callback(
+                {
+                    "x": x,
+                    "i": i,
+                    "sigma": sigmas[i],
+                    "sigma_hat": sigmas[i],
+                    "denoised": denoised,
+                }
+            )
+        if sigmas[i + 1] == 0:
+            # Euler method
+            d = to_d(x, sigmas[i], denoised)
+            dt = sigmas[i + 1] - sigmas[i]
+            x = x + d * dt
+        else:
+            # DPM-Solver++
+            t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
+            h = t_next - t
+            s = t + h * r
+            fac = 1 / (2 * r)
+
+            # Step 1
+            sd, su = get_ancestral_step(sigma_fn(t), sigma_fn(s), eta)
+            s_ = t_fn(sd)
+            x_2 = (sigma_fn(s_) / sigma_fn(t)) * x - (t - s_).expm1() * denoised
+            x_2 = x_2 + noise_sampler(sigma_fn(t), sigma_fn(s)) * s_noise * su
+            denoised_2 = model(state, x_2, sigma_fn(s) * s_in)
+
+            # Step 2
+            sd, su = get_ancestral_step(sigma_fn(t), sigma_fn(t_next), eta)
+            t_next_ = t_fn(sd)
+            denoised_d = (1 - fac) * denoised + fac * denoised_2
+            x = (sigma_fn(t_next_) / sigma_fn(t)) * x - (
+                t - t_next_
+            ).expm1() * denoised_d
+            x = x + noise_sampler(sigma_fn(t), sigma_fn(t_next)) * s_noise * su
+            if scaler is not None:
+                x = scaler.clip_output(x)
+    return x
+
+
+@torch.no_grad()
+def sample_dpmpp_2m(
+    model,
+    state: Any,
+    action: torch.Tensor,
+    sigmas: torch.Tensor,
+    scaler=None,
+    callback=None,
+):
+    """DPM-Solver++(2M)."""
     s_in = action.new_ones([action.shape[0]])
     sigma_fn = lambda t: t.neg().exp()
     t_fn = lambda sigma: sigma.log().neg()
     old_denoised = None
 
-    for i in trange(len(sigmas) - 1, disable=disable):
+    for i in range(len(sigmas) - 1):
         # predict the next action
-        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
+        denoised = model(state, action, sigmas[i] * s_in)
         if callback is not None:
             callback(
                 {
@@ -1213,30 +1121,81 @@ def sample_ddim(
             )
         t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
         h = t_next - t
-        action = (sigma_fn(t_next) / sigma_fn(t)) * action - (-h).expm1() * denoised
+        if old_denoised is None or sigmas[i + 1] == 0:
+            action = (sigma_fn(t_next) / sigma_fn(t)) * action - (-h).expm1() * denoised
+        else:
+            h_last = t - t_fn(sigmas[i - 1])
+            r = h_last / h
+            denoised_d = (1 + 1 / (2 * r)) * denoised - (1 / (2 * r)) * old_denoised
+            action = (sigma_fn(t_next) / sigma_fn(t)) * action - (
+                -h
+            ).expm1() * denoised_d
+        old_denoised = denoised
+        if scaler is not None:
+            action = scaler.clip_output(action)
+    return action
+
+
+@torch.no_grad()
+def sample_dpmpp_2_with_lms(
+    model,
+    state: Any,
+    action: torch.Tensor,
+    sigmas: torch.Tensor,
+    scaler=None,
+    callback=None,
+):
+    """DPM-Solver++(2M)."""
+    s_in = action.new_ones([action.shape[0]])
+    sigma_fn = lambda t: t.neg().exp()
+    t_fn = lambda sigma: sigma.log().neg()
+    old_denoised = None
+
+    for i in range(len(sigmas) - 1):
+        # predict the next action
+        denoised = model(state, action, sigmas[i] * s_in)
+        if callback is not None:
+            callback(
+                {
+                    "action": action,
+                    "i": i,
+                    "sigma": sigmas[i],
+                    "sigma_hat": sigmas[i],
+                    "denoised": denoised,
+                }
+            )
+        t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
+        h = t_next - t
+        if old_denoised is None or sigmas[i + 1] == 0:
+            action = (sigma_fn(t_next) / sigma_fn(t)) * action - (-h).expm1() * denoised
+        else:
+            h_last = t - t_fn(sigmas[i - 1])
+            r = h_last / h
+            denoised_d = (1 + 1 / (2 * r)) * denoised - (1 / (2 * r)) * old_denoised
+            action = (sigma_fn(t_next) / sigma_fn(t)) * action - (
+                -h
+            ).expm1() * denoised_d
+        old_denoised = denoised
+        if scaler is not None:
+            action = scaler.clip_output(action)
     return action
 
 
 @torch.no_grad()
 def sample_dpmpp_2s(
     model,
-    state,
-    action,
-    sigmas,
+    state: Any,
+    action: torch.Tensor,
+    sigmas: torch.Tensor,
     scaler=None,
-    extra_args=None,
     callback=None,
-    disable=None,
-    eta=1.0,
 ):
-    """
-    DPM-Solver++(2S) second-order steps."""
-    extra_args = {} if extra_args is None else extra_args
+    """DPM-Solver++(2S) second-order steps."""
     sigma_fn = lambda t: t.neg().exp()
     t_fn = lambda sigma: sigma.log().neg()
     s_in = action.new_ones([action.shape[0]])
-    for i in trange(len(sigmas) - 1, disable=disable):
-        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
+    for i in range(len(sigmas) - 1):
+        denoised = model(state, action, sigmas[i] * s_in)
         if callback is not None:
             callback(
                 {
@@ -1259,7 +1218,7 @@ def sample_dpmpp_2s(
             h = t_next - t
             s = t + r * h
             x_2 = (sigma_fn(s) / sigma_fn(t)) * action - (-h * r).expm1() * denoised
-            denoised_2 = model(state, x_2, sigma_fn(s) * s_in, **extra_args)
+            denoised_2 = model(state, x_2, sigma_fn(s) * s_in)
             action = (sigma_fn(t_next) / sigma_fn(t)) * action - (
                 -h
             ).expm1() * denoised_2
