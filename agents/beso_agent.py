@@ -5,6 +5,7 @@ from typing import Callable, Iterable
 
 import torch
 import torch.nn.functional as F
+from tensordict import TensorDict
 from torch import Tensor
 from torch.nn import Module
 from torch.optim.lr_scheduler import LRScheduler
@@ -88,9 +89,7 @@ class BesoAgent(BaseAgent):
         c_noise = sigma.log() / 4
         return c_skip, c_out, c_in, c_noise
 
-    def forward(
-        self, obs: Tensor, action: Tensor, goal: Tensor, sigma: Tensor
-    ) -> Tensor:
+    def forward(self, batch: TensorDict, action: Tensor, sigma: Tensor) -> Tensor:
         """Predict the unnoised actions with the help of EDM preconditioning."""
         if self.ema_decay > 0 and not self.training:
             from torch.optim.swa_utils import AveragedModel
@@ -98,9 +97,9 @@ class BesoAgent(BaseAgent):
             assert isinstance(self.model, AveragedModel)
 
         c_skip, c_out, c_in, c_noise = self.edm_preconditioning(sigma, action)
-        return self.model(obs, action * c_in, goal, c_noise) * c_out + action * c_skip
+        return self.model(batch, action * c_in, c_noise) * c_out + action * c_skip
 
-    def training_step(self, batch, batch_idx) -> Tensor:
+    def training_step(self, batch: TensorDict, batch_idx: int) -> Tensor:
         """
         Computes the score matching loss given the perceptual embedding, latent goal, and desired actions.
         """
@@ -108,7 +107,6 @@ class BesoAgent(BaseAgent):
         batch = self.goal_encoder(batch)
         batch = self.obs_encoder(batch)
 
-        obs, goal = batch["obs", "embed"], batch.get(("goal", "embed"), None)
         action = batch["action"]
 
         sigma = self.noise_distribution(shape=(len(action),), device=self.device)
@@ -120,7 +118,7 @@ class BesoAgent(BaseAgent):
         # is set by the authors to 1/c_out**2, such that each term has an equal
         # weight in the MSE loss.
         c_skip, c_out, c_in, c_noise = self.edm_preconditioning(sigma, action)
-        model_output = self.model(obs, noised_input * c_in, goal, c_noise)
+        model_output = self.model(batch, noised_input * c_in, c_noise)
         target = (action - c_skip * noised_input) / c_out
         loss = F.mse_loss(model_output, target)
 
@@ -137,11 +135,9 @@ class BesoAgent(BaseAgent):
         batch = self.goal_encoder(batch)
         batch = self.obs_encoder(batch)
 
-        obs, goal = batch["obs", "embed"], batch.get(("goal", "embed"), None)
-
         sigmas = self.noise_schedule(self.num_sampling_steps, device=self.device)
 
-        B = obs.shape[0]
+        B = batch.shape[0]
         x = (
             torch.randn(
                 (B, *self.action_shape),
@@ -152,9 +148,8 @@ class BesoAgent(BaseAgent):
 
         action = self.sampler(
             model=self,  # call self.forward to evaluate the model
-            state=obs,
+            state=batch,
             action=x,
-            goal=goal,
             sigmas=sigmas,
             scaler=None,  # scalar only used for clipping actions
         )

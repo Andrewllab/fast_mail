@@ -5,6 +5,7 @@ from typing import Callable
 
 import torch
 import torch.nn as nn
+from tensordict import TensorDict
 from torch import Tensor
 from torch.nn import Module
 
@@ -102,9 +103,9 @@ class DecoderOnlyNoise(nn.Module):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
 
-    def forward(
-        self, obs_embed: Tensor, actions: Tensor, goal: Tensor | None, sigma: Tensor
-    ) -> Tensor:
+    def forward(self, batch: TensorDict, actions: Tensor, sigma: Tensor) -> Tensor:
+        obs_embed = batch["obs", "embed"]
+        goal = batch.get(("goal", "embed"), None)
 
         input_seq = []
 

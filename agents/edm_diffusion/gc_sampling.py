@@ -244,7 +244,7 @@ def sample_euler(
         if gamma > 0:  # if gamma > 0, use additional noise level for computation
             action = action + eps * (sigma_hat**2 - sigmas[i] ** 2) ** 0.5
         denoised = model(
-            state, action, goal, sigma_hat * s_in, **extra_args
+            state, action, sigma_hat * s_in, **extra_args
         )  # compute denoised action
         d = to_d(action, sigma_hat, denoised)  # compute derivative
         if callback is not None:
@@ -270,7 +270,6 @@ def sample_euler_ancestral(
     model,
     state,
     action,
-    goal,
     sigmas,
     scaler=None,
     extra_args=None,
@@ -290,7 +289,7 @@ def sample_euler_ancestral(
     s_in = action.new_ones([action.shape[0]])
     for i in trange(len(sigmas) - 1, disable=disable):
         # compute x_{t-1}
-        denoised = model(state, action, goal, sigmas[i] * s_in, **extra_args)
+        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
         # get ancestral steps
         sigma_down, sigma_up = get_ancestral_step(sigmas[i], sigmas[i + 1], eta=eta)
         if callback is not None:
@@ -321,7 +320,6 @@ def sample_heun(
     model,
     state,
     action,
-    goal,
     sigmas,
     scaler=None,
     extra_args=None,
@@ -356,7 +354,7 @@ def sample_heun(
         # if gamma > 0, use additional noise level for computation ODE-> SDE Solver
         if gamma > 0:
             action = action + eps * (sigma_hat**2 - sigmas[i] ** 2) ** 0.5
-        denoised = model(state, action, goal, sigma_hat * s_in, **extra_args)
+        denoised = model(state, action, sigma_hat * s_in, **extra_args)
         d = to_d(action, sigma_hat, denoised)
         if callback is not None:
             callback(
@@ -376,9 +374,7 @@ def sample_heun(
         else:
             # Heun's method
             action_2 = action + d * dt
-            denoised_2 = model(
-                state, action_2, goal, sigmas[i + 1] * s_in, **extra_args
-            )
+            denoised_2 = model(state, action_2, sigmas[i + 1] * s_in, **extra_args)
             d_2 = to_d(action_2, sigmas[i + 1], denoised_2)
             d_prime = (d + d_2) / 2
             action = action + d_prime * dt
@@ -393,7 +389,6 @@ def sample_dpm_2(
     model,
     state,
     action,
-    goal,
     sigmas,
     scaler=None,
     extra_args=None,
@@ -428,7 +423,7 @@ def sample_dpm_2(
         if gamma > 0:
             action = action + eps * (sigma_hat**2 - sigmas[i] ** 2) ** 0.5
         # compute the derivative dx/dt at timestep t
-        denoised = model(state, action, goal, sigma_hat * s_in, **extra_args)
+        denoised = model(state, action, sigma_hat * s_in, **extra_args)
         d = to_d(action, sigma_hat, denoised)
 
         if callback is not None:
@@ -453,7 +448,7 @@ def sample_dpm_2(
             dt_1 = sigma_mid - sigma_hat
             dt_2 = sigmas[i + 1] - sigma_hat
             action_2 = action + d * dt_1
-            denoised_2 = model(state, action_2, goal, sigma_mid * s_in, **extra_args)
+            denoised_2 = model(state, action_2, sigma_mid * s_in, **extra_args)
             d_2 = to_d(action_2, sigma_mid, denoised_2)
             action = action + d_2 * dt_2
         if scaler is not None:
@@ -466,7 +461,6 @@ def sample_dpm_2_ancestral(
     model,
     state,
     action,
-    goal,
     sigmas,
     scaler=None,
     extra_args=None,
@@ -486,7 +480,7 @@ def sample_dpm_2_ancestral(
     extra_args = {} if extra_args is None else extra_args
     s_in = action.new_ones([action.shape[0]])
     for i in trange(len(sigmas) - 1, disable=disable):
-        denoised = model(state, action, goal, sigmas[i] * s_in, **extra_args)
+        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
         sigma_down, sigma_up = get_ancestral_step(sigmas[i], sigmas[i + 1], eta=eta)
         if callback is not None:
             callback(
@@ -509,7 +503,7 @@ def sample_dpm_2_ancestral(
             dt_1 = sigma_mid - sigmas[i]
             dt_2 = sigma_down - sigmas[i]
             action_2 = action + d * dt_1
-            denoised_2 = model(state, action_2, goal, sigma_mid * s_in, **extra_args)
+            denoised_2 = model(state, action_2, sigma_mid * s_in, **extra_args)
             d_2 = to_d(action_2, sigma_mid, denoised_2)
             action = action + d_2 * dt_2
             action = action + torch.randn_like(action) * sigma_up
@@ -541,7 +535,6 @@ def sample_lms(
     model,
     state,
     action,
-    goal,
     sigmas,
     scaler=None,
     extra_args=None,
@@ -560,7 +553,7 @@ def sample_lms(
     sigmas_cpu = sigmas.detach().cpu().numpy()
     ds = []
     for i in trange(len(sigmas) - 1, disable=disable):
-        denoised = model(state, action, goal, sigmas[i] * s_in, **extra_args)
+        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
         d = to_d(action, sigmas[i], denoised)
         ds.append(d)
         if len(ds) > order:
@@ -636,34 +629,32 @@ class DPMSolver(nn.Module):
     def sigma(self, t):
         return t.neg().exp()
 
-    def eps(self, eps_cache, key, state, action, goal, t, *args, **kwargs):
+    def eps(self, eps_cache, key, state, action, t, *args, **kwargs):
         if key in eps_cache:
             return eps_cache[key], eps_cache
         sigma = self.sigma(t) * action.new_ones([action.shape[0]])
         eps = (
             action
-            - self.model(state, action, goal, sigma, *args, **self.extra_args, **kwargs)
+            - self.model(state, action, sigma, *args, **self.extra_args, **kwargs)
         ) / self.sigma(t)
         if self.eps_callback is not None:
             self.eps_callback()
         return eps, {key: eps, **eps_cache}
 
-    def dpm_solver_1_step(self, state, action, goal, t, t_next, eps_cache=None):
+    def dpm_solver_1_step(self, state, action, t, t_next, eps_cache=None):
         eps_cache = {} if eps_cache is None else eps_cache
         h = t_next - t
-        eps, eps_cache = self.eps(eps_cache, "eps", state, action, goal, t)
+        eps, eps_cache = self.eps(eps_cache, "eps", state, action, t)
         action_1 = action - self.sigma(t_next) * h.expm1() * eps
         return action_1, eps_cache
 
-    def dpm_solver_2_step(
-        self, state, action, goal, t, t_next, r1=1 / 2, eps_cache=None
-    ):
+    def dpm_solver_2_step(self, state, action, t, t_next, r1=1 / 2, eps_cache=None):
         eps_cache = {} if eps_cache is None else eps_cache
         h = t_next - t
-        eps, eps_cache = self.eps(eps_cache, "eps", state, action, goal, t)
+        eps, eps_cache = self.eps(eps_cache, "eps", state, action, t)
         s1 = t + r1 * h
         u1 = action - self.sigma(s1) * (r1 * h).expm1() * eps
-        eps_r1, eps_cache = self.eps(eps_cache, "eps_r1", state, u1, goal, s1)
+        eps_r1, eps_cache = self.eps(eps_cache, "eps_r1", state, u1, s1)
         action_2 = (
             action
             - self.sigma(t_next) * h.expm1() * eps
@@ -672,15 +663,15 @@ class DPMSolver(nn.Module):
         return action_2, eps_cache
 
     def dpm_solver_3_step(
-        self, state, action, goal, t, t_next, r1=1 / 3, r2=2 / 3, eps_cache=None
+        self, state, action, t, t_next, r1=1 / 3, r2=2 / 3, eps_cache=None
     ):
         eps_cache = {} if eps_cache is None else eps_cache
         h = t_next - t
-        eps, eps_cache = self.eps(eps_cache, "eps", state, action, goal, t)
+        eps, eps_cache = self.eps(eps_cache, "eps", state, action, t)
         s1 = t + r1 * h
         s2 = t + r2 * h
         u1 = action - self.sigma(s1) * (r1 * h).expm1() * eps
-        eps_r1, eps_cache = self.eps(eps_cache, "eps_r1", state, u1, goal, s1)
+        eps_r1, eps_cache = self.eps(eps_cache, "eps_r1", state, u1, s1)
         u2 = (
             action
             - self.sigma(s2) * (r2 * h).expm1() * eps
@@ -689,7 +680,7 @@ class DPMSolver(nn.Module):
             * ((r2 * h).expm1() / (r2 * h) - 1)
             * (eps_r1 - eps)
         )
-        eps_r2, eps_cache = self.eps(eps_cache, "eps_r2", state, u2, goal, s2)
+        eps_r2, eps_cache = self.eps(eps_cache, "eps_r2", state, u2, s2)
         action_3 = (
             action
             - self.sigma(t_next) * h.expm1() * eps
@@ -701,7 +692,6 @@ class DPMSolver(nn.Module):
         self,
         state,
         action,
-        goal,
         t_start,
         t_end,
         nfe,
@@ -733,7 +723,7 @@ class DPMSolver(nn.Module):
             else:
                 t_next_, su = t_next, 0.0
 
-            eps, eps_cache = self.eps(eps_cache, "eps", state, action, goal, t)
+            eps, eps_cache = self.eps(eps_cache, "eps", state, action, t)
             denoised = action - self.sigma(t) * eps
             if self.info_callback is not None:
                 self.info_callback(
@@ -742,15 +732,15 @@ class DPMSolver(nn.Module):
 
             if orders[i] == 1:
                 action, eps_cache = self.dpm_solver_1_step(
-                    state, action, goal, t, t_next_, eps_cache=eps_cache
+                    state, action, t, t_next_, eps_cache=eps_cache
                 )
             elif orders[i] == 2:
                 action, eps_cache = self.dpm_solver_2_step(
-                    state, action, goal, t, t_next_, eps_cache=eps_cache
+                    state, action, t, t_next_, eps_cache=eps_cache
                 )
             else:
                 action, eps_cache = self.dpm_solver_3_step(
-                    state, action, goal, t, t_next_, eps_cache=eps_cache
+                    state, action, t, t_next_, eps_cache=eps_cache
                 )
 
             action = action + su * s_noise * noise_sampler(
@@ -763,7 +753,6 @@ class DPMSolver(nn.Module):
         self,
         state,
         action,
-        goal,
         t_start,
         t_end,
         order=3,
@@ -810,22 +799,22 @@ class DPMSolver(nn.Module):
             else:
                 t_, su = t, 0.0
 
-            eps, eps_cache = self.eps(eps_cache, "eps", state, action, goal, s)
+            eps, eps_cache = self.eps(eps_cache, "eps", state, action, s)
             denoised = action - self.sigma(s) * eps
 
             if order == 2:
                 action_low, eps_cache = self.dpm_solver_1_step(
-                    state, action, goal, s, t_, eps_cache=eps_cache
+                    state, action, s, t_, eps_cache=eps_cache
                 )
                 action_high, eps_cache = self.dpm_solver_2_step(
-                    state, action, goal, s, t_, eps_cache=eps_cache
+                    state, action, s, t_, eps_cache=eps_cache
                 )
             else:
                 action_low, eps_cache = self.dpm_solver_2_step(
-                    state, action, goal, s, t_, r1=1 / 3, eps_cache=eps_cache
+                    state, action, s, t_, r1=1 / 3, eps_cache=eps_cache
                 )
                 action_high, eps_cache = self.dpm_solver_3_step(
-                    state, action, goal, s, t_, eps_cache=eps_cache
+                    state, action, s, t_, eps_cache=eps_cache
                 )
             delta = torch.maximum(
                 atol, rtol * torch.maximum(action_low.abs(), action_prev.abs())
@@ -869,7 +858,6 @@ def sample_dpm_fast(
     model,
     state,
     action,
-    goal,
     sigma_min,
     sigma_max,
     n,
@@ -897,7 +885,6 @@ def sample_dpm_fast(
         return dpm_solver.dpm_solver_fast(
             state,
             action,
-            goal,
             dpm_solver.t(torch.tensor(sigma_max)),
             dpm_solver.t(torch.tensor(sigma_min)),
             n,
@@ -912,7 +899,6 @@ def sample_dpmpp_2m(
     model,
     state,
     action,
-    goal,
     sigmas,
     scaler=None,
     extra_args=None,
@@ -928,7 +914,7 @@ def sample_dpmpp_2m(
 
     for i in trange(len(sigmas) - 1, disable=disable):
         # predict the next action
-        denoised = model(state, action, goal, sigmas[i] * s_in, **extra_args)
+        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
         if callback is not None:
             callback(
                 {
@@ -959,7 +945,6 @@ def sample_dpmpp_sde(
     model,
     state,
     action,
-    goal,
     sigmas,
     extra_args=None,
     callback=None,
@@ -984,7 +969,7 @@ def sample_dpmpp_sde(
     t_fn = lambda sigma: sigma.log().neg()
 
     for i in trange(len(sigmas) - 1, disable=disable):
-        denoised = model(state, x, goal, sigmas[i] * s_in, **extra_args)
+        denoised = model(state, x, sigmas[i] * s_in, **extra_args)
         if callback is not None:
             callback(
                 {
@@ -1012,7 +997,7 @@ def sample_dpmpp_sde(
             s_ = t_fn(sd)
             x_2 = (sigma_fn(s_) / sigma_fn(t)) * x - (t - s_).expm1() * denoised
             x_2 = x_2 + noise_sampler(sigma_fn(t), sigma_fn(s)) * s_noise * su
-            denoised_2 = model(state, x_2, goal, sigma_fn(s) * s_in, **extra_args)
+            denoised_2 = model(state, x_2, sigma_fn(s) * s_in, **extra_args)
 
             # Step 2
             sd, su = get_ancestral_step(sigma_fn(t), sigma_fn(t_next), eta)
@@ -1032,7 +1017,6 @@ def sample_dpmpp_2_with_lms(
     model,
     state,
     action,
-    goal,
     sigmas,
     scaler=None,
     extra_args=None,
@@ -1048,7 +1032,7 @@ def sample_dpmpp_2_with_lms(
 
     for i in trange(len(sigmas) - 1, disable=disable):
         # predict the next action
-        denoised = model(state, action, goal, sigmas[i] * s_in, **extra_args)
+        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
         if callback is not None:
             callback(
                 {
@@ -1079,7 +1063,6 @@ def sample_dpm_adaptive(
     model,
     state,
     action,
-    goal,
     sigma_min,
     sigma_max,
     extra_args=None,
@@ -1117,7 +1100,6 @@ def sample_dpm_adaptive(
         action, info = dpm_solver.dpm_solver_adaptive(
             state,
             action,
-            goal,
             dpm_solver.t(torch.tensor(sigma_max)),
             dpm_solver.t(torch.tensor(sigma_min)),
             order,
@@ -1141,7 +1123,6 @@ def sample_dpmpp_2s_ancestral(
     model,
     state,
     action,
-    goal,
     sigmas,
     scaler=None,
     extra_args=None,
@@ -1162,7 +1143,7 @@ def sample_dpmpp_2s_ancestral(
     t_fn = lambda sigma: sigma.log().neg()
 
     for i in trange(len(sigmas) - 1, disable=disable):
-        denoised = model(state, action, goal, sigmas[i] * s_in, **extra_args)
+        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
         sigma_down, sigma_up = get_ancestral_step(sigmas[i], sigmas[i + 1], eta=eta)
         if callback is not None:
             callback(
@@ -1186,7 +1167,7 @@ def sample_dpmpp_2s_ancestral(
             h = t_next - t
             s = t + r * h
             x_2 = (sigma_fn(s) / sigma_fn(t)) * action - (-h * r).expm1() * denoised
-            denoised_2 = model(state, x_2, goal, sigma_fn(s) * s_in, **extra_args)
+            denoised_2 = model(state, x_2, sigma_fn(s) * s_in, **extra_args)
             action = (sigma_fn(t_next) / sigma_fn(t)) * action - (
                 -h
             ).expm1() * denoised_2
@@ -1202,7 +1183,6 @@ def sample_ddim(
     model,
     state,
     action,
-    goal,
     sigmas,
     scaler=None,
     extra_args=None,
@@ -1220,7 +1200,7 @@ def sample_ddim(
 
     for i in trange(len(sigmas) - 1, disable=disable):
         # predict the next action
-        denoised = model(state, action, goal, sigmas[i] * s_in, **extra_args)
+        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
         if callback is not None:
             callback(
                 {
@@ -1242,7 +1222,6 @@ def sample_dpmpp_2s(
     model,
     state,
     action,
-    goal,
     sigmas,
     scaler=None,
     extra_args=None,
@@ -1257,7 +1236,7 @@ def sample_dpmpp_2s(
     t_fn = lambda sigma: sigma.log().neg()
     s_in = action.new_ones([action.shape[0]])
     for i in trange(len(sigmas) - 1, disable=disable):
-        denoised = model(state, action, goal, sigmas[i] * s_in, **extra_args)
+        denoised = model(state, action, sigmas[i] * s_in, **extra_args)
         if callback is not None:
             callback(
                 {
@@ -1280,7 +1259,7 @@ def sample_dpmpp_2s(
             h = t_next - t
             s = t + r * h
             x_2 = (sigma_fn(s) / sigma_fn(t)) * action - (-h * r).expm1() * denoised
-            denoised_2 = model(state, x_2, goal, sigma_fn(s) * s_in, **extra_args)
+            denoised_2 = model(state, x_2, sigma_fn(s) * s_in, **extra_args)
             action = (sigma_fn(t_next) / sigma_fn(t)) * action - (
                 -h
             ).expm1() * denoised_2
