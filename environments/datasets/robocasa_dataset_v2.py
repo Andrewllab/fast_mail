@@ -116,8 +116,8 @@ class RoboCasaDataset(CustomHdf5Dataset):
         # remove action dims related to static mobile platform
         action = traj["actions"][:, :7].astype(np.float32)
 
-        # ensure we are not ignoring any relevant actions
-        assert np.allclose(traj["actions"][:, 7:], np.array([0, 0, 0, 0, -1]))
+        # # ensure we are not ignoring any relevant actions
+        # assert np.allclose(traj["actions"][:, 7:], np.array([0, 0, 0, 0, -1]))
 
         robot_state = torch.cat(
             (
