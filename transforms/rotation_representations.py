@@ -1,18 +1,33 @@
 from __future__ import annotations
 
+import dataclasses
+
 import torch
 import torch.nn.functional as F
 from tensordict import TensorDict
 
 from environments.specs import DataSpecs
-from transforms.base_transform import ReversibleTransform
-from utils.math import normalize
+from transforms.base_transform import ReversibleTransform, TransformConstraint
+from utils.math import axis_angle_from_quat, normalize, quat_from_angle_axis
 
 
 class QuaternionRotations(ReversibleTransform):
+    constraints = [
+        # Cannot be applied to data from env, as the forward call modifies actions
+        TransformConstraint.DATASET_ONLY,
+        # Must be applied on trajectories to remove jumps and perform mirroring
+        TransformConstraint.TRAJECTORY_ONLY,
+    ]
+
     def __init__(
         self, specs: DataSpecs, remove_jumps: bool = True, mirror: bool = True
     ):
+        action_spec = specs.action
+        # This transform assumes 8D actions: 3 for position, 4 for quaternion,
+        # 1 for gripper
+        # TODO: more graceful handling of different action specs
+        assert action_spec.action_dim == 8
+
         self._specs = specs
         self.remove_jumps = remove_jumps
         self.mirror = mirror
@@ -36,9 +51,6 @@ class QuaternionRotations(ReversibleTransform):
             return [tensordict, mirrored]
         else:
             return tensordict
-
-    def __call__(self, tensordict: TensorDict) -> TensorDict:
-        return tensordict
 
     def reverse(self, tensordict: TensorDict) -> TensorDict:
 
@@ -86,3 +98,61 @@ def remove_jumps_from_quat_trajectory(quat: torch.Tensor) -> torch.Tensor:
     quat[swap_mask] = -quat[swap_mask]
 
     return quat
+
+
+class QuatToAxisAngleRotations(ReversibleTransform):
+    # Cannot be applied to data from env, as the forward call modifies actions
+    constraints = [TransformConstraint.DATASET_ONLY]
+
+    def __init__(self, specs: DataSpecs):
+        action_spec = specs.action
+        # This transform assumes 8D actions: 3 for position, 4 for quaternion,
+        # 1 for gripper
+        # TODO: more graceful handling of different action specs
+        assert action_spec.action_dim == 8
+
+        new_action_dim = 7  # 3 for position + 3 for axis-angle + 1 for gripper
+        new_action_spec = dataclasses.replace(action_spec, action_dim=new_action_dim)
+
+        self._specs = specs.replace(action=new_action_spec)
+
+    @property
+    def specs(self) -> DataSpecs:
+        return self._specs
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}()"
+
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        action = tensordict["action"]
+        quat = action[..., 3:7]
+
+        # reshape to 2D for conversion
+        leading_dims = quat.shape[:-1]
+        quat = quat.view(-1, 4)
+        axis_angle = axis_angle_from_quat(quat)
+        axis_angle = axis_angle.view(*leading_dims, 3)
+
+        # replace quaternion in action with axis-angle
+        new_action = torch.cat([action[..., :3], axis_angle, action[..., 7:]], dim=-1)
+        tensordict["action"] = new_action
+
+        return tensordict
+
+    def reverse(self, tensordict: TensorDict) -> TensorDict:
+        action = tensordict["action"]
+        assert action.ndim == 3  # [B, T, 7]
+        assert action.shape[-1] == 7
+        B, T = action.shape[:2]
+        axis_angle = action[..., 3:6]
+
+        axis_angle = axis_angle.view(-1, 3)
+        angle = axis_angle.norm(dim=-1)
+        quat = quat_from_angle_axis(angle, axis_angle)
+        quat = quat.view(B, T, 4)
+
+        # replace axis-angle in action with quaternion
+        new_action = torch.cat([action[..., :3], quat, action[..., 6:]], dim=-1)
+        tensordict["action"] = new_action
+
+        return tensordict

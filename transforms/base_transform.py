@@ -41,7 +41,25 @@ class KeyMapping:
 
 class TransformConstraint(Enum):
     TRAJECTORY_ONLY = auto()
+    """
+    Transforms that must be called on an entire trajectory at once, as opposed
+    to e.g. operating on data chunk-wise. Examples are subsampling time steps
+    or trimming idle time steps.
+    """
+
+    DATASET_ONLY = auto()
+    """
+    Transforms that only make sense on the data from the dataset, e.g. because
+    they rely on data fields that are not provided by the environment. Examples
+    are action transforms and conversions, or switching ground truth action
+    values.
+    """
+
     GPU_ONLY = auto()
+    """
+    Transforms that need to execute on the GPU, e.g. because they involve
+    foundation models.
+    """
 
 
 class TransformModuleMeta(ABCMeta):

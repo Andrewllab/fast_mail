@@ -12,6 +12,11 @@ log = logging.getLogger(__name__)
 
 
 class RandomGoalEmbedding(NormalizingTransform, nn.Module):
+    # NOTE: this transform is a NormalizingTransform only to fit into the
+    # existing framework. It does not perform any normalization. During
+    # preprocessing, it collects all unique goal texts and creates a random
+    # embedding for each.
+
     def __init__(self, specs: DataSpecs, embed_dim: int = 1024, text_key: str = "text"):
         super().__init__()
 

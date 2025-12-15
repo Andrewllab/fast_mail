@@ -179,7 +179,7 @@ class BesoAgent(BaseAgent):
         if "ref_action" in batch:
             # only if we are validating on demonstration data
             error = F.mse_loss(prediction, batch["ref_action"])
-            self.log("val_action_mse", error, batch_size=batch["obs"].shape[0])
+            self.log("val_action_mse", error, batch_size=batch.shape[0])
 
         # return the prediction in case we want to write it back to the environment
         return prediction

@@ -466,19 +466,35 @@ class TrajectoryDataModule(L.LightningDataModule):
         )
         specs = self.env.specs
 
-        # Filter out normalizing transforms, since they require running
-        # preprocessing first, but they also cannot have a no-op __call__
-        # method. The environment doesn't emit actions anyway (only
-        # observations), so we don't care.
-        preprocess_cfgs = {
-            key: {
-                name: transform
-                for name, transform in cfg.items()
-                if isinstance(transform, functools.partial)
-                and not issubclass(transform.func, NormalizingTransform)
-            }
-            for key, cfg in self.preprocess_cfgs.items()
+        # Filter out transforms that should not be applied in the environment.
+        # This includes transforms with constraints TRAJECTORY_ONLY or DATASET_ONLY,
+        # as well as normalizing transforms (which are already embedded in the
+        # agent anyway).
+        preprocess_cfgs = {}
+        DISALLOWED_CONSTRAINTS = {
+            TransformConstraint.TRAJECTORY_ONLY,
+            TransformConstraint.DATASET_ONLY,
         }
+        for key, cfg in self.preprocess_cfgs.items():
+            preprocess_cfg = {}
+            for name, transform in cfg.items():
+                # filter out non-partials
+                if not isinstance(transform, functools.partial):
+                    continue
+
+                # filter out normalizing transforms
+                # TODO: this is a legacy check, and NormalizingTransform should
+                # be replaced with something less confusing.
+                if issubclass(transform.func, NormalizingTransform):
+                    continue
+
+                # filter out transforms that cannot be applied outside of
+                # preprocessing/dataset
+                if set(transform.func.constraints) & DISALLOWED_CONSTRAINTS:
+                    continue
+
+                preprocess_cfg[name] = transform
+            preprocess_cfgs[key] = preprocess_cfg
 
         # instantiate transforms from each preprocessing step separately to not mess
         # up ordering

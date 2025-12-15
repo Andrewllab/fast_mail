@@ -91,6 +91,7 @@ class RealRobotEnv(gym.Env):
             "target_gripper_pos": ObsSpec(elem_shape=(1,)),
         }
 
+        # TODO: Add both specs in either case.
         if action_type == "joint":
             obs_specs["target_joint_pos"] = ObsSpec(elem_shape=(7,))
         elif action_type == "cartesian":
@@ -138,6 +139,9 @@ class RealRobotEnv(gym.Env):
             target_ee_pose = action[:7]  # xyz + wxyz quaternion
             target_ee_pos = target_ee_pose[:3]
             target_ee_wxyz = target_ee_pose[3:7]
+            # normalize quaternions coming from outside to ensure they are valid
+            # BackCompat: this can be probably be removed because it is done
+            # in the QuaternionRotations transform
             target_ee_wxyz = normalize(target_ee_wxyz)
             target_ee_xyzw = torch.cat(
                 (target_ee_wxyz[-3:], target_ee_wxyz[:-3]), dim=-1

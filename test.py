@@ -81,6 +81,12 @@ def test(cfg: DictConfig) -> None:
             cfg.data = data_cfg
             cfg.train_platform = train_cfg.platform
 
+    else:
+        # This case is uncommon, but can be useful for e.g. testing transforms
+        # without training a model.
+        checkpoint_paths = []
+        log.info("No checkpoint specified, testing with untrained model...")
+
     update_wandb_config(cfg, train_tags, train_notes)
 
     # configure torch, e.g. set_float32_matmul_precision

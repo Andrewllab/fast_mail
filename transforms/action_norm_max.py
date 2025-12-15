@@ -8,12 +8,19 @@ from tensordict import TensorDict
 from torch import Tensor
 
 from environments.specs import DataSpecs
-from transforms.base_transform import KeyMapping, NormalizingTransform
+from transforms.base_transform import (
+    KeyMapping,
+    NormalizingTransform,
+    TransformConstraint,
+)
 
 log = logging.getLogger(__name__)
 
 
 class ActionNormMaxMagnitude(NormalizingTransform, nn.Module):
+    # Cannot be applied to data from env, as the forward call modifies actions
+    constraints = [TransformConstraint.DATASET_ONLY]
+
     max_actions: torch.Tensor
 
     def __init__(self, specs: DataSpecs):
@@ -45,8 +52,9 @@ class ActionNormMaxMagnitude(NormalizingTransform, nn.Module):
     def key_mappings(self) -> list[KeyMapping]:
         return [KeyMapping(in_keys="action", out_keys="action")]
 
-    def _call_one(self, action: Tensor) -> Tensor:
-        if not self.training:
+    def _call_one(self, action: Tensor | None) -> Tensor | None:
+        if action is None:
+            assert not self.training
             # during rollout, there are no incoming actions to normalize, we
             # only need to unnormalize
             return action
@@ -75,6 +83,10 @@ class ActionNormMaxMagnitude(NormalizingTransform, nn.Module):
 
 
 class ActionNormMinMax(NormalizingTransform, nn.Module):
+
+    # Cannot be applied to data from env, as the forward call modifies actions
+    constraints = [TransformConstraint.DATASET_ONLY]
+
     max_actions: torch.Tensor
     min_actions: torch.Tensor
     range_actions: torch.Tensor
@@ -116,8 +128,9 @@ class ActionNormMinMax(NormalizingTransform, nn.Module):
     def key_mappings(self) -> list[KeyMapping]:
         return [KeyMapping(in_keys="action", out_keys="action")]
 
-    def _call_one(self, action: Tensor) -> Tensor:
-        if not self.training:
+    def _call_one(self, action: Tensor | None) -> Tensor | None:
+        if action is None:
+            assert not self.training
             # during rollout, there are no incoming actions to normalize, we
             # only need to unnormalize
             return action

@@ -24,8 +24,7 @@ LEGACY_ALIASES = {
     ## Models
     "models.pos_encoder.SinusoidalTokenPosEncoder": "models.pos_encoder.SinusoidalSequencePosEncoder",
     ## Transforms
-    "transforms.action_abs_to_relative.AbsoluteActionToRelativeChunk": "transforms.action_abs_to_relative.AbsoluteTaskActionsToRelativeChunk",
-    "transforms.action_abs_to_relative.AbsoluteActionToRelative": "transforms.action_abs_to_relative.AbsoluteTaskActionsFrameTransform",
+    "transforms.action_abs_to_relative.AbsoluteActionToRelativeChunk": "transforms.action_abs_to_relative.AbsoluteEeActionsToRelativeChunk",
     # the following 3 jitter variants were merged into a common Jitter transform
     "transforms.pointcloud_jitter_points.JitterPointCloud": "transforms.jitter.JitterPointCloud",
     "transforms.translational_jitter.TranslationalJitter": "transforms.jitter.TranslationalJitter",

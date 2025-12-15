@@ -1,0 +1,20 @@
+# @package _global_
+
+defaults:
+  - /transforms@data.preprocess.t8_rotation_representation: rotations_axis_angle
+
+data:
+  preprocess:
+    # convert absolute ee actions to delta ee action
+    t7_absolute_to_delta_actions:
+      _target_: transforms.action_abs_to_relative.AbsoluteEeActionsToDelta
+      _partial_: True
+      ref_pose_obs_key: target_ee_pose
+
+    # normalize delta actions so that the max magnitude in each dimension is 1.0
+    t9_normalize_actions:
+      _target_: transforms.action_norm_max.ActionNormMaxMagnitude
+      _partial_: True   
+
+# metadata
+actions: delta_ee

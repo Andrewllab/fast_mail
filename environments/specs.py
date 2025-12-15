@@ -362,34 +362,10 @@ class EmbedSpec:
 class ActionSpec(Spec):
     action_dim: int
     time: int | None = None
-    a_mean: torch.Tensor | None = None
-    a_var: torch.Tensor | None = None
-    a_min: torch.Tensor | None = None
-    a_max: torch.Tensor | None = None
-    n_actions: int = 0
-
-    # TODO: remove action statistics from the ActionSpec
-
-    def __init__(
-        self,
-        action_dim: int,
-        time: int | None = None,
-        a_mean: torch.Tensor | None = None,
-        a_var: torch.Tensor | None = None,
-        a_min: torch.Tensor | None = None,
-        a_max: torch.Tensor | None = None,
-        n_actions: int = 0,
-        actions: torch.Tensor | None = None,
-    ):
-        object.__setattr__(self, "action_dim", action_dim)
-        object.__setattr__(self, "time", time)
-
-        mean = actions.mean(0) if actions is not None else a_mean
-        var = actions.var(0) if actions is not None else a_var
-        min = actions.min(0).values if actions is not None else a_min
-        max = actions.max(0).values if actions is not None else a_max
-        n_actions = actions.shape[0] if actions is not None else n_actions
-        self._set_stats(mean, var, min, max, n_actions)
+    prechunked: bool = False
+    is_delta: bool = False
+    # metadata
+    # dim_names: tuple[str, ...] | None = None
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -398,58 +374,16 @@ class ActionSpec(Spec):
         else:
             return (self.time, self.action_dim)
 
-    def _set_stats(self, mean, var, min, max, n_actions):
-        # frozen dataclass does not allow setting attributes after creation
-        object.__setattr__(self, "a_mean", mean)
-        object.__setattr__(self, "a_var", var)
-        object.__setattr__(self, "a_min", min)
-        object.__setattr__(self, "a_max", max)
-        object.__setattr__(self, "n_actions", n_actions)
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ActionSpec):
+            return False
+        if self is other:
+            return True
 
-    @property
-    def a_std(self) -> torch.Tensor | None:
-        return self.a_var.sqrt() if self.a_var is not None else None
-
-    def update_stats(self, actions: torch.Tensor) -> None:
-        # TODO: replace with gymnasium.wrappers.utils.RunningMeanStd
-        m = len(actions)
-        if m == 0:
-            return  # No update needed if the batch is empty
-
-        if (n := self.n_actions) == 0:
-            assert all(
-                v is None for v in (self.a_mean, self.a_var, self.a_min, self.a_max)
-            )
-            self._set_stats(
-                actions.mean(0),
-                actions.var(0),
-                actions.min(0).values,
-                actions.max(0).values,
-                m,
-            )
-            return
-
-        mean, var, min, max = self.a_mean, self.a_var, self.a_min, self.a_max
-        assert all(v is not None for v in (mean, var, min, max))
-
-        new_mean = actions.mean(0)
-        new_var = actions.var(0, correction=0)
-
-        total_n = n + m
-        delta_mean = new_mean - mean
-        total_mean = mean + m * delta_mean / total_n
-        total_var = (
-            n * var + m * new_var + (n * m / total_n) * delta_mean**2
-        ) / total_n
-
-        new_min, new_max = actions.min(0).values, actions.max(0).values
-
-        self._set_stats(
-            total_mean,
-            total_var,
-            torch.minimum(min, new_min),
-            torch.maximum(max, new_max),
-            total_n,
+        return (
+            self.action_dim == other.action_dim
+            and self.time == other.time
+            and self.prechunked == other.prechunked
         )
 
 
@@ -548,9 +482,8 @@ class DataSpecs:
         return robot_state_space.shape[-1]
 
     @property
-    def action_seq_len(self) -> int:
-        assert len(self.action.shape) == 2
-        return self.action.shape[0]
+    def action_seq_len(self) -> int | None:
+        return self.action.time
 
     @property
     def action_dim(self) -> int:

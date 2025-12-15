@@ -6,6 +6,7 @@ from typing import Sequence
 import hydra
 import pygame
 import torch
+import torch.nn.functional as F
 from omegaconf import DictConfig, open_dict
 from torch import Tensor
 
@@ -112,15 +113,18 @@ class NullAgent(BaseAgent):
             batch = self.replay_reverser.reverse(batch)
 
         else:
-            actions = torch.zeros(
-                (batch.shape[0], *self.specs.action.shape), device=batch.device
-            )
-            actions[...] = self.null_action  # broadcasts over leading dimensions
-            batch["action"] = actions
+            # if action is already provided in the batch (e.g. from a dataset),
+            # we just use that action
+            if "action" not in batch:
+                actions = torch.zeros(
+                    (batch.shape[0], *self.specs.action.shape), device=batch.device
+                )
+                actions[...] = self.null_action  # broadcasts over leading dimensions
+                batch["action"] = actions
 
+            # since the reverse transform includes unnormalizing the action,
+            # we have to normalize the action before reversing/unnormalizing
             # TODO: check if this is correct for visualize_real script
-            # we need to make sure that the reverse transform converts the
-            # relative null action to absolute
             batch = self.normalizer(batch)
             batch = self.reverser.reverse(batch)
 
@@ -129,5 +133,20 @@ class NullAgent(BaseAgent):
 
         return batch["action"]
 
-    # reuse predict_step for test_step
-    test_step = predict_step
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        """This method can be used to validate action transforms, since the null agent
+        does not modify the actions in any way.
+        """
+
+        prediction = self.predict_step(batch, batch_idx)
+
+        if "ref_action" in batch:
+            # only if we are validating on demonstration data
+            error = F.mse_loss(prediction, batch["ref_action"])
+            self.log("val_action_mse", error, batch_size=batch.shape[0])
+
+        # return the prediction in case we want to write it back to the environment
+        return prediction
+
+    # validation and testing are identical
+    test_step = validation_step

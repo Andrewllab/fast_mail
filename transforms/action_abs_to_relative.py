@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 import torch
@@ -10,8 +11,10 @@ from environments.specs import DataSpecs
 from transforms.base_transform import ReversibleTransform, TransformConstraint
 from utils.math import combine_frame_transforms, normalize, subtract_frame_transforms
 
+log = logging.getLogger(__name__)
 
-class AbsoluteTaskActionsToRelativeChunk(ReversibleTransform):
+
+class AbsoluteEeActionsToRelativeChunk(ReversibleTransform):
     """Preprocess transforms for converting actions (target ee_poses) from
     the world (robot base) frame into action chunks, where the actions in each
     chunk are relative to their own reference frame. This reference frame can
@@ -20,7 +23,12 @@ class AbsoluteTaskActionsToRelativeChunk(ReversibleTransform):
     prior to the beginning of the chunk).
     """
 
-    constraints = [TransformConstraint.TRAJECTORY_ONLY]
+    constraints = [
+        # Cannot be applied to data from env, as the forward call modifies actions
+        TransformConstraint.DATASET_ONLY,
+        # Must be applied on trajectories because we need to chunk the actions
+        TransformConstraint.TRAJECTORY_ONLY,
+    ]
 
     def __init__(
         self,
@@ -102,13 +110,6 @@ class AbsoluteTaskActionsToRelativeChunk(ReversibleTransform):
 
         return tensordict
 
-    def __call__(self, tensordict: TensorDict) -> TensorDict:
-        # This gets called when running with an environment, where the
-        # preprocess transforms get rolled into the other transforms.
-        # We don't need to do anything, since there are no actions to transform.
-        assert not self.training
-        return tensordict
-
     def reverse(self, tensordict: TensorDict) -> TensorDict:
 
         rel_action = tensordict["action"]
@@ -150,7 +151,108 @@ class AbsoluteTaskActionsToRelativeChunk(ReversibleTransform):
         return tensordict
 
 
-class AbsoluteTaskActionsFrameTransform(ReversibleTransform, nn.Module):
+class AbsoluteEeActionsToDelta(ReversibleTransform):
+    # Cannot be applied to data from env, as the forward call modifies actions
+    constraints = [TransformConstraint.DATASET_ONLY]
+
+    def __init__(self, specs: DataSpecs, ref_pose_obs_key: str):
+        if ref_pose_obs_key not in specs.obs:
+            raise ValueError(f"Key '{ref_pose_obs_key}' not found in obs specs.")
+
+        action_spec = specs.action
+        # This transform assumes 8D actions: 3 for position, 4 for quaternion,
+        # 1 for gripper
+        # TODO: more graceful handling of different action specs
+        assert action_spec.action_dim == 8
+
+        ref_pose_spec = specs.obs[ref_pose_obs_key]
+        if ref_pose_spec.shape[-1] != 7:
+            raise ValueError(
+                f"Expected element shape of reference ee pose at 'obs/{ref_pose_obs_key}' to be 7, but got {ref_pose_spec.shape[-1]}."
+            )
+
+        self._specs = specs
+        self.ref_pose_obs_key = ref_pose_obs_key
+
+    @property
+    def specs(self) -> DataSpecs:
+        return self._specs
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(reference_pose=obs/{self.ref_pose_obs_key})"
+
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        action = tensordict["action"]
+        ref_ee_pose = tensordict["obs", self.ref_pose_obs_key]
+
+        # TODO: changed to warning because TrimIdle removes some time steps.
+        # This causes misalignment because the `ref_ee_pose` references
+        # whatever used to be the last step, which may have changed.
+        # Once TrimIdle updates fields that are previous time steps, raise an
+        # error here again.
+        if not torch.allclose(action[:-1, ..., :-1], ref_ee_pose[1:]):
+            log.warning(
+                f"The values at `obs/{self.ref_pose_obs_key}` need to contain the action (i.e. the target ee pose) from the previous step. "
+                "This is required so that the transform behaves the same way during rollout on the environment."
+            )
+
+        # delta_t = action_t - action_{t-1}
+        #         = action_t - target_ee_pose_t
+        # This is important so that we don't need values from future or
+        # past time steps to reconstruct the target ee pose, which we don't
+        # have during rollout.
+        delta_pos, delta_quat = subtract_frame_transforms(
+            ref_ee_pose[..., :3],
+            ref_ee_pose[..., 3:7],
+            action[..., :3],
+            action[..., 3:7],
+        )
+
+        # write new actions in place
+        action[..., :3] = delta_pos
+        action[..., 3:7] = delta_quat
+
+        return tensordict
+
+    def reverse(self, tensordict: TensorDict) -> TensorDict:
+        action = tensordict["action"]
+        assert action.ndim == 3  # [B, T, 8]
+        assert action.shape[-1] == 8
+        B, T = action.shape[:2]
+        delta_pos, delta_quat = action[..., :3], action[..., 3:7]
+
+        # get the starting ee_pose for each batch
+        ref_ee_pose = tensordict["obs", self.ref_pose_obs_key]
+        assert ref_ee_pose.ndim == 3  # [B, T, 7]
+        assert ref_ee_pose.shape[-1] == 7
+        ref_ee_pose = ref_ee_pose[:, -1]  # get the last ee_pose for each batch
+
+        # accumulate the deltas across the action chunk
+        abs_ee_pos = torch.zeros_like(delta_pos)
+        abs_ee_quat = torch.zeros_like(delta_quat)
+        abs_ee_pos[:, 0], abs_ee_quat[:, 0] = combine_frame_transforms(
+            ref_ee_pose[:, :3], ref_ee_pose[:, 3:7], delta_pos[:, 0], delta_quat[:, 0]
+        )
+        for t in range(1, T):
+            abs_ee_pos[:, t], abs_ee_quat[:, t] = combine_frame_transforms(
+                abs_ee_pos[:, t - 1],
+                abs_ee_quat[:, t - 1],
+                delta_pos[:, t],
+                delta_quat[:, t],
+            )
+
+        # normalize again, in case repeated quaternion multiplications caused drift
+        # TODO: replace with check and log any quats that are not normalized
+        abs_ee_quat = normalize(abs_ee_quat)
+
+        # write reversed actions in place
+        action[..., :3] = abs_ee_pos
+        action[..., 3:7] = abs_ee_quat
+
+        return tensordict
+
+
+class AbsoluteEeActionsFrameTransform(ReversibleTransform, nn.Module):
     """Preprocess transforms for converting actions (target ee_poses) from
     the world (robot base) frame to be relative to some reference frame. This
     reference frame can be the first ee_pose in the trajectory or the first
@@ -165,6 +267,10 @@ class AbsoluteTaskActionsFrameTransform(ReversibleTransform, nn.Module):
         specs: DataSpecs,
         reference: Literal["first_ee_pose", "first_action"],
     ):
+        raise NotImplementedError(
+            "This transform is currently broken, due to how it handles state."
+        )
+
         super().__init__()
 
         self._specs = specs
@@ -281,96 +387,81 @@ class AbsoluteJointActionsToDelta(ReversibleTransform):
     from absolute positions to deltas relative to the current joint positions.
     """
 
-    constraints = [TransformConstraint.TRAJECTORY_ONLY]
+    # Cannot be applied to data from env, as the forward call modifies actions
+    constraints = [TransformConstraint.DATASET_ONLY]
 
-    def __init__(
-        self,
-        specs: DataSpecs,
-        reference: Literal["joint_pos", "target_joint_pos"],
-        joint_pos_key: str = "joint_pos",
-        target_joint_pos_key: str = "target_joint_pos",
-    ):
-        if reference not in ["joint_pos", "target_joint_pos"]:
-            raise ValueError(f"Unknown reference: {reference}")
+    def __init__(self, specs: DataSpecs, ref_pos_obs_key: str):
 
-        if target_joint_pos_key not in specs.obs:
+        if ref_pos_obs_key not in specs.obs:
+            raise ValueError(f"Key '{ref_pos_obs_key}' not found in obs specs.")
+
+        action_spec = specs.action
+        n_joints = action_spec.action_dim - 1  # exclude gripper command
+
+        ref_pose_spec = specs.obs[ref_pos_obs_key]
+        if ref_pose_spec.shape[-1] != n_joints:
             raise ValueError(
-                f"Target joint position key '{target_joint_pos_key}' not found in specs."
+                f"Expected element shape of reference joint positions at 'obs/{ref_pos_obs_key}' to be {n_joints}, but got {ref_pose_spec.shape[-1]}."
             )
 
         self._specs = specs
-        self.reference = reference
-        self.joint_pos_key = joint_pos_key
-        self.target_joint_pos_key = target_joint_pos_key
+        self.n_joints = n_joints
+        self.ref_pos_obs_key = ref_pos_obs_key
 
     @property
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(reference_pos=obs/{self.ref_pos_obs_key})"
 
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
         action = tensordict["action"]
-        target_joint_pos = action[..., :-1]  # exclude gripper command
+        ref_joint_pos = tensordict["obs", self.ref_pos_obs_key]
 
-        # verify that target_joint_pos in the action matches the one in the obs
-        target_joint_pos2 = tensordict["obs", self.target_joint_pos_key]
-        assert torch.allclose(target_joint_pos, target_joint_pos2)
-        current_joint_pos = tensordict["obs", self.joint_pos_key]
+        # TODO: changed to warning because TrimIdle removes some time steps.
+        # This causes misalignment because the `ref_joint_pos` references
+        # whatever used to be the last step, which may have changed.
+        # Once TrimIdle updates fields that are previous time steps, raise an
+        # error here again.
+        if not torch.allclose(action[:-1, ..., :-1], ref_joint_pos[1:]):
+            log.warning(
+                f"The values at `obs/{self.ref_pos_obs_key}` need to contain the action (i.e. the target joint positions) from the previous step. "
+                "This is required so that the transform behaves the same way during rollout on the environment."
+            )
 
-        if self.reference == "joint_pos":
-            delta_joint_pos = target_joint_pos - current_joint_pos
+        # delta_t = action_t - action_{t-1}
+        #         = action_t - target_joint_pos_t
+        # This is important so that we don't need values from future or
+        # past time steps to reconstruct the target joint positions,
+        # which we don't have during rollout.
+        delta_joint_pos = action[..., :-1] - ref_joint_pos
 
-        elif self.reference == "target_joint_pos":
-            delta_joint_pos = torch.zeros_like(target_joint_pos)
-            delta_joint_pos[1:] = target_joint_pos[1:] - target_joint_pos[:-1]
-
-            # # for the first time step, use the current joint positions as the
-            # # reference
-            # delta_joint_pos[0] = target_joint_pos[0] - current_joint_pos[0]
-
-            # we leave the first delta as zero, since there is a sizeable offset
-            # between target and current joint positions at the first time step
-
-        else:
-            raise ValueError(f"Unknown reference: {self.reference}")
-
+        # write new actions in place
         action[..., :-1] = delta_joint_pos
 
         return tensordict
 
-    def __call__(self, tensordict: TensorDict) -> TensorDict:
-        # This gets called when running with an environment, where the
-        # preprocess transforms get rolled into the other transforms.
-        # We don't need to do anything, since there are no actions to transform.
-        assert not self.training
-        return tensordict
-
     def reverse(self, tensordict: TensorDict) -> TensorDict:
-
         action = tensordict["action"]
-        assert action.ndim == 3  # [B, T, num_joints]
+        assert action.ndim == 3  # [B, T, num_joints + 1]
+        assert action.shape[-1] == self.n_joints + 1
         delta_joint_pos = action[..., :-1]  # exclude gripper command
 
-        # accumulate the deltas across the action chunk
+        # get the starting joint positions for each batch
+        ref_joint_pos = tensordict["obs", self.ref_pos_obs_key]
+        assert ref_joint_pos.ndim == 3  # [B, T, num_joints]
+        assert ref_joint_pos.shape[-1] == self.n_joints
+        ref_joint_pos = ref_joint_pos[:, -1:]  # get the last joint pos for each batch
+
+        # accumulate the deltas across the time dim of the action chunk
         delta_chunk = delta_joint_pos.cumsum(dim=1)
 
-        if self.reference == "joint_pos":
-            current_joint_pos = tensordict["obs", self.joint_pos_key]
-            assert current_joint_pos.ndim == 3  # [B, T, num_joints]
+        # add the deltas to the current reference joint pos (broadcasts
+        # across time dimension)
+        target_joint_pos = ref_joint_pos + delta_chunk
 
-            # broadcast current_joint_pos to match delta_chunk shape
-            target_joint_pos = delta_chunk + current_joint_pos[:, -1:]
-
-        elif self.reference == "target_joint_pos":
-            current_target_pos = tensordict["obs", self.target_joint_pos_key]
-            assert current_target_pos.ndim == 3  # [B, T, num_joints]
-
-            # broadcast current_joint_pos to match delta_chunk shape
-            target_joint_pos = delta_chunk + current_target_pos
-
-        else:
-            raise ValueError(f"Unknown reference: {self.reference}")
-
+        # write reversed actions in place
         action[..., :-1] = target_joint_pos
 
         return tensordict

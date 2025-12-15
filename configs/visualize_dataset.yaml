@@ -25,6 +25,7 @@ data:
   eval_mode: dataset
   batch_size: 1  # required for visualization
   action_seq_len: 1  # no action chunks, because only the first frame is rendered
+  
   dataset:
     load_subset: [0]  # load selected trajectory
 

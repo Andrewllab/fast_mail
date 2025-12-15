@@ -32,7 +32,3 @@ class ClipTrajectoryLength(Transform):
         tensordict["ref_action"] = tensordict["ref_action"][: self.length]
 
         return tensordict
-
-    def __call__(self, tensordict: TensorDict) -> TensorDict:
-        # Do nothing if not called during preprocessing
-        return tensordict

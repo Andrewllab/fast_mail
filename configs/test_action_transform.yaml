@@ -1,0 +1,26 @@
+# usage: python test.py -cn test_action_transform
+
+defaults:
+  - data: ???
+  - agent: null_agent
+  - callbacks: null
+  - logger:
+  - python_logging: default
+  - paths: default
+  - hydra: default
+  - preprocessing: null
+  - actions: null
+  - _self_
+  - platform: default
+  - optional local: default
+  - debug: quick
+
+# task name, determines output directory path
+job_type: test_action_transform
+
+data:
+  eval_mode: dataset
+
+trainer:
+  default_root_dir: ${paths.output_dir}
+  log_every_n_steps: 10

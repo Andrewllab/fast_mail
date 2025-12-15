@@ -7,10 +7,8 @@ defaults:
 
 # These are defaults for visualizing the real robot environment.
 # They should be overwritten by dataset configs.
+task_suite: real
 name: real_robot
-action_seq_len: 1
-obs_seq_len: 1
-batch_size: 1
 
 env:
   _target_: environments.gym_env_dataset.GymEnvDataset

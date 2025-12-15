@@ -228,10 +228,3 @@ class TrimIdle(Transform):
             tensordict["ref_action"] = tensordict["ref_action"][start:]
 
         return tensordict
-
-    def __call__(self, tensordict: TensorDict) -> TensorDict:
-        # This gets called when running with an environment, where the
-        # preprocess transforms get rolled into the cpu_batch_transforms.
-        # We don't need to do anything, since we can only run during
-        # preprocessing.
-        return tensordict

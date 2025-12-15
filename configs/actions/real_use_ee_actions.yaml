@@ -1,0 +1,18 @@
+# @package _global_
+
+data:
+  preprocess:
+    # discard joint space actions and use ee actions instead
+    t5_action_type:
+      _target_: transforms.action_switch_type.SwitchActionType
+      _partial_: True
+      obs_key: next_target_ee_pose
+
+# set the environment to use cartesian (end-effector) actions
+  env:
+    env:
+      action_type: cartesian
+      impedance_type: hybrid_joint
+
+# metadata
+actions: absolute_ee

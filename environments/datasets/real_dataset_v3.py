@@ -105,13 +105,13 @@ class RealRobotDataset(CustomHdf5Dataset):
         # shape: (T, 4), float32
         ee_quat = traj["obs"]["proprioception"]["eef_quat"][...]
         # shape: (T, 7), float32
-        target_joint_pos = traj["action"]["joint_pos"][...]
+        next_target_joint_pos = traj["action"]["joint_pos"][...]
         # shape: (T, 1), float32
-        target_gripper_pos = traj["action"]["gripper_pos"][...][:, None]
+        next_target_gripper_pos = traj["action"]["gripper_pos"][...][:, None]
         # shape: (T, 4), float32
-        target_ee_pos = traj["action"]["eef_pos"][...]
+        next_target_ee_pos = traj["action"]["eef_pos"][...]
         # shape: (T, 3), float32
-        target_ee_quat = traj["action"]["eef_quat"][...]
+        next_target_ee_quat = traj["action"]["eef_quat"][...]
 
         robot_state = torch.cat(
             (torch.from_numpy(joint_pos), torch.from_numpy(gripper_pos)),
@@ -132,14 +132,27 @@ class RealRobotDataset(CustomHdf5Dataset):
             atol=1e-6,
         )
 
-        target_ee_pos = torch.from_numpy(target_ee_pos)
-        target_ee_quat = convert_quat(torch.from_numpy(target_ee_quat), to="wxyz")
-        target_ee_pose = torch.cat((target_ee_pos, target_ee_quat), dim=-1)
+        next_target_ee_pos = torch.from_numpy(next_target_ee_pos)
+        next_target_ee_quat = convert_quat(
+            torch.from_numpy(next_target_ee_quat), to="wxyz"
+        )
+        next_target_ee_pose = torch.cat(
+            (next_target_ee_pos, next_target_ee_quat), dim=-1
+        )
+
+        # The observed (current) target joint_pos/ee_pose is the action (next
+        # target joint_pos/ee_pose) from the last time step.
+        # The first time step is the same as the 2nd, implying a first delta
+        # action of zero.
+        target_joint_pos = next_target_joint_pos.copy()
+        target_joint_pos[1:] = next_target_joint_pos[:-1]
+        target_ee_pose = next_target_ee_pose.clone()
+        target_ee_pose[1:] = next_target_ee_pose[:-1]
 
         action = torch.cat(
             (
-                torch.from_numpy(target_joint_pos),
-                torch.from_numpy(target_gripper_pos),
+                torch.from_numpy(next_target_joint_pos),
+                torch.from_numpy(next_target_gripper_pos),
             ),
             dim=-1,
         )
@@ -168,10 +181,13 @@ class RealRobotDataset(CustomHdf5Dataset):
                     "ee_pose": ee_pose,
                     "ee_transform": ee_transform,
                     "target_joint_pos": target_joint_pos,
-                    "target_gripper_pos": target_gripper_pos,
                     "target_ee_pose": target_ee_pose,
+                    "next_target_joint_pos": next_target_joint_pos,
+                    "next_target_gripper_pos": next_target_gripper_pos,
+                    "next_target_ee_pose": next_target_ee_pose,
                 },
                 "action": action,
+                # copy the original action in case it is modified in-place later
                 "ref_action": action.clone(),
                 "path": str(path),
                 "name": name,
@@ -324,6 +340,7 @@ class RealRobotDataset(CustomHdf5Dataset):
         target_joint_pos = traj["action"]["joint_pos"]
         assert target_joint_pos.shape == (T, 7)
         obs_specs["target_joint_pos"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
+        obs_specs["next_target_joint_pos"] = obs_specs["target_joint_pos"]
 
         # target_gripper_pos
         target_gripper_pos = traj["action"]["gripper_pos"]
@@ -338,6 +355,7 @@ class RealRobotDataset(CustomHdf5Dataset):
         assert ee_pos.shape == (T, 3)
         assert ee_quat.shape == (T, 4)
         obs_specs["target_ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
+        obs_specs["next_target_ee_pose"] = obs_specs["target_ee_pose"]
 
         # actions
         # concatenate target_joint_pos and target_gripper_pos to get action

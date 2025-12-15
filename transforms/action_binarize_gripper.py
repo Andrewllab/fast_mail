@@ -6,7 +6,7 @@ import torch
 from tensordict import TensorDict
 
 from environments.specs import DataSpecs
-from transforms.base_transform import Transform
+from transforms.base_transform import Transform, TransformConstraint
 
 log = logging.getLogger(__name__)
 
@@ -31,15 +31,23 @@ class BinarizeGripperActions(Transform):
             of steps, a warning is logged.
     """
 
+    constraints = [
+        # Cannot be applied to data from env, as the forward call modifies actions
+        TransformConstraint.DATASET_ONLY,
+        # Must be applied on trajectories because 1. we use the maximum gripper
+        # width the determine the threshold and 2. because we want to compute and
+        # log the number of state changes of the gripper throughout the trajectory.
+        TransformConstraint.TRAJECTORY_ONLY,
+    ]
+
     def __init__(
         self,
         specs: DataSpecs,
         threshold: float | None = None,
-        open_width: float = 0.08,
+        open_width: float = 0.08,  # BackCompat: unused
         hysteris_steps: int = 30,
     ):
         self.threshold = threshold
-        self.open_width = open_width
         self.hysteris_steps = hysteris_steps
         self._specs = specs
 
@@ -47,48 +55,48 @@ class BinarizeGripperActions(Transform):
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def __call__(self, tensordict: TensorDict) -> TensorDict:
-        # when called during eval, there is no action to convert
-        if "action" in tensordict:
-            gripper_action = tensordict["action"][..., -1]
+    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
+        gripper_action = tensordict["action"][..., -1]
 
-            if self.threshold is None:
-                threshold = (gripper_action.max() / 2).item()
-            else:
-                threshold = self.threshold
+        if self.threshold is None:
+            threshold = (gripper_action.max() / 2).item()
+        else:
+            threshold = self.threshold
 
-            closed = gripper_action < threshold
-            state_changes = closed[1:] ^ closed[:-1]
-            log.debug(
-                "Trajectory %sfrom %s has %s changes of state of the gripper.",
+        closed = gripper_action < threshold
+        # set to +/- 1.0 so that value is normalized correctly in both
+        # min/max (absolute actions) and max magnitude (relative actions) cases
+        gripper_action[closed] = -1.0  # fully closed
+        gripper_action[~closed] = 1.0  # fully open
+
+        if "ref_action" in tensordict:
+            tensordict["ref_action"][..., -1] = gripper_action
+
+        state_changes = closed[1:] ^ closed[:-1]
+        log.debug(
+            "Trajectory %sfrom %s has %s changes of state of the gripper.",
+            (f"named {tensordict['name']} " if "name" in tensordict else ""),
+            tensordict["path"],
+            state_changes.sum().item(),
+        )
+
+        state_change_idxs = state_changes.nonzero(as_tuple=True)[0]
+        times_between_state_changes = state_change_idxs[1:] - state_change_idxs[:-1]
+        if (times_between_state_changes < self.hysteris_steps).any():
+            idx = (
+                (times_between_state_changes < self.hysteris_steps)
+                .to(torch.int32)
+                .argmax()
+            )
+            start = state_change_idxs[idx]
+            end = state_change_idxs[idx + 1]
+            log.warning(
+                "Trajectory %sfrom %s has a change of gripper state that lasts <%s time steps (between time %s and %s)",
                 (f"named {tensordict['name']} " if "name" in tensordict else ""),
                 tensordict["path"],
-                state_changes.sum().item(),
+                self.hysteris_steps,
+                start,
+                end,
             )
-
-            state_change_idxs = state_changes.nonzero(as_tuple=True)[0]
-            times_between_state_changes = state_change_idxs[1:] - state_change_idxs[:-1]
-            if (times_between_state_changes < self.hysteris_steps).any():
-                idx = (
-                    (times_between_state_changes < self.hysteris_steps)
-                    .to(torch.int32)
-                    .argmax()
-                )
-                start = state_change_idxs[idx]
-                end = state_change_idxs[idx + 1]
-                log.warning(
-                    "Trajectory %sfrom %s has a change of gripper state that lasts <%s time steps (between time %s and %s)",
-                    (f"named {tensordict['name']} " if "name" in tensordict else ""),
-                    tensordict["path"],
-                    self.hysteris_steps,
-                    start,
-                    end,
-                )
-
-            gripper_action[closed] = 0.0
-            gripper_action[~closed] = self.open_width
-
-            if "ref_action" in tensordict:
-                tensordict["ref_action"][..., -1] = gripper_action
 
         return tensordict

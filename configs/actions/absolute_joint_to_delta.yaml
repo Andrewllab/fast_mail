@@ -6,7 +6,7 @@ data:
     t8_absolute_to_delta_actions:
       _target_: transforms.action_abs_to_relative.AbsoluteJointActionsToDelta
       _partial_: True
-      reference: target_joint_pos
+      ref_pos_obs_key: target_joint_pos
 
     # normalize delta actions so that the max magnitude in each dimension is 1.0
     t9_normalize_actions:

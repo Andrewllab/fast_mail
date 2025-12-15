@@ -5,7 +5,6 @@ defaults:
   - /cameras/calibration@dataset.extrinsics: 2025-09-16
   - real_robot
 
-task_suite: real
 task: drawer
 name: drawer_20251113
 
