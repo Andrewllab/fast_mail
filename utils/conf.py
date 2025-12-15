@@ -13,26 +13,6 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 log = logging.getLogger(__name__)
 
 
-LEGACY_ALIASES = {
-    ## Agents
-    "agents.backbones.sigma_encoder.DDPM_SigmaEncoder": "models.sigma_encoders.DDPMSigmaEncoder",
-    # The only difference between BESO_SigmaEncoder and DDPM_SigmaEncoder was
-    # the replacement of sigma by log(sigma)/4 in the forward pass. This has
-    # now been subsumed into the BesoAgent's edm_preconditioning method, so we
-    # can alias the two classes.
-    "agents.backbones.sigma_encoder.BESO_SigmaEncoder": "models.sigma_encoders.DDPMSigmaEncoder",
-    ## Models
-    "models.pos_encoder.SinusoidalTokenPosEncoder": "models.pos_encoder.SinusoidalSequencePosEncoder",
-    ## Transforms
-    "transforms.action_abs_to_relative.AbsoluteActionToRelativeChunk": "transforms.action_abs_to_relative.AbsoluteEeActionsToRelativeChunk",
-    # the following 3 jitter variants were merged into a common Jitter transform
-    "transforms.pointcloud_jitter_points.JitterPointCloud": "transforms.jitter.JitterPointCloud",
-    "transforms.translational_jitter.TranslationalJitter": "transforms.jitter.TranslationalJitter",
-    "transforms.translational_jitter.VariableTranslationalJitter": "transforms.jitter.VariableTranslationalJitter",
-    "transforms.time_trim_idle.TrimIdleStart": "transforms.time_trim_idle.TrimIdle",
-}
-
-
 def if_resolver(pred: bool, a, b):
     chosen = a if pred else b
     return OmegaConf.create(chosen) if isinstance(chosen, (dict, list)) else chosen
@@ -209,24 +189,3 @@ def flatten_keys(cfg: Mapping[str, Any]) -> list[str]:
             keys.append(key)
 
     return keys
-
-
-def patch_legacy_targets(cfg: DictConfig) -> DictConfig:
-    """Patch any legacy _target_ class paths in the config to their new paths.
-
-    Uses the LEGACY_ALIASES mapping defined at the top of this file.
-    """
-    with open_dict(cfg):
-        if "_target_" in cfg and cfg._target_ in LEGACY_ALIASES:
-            log.info(
-                "Patching legacy target `%s` to `%s`",
-                cfg._target_,
-                LEGACY_ALIASES[cfg._target_],
-            )
-            cfg._target_ = LEGACY_ALIASES[cfg._target_]
-
-    for key, value in cfg.items():
-        if isinstance(value, DictConfig):
-            cfg[key] = patch_legacy_targets(value)
-
-    return cfg

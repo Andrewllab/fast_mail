@@ -15,7 +15,6 @@ from environments.datamodule import TrajectoryDataModule
 from loggers.wandb import resolve_checkpoint, update_wandb_config
 from utils.conf import (
     delete_keys_recursively,
-    patch_legacy_targets,
     patch_load_from_checkpoint,
     setup_resolvers,
 )
@@ -24,6 +23,7 @@ from utils.instantiators import (
     instantiate_datamodule,
     instantiate_loggers,
 )
+from utils.legacy import patch_legacy_configs
 from utils.logging import configure_logging, log_exception_and_finish_wandb
 from utils.torch_conf import configure_torch
 
@@ -68,8 +68,8 @@ def predict(cfg: DictConfig) -> None:
         data_cfg = OmegaConf.merge(train_cfg.data, data_cfg)
 
         # replace legacy _target_ with updated ones
-        agent_cfg = patch_legacy_targets(agent_cfg)
-        data_cfg = patch_legacy_targets(data_cfg)
+        agent_cfg = patch_legacy_configs(agent_cfg)
+        data_cfg = patch_legacy_configs(data_cfg)
 
         # modify the _target_ to point to the module's load_from_checkpoint method
         agent_cfg = patch_load_from_checkpoint(agent_cfg, checkpoint_path)

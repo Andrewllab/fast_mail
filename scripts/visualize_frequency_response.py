@@ -18,11 +18,11 @@ from agents.base_agent import BaseAgent
 from loggers.wandb import resolve_checkpoint
 from utils.conf import (
     delete_keys_recursively,
-    patch_legacy_targets,
     patch_load_from_checkpoint,
     setup_resolvers,
 )
 from utils.frequency_response import compute_model_fft
+from utils.legacy import patch_legacy_configs
 from utils.logging import configure_logging, log_exception_and_finish_wandb
 from utils.torch_conf import configure_torch
 
@@ -164,7 +164,7 @@ def test(cfg: DictConfig) -> None:
         agent_cfg = OmegaConf.merge(train_cfg.agent, agent_defaults)
 
         # replace legacy _target_ with updated ones
-        agent_cfg = patch_legacy_targets(agent_cfg)
+        agent_cfg = patch_legacy_configs(agent_cfg)
 
         # modify the _target_ to point to the module's load_from_checkpoint method
         agent_cfg = patch_load_from_checkpoint(agent_cfg, checkpoint_path)
