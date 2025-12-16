@@ -85,13 +85,16 @@ def instantiate_datamodule(datamodule_cfg: DictConfig) -> "TrajectoryDataModule"
         # modules that are not available in the current environment
         env_cfg = datamodule_cfg.pop("env", None)
 
+        # instantiate the config for the datamodule, which creates dictionaries
+        # of partials for the transforms
         datamodule_cfg = hydra.utils.instantiate(datamodule_cfg)
 
         # now put the env config back, so the datamodule can instantiate it
         datamodule_cfg.dataset = dataset_cfg
         datamodule_cfg.env = env_cfg
 
-    # instantiate the TrajectoryDataModule itself, but not recursively
+    # instantiate the TrajectoryDataModule itself, but not recursively, which
+    # again ensures that the env and dataset are not instantiated yet
     datamodule: TrajectoryDataModule = hydra.utils.instantiate(
         datamodule_cfg, _target_=TrajectoryDataModule, _recursive_=False
     )
@@ -100,21 +103,18 @@ def instantiate_datamodule(datamodule_cfg: DictConfig) -> "TrajectoryDataModule"
 
 
 def get_dataset_class(dataset_cfg: DictConfig) -> "type[TrajectoryDataset]":
-
-    # _target_ takes precedence over backend, but pop backend either way
-    # because it shouldn't be passed to the dataset constructor
-    backend = dataset_cfg.pop("backend", None)
-
     if "_target_" in dataset_cfg:
-        DatasetCls = dataset_cfg.pop("_target_")
-        if isinstance(DatasetCls, str):
-            DatasetCls = hydra.utils.get_object(DatasetCls)
-        return DatasetCls
+        # This is the case when instantiating raw datasets. The dataset_cfg
+        # should be a valid instantiable config, and we don't need to remove
+        # any keys.
+        return hydra.utils.get_object(dataset_cfg._target_)
 
-    if backend is None:
+    if "backend" not in dataset_cfg:
         raise ValueError(
             "Dataset config must have either a '_target_' or 'backend' field!"
         )
+
+    backend = dataset_cfg.pop("backend")
 
     if backend.lower() == "hdf5":
         from environments.base_dataset import Hdf5Dataset
@@ -126,4 +126,8 @@ def get_dataset_class(dataset_cfg: DictConfig) -> "type[TrajectoryDataset]":
 
         return MemmapDataset
 
-    raise ValueError(f"Unsupported backend: {backend}")
+    # This is the case when using a custom backend for preprocessing. We cannot
+    # specify the class using _target_ here, otherwise hydra will try to
+    # instantiate it (including the preprocess transforms) while instantiating
+    # the datamodule, which we want to avoid.
+    return hydra.utils.get_object(backend)
