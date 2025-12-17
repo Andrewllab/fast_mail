@@ -208,11 +208,15 @@ class PaktTokenizer(Transform, nn.Module):
 
         # Encode color
         color_embed = self.color_encoder(point_color)
-        color_embed = make_jagged_nested_tensors_compatible(pos_embed, color_embed)
+        pos_embed, color_embed = make_jagged_nested_tensors_compatible(
+            pos_embed, color_embed
+        )
 
         # Encode features
         feature_embed = self.feature_encoder(point_features)
-        feature_embed = make_jagged_nested_tensors_compatible(pos_embed, feature_embed)
+        pos_embed, feature_embed = make_jagged_nested_tensors_compatible(
+            pos_embed, feature_embed
+        )
 
         # Add timestep embedding
         timestep_embed = self.timestep_embedding(timesteps)

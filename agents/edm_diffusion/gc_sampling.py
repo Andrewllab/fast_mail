@@ -223,7 +223,7 @@ def sample_euler(
     In contrast to the Heun variant, this variant does not compute a 2nd order correction step
     For S_churn=0 the solver is an ODE solver
     """
-    s_in = action.new_ones([action.shape[0]])
+    s_in = torch.ones(action.shape[0], device=action.device, dtype=action.dtype)
     for i in range(len(sigmas) - 1):
         gamma = (
             min(s_churn / (len(sigmas) - 1), 2**0.5 - 1)
@@ -273,7 +273,7 @@ def sample_euler_ancestral(
     3. compute x_{t-1} = x_{t} + dx_{t}/dt * \sigma_{down}
     4. Add additional noise after the update step x_{t-1} =x_{t-1} + z * \sigma_{up}
     """
-    s_in = action.new_ones([action.shape[0]])
+    s_in = torch.ones(action.shape[0], device=action.device, dtype=action.dtype)
     for i in range(len(sigmas) - 1):
         # compute x_{t-1}
         denoised = model(state, action, sigmas[i] * s_in)
@@ -312,7 +312,7 @@ def sample_ddim(
 ):
     """
     DPM-Solver 1( or DDIM sampler"""
-    s_in = action.new_ones([action.shape[0]])
+    s_in = torch.ones(action.shape[0], device=action.device, dtype=action.dtype)
     sigma_fn = lambda t: t.neg().exp()
     t_fn = lambda sigma: sigma.log().neg()
 
@@ -359,7 +359,7 @@ def sample_heun(
 
     In contrast to the Euler variant, this variant computes a 2nd order correction step.
     """
-    s_in = action.new_ones([action.shape[0]])
+    s_in = torch.ones(action.shape[0], device=action.device, dtype=action.dtype)
     for i in range(len(sigmas) - 1):
         gamma = (
             min(s_churn / (len(sigmas) - 1), 2**0.5 - 1)
@@ -420,7 +420,7 @@ def sample_dpm_2(
 
     Last denoising step is an Euler step
     """
-    s_in = action.new_ones([action.shape[0]])
+    s_in = torch.ones(action.shape[0], device=action.device, dtype=action.dtype)
     for i in range(len(sigmas) - 1):
         # compute stochastic gamma if s_churn > 0:
         gamma = (
@@ -486,7 +486,7 @@ def sample_dpm_2_ancestral(
     1. Compute dx_{i}/dt at the current timestep
 
     """
-    s_in = action.new_ones([action.shape[0]])
+    s_in = torch.ones(action.shape[0], device=action.device, dtype=action.dtype)
     for i in range(len(sigmas) - 1):
         denoised = model(state, action, sigmas[i] * s_in)
         sigma_down, sigma_up = get_ancestral_step(sigmas[i], sigmas[i + 1], eta=eta)
@@ -553,7 +553,7 @@ def sample_lms(
     1. compute x_{t-1} using the current noise level
     2. compute dx/dt at x_{t-1} using the current noise level
     """
-    s_in = action.new_ones([action.shape[0]])
+    s_in = torch.ones(action.shape[0], device=action.device, dtype=action.dtype)
     sigmas_cpu = sigmas.detach().cpu().numpy()
     ds = []
     for i in range(len(sigmas) - 1):
@@ -972,7 +972,7 @@ def sample_dpmpp_2s_ancestral(
     noise_sampler = (
         default_noise_sampler(action) if noise_sampler is None else noise_sampler
     )
-    s_in = action.new_ones([action.shape[0]])
+    s_in = torch.ones(action.shape[0], device=action.device, dtype=action.dtype)
     sigma_fn = lambda t: t.neg().exp()
     t_fn = lambda sigma: sigma.log().neg()
 
@@ -1032,7 +1032,7 @@ def sample_dpmpp_sde(
         if noise_sampler is None
         else noise_sampler
     )
-    s_in = x.new_ones([x.shape[0]])
+    s_in = torch.ones(x.shape[0], device=x.device, dtype=x.dtype)
     sigma_fn = lambda t: t.neg().exp()
     t_fn = lambda sigma: sigma.log().neg()
 
@@ -1089,7 +1089,7 @@ def sample_dpmpp_2m(
     callback=None,
 ):
     """DPM-Solver++(2M)."""
-    s_in = action.new_ones([action.shape[0]])
+    s_in = torch.ones(action.shape[0], device=action.device, dtype=action.dtype)
     sigma_fn = lambda t: t.neg().exp()
     t_fn = lambda sigma: sigma.log().neg()
     old_denoised = None
@@ -1179,7 +1179,7 @@ def sample_dpmpp_2s(
     """DPM-Solver++(2S) second-order steps."""
     sigma_fn = lambda t: t.neg().exp()
     t_fn = lambda sigma: sigma.log().neg()
-    s_in = action.new_ones([action.shape[0]])
+    s_in = torch.ones(action.shape[0], device=action.device, dtype=action.dtype)
     for i in range(len(sigmas) - 1):
         denoised = model(state, action, sigmas[i] * s_in)
         if callback is not None:

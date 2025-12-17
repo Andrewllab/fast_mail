@@ -167,4 +167,4 @@ class DecoderOnlyNoise(nn.Module):
             offsets=pred_actions.offsets() // 15,
         )
 
-        return make_jagged_nested_tensors_compatible(actions, pred_actions)
+        return make_jagged_nested_tensors_compatible(actions, pred_actions)[1]

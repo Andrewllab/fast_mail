@@ -21,6 +21,7 @@ from transforms.base_transform import (
     TransformPartial,
     TransformPartialsDict,
 )
+from utils.nested import make_jagged_nested_tensors_compatible
 from utils.tensors import unsqueeze_to
 
 log = logging.getLogger(__name__)
@@ -120,7 +121,13 @@ class BesoAgent(BaseAgent):
         c_skip, c_out, c_in, c_noise = self.edm_preconditioning(sigma, action)
         model_output = self.model(batch, noised_input * c_in, c_noise)
         target = (action - c_skip * noised_input) / c_out
-        loss = F.mse_loss(model_output, target)
+        if model_output.is_nested:
+            target, model_output = make_jagged_nested_tensors_compatible(
+                target, model_output
+            )
+            loss = F.mse_loss(model_output.values(), target.values())
+        else:
+            loss = F.mse_loss(model_output, target)
 
         # log these values per step and per epoch
         self.log_dict(
@@ -137,7 +144,7 @@ class BesoAgent(BaseAgent):
 
         sigmas = self.noise_schedule(self.num_sampling_steps, device=self.device)
 
-        B = batch.shape[0]
+        B = batch["obs"].batch_size
         x = (
             torch.randn(
                 (B, *self.action_shape),
