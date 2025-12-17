@@ -3,15 +3,15 @@ defaults:
 
 task_suite: pakt_robocasa
 
-action_seq_len: 16
+action_seq_len: 15
 obs_seq_len: 1
 
 dataset:
   _target_: environments.datasets.pakt_robocasa_dataset.RoboCasaDataset
   load_subset: null
 
-# preprocess:
+preprocess:
 #   # default root dir, overwrite for specific modalities so they don't overwrite each other
 #   root_dir: ${paths.preprocessed_dir}/${oc.select:data.name,unknown}_base
-#   backend: 
-#     _target_: environments.datasets.pakt_robocasa_dataset.RoboCasaDataset
+  backend: pakt_memmap
+  # _target_: environments.datasets.pakt_robocasa_dataset.PaktMemmapDataset

@@ -1,0 +1,4 @@
+_target_: transforms.pakt_localizer.LocalizePAKT
+_partial_: True
+
+localization_target: target_points

@@ -1,15 +1,12 @@
 # @package _global_
 
-defaults:
+# defaults:
   # pointpatchrl tokenizer for pointclouds
-  - /tokenizers@agent.obs_encoder.t11_tokenizer: pakt_tokenizer
+  # - /tokenizers@agent.obs_encoder.t11_tokenizer: pakt_tokenizer
 
 agent:
   obs_encoder:
     embed_dim: 256
-
-    t11_tokenizer:
-      spatial_encoder: null
 
 data:
   batch_size: ${floor_div:${platform.batch_size},4}  # 1/4 of typical batch size

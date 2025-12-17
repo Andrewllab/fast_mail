@@ -137,7 +137,8 @@ class BaseAgent(L.LightningModule):
 
         if self.ema_decay > 0:
             self._ema_model.update_parameters(self._model)
-            self._ema_obs_encoder.update_parameters(self._obs_encoder)
+            if not len(self._obs_encoder) == 0:
+                self._ema_obs_encoder.update_parameters(self._obs_encoder)
 
     def on_save_checkpoint(self, checkpoint: dict[str, Any]) -> None:
         if self.ema_decay > 0:

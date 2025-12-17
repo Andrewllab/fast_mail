@@ -141,3 +141,40 @@ def pyg_to_nested_tensor(
         raise ValueError("Either batch or ptr must be provided.")
 
     return torch.nested.nested_tensor_from_jagged(values, offsets=offsets)
+
+
+def make_jagged_nested_tensors_compatible(
+    a: Tensor,
+    b: Tensor,
+) -> tuple[Tensor, Tensor]:
+    """
+    Make two jagged NestedTensors compatible for pointwise binary ops by ensuring
+    they reference the *same offsets Tensor object*.
+
+    This only works if the ragged structure is already identical (offsets equal).
+    It does NOT pad / change lengths.
+
+    Args:
+        a, b: torch.NestedTensor with layout=torch.jagged
+
+    Returns:
+        b_compat
+    """
+    # --- Offsets checks ---
+    a_off = a.offsets()
+    b_off = b.offsets()
+
+    # 1) Same *values* (ragged structure identical)
+    if not torch.equal(a_off, b_off):
+        raise RuntimeError(
+            "offsets differ by value; ragged structures are not identical, "
+            "so you can't make them compatible without padding/rebuilding."
+        )
+
+    # 2) If already the exact same Tensor object, we're done
+    if a_off is b_off:
+        return a, b
+
+    # --- Rewrap to share the same offsets object (no padding) ---
+    b2 = torch.nested.nested_tensor_from_jagged(values=b.values(), offsets=a_off)
+    return a, b2

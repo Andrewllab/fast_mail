@@ -1,6 +1,8 @@
 # @package _global_
 
-# defaults:
+defaults:
+  - /transforms@data.preprocess.t2_localize_pointclouds: pakt_localizer
+  - /transforms@data.preprocess.t3_random_rotation: pakt_random_rotation
 
 # disable the batch size finder for point clouds, because the data points 
 # don't have a consistent memory size

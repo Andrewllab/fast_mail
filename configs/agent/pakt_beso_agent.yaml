@@ -1,0 +1,25 @@
+defaults:
+  - _self_
+  - noise_model: pakt_decoder_only
+  - noise_distribution: loglogistic
+  - noise_schedule: exponential
+  - sampler: ddim
+  - optimizer: adamw
+  - lr_scheduler: none
+  - goal_encoder: null
+
+_target_: agents.pakt_beso_agent.BesoAgent
+
+# Arguments passed at runtime:
+# specs: ???
+
+obs_encoder:
+  embed_dim: 256
+
+# diffusion params
+num_sampling_steps: 4
+sigma_data: 0.5
+sigma_min: 0.001
+sigma_max: 80
+
+ema_decay: 0.995

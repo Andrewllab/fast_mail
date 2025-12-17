@@ -1,16 +1,38 @@
 name: pointpatch_tokenizer
 _target_: transforms.pakt_tokenizer.PaktTokenizer
-_partial_: True
+_partial_: true
 
 
-token_pos_encoder:
+pos_encoder:
   name: point_mae_position_encoder
   _target_: models.pos_encoder.PointMAECartesianPosEncoder
   _partial_: true
   hidden_dim: 128
+  cartesian_dim: 3
+  embed_dim: ${..embed_dim}
 
-embed_dim: ${..embed_dim}
+feature_encoder:
+  name: pointpatch_feature_encoder
+  _target_: models.mlp.MlpModel
+  _partial_: true
+  in_features: 768
+  out_features: ${..embed_dim}
+  hidden_sizes: [512]
+  activation: GELU
+  norm: LayerNorm
+  dropout: 0.1
 
-input_key: target_points
-output_key: target_embeddings
+color_encoder:
+  name: pointpatch_color_encoder
+  _target_: models.mlp.MlpModel
+  _partial_: true
+  in_features: 3
+  out_features: ${..embed_dim}
+  hidden_sizes: [128, 256]
+  activation: GELU
+  norm: LayerNorm
+  dropout: 0.1
+
+
+embed_dim: 256
 

@@ -1,0 +1,19 @@
+defaults:
+  - backbone@decoder: transformer
+  - time_encoder@seq_position_encoder: learned
+  - sigma_encoder: ddpm
+  - action_head: linear
+  - /tokenizers@action_obs_tokenizer: pakt_tokenizer
+  - _self_
+
+name: pakt_decoder_only
+_target_: agents.backbones.pakt_decoder_only.DecoderOnlyNoise
+_partial_: True
+
+# Arguments passed at runtime:
+# dataset: ???
+
+dropout_prob: 0
+
+# all tokenizers are responsible for their own token position encoding now
+time_encode_obs: False

@@ -5,13 +5,18 @@ from typing import Callable
 
 import torch
 import torch.nn as nn
-from tensordict import NonTensorData
+from tensordict import NonTensorData, TensorDict
 from torch import Tensor
 from torch_geometric.data import Batch, Data
 
 from environments.specs import DataSpecs, EmbedSpec, PointCloudSpec
 from transforms.base_transform import KeyMapping, Transform
-from utils.nested import cat_nested, pyg_to_nested_tensor
+from utils.nested import (
+    cat_nested,
+    make_jagged_nested_tensors_compatible,
+    pyg_to_nested_tensor,
+    to_strided_tensor,
+)
 
 log = logging.getLogger(__name__)
 
@@ -25,165 +30,331 @@ class PaktTokenizer(Transform, nn.Module):
         feature_encoder: Callable[[int], nn.Linear],
         color_encoder: Callable[[int], nn.Linear],
         pos_encoder: Callable[[int, int], nn.Linear],
-        timestep_encoder: Callable[[int], nn.Linear] | None = None,
-        input_key: str = "target_points",
-        output_key: str = "embed",
     ):
         super().__init__()
 
-        try:
-            self._input_spec = specs.obs[input_key]
-        except KeyError:
-            raise ValueError(
-                f"Key {input_key} not found in specs. Available keys: {list(specs.obs.keys())}"
-            )
-        if not isinstance(self._input_spec, PointCloudSpec):
-            raise ValueError(
-                f"Key {input_key} is not a point cloud spec. Found {self._input_spec.type}"
-            )
-        self.input_key = input_key
-        self.output_key = output_key
+        self._input_spec = specs.obs
 
-        point_dim = 3
+        self.feature_encoder = feature_encoder()
+        self.color_encoder = color_encoder()
+        self.pos_encoder = pos_encoder()
 
-        if spatial_encoder is not None:
-            spatial_encoder = spatial_encoder(point_dim)
-            point_dim = spatial_encoder.out_features
-        self.spatial_encoder = spatial_encoder
+        # assert (
+        #     feature_encoder.out_features
+        #     == color_encoder.out_features
+        #     == pos_encoder.out_features
+        #     == embed_dim
+        # )
 
-        self.token_pos_encoder = token_pos_encoder(point_dim, embed_dim)
+        self.gripper_points_id_embedding = nn.Embedding(5, embed_dim)
+        self.token_type_embedding = nn.Embedding(3, embed_dim)  # target, tool, gripper
+        self.timestep_embedding = nn.Embedding(15, embed_dim)
 
-        if self._input_spec.color:
-            point_dim += 3
-
-        self.mlp_1 = mlp_1(point_dim)
-        self.mlp_2 = mlp_2(embed_dim)
-
-        if self.mlp_1.out_features * 2 != self.mlp_2.in_features:
-            raise ValueError(
-                f"The last layer of mlp_1 (size {self.mlp_1.out_features}) must be half the size of the first layer of mlp_2 (size {self.mlp_2.in_features})"
-            )
-
-        new_spec = EmbedSpec(embed_dim=embed_dim, fixed_shape=False)
-
-        # create a modified specs object for the output
+        obs_embed_spec = EmbedSpec(
+            embed_dim=embed_dim,
+            n_tokens=None,
+            fixed_shape=False,
+        )
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
-        if "embed" in obs_specs:
-            embed_spec = obs_specs["embed"]
-            assert isinstance(embed_spec, EmbedSpec)
-            new_spec = embed_spec.concat(new_spec)
-        obs_specs["embed"] = new_spec
-        self._output_specs = specs.replace(obs=obs_specs)
+        obs_specs["embed"] = obs_embed_spec
 
-    @property
-    def key_mappings(self) -> list[KeyMapping]:
-        return [
-            KeyMapping(
-                in_keys=[("obs", self.input_key), ("obs", self.output_key)],
-                out_keys=[("obs", self.output_key)],
-            )
-        ]
+        self._output_specs = specs.replace(
+            obs=obs_specs,
+        )
+        self.embed_dim = embed_dim
 
     @property
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def _call_one(self, nt_data: NonTensorData, obs_embed: Tensor | None) -> Tensor:
-        data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
+    def __tokenize_pointcloud(
+        self,
+        point_pos: Tensor,
+        point_color: Tensor,
+        point_features: Tensor,
+        token_type: int,
+    ) -> Tensor:
+        """
+        Tokenize a point cloud into a set of embedding tokens.
 
-        assert isinstance(data, Data)
-        assert isinstance(data, Batch)
-        center_pos, center_batch = data.pos, data.batch
-        assert center_pos is not None
-        assert center_batch is not None
-        point_pos, patch_color = data.relative_pos, data.x
+        Args:
+            point_pos (Tensor): Point positions, shape (B, N, 3).
+            point_color (Tensor): Point colors, shape (B, N, 3).
+            point_features (Tensor): Point features, shape (B, N, F).
+            token_type (int): Token type identifier (0: target, 1: tool, 2: gripper).
 
-        # features: (B*C, G, 3)
-        features = point_pos
+        Returns:
+            Tensor: Point cloud tokens, shape (B, N, D).
+        """
+        # Encode position
+        pos_embed = self.pos_encoder(point_pos)
 
-        if self.spatial_encoder is not None:
-            # features -> (B*C, G, D)
-            features = self.spatial_encoder(features)
-            # center_pos -> (B*C, D)
-            center_pos = self.spatial_encoder(center_pos)
+        # TODO: Make color encoder optional
+        # Encode color
+        color_embed = self.color_encoder(point_color)
 
-        if patch_color is not None:
-            # concatenate color as an additional feature to the position
-            patch_color = patch_color.to(dtype=features.dtype)
-            features = torch.cat([features, patch_color], dim=-1)
+        # Encode features
+        feature_embed = self.feature_encoder(point_features)
 
-        features = self.mlp_1(features)  # features -> (B*C, G, D)
+        # Add token type embedding
+        token_type_embed = self.token_type_embedding(
+            torch.tensor([token_type], device=point_pos.device)
+        )
 
-        # max pool over each patch
-        aggr_features = torch.max(features, dim=1, keepdim=True).values
+        # Sum embeddings
+        token_embed = pos_embed + color_embed + feature_embed + token_type_embed
 
-        # add the neighborhood max to the original features for each node
-        aggr_features = aggr_features.expand(-1, features.shape[-2], -1)
-        # features -> (B*C, G, 2*D)
-        features = torch.cat([aggr_features, features], dim=-1)
+        return token_embed
 
-        features = self.mlp_2(features)  # features -> (B*C, G, D)
+    def __tokenize_gripper_points(
+        self,
+        point_pos: Tensor,
+        gripper_point_ids: Tensor,
+    ) -> Tensor:
+        """
+        Tokenize gripper points into a set of embedding tokens.
 
-        # max pool over each patch
-        features = torch.max(features, dim=1).values  # features -> (B*C, D)
+        Args:
+            point_pos (Tensor): Gripper point positions, shape (B, N, 3).
+            gripper_point_ids (Tensor): Gripper point IDs, shape (B, N).
 
-        # add encoding of the center position of the token to the token
-        center_pos = self.token_pos_encoder(center_pos)
-        features += center_pos
+        Returns:
+            Tensor: Gripper point tokens, shape (B, N, D).
+        """
+        B, N, _ = point_pos.shape
 
-        pcd_embed = pyg_to_nested_tensor(features, batch=center_batch)
+        # Encode position
+        pos_embed = self.pos_encoder(point_pos)
 
-        if obs_embed is None:
-            return pcd_embed
+        # Add gripper point ID embedding
+        gripper_id_embed = self.gripper_points_id_embedding(gripper_point_ids)
+
+        # Add token type embedding for gripper points (token_type=2)
+        token_type_embed = self.token_type_embedding(
+            torch.tensor([2], device=point_pos.device)
+        )
+
+        # Sum embeddings
+        token_embed = pos_embed + gripper_id_embed + token_type_embed
+
+        return token_embed
+
+    def __tokenize_gripper_action_points(
+        self,
+        point_pos: Tensor,
+        gripper_point_ids: Tensor,
+        timesteps: Tensor,
+    ) -> Tensor:
+        """
+        Tokenize gripper action points into a set of embedding tokens.
+
+        Args:
+            point_pos (Tensor): Gripper action point positions, shape (B, T, N, 3).
+            gripper_point_ids (Tensor): Gripper point IDs, shape (B, T, N).
+            timesteps (Tensor): Timesteps, shape (B, T).
+
+        Returns:
+            Tensor: Gripper action point tokens, shape (B, T, N, D).
+        """
+        B, N, T, _ = point_pos.shape
+
+        # Encode position
+        pos_embed = self.pos_encoder(point_pos)
+
+        # Add gripper point ID embedding
+        gripper_id_embed = self.gripper_points_id_embedding(gripper_point_ids)
+
+        # Add timestep embedding
+        timestep_embed = self.timestep_embedding(timesteps)
+
+        # Add token type embedding for gripper points (token_type=2)
+        token_type_embed = self.token_type_embedding(
+            torch.tensor([2], device=point_pos.device)
+        )
+
+        # Sum embeddings
+        token_embed = (
+            pos_embed
+            + gripper_id_embed.unsqueeze(1)
+            + timestep_embed.unsqueeze(0)
+            + token_type_embed.unsqueeze(0)
+        )
+
+        return token_embed
+
+    def __tokenize_tool_action_points(
+        self,
+        point_pos: Tensor,
+        point_color: Tensor,
+        point_features: Tensor,
+        timesteps: Tensor,
+    ) -> Tensor:
+        """
+        Tokenize tool action points into a set of embedding tokens.
+
+        Args:
+            point_pos (Tensor): Tool action point positions, shape (B, T, N, 3).
+            point_color (Tensor): Tool action point colors, shape (B, T, N, 3).
+            point_features (Tensor): Tool action point features, shape (B, T, N, F).
+            timesteps (Tensor): Timesteps, shape (B, T).
+
+        Returns:
+            Tensor: Tool action point tokens, shape (B, T, N, D).
+        """
+        B, T, N, _ = point_pos.shape
+
+        # Encode position
+        pos_embed = self.pos_encoder(point_pos)
+
+        # Encode color
+        color_embed = self.color_encoder(point_color)
+        color_embed = make_jagged_nested_tensors_compatible(pos_embed, color_embed)
+
+        # Encode features
+        feature_embed = self.feature_encoder(point_features)
+        feature_embed = make_jagged_nested_tensors_compatible(pos_embed, feature_embed)
+
+        # Add timestep embedding
+        timestep_embed = self.timestep_embedding(timesteps)
+
+        # Add token type embedding for tool points (token_type=1)
+        token_type_embed = self.token_type_embedding(
+            torch.tensor([1], device=point_pos.device)
+        )
+
+        # Sum embeddings
+        token_embed = (
+            pos_embed
+            + color_embed.unsqueeze(-2)
+            + feature_embed.unsqueeze(-2)
+            + timestep_embed.unsqueeze(0)
+            + token_type_embed.unsqueeze(0)
+        )
+
+        return token_embed
+
+    def forward(self, batch: TensorDict) -> TensorDict:
+        obs = batch["obs"]
+        B = batch.batch_size[0]
+        actions = batch["noisy_action"]  # (B, T, N_a, 3)
+        device = actions.device
+
+        pyg_to_nested_tensor(
+            obs["target_points"].pos,
+            batch=obs["target_points"].batch,
+            ptr=obs["target_points"].ptr,
+        )  # ensure contiguous
+
+        # target point tokens
+        target_points = obs["target_points"]
+        target_points_pos = pyg_to_nested_tensor(
+            target_points.pos,
+            batch=target_points.batch,
+            ptr=target_points.ptr,
+        )  # (B, N_t, 3)
+        target_points_color = pyg_to_nested_tensor(
+            target_points.color,
+            batch=target_points.batch,
+            ptr=target_points.ptr,
+        )  # (B, N_t, 3)
+        target_points_features = pyg_to_nested_tensor(
+            target_points.x,
+            batch=target_points.batch,
+            ptr=target_points.ptr,
+        )  # (B, N_t, F)
+
+        target_points_tokens = self.__tokenize_pointcloud(
+            point_pos=target_points_pos,
+            point_color=target_points_color,
+            point_features=target_points_features,
+            token_type=0,  # target
+        )  # (B, N_t, D)
+
+        # tool point tokens
+        tool_points = obs["tool_points"]
+        tool_points_pos = pyg_to_nested_tensor(
+            tool_points.pos,
+            batch=tool_points.batch,
+            ptr=tool_points.ptr,
+        )  # (B, N_tool, 3)
+        tool_points_color = pyg_to_nested_tensor(
+            tool_points.color,
+            batch=tool_points.batch,
+            ptr=tool_points.ptr,
+        )  # (B, N_tool, 3)
+        tool_points_features = pyg_to_nested_tensor(
+            tool_points.x,
+            batch=tool_points.batch,
+            ptr=tool_points.ptr,
+        )  # (B, N_tool, F)
+        tool_points_tokens = self.__tokenize_pointcloud(
+            point_pos=tool_points_pos,
+            point_color=tool_points_color,
+            point_features=tool_points_features,
+            token_type=1,  # tool
+        )  # (B, N_tool, D)
+
+        # gripper point tokens
+        gripper_points = obs["gripper_points"]
+        gripper_points_pos = to_strided_tensor(
+            pyg_to_nested_tensor(
+                gripper_points.pos,
+                batch=gripper_points.batch,
+                ptr=gripper_points.ptr,
+            )
+        )  # (B, N_g, 3)
+        gripper_points_ids = torch.arange(gripper_points_pos.shape[1], device=device)
+        # (B, N_g) # should be 5
+
+        gripper_points_tokens = self.__tokenize_gripper_points(
+            point_pos=gripper_points_pos,
+            gripper_point_ids=gripper_points_ids,
+        )  # (B, N_g, D)
+
+        action_points_pos = actions  # (B, T, N_a, 3)
+
+        # actions point tokens
+        gripper_action_pos = torch.stack([x[:5] for x in action_points_pos.unbind(0)])
+        # (B, T, 5) # first 5 dims are robot actions
+        gripper_action_ids = torch.arange(5, device=device)
+        # (B, T, 5)
+
+        gripper_action_timesteps = torch.arange(
+            gripper_action_pos.shape[2], device=device
+        )  # (B, T)
+        gripper_action_tokens = self.__tokenize_gripper_action_points(
+            point_pos=gripper_action_pos,
+            gripper_point_ids=gripper_action_ids,
+            timesteps=gripper_action_timesteps,
+        )  # (B, T, 5, D)
+
+        tool_action_pos = torch.nested.nested_tensor(
+            [x[5:] for x in action_points_pos.unbind(0)], layout=torch.jagged
+        )  # (B, T, N_tool, 3) # rest are tool actions
+        tool_action_features = tool_points_features  # (B, T, N_tool, F)
+        tool_action_color = tool_points_color  # (B, T, N_tool, 3)
+        tool_action_timesteps = torch.arange(
+            tool_action_pos.shape[2], device=device
+        )  # (B, T)
+        tool_action_tokens = self.__tokenize_tool_action_points(
+            point_pos=tool_action_pos,
+            point_color=tool_action_color,
+            point_features=tool_action_features,
+            timesteps=tool_action_timesteps,
+        )  # (B, T, N_tool, D)
 
         # concatenate along N dimension of embedding
         # obs_embed: (B, N, D)
-        return cat_nested([obs_embed, pcd_embed], dim=-2)
+        obs_tokens = cat_nested(
+            [target_points_tokens, tool_points_tokens, gripper_points_tokens], dim=1
+        )
+        action_tokens = cat_nested([gripper_action_tokens, tool_action_tokens], dim=1)
 
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(mlp_1={self.mlp_1},(mlp_2={self.mlp_2})"
+        action_tokens = torch.nested.nested_tensor_from_jagged(
+            values=action_tokens.values().view(-1, self.embed_dim),
+            offsets=action_tokens.offsets() * 15,
+        )
 
-    @property
-    def point_encoders(self) -> dict[str, Callable[[Tensor], Tensor]]:
-
-        def mlp1(points: Tensor) -> Tensor:
-            """Encode individual points using mlp_1 (and spatial encoder if
-            present), exactly as in forward pass.
-            """
-            if self.spatial_encoder is not None:
-                points = self.spatial_encoder(points)
-            points = self.mlp_1(points)
-            return points
-
-        def patch_encoder(points: Tensor) -> Tensor:
-            """Encode individual points using mlp_1 and mlp_2 (and spatial encoder
-            if present), as if the patch only contained a single point. Max
-            pooling is skipped.
-            """
-            features = points
-            if self.spatial_encoder is not None:
-                features = self.spatial_encoder(features)
-            features = self.mlp_1(features)
-            # for a single point, we skip the max pooling step and just
-            # duplicate the features
-            features = torch.cat([features, features], dim=-1)
-            features = self.mlp_2(features)
-            return features
-
-        def patch_pos_encoder(points: Tensor) -> Tensor:
-            """Encode individual points as if they were patch centers, using
-            the token position encoder (and spatial encoder if present)."""
-            if self.spatial_encoder is not None:
-                points = self.spatial_encoder(points)
-            return self.token_pos_encoder(points)
-
-        callables = {
-            "mlp1": mlp1,
-            "patch_encoder": patch_encoder,
-            "patch_pos_encoder": patch_pos_encoder,
-        }
-
-        if self.spatial_encoder is not None:
-            callables["spatial_encoder"] = self.spatial_encoder
-
-        return callables
+        batch["obs"]["embed"] = obs_tokens
+        # batch["action_embed"] = action_tokens
+        return batch, action_tokens

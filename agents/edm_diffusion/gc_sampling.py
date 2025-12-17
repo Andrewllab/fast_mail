@@ -1133,7 +1133,7 @@ def sample_dpmpp_2_with_lms(
     callback=None,
 ):
     """DPM-Solver++(2M)."""
-    s_in = action.new_ones([action.shape[0]])
+    s_in = torch.ones(action.shape[0], device=action.device, dtype=action.dtype)
     sigma_fn = lambda t: t.neg().exp()
     t_fn = lambda sigma: sigma.log().neg()
     old_denoised = None
