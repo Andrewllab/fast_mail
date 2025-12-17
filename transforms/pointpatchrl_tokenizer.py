@@ -92,13 +92,16 @@ class PointPatchTokenizer(Transform, nn.Module):
 
         assert isinstance(data, Data)
         assert isinstance(data, Batch)
-        center_pos, center_batch = data.pos, data.batch
+        center_pos, center_ptr = data.pos, data.ptr
         assert center_pos is not None
-        assert center_batch is not None
-        point_pos, patch_color = data.relative_pos, data.x
+        assert center_ptr is not None
+        patch_pos, patch_color = data.patch_pos, data.x
+
+        # compute relative coordinates of points to patch center
+        patch_pos = patch_pos - center_pos.unsqueeze(1)
 
         # features: (B*C, G, 3)
-        features = point_pos
+        features = patch_pos
 
         if self.spatial_encoder is not None:
             # features -> (B*C, G, D)
@@ -130,7 +133,7 @@ class PointPatchTokenizer(Transform, nn.Module):
         center_pos = self.token_pos_encoder(center_pos)
         features += center_pos
 
-        pcd_embed = pyg_to_nested_tensor(features, batch=center_batch)
+        pcd_embed = pyg_to_nested_tensor(features, ptr=center_ptr)
 
         if obs_embed is None:
             return pcd_embed

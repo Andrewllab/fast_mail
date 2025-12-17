@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from utils.pyg import offset2batch
+from utils.pyg import offset2ptr, ptr2batch
 
 
 class PointNetSpconv(nn.Module):
@@ -74,7 +74,7 @@ class PointNetSpconv(nn.Module):
         grid_coord = input_dict["coord"]
         offset = input_dict["offset"]
 
-        batch = offset2batch(offset)
+        batch = ptr2batch(offset2ptr(offset))
 
         sparse_shape = torch.max(grid_coord, dim=0).values.int() + 96
 

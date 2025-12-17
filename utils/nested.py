@@ -1,40 +1,80 @@
-from typing import Any, Sequence
+from typing import Sequence
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor
-from torch_geometric.utils import scatter
+
+from utils.pyg import batch2ptr
 
 
 def cat_nested(tensors: Sequence[Tensor], dim: int = 0) -> Tensor:
     r"""Concatenates a sequence of nested tensors along a given dimension.
     If none of the tensors are nested, this is equivalent to :meth:`torch.cat`.
     """
-    # TODO: can this be done more efficiently by manipulating offsets and values?
-
     if not any(t.is_nested for t in tensors):
+        # this also handles the empty list case
         return torch.cat(tensors, dim=dim)
 
     # convert dim to a positive integer
-    dim %= len(tensors[0].shape)
+    dim %= tensors[0].ndim
 
-    # unbind the nested tensors and loop over each element, concatenating with
-    # the corresponding elements in the other tensors
-    elems = [
-        torch.cat(t_elems, dim=dim - 1)
-        for t_elems in zip(*(t.unbind() for t in tensors))
+    ragged_dim = next(t._ragged_idx for t in tensors if t.is_nested)
+
+    # convert any non-nested tensors to nested tensors
+    tensors = [
+        (as_nested_view(t, ragged_dim=ragged_dim) if not t.is_nested else t)
+        for t in tensors
     ]
 
-    return torch.nested.as_nested_tensor(elems, layout=torch.jagged)
+    if dim == ragged_dim:
+        dim -= 1  # jagged dim is removed from values tensor
+
+        # split each nested tensor into its elements (view, not copy)
+        values = [t.unbind(dim=dim) for t in tensors]
+        # transpose the list of lists
+        # [[A[0], A[1], A[2], ...], B[0], B[1], B[2], ...], ...]
+        # -> [[A[0], B[0], C[0], ...], [A[1], B[1], C[1], ...], ...]
+        values = list(zip(*values))
+        # flatten into a single list
+        values = [v for sublist in values for v in sublist]
+        # concatenate all values along the specified dim
+        values = torch.cat(values, dim=dim)
+
+        # offsets sum, since each jagged element is a concatenation of the
+        # corresponding jagged elements of the input tensors
+        offsets = torch.stack([t.offsets() for t in tensors]).sum(dim=0)
+
+        return torch.nested.nested_tensor_from_jagged(values, offsets=offsets)
+
+    elif dim < ragged_dim:
+        values = torch.cat([t.values() for t in tensors], dim=dim)
+
+        # offsets are accumulated from all tensors
+        offsets = []
+        offset = 0
+        for t in tensors:
+            t_offsets = t.offsets()
+            # shift offsets by the current offset
+            offsets.append(t_offsets[:-1] + offset)
+            offset += t_offsets[-1:]
+        offsets.append(offset)
+        offsets = torch.cat(offsets)
+
+        return torch.nested.nested_tensor_from_jagged(values, offsets=offsets)
 
 
-def as_nested_view(tensor: Tensor) -> Tensor:
+def as_nested_view(tensor: Tensor, ragged_dim: int = 1) -> Tensor:
     r"""Returns a nested tensor view of the input strided tensor without
     copying data.
     """
-    B, L = tensor.shape[:2]
+    # convert dim to a positive integer
+    ragged_dim %= tensor.ndim
+
+    if ragged_dim < 1:
+        raise ValueError("ragged_dim must be at least 1")
+
+    B, L = tensor.shape[ragged_dim - 1 : ragged_dim + 1]
     offsets = torch.arange(0, (B + 1) * L, step=L, device=tensor.device)
-    tensor = tensor.flatten(0, 1)
+    tensor = tensor.flatten(start_dim=ragged_dim - 1, end_dim=ragged_dim)
     return torch.nested.nested_tensor_from_jagged(tensor, offsets=offsets)
 
 
@@ -96,7 +136,8 @@ def pyg_to_nested_tensor(
     if ptr is not None:
         offsets = ptr
     elif batch is not None:
-        lengths = scatter(torch.ones_like(batch), batch, dim_size=batch_size)
-        offsets = F.pad(lengths.cumsum(dim=0), (1, 0))
+        offsets = batch2ptr(batch, batch_size=batch_size)
+    else:
+        raise ValueError("Either batch or ptr must be provided.")
 
     return torch.nested.nested_tensor_from_jagged(values, offsets=offsets)

@@ -5,11 +5,10 @@ import logging
 import torch.nn as nn
 from tensordict import NonTensorData
 from torch_geometric.data import Batch, Data
-from torch_geometric.nn import knn
 
 from environments.specs import DataSpecs, PointCloudSpec
 from transforms.base_transform import KeyMapping, Transform
-from utils.pyg import batch2ptr, fps, update_batch_metadata
+from utils.pyg import batch2ptr, fps, knn, update_batch_metadata
 
 log = logging.getLogger(__name__)
 
@@ -77,7 +76,7 @@ class PointPatcher(Transform, nn.Module):
             ptr = batch2ptr(batch)
 
         # pos: (B*N, 3)
-        # center_idxs: (B*C)
+        # center_idxs: (B*C,)
         center_idxs = fps(
             pos,
             ptr=ptr,
@@ -86,19 +85,20 @@ class PointPatcher(Transform, nn.Module):
         )
 
         center_pos = pos[center_idxs]  # center_pos: (B*C, 3)
-        center_batch = batch[center_idxs]  # center_batch: (B*C, 3)
+        center_batch = batch[center_idxs]  # center_batch: (B*C,)
         n_patches = center_idxs.size(0)
 
         # find the nearest k points to each center point. these groups of k
         # points become the patches
-        # patch_idxs: (B*C*G)
+        # patch_idxs: (B*C*G,)
         _, patch_idxs = knn(
             x=pos,
             y=center_pos,
             k=self.patch_size,  # G
-            batch_x=batch,
+            ptr_x=ptr,
             batch_y=center_batch,
             batch_size=data.batch_size,
+            pad_too_small=True,
         )
 
         patch_pos = pos[patch_idxs]  # patch_pos: (B*C*G, 3)
@@ -113,12 +113,10 @@ class PointPatcher(Transform, nn.Module):
         # package the point patches back into the Batch object, since we cannot
         # directly instantiate a new Batch object
         # TODO: index and reshape all fields of Data object
-        data.pos = center_pos
-        data.batch = center_batch
-        data.x = features
-        data["abs_pos"] = patch_pos
-        # compute relative coordinates of points to patch center
-        data["relative_pos"] = patch_pos - center_pos.unsqueeze(1)
+        data.pos = center_pos  # (B*C, 3)
+        data.batch = center_batch  # (B*C,)
+        data.x = features  # (B*C, G, D) or None
+        data.patch_pos = patch_pos  # (B*C, G, 3)
 
         data = update_batch_metadata(data)
 
