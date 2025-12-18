@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 
 
 class BesoAgent(BaseAgent):
+
     def __init__(
         self,
         noise_model: Callable[[DataSpecs], Module],
@@ -145,13 +146,16 @@ class BesoAgent(BaseAgent):
         sigmas = self.noise_schedule(self.num_sampling_steps, device=self.device)
 
         B = batch["obs"].batch_size
-        x = (
-            torch.randn(
-                (B, *self.action_shape),
-                device=self.device,
+        if "phantom_action" in batch:
+            x = torch.randn_like(batch["phantom_action"]) * self.sigma_max
+        else:
+            x = (
+                torch.randn(
+                    (B, *self.action_shape),
+                    device=self.device,
+                )
+                * self.sigma_max
             )
-            * self.sigma_max
-        )
 
         action = self.sampler(
             model=self,  # call self.forward to evaluate the model

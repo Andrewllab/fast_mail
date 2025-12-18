@@ -31,6 +31,7 @@ from environments.specs import (
 )
 from transforms.base_transform import TransformPartialsDict, init_transforms
 from utils.hdf5_utils import recursive_hdf5_to_dict
+from utils.nested import as_nested_view
 from utils.paths import iglob_follow_symlinks, resolve_path
 from utils.pyg import index_reduced_batch
 
@@ -82,7 +83,7 @@ class RoboCasaDataset(CustomHdf5Dataset):
             raise ValueError(f"Subset {load_subset} resulted in zero trajectories.")
 
         self.slices = TrajectorySlices(
-            traj_lengths=[traj["actions"].shape[1] for _, _, traj in self.trajs],
+            traj_lengths=[action_seq_len for _, _, traj in self.trajs],
             obs_seq_len=obs_seq_len,
             action_seq_len=action_seq_len,
         )
@@ -156,7 +157,7 @@ class RoboCasaDataset(CustomHdf5Dataset):
             {
                 "obs": traj["obs"],
                 "action": action,
-                "ref_action": action[:5],  # only robot actions as ref_action
+                "ref_action": action.clone(),
                 "path": str(path),
                 "name": name,
             },  # type: ignore
@@ -214,17 +215,6 @@ class RoboCasaDataset(CustomHdf5Dataset):
 
         return data
 
-    # @property
-    # def specs(self) -> DataSpecs:
-    #     # e.g. dataset rollout requires knowing how long the trajectories are
-    #     # in the dataset
-    #     self._specs.traj_lengths = self.slices_lengths
-    #     return self._specs
-
-    # @property
-    # def n_trajectories(self) -> int:
-    #     return len(self.slices)
-
 
 class PaktMemmapDataset(MemmapDataset):
     def __init__(
@@ -270,14 +260,19 @@ class PaktMemmapDataset(MemmapDataset):
 
         obs.update(pcds)
 
-        action = traj["action"][:, action_slice]
-        ref_action = traj["ref_action"][:, action_slice]
+        action = as_nested_view(
+            traj["action"][:, action_slice].reshape(-1, 3).unsqueeze(0)
+        )
+        # action = traj["action"][:, action_slice]
+        ref_action = action.clone()
+        phantom_action = action.clone()
 
         td = TensorDict(
             {
                 "obs": obs,
                 "action": action,
                 "ref_action": ref_action,
+                "phantom_action": phantom_action,
             }
         )
 

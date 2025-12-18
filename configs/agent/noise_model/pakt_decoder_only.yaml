@@ -1,13 +1,13 @@
 defaults:
   - backbone@decoder: transformer
-  - time_encoder@seq_position_encoder: learned
+  - time_encoder@seq_position_encoder: none
   - sigma_encoder: ddpm
   - action_head: linear
   - /tokenizers@action_obs_tokenizer: pakt_tokenizer
   - _self_
 
 name: pakt_decoder_only
-_target_: agents.backbones.pakt_decoder_only.DecoderOnlyNoise
+_target_: agents.backbones.decoder_only.DecoderOnlyNoise
 _partial_: True
 
 # Arguments passed at runtime:

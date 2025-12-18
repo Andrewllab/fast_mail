@@ -32,11 +32,11 @@ class DecoderOnlyNoise(nn.Module):
         self,
         specs: DataSpecs,
         decoder: Module,
-        action_obs_tokenizer: Callable[[TensorDict], TensorDict],
         seq_position_encoder: Callable[[int, int], Module] | None,
         sigma_encoder: Callable[[int], Module],
         action_head: Callable[[int, int], Module],
         dropout_prob: float,
+        action_obs_tokenizer: Callable[[TensorDict], TensorDict] | None = None,
         time_encode_obs: bool = True,
     ):
         super().__init__()
@@ -96,7 +96,6 @@ class DecoderOnlyNoise(nn.Module):
             self.drop = nn.Identity()
 
         self.action_seq_len = specs.action_seq_len
-        self.embed_dim = token_dim
 
         self.apply(self._init_weights)
 
@@ -110,12 +109,9 @@ class DecoderOnlyNoise(nn.Module):
             torch.nn.init.ones_(module.weight)
 
     def forward(self, batch: TensorDict, actions: Tensor, sigma: Tensor) -> Tensor:
-        B = actions.shape[0]
         batch["noisy_action"] = actions
         batch, action_embed = self.action_obs_tokenizer(batch)
-        obs_embed = batch["obs"]["embed"]
-        # action_embed = batch["action_embed"]
-
+        obs_embed = batch["obs", "embed"]
         goal = batch.get(("goal", "embed"), None)
 
         input_seq = []
@@ -152,19 +148,20 @@ class DecoderOnlyNoise(nn.Module):
         output = self.decoder(input_seq)
 
         # retrieve the decoded action tokens from the sequence
-        num_elements = torch.diff(action_embed.offsets())
-        action_tokens = [
-            out[-num_elements[i] :] for i, out in enumerate(output.unbind())
-        ]
-        action_tokens = torch.nested.as_nested_tensor(
-            action_tokens, layout=torch.jagged
-        )
+        if output.is_nested:
+            if not action_embed.is_nested:
+                action_tokens = [out[-self.action_seq_len :] for out in output.unbind()]
+            else:
+                num_elements = torch.diff(action_embed.offsets())
+                action_tokens = [
+                    out[-num_elements[i] :] for i, out in enumerate(output.unbind())
+                ]
+                action_tokens = torch.nested.as_nested_tensor(
+                    action_tokens, layout=torch.jagged
+                )
+        else:
+            action_tokens = output[:, -self.action_seq_len :]
 
         pred_actions = self.action_head(action_tokens)
-
-        pred_actions = torch.nested.nested_tensor_from_jagged(
-            values=pred_actions.values().view(-1, 15, 3),
-            offsets=pred_actions.offsets() // 15,
-        )
 
         return make_jagged_nested_tensors_compatible(actions, pred_actions)[1]

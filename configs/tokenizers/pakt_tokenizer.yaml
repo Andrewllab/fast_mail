@@ -8,7 +8,7 @@ pos_encoder:
   _target_: models.pos_encoder.PointMAECartesianPosEncoder
   _partial_: true
   hidden_dim: 128
-  cartesian_dim: 3
+  cartesian_dim: ${..cartesian_dim}
   embed_dim: ${..embed_dim}
 
 feature_encoder:
@@ -35,4 +35,8 @@ color_encoder:
 
 
 embed_dim: 256
+num_timesteps: ${data.action_seq_len}
+cartesian_dim: 3
+num_gripper_points: 5
+
 

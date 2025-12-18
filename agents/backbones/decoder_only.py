@@ -10,7 +10,7 @@ from torch import Tensor
 from torch.nn import Module
 
 from environments.specs import DataSpecs, EmbedSpec
-from utils.nested import cat_nested
+from utils.nested import cat_nested, make_jagged_nested_tensors_compatible
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +34,7 @@ class DecoderOnlyNoise(nn.Module):
         sigma_encoder: Callable[[int], Module],
         action_head: Callable[[int, int], Module],
         dropout_prob: float,
+        action_obs_tokenizer: Callable[[TensorDict], TensorDict] | None = None,
         time_encode_obs: bool = True,
     ):
         super().__init__()
@@ -43,6 +44,10 @@ class DecoderOnlyNoise(nn.Module):
                 "`time_encode_obs` is set to True, so the decoder will add positional encodings to the observation embeddings. Make sure that the observation embeddings do not already contain positional encodings."
             )
 
+        self.action_obs_tokenizer = None
+        if action_obs_tokenizer is not None:
+            self.action_obs_tokenizer = action_obs_tokenizer(specs=specs)
+            specs = self.action_obs_tokenizer.specs
         token_dim = specs.obs_embed_dim
 
         self.decoder = decoder(token_dim)
@@ -104,13 +109,13 @@ class DecoderOnlyNoise(nn.Module):
             torch.nn.init.ones_(module.weight)
 
     def forward(self, batch: TensorDict, actions: Tensor, sigma: Tensor) -> Tensor:
-        obs_embed = batch["obs", "embed"]
-        goal = batch.get(("goal", "embed"), None)
 
         input_seq = []
 
         input_seq.append(self.sigma_encoder(sigma).unsqueeze(dim=-2))
 
+        # === GOAL TOKENS ===
+        goal = batch.get(("goal", "embed"), None)
         if goal is not None:
             goal_embed = self.goal_encoder(goal)
             if self.goal_pos_encoder is not None:
@@ -120,33 +125,57 @@ class DecoderOnlyNoise(nn.Module):
                 goal_embed += self.goal_pos_encoder(indices)
             input_seq.append(self.drop(goal_embed))
 
+        # === ACTION TOKENS ===
+        if self.action_obs_tokenizer is not None:
+            batch["noisy_action"] = actions
+            batch, action_embed = self.action_obs_tokenizer(batch)
+        else:
+            action_embed = self.action_encoder(actions)
+
+        if self.action_pos_encoder is not None:
+            indices = torch.arange(
+                action_embed.shape[1], dtype=torch.long, device=action_embed.device
+            )
+            action_embed += self.action_pos_encoder(indices)
+
+        # === OBSERVATION TOKENS ===
+        obs_embed = batch["obs", "embed"]
         if self.obs_pos_encoder is not None:
             assert not obs_embed.is_nested
             indices = torch.arange(
                 obs_embed.shape[1], dtype=torch.long, device=obs_embed.device
             )
             obs_embed += self.obs_pos_encoder(indices)
-        input_seq.append(self.drop(obs_embed))
 
-        action_embed = self.action_encoder(actions)
-        if self.action_pos_encoder is not None:
-            indices = torch.arange(
-                action_embed.shape[1], dtype=torch.long, device=action_embed.device
-            )
-            action_embed += self.action_pos_encoder(indices)
+        # Combine all input tokens
+        input_seq.append(self.drop(obs_embed))
         input_seq.append(self.drop(action_embed))
 
         input_seq = cat_nested(input_seq, dim=1)
 
+        # Actual forward pass through the decoder
         output = self.decoder(input_seq)
 
         # retrieve the decoded action tokens from the sequence
         if output.is_nested:
-            action_tokens = [out[-self.action_seq_len :] for out in output.unbind()]
-            action_tokens = torch.stack(action_tokens, dim=0)
+            if not action_embed.is_nested:
+                action_tokens = [out[-self.action_seq_len :] for out in output.unbind()]
+            else:
+                num_elements = torch.diff(action_embed.offsets())
+                action_tokens = [
+                    out[-num_elements[i] :] for i, out in enumerate(output.unbind())
+                ]
+                action_tokens = torch.nested.as_nested_tensor(
+                    action_tokens, layout=torch.jagged
+                )
         else:
             action_tokens = output[:, -self.action_seq_len :]
 
         pred_actions = self.action_head(action_tokens)
+
+        if pred_actions.is_nested:
+            _, pred_actions = make_jagged_nested_tensors_compatible(
+                actions, pred_actions
+            )
 
         return pred_actions

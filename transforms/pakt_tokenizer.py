@@ -13,9 +13,11 @@ from environments.specs import DataSpecs, EmbedSpec, PointCloudSpec
 from transforms.base_transform import KeyMapping, Transform
 from utils.nested import (
     cat_nested,
+    flatten_nested_tensor,
     make_jagged_nested_tensors_compatible,
     pyg_to_nested_tensor,
     to_strided_tensor,
+    unflatten_nested_tensor,
 )
 
 log = logging.getLogger(__name__)
@@ -30,6 +32,9 @@ class PaktTokenizer(Transform, nn.Module):
         feature_encoder: Callable[[int], nn.Linear],
         color_encoder: Callable[[int], nn.Linear],
         pos_encoder: Callable[[int, int], nn.Linear],
+        num_timesteps: int = 15,
+        cartesian_dim: int = 3,
+        num_gripper_points: int = 5,
     ):
         super().__init__()
 
@@ -46,9 +51,11 @@ class PaktTokenizer(Transform, nn.Module):
         #     == embed_dim
         # )
 
-        self.gripper_points_id_embedding = nn.Embedding(5, embed_dim)
-        self.token_type_embedding = nn.Embedding(3, embed_dim)  # target, tool, gripper
-        self.timestep_embedding = nn.Embedding(15, embed_dim)
+        self.gripper_points_id_embedding = nn.Embedding(num_gripper_points, embed_dim)
+        self.token_type_embedding = nn.Embedding(
+            cartesian_dim, embed_dim
+        )  # target, tool, gripper
+        self.timestep_embedding = nn.Embedding(num_timesteps, embed_dim)
 
         obs_embed_spec = EmbedSpec(
             embed_dim=embed_dim,
@@ -62,6 +69,7 @@ class PaktTokenizer(Transform, nn.Module):
             obs=obs_specs,
         )
         self.embed_dim = embed_dim
+        self.num_timesteps = num_timesteps
 
     @property
     def specs(self) -> DataSpecs:
@@ -243,13 +251,7 @@ class PaktTokenizer(Transform, nn.Module):
         actions = batch["noisy_action"]  # (B, T, N_a, 3)
         device = actions.device
 
-        pyg_to_nested_tensor(
-            obs["target_points"].pos,
-            batch=obs["target_points"].batch,
-            ptr=obs["target_points"].ptr,
-        )  # ensure contiguous
-
-        # target point tokens
+        # === target point tokens ===
         target_points = obs["target_points"]
         target_points_pos = pyg_to_nested_tensor(
             target_points.pos,
@@ -274,7 +276,7 @@ class PaktTokenizer(Transform, nn.Module):
             token_type=0,  # target
         )  # (B, N_t, D)
 
-        # tool point tokens
+        # === tool point tokens ===
         tool_points = obs["tool_points"]
         tool_points_pos = pyg_to_nested_tensor(
             tool_points.pos,
@@ -298,7 +300,7 @@ class PaktTokenizer(Transform, nn.Module):
             token_type=1,  # tool
         )  # (B, N_tool, D)
 
-        # gripper point tokens
+        # === gripper point tokens ===
         gripper_points = obs["gripper_points"]
         gripper_points_pos = to_strided_tensor(
             pyg_to_nested_tensor(
@@ -315,9 +317,16 @@ class PaktTokenizer(Transform, nn.Module):
             gripper_point_ids=gripper_points_ids,
         )  # (B, N_g, D)
 
+        # === action point tokens ===
         action_points_pos = actions  # (B, T, N_a, 3)
+        action_points_pos = unflatten_nested_tensor(
+            action_points_pos,
+            orig_vshape=(self.num_timesteps,),
+            start_dim=1,
+            end_dim=2,
+        )  # (B, T, N_a, 3)
 
-        # actions point tokens
+        # === gripper actions point tokens ===
         gripper_action_pos = torch.stack([x[:5] for x in action_points_pos.unbind(0)])
         # (B, T, 5) # first 5 dims are robot actions
         gripper_action_ids = torch.arange(5, device=device)
@@ -332,6 +341,7 @@ class PaktTokenizer(Transform, nn.Module):
             timesteps=gripper_action_timesteps,
         )  # (B, T, 5, D)
 
+        # === tool action point tokens ===
         tool_action_pos = torch.nested.nested_tensor(
             [x[5:] for x in action_points_pos.unbind(0)], layout=torch.jagged
         )  # (B, T, N_tool, 3) # rest are tool actions
@@ -354,9 +364,8 @@ class PaktTokenizer(Transform, nn.Module):
         )
         action_tokens = cat_nested([gripper_action_tokens, tool_action_tokens], dim=1)
 
-        action_tokens = torch.nested.nested_tensor_from_jagged(
-            values=action_tokens.values().view(-1, self.embed_dim),
-            offsets=action_tokens.offsets() * 15,
+        action_tokens, _, _ = flatten_nested_tensor(
+            action_tokens, start_dim=1, end_dim=2
         )
 
         batch["obs"]["embed"] = obs_tokens

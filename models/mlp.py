@@ -5,6 +5,8 @@ from typing import Callable, Sequence
 import torch.nn as nn
 from torch import Tensor
 
+from utils.nested import flatten_nested_tensor, unflatten_nested_tensor
+
 
 class MlpModel(nn.Module):
     """Multilayer Perceptron model that duck-types with a Linear layer.
@@ -105,16 +107,28 @@ class MlpModel(nn.Module):
         self._out_features = hidden_sizes[-1] if out_features is None else out_features
 
     def forward(self, input: Tensor) -> Tensor:
-        if input.ndim > 2:
+        # Handling shapes for multi-dimensional inputs or nested tensors
+        leading_dims = None
+        orig_offsets = None
+        orig_vshape = None
+        if input.ndim > 2 and input.is_nested:
+            input, orig_offsets, orig_vshape = flatten_nested_tensor(
+                input, start_dim=0, end_dim=1
+            )
+        elif input.ndim > 2:
             leading_dims = input.shape[:-1] if input.ndim > 2 else None
             input = input.flatten(start_dim=0, end_dim=-2)
-        else:
-            leading_dims = None
 
+        # Actual forward pass
         output = self.model(input)
 
+        # Unhandling shapes to restore original dimensions
         if leading_dims is not None:
             output = output.unflatten(dim=0, sizes=leading_dims)
+        if orig_offsets is not None and orig_vshape is not None:
+            output = unflatten_nested_tensor(
+                output, orig_offsets, orig_vshape, start_dim=0, end_dim=1
+            )
         return output
 
     @property
