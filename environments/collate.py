@@ -1,57 +1,66 @@
-from typing import Sequence
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Callable, Optional, Union
 
 import tensordict
-import torch
-from tensordict import NonTensorStack, TensorDict, is_leaf_nontensor
+from tensordict import TensorDict
 from torch.utils.data._utils.collate import collate
-from torch_geometric.data import Batch as GeomBatch
-from torch_geometric.data import Data as GeomData
-from torch_geometric.data import HeteroData as GeomHeteroData
-from torch_geometric.data.data import BaseData as GeomBaseData
+
+if TYPE_CHECKING:
+    from torch_geometric.data import Batch
+    from torch_geometric.data.data import BaseData
 
 
-def collate_tensor_dict(batch: list[TensorDict], *, collate_fn_map) -> TensorDict:
-    """Collate a list of TensorDicts into a single TensorDict."""
-    stacked: TensorDict = torch.stack(batch, dim=0)  # type: ignore[assignment]
+def collate_tensor_dict(
+    batch: list[TensorDict],
+    *,
+    collate_fn_map: Optional[dict[Union[type, tuple[type, ...]], Callable]] = None,
+) -> TensorDict:
+    # We slightly modify how the default collate function treats MutableMappings,
+    # which assumes that iter(elem) yields keys. In a TensorDict, iter(elem)
+    # causes a StopIteration error.
+    # For reference see: https://github.com/pytorch/pytorch/blob/main/torch/utils/data/_utils/collate.py#L165
 
-    # try to collate any NonTensorStack objects more intelligently
-    for key, value in stacked.items(
-        include_nested=True, leaves_only=True, is_leaf=is_leaf_nontensor
-    ):
-        if isinstance(value, NonTensorStack):
+    elem = batch[0]
 
-            collated = collate(value.tolist(), collate_fn_map=collate_fn_map)
+    # TODO: The correct shape should include the shape of the element. For now,
+    # we disable this as a hack so that the obs tensordict only has one batch
+    # dimension, allowing us to insert the obs embedding without shape mismatch.
+    # stacked_shape = (len(batch),) + elem.shape
+    stacked_shape = (len(batch),)
 
-            if isinstance(collated[0], GeomData):
-                # because the obs TensorDict has a batch dimension, the
-                # NonTensorData has a batch dimension too. Therefore, each
-                # element in the stack is a list with one Data object, so
-                # collate returns a list with one DataBatch object
-                assert isinstance(collated, list)
-                assert len(collated) == 1
-                assert isinstance(collated[0], GeomBatch)
-                stacked[key] = collated[0]
+    # recursively collate each key into a dictionary
+    d = {
+        key: collate([d[key] for d in batch], collate_fn_map=collate_fn_map)
+        # must call .keys() to avoid StopIteration error
+        for key in elem.keys()
+    }
 
-            else:
-                # e.g. a list of strings or something
-                with tensordict.set_list_to_stack(False):
-                    # convert to numpy array and wrap in NonTensorData (no indexing along batch dim)
-                    stacked[key] = collated
+    # When assigning a list to a key in a TensorDict, wrap it in a numpy array
+    # (which is then wrapped again in a NonTensorData), instead of creating a
+    # NonTensorStack. NonTensorStack causes pin_memory() to crash because it
+    # is an instance of MutableMapping even though it should not be.
+    with tensordict.set_list_to_stack(False):
 
-    # recompute batch size with only a single batch dimension, since tensordict
-    # eagerly increases the number of batch dims when stacking
-    stacked = stacked.auto_batch_size_(batch_dims=1)
+        # We explicitly set the shape instead of using auto_batch_size_,
+        # because NonTensorData inherits the batch size of the tensordict when
+        # it is created, and cannot be changed after the fact.
+        td = TensorDict(d, batch_size=stacked_shape, device=elem.device)
 
-    return stacked
+    return td
 
 
 def collate_torch_geom(
-    batch: Sequence[GeomData] | Sequence[GeomHeteroData], *, collate_fn_map
-) -> GeomBatch:
+    batch: list[BaseData],
+    *,
+    collate_fn_map: Optional[dict[Union[type, tuple[type, ...]], Callable]] = None,
+) -> Batch:
     """Collate a list of Data or HeteroData objects into a single Batch.
     Modified from torch_geometric.loader.dataloader.Collater.__call__.
     """
-    return GeomBatch.from_data_list(batch)
+    from torch_geometric.data import Batch
+
+    return Batch.from_data_list(batch)
 
 
 def update_collate_fn_map():
@@ -61,13 +70,21 @@ def update_collate_fn_map():
     default_collate_fn_map.update(
         {
             TensorDict: collate_tensor_dict,
-            # since the type must match exactly, we need to add BaseData and its
-            # two subclasses separately
-            GeomData: collate_torch_geom,
-            GeomHeteroData: collate_torch_geom,
-            GeomBaseData: collate_torch_geom,
         }
     )
+
+    try:
+        from torch_geometric.data.data import BaseData
+
+        default_collate_fn_map.update(
+            {
+                # this is used for both Data and HeteroData
+                BaseData: collate_torch_geom,
+            }
+        )
+
+    except ImportError:
+        pass
 
 
 update_collate_fn_map()

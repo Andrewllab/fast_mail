@@ -46,6 +46,10 @@ class ClipGoalEmbedding(Transform):
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         goal_texts = tensordict["goal", "text"]
+
+        # goal_texts need to be a list of strings wrapped in a numpy array
+        # because without the wrapper it would be converted into a
+        # NonTensorStack, which causes a crash during memory pinning.
         assert isinstance(goal_texts, np.ndarray)
 
         if isinstance(goal_texts[0], np.str_):
