@@ -1,3 +1,4 @@
+import math
 from typing import Optional, Sequence
 
 import torch
@@ -180,97 +181,110 @@ def make_jagged_nested_tensors_compatible(
     return a, b2
 
 
+def _norm_dims(ndim: int, start_dim: int, end_dim: int) -> tuple[int, int]:
+    start_dim %= ndim
+    end_dim %= ndim
+    if start_dim > end_dim:
+        raise ValueError(f"start_dim ({start_dim}) must be <= end_dim ({end_dim})")
+    return start_dim, end_dim
+
+
 def flatten_nested_tensor(
     x: Tensor,
     start_dim: int = 0,
     end_dim: int = -1,
-) -> tuple[Tensor, Optional[Tensor], Optional[Tensor]]:
-    r"""Flattens a nested tensor into a 2D tensor by concatenating all elements
-    along the jagged dimension.
+) -> tuple[Tensor, Optional[Tensor], Optional[tuple[int, ...]]]:
+    """
+    Flatten a nested tensor, returning (flattened, orig_offsets, orig_vshape).
+
+    orig_offsets/orig_vshape are None when a plain .flatten() was sufficient.
     """
     if not x.is_nested:
         raise ValueError("Input tensor must be a nested tensor.")
 
-    start_dim %= x.ndim
-    end_dim %= x.ndim
-    ragged_dim = x._ragged_idx
+    start_dim, end_dim = _norm_dims(x.ndim, start_dim, end_dim)
+    ragged_dim = x._ragged_idx  # private, but kept since you depend on it
     if ragged_dim != 1:
-        raise NotImplementedError(
-            "flatten_nested_tensor currently only supports ragged_dim == 1"
-        )
+        raise NotImplementedError("Only ragged_dim == 1 is supported.")
 
-    # It's safe to flatten as usual if the flattened dims are behind the ragged dim
-    if start_dim > ragged_dim and end_dim > ragged_dim:
+    # If flatten range does NOT cross ragged_dim, regular flatten is safe.
+    crosses_ragged = start_dim <= ragged_dim <= end_dim
+    if not crosses_ragged:
         return x.flatten(start_dim=start_dim, end_dim=end_dim), None, None
 
-    # It's also safe to flatten as usual if the flattened dims are before the ragged dim
-    if start_dim < ragged_dim and end_dim < ragged_dim:
-        return x.flatten(start_dim=start_dim, end_dim=end_dim), None, None
+    # Case A: flatten [0..ragged_dim] -> drop nesting (return values) + metadata
+    if start_dim == 0 and end_dim == ragged_dim:
+        return x.values(), x.offsets(), tuple(x.shape[start_dim:end_dim])
 
-    # When flattening across the ragged dim,
-    if start_dim == x._ragged_idx and end_dim > x._ragged_idx:
+    # Case B: flatten starting at ragged_dim and extending into value dims
+    if start_dim == ragged_dim and end_dim > ragged_dim:
         orig_offsets = x.offsets()
-        orig_vshape = x.shape[start_dim + 1 : end_dim + 1]
+        orig_vshape = tuple(
+            x.shape[start_dim + 1 : end_dim + 1]
+        )  # value dims being merged
+        mult = math.prod(orig_vshape) if orig_vshape else 1
 
-        # Calculate the multiplier for offsets
-        vshape_prod = 1
-        for s in orig_vshape:
-            vshape_prod *= s
+        values = x.values().view(-1, *x.shape[end_dim + 1 :])
+        offsets = orig_offsets * mult
 
         return (
-            torch.nested.nested_tensor_from_jagged(
-                values=x.values().view(-1, *x.shape[end_dim + 1 :]),
-                offsets=x.offsets() * vshape_prod,
-            ),
+            torch.nested.nested_tensor_from_jagged(values=values, offsets=offsets),
             orig_offsets,
             orig_vshape,
         )
 
-    if start_dim == 0 and end_dim == ragged_dim:
-        orig_offsets = x.offsets()
-        orig_vshape = x.shape[start_dim:end_dim]
-
-        return x.values(), orig_offsets, orig_vshape
-
     raise NotImplementedError(
-        "flatten_nested_tensor currently only supports flattening from ragged_dim or from 0 to ragged_dim"
+        "Only flattening [0..ragged_dim] or [ragged_dim..k] (k>ragged_dim) is supported."
     )
 
 
 def unflatten_nested_tensor(
     x: Tensor,
-    orig_offsets: Optional[Tensor],
-    orig_vshape: Optional[tuple[int, ...]],
+    orig_offsets: Optional[Tensor] = None,
+    orig_vshape: Optional[tuple[int, ...]] = None,
     start_dim: int = 0,
     end_dim: int = -1,
 ) -> Tensor:
-    r"""Unflattens a nested tensor from a 2D tensor by restoring the jagged
-    dimension using the provided offsets and original value shape.
     """
-    if orig_offsets is None or orig_vshape is None:
-        return x
+    Inverse of flatten_nested_tensor for the supported cases.
+    If orig_offsets/orig_vshape are None, this is a no-op.
+    """
+    start_dim, end_dim = _norm_dims(x.ndim, start_dim, end_dim)
 
-    start_dim %= x.ndim
-    end_dim %= x.ndim
-    ragged_dim = x._ragged_idx if x.is_nested else -1
+    # If we flattened [0..ragged_dim], we returned a plain (non-nested) values tensor.
+    # So unflatten should reconstruct a nested tensor from (values=x, offsets=orig_offsets).
+    if start_dim == 0:
+        return torch.nested.nested_tensor_from_jagged(values=x, offsets=orig_offsets)
 
-    if ragged_dim != 1 and ragged_dim != -1:
-        raise NotImplementedError(
-            "unflatten_nested_tensor currently only supports ragged_dim == 1 or non-nested inputs (which should result from flattening from 0 to ragged_dim)"
+    # Otherwise, we flattened starting at ragged_dim and kept nesting.
+    if not x.is_nested:
+        raise ValueError(
+            "Expected a nested tensor input when unflattening from ragged_dim."
         )
 
-    if start_dim == 0 and (end_dim == ragged_dim or ragged_dim == -1):
-        return torch.nested.nested_tensor_from_jagged(
-            values=x,
-            offsets=orig_offsets,
+    ragged_dim = x._ragged_idx
+    if ragged_dim != 1:
+        raise NotImplementedError("Only ragged_dim == 1 is supported.")
+
+    if start_dim == ragged_dim and end_dim > ragged_dim:
+        # Calculate new offsets by dividing original offsets
+        if orig_offsets is None:
+            prod = math.prod(orig_vshape) if orig_vshape else 1
+            if not torch.all(x.offsets() % prod == 0):
+                raise ValueError(
+                    "Cannot unflatten: current offsets are not divisible by "
+                    "the product of orig_vshape dimensions."
+                )
+            orig_offsets = x.offsets() // prod
+
+        values = x.values().view(
+            -1, *orig_vshape, *x.shape[start_dim + len(orig_vshape) :]
         )
 
-    if start_dim == x._ragged_idx and end_dim > x._ragged_idx:
         return torch.nested.nested_tensor_from_jagged(
-            values=x.values().view(-1, *orig_vshape),
-            offsets=orig_offsets,
+            values=values, offsets=orig_offsets
         )
 
     raise NotImplementedError(
-        "unflatten_nested_tensor currently only supports unflattening from ragged_dim or from 0 to ragged_dim"
+        "Only unflattening [0..ragged_dim] or [ragged_dim..k] (k>ragged_dim) is supported."
     )

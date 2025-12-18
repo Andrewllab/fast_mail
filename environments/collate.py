@@ -3,8 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, Optional, Union
 
 import tensordict
+import torch
 from tensordict import TensorDict
 from torch.utils.data._utils.collate import collate
+
+from utils.nested import cat_nested
 
 if TYPE_CHECKING:
     from torch_geometric.data import Batch
@@ -66,6 +69,41 @@ def collate_torch_geom(
     return Batch.from_data_list(batch)
 
 
+def collate_tensor_fn(
+    batch,
+    *,
+    collate_fn_map: Optional[dict[Union[type, tuple[type, ...]], Callable]] = None,
+):
+    """A collate function that handles jagged nested tensors too
+    from torch.utils.data._utils.collate import collate_tensor_fn
+    """
+
+    elem = batch[0]
+    out = None
+    if elem.is_nested and elem.layout == torch.jagged:
+        # handle jagged nested tensors
+        return cat_nested(batch, dim=0)
+
+    if elem.layout in {
+        torch.sparse_coo,
+        torch.sparse_csr,
+        torch.sparse_bsr,
+        torch.sparse_csc,
+        torch.sparse_bsc,
+    }:
+        raise RuntimeError(
+            "Batches of sparse tensors are not currently supported by the default collate_fn; "
+            "please provide a custom collate_fn to handle them appropriately."
+        )
+    if torch.utils.data.get_worker_info() is not None:
+        # If we're in a background process, concatenate directly into a
+        # shared memory tensor to avoid an extra copy
+        numel = sum(x.numel() for x in batch)
+        storage = elem._typed_storage()._new_shared(numel, device=elem.device)
+        out = elem.new(storage).resize_(len(batch), *list(elem.size()))
+    return torch.stack(batch, 0, out=out)
+
+
 def update_collate_fn_map():
     """Add collate function for tensordict to the default collate function."""
     from torch.utils.data._utils.collate import default_collate_fn_map
@@ -73,6 +111,7 @@ def update_collate_fn_map():
     default_collate_fn_map.update(
         {
             TensorDict: collate_tensor_dict,
+            torch.Tensor: collate_tensor_fn,
         }
     )
 
