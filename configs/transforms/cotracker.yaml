@@ -1,0 +1,7 @@
+_target_: transforms.cotracker_tracking.CotrackerPointTrackingTransform
+_partial_: True
+
+track_mode: points
+camera_key: left_cam
+grid_spacing: 14  # in pixels
+points_key: dinov3_tracking_points

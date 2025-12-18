@@ -1,0 +1,6 @@
+_target_: transforms.dinov3.Dinov3FeatureExtractorTransform
+_partial_: True
+
+camera_key: left_cam
+tracking_points_key: dinov3_tracking_points
+generate_tracking_points: True
