@@ -2,23 +2,24 @@
 Script to extract/re-render observations from low-dimensional simulation states in pre-recorded robocasa dataset.
 Taken from and adapted: https://github.com/robocasa/robocasa/blob/main/robocasa/scripts/dataset_states_to_obs.py
 """
+
 import argparse
-from copy import deepcopy
 import json
-import h5py
-import os
 import multiprocessing
-import numpy as np
+import os
 import queue
-from tqdm import tqdm
 import time
 import traceback
+from copy import deepcopy
 from typing import OrderedDict
 
-from robosuite.utils import camera_utils
+import h5py
+import numpy as np
+import robocasa.utils.robomimic.robomimic_dataset_utils as DatasetUtils
 import robocasa.utils.robomimic.robomimic_env_utils as EnvUtils
 import robocasa.utils.robomimic.robomimic_tensor_utils as TensorUtils
-import robocasa.utils.robomimic.robomimic_dataset_utils as DatasetUtils
+from robosuite.utils import camera_utils
+from tqdm import tqdm
 
 
 def record_cam_params(env, cam_names, W, H):
@@ -33,7 +34,9 @@ def record_cam_params(env, cam_names, W, H):
 
         camera_params[cam] = {
             "intrinsics": camera_intrinsics.astype(np.float32),
-            "extrinsics": camera_extrinsics.astype(np.float32),  # camera pose in WORLD FRAME
+            "extrinsics": camera_extrinsics.astype(
+                np.float32
+            ),  # camera pose in WORLD FRAME
             "width": int(W),
             "height": int(H),
         }
@@ -76,19 +79,27 @@ def extract_trajectory(
     W = int(args.camera_width)
     H = int(args.camera_height)
     camera_names = list(args.camera_names)
-    default_dynamic_camera_names = ["robot0_agentview_left", "robot0_agentview_right", "robot0_eye_in_hand"]
+    default_dynamic_camera_names = [
+        "robot0_agentview_left",
+        "robot0_agentview_right",
+        "robot0_eye_in_hand",
+    ]
     # split the cameras into static and dynamic
-    # !!! IMPORTANT: the left/right view cameras ARE ACTUALLY NOT STATIC! 
+    # !!! IMPORTANT: the left/right view cameras ARE ACTUALLY NOT STATIC!
     # The robot-arm is attached to a mobiled platform that is not controlled, but it can move as a post-effect of the robot-arm movements.
-    # They are attached to the robot, so they move as well when the mobile platform moves. 
+    # They are attached to the robot, so they move as well when the mobile platform moves.
     # This means that all cameras should be perceived as dynamic which requires recording camera extrinsics over time for all cameras.
     # dynamic_cam_names = [c for c in camera_names if ("eye_in_hand" in c) or ("wrist" in c)]
     dynamic_cam_names = [cam_name for cam_name in default_dynamic_camera_names]
-    static_cam_names  = [c for c in camera_names if c not in dynamic_cam_names]
+    static_cam_names = [c for c in camera_names if c not in dynamic_cam_names]
     # record static cameras once per episode (if any)
     # prepare per-step buffers for moving cameras
-    dynamic_cam_logs = {name: {"intrinsics": [], "extrinsics": []} for name in dynamic_cam_names}
-    static_cam_logs = {name: {"intrinsics": [], "extrinsics": []} for name in static_cam_names}
+    dynamic_cam_logs = {
+        name: {"intrinsics": [], "extrinsics": []} for name in dynamic_cam_names
+    }
+    static_cam_logs = {
+        name: {"intrinsics": [], "extrinsics": []} for name in static_cam_names
+    }
 
     traj = dict(
         obs=[],
@@ -119,17 +130,21 @@ def extract_trajectory(
                 obs[key] = camera_utils.get_real_depth_map(env.base_env.sim, obs[key])
 
         if t == 0:
-            # !!! IMPORTANT: record static camera parameters after environment reset to a particular state!!! 
+            # !!! IMPORTANT: record static camera parameters after environment reset to a particular state!!!
             if static_cam_names:
                 static_camera_params = record_cam_params(env, static_cam_names, W, H)
                 for name in static_cam_names:
-                    static_cam_logs[name]["extrinsics"].append(static_camera_params[name]["extrinsics"])
+                    static_cam_logs[name]["extrinsics"].append(
+                        static_camera_params[name]["extrinsics"]
+                    )
 
         # each trajectory step record parameters for dynamically moving cameras
         if dynamic_cam_names:
             cam_parameters = record_cam_params(env, dynamic_cam_names, W, H)
             for name in dynamic_cam_names:
-                dynamic_cam_logs[name]["extrinsics"].append(cam_parameters[name]["extrinsics"])
+                dynamic_cam_logs[name]["extrinsics"].append(
+                    cam_parameters[name]["extrinsics"]
+                )
 
         # extract datagen info
         if add_datagen_info:
@@ -161,25 +176,31 @@ def extract_trajectory(
         traj["dones"].append(done)
         traj["datagen_info"].append(datagen_info)
 
-
     # record intrinsics for all cameras only once as they don't change
     if dynamic_cam_names:
         cam_parameters = record_cam_params(env, dynamic_cam_names, W, H)
         for name in dynamic_cam_names:
-            dynamic_cam_logs[name]["intrinsics"].append(cam_parameters[name]["intrinsics"])
+            dynamic_cam_logs[name]["intrinsics"].append(
+                cam_parameters[name]["intrinsics"]
+            )
 
     if static_cam_names:
         cam_parameters = record_cam_params(env, static_cam_names, W, H)
         for name in static_cam_names:
-           static_cam_logs[name]["intrinsics"].append(cam_parameters[name]["intrinsics"])
-
+            static_cam_logs[name]["intrinsics"].append(
+                cam_parameters[name]["intrinsics"]
+            )
 
     # stack information about static cameras
     if static_cam_names:
         static_cam_params = {}
         for name in static_cam_names:
-            intrinsics = np.stack(static_cam_logs[name]["intrinsics"], axis=0).astype(np.float32)  # (T,3,3)
-            extrinsics = np.stack(static_cam_logs[name]["extrinsics"], axis=0).astype(np.float32)  # (T,4,4)
+            intrinsics = np.stack(static_cam_logs[name]["intrinsics"], axis=0).astype(
+                np.float32
+            )  # (T,3,3)
+            extrinsics = np.stack(static_cam_logs[name]["extrinsics"], axis=0).astype(
+                np.float32
+            )  # (T,4,4)
             static_cam_params[name] = {
                 "intrinsics": intrinsics,
                 "extrinsics": extrinsics,
@@ -192,8 +213,12 @@ def extract_trajectory(
     if dynamic_cam_names:
         dynamic_cam_params = {}
         for name in dynamic_cam_names:
-            intrinsics = np.stack(dynamic_cam_logs[name]["intrinsics"], axis=0).astype(np.float32)  # (T,3,3)
-            extrinsics = np.stack(dynamic_cam_logs[name]["extrinsics"], axis=0).astype(np.float32)  # (T,4,4)
+            intrinsics = np.stack(dynamic_cam_logs[name]["intrinsics"], axis=0).astype(
+                np.float32
+            )  # (T,3,3)
+            extrinsics = np.stack(dynamic_cam_logs[name]["extrinsics"], axis=0).astype(
+                np.float32
+            )  # (T,4,4)
             dynamic_cam_params[name] = {
                 "intrinsics": intrinsics,
                 "extrinsics": extrinsics,
@@ -301,18 +326,24 @@ def write_traj_to_file(
                     if "static_cameras" in traj:
                         try:
                             for camera_name in traj["static_cameras"][0].keys():
-                                for camera_data_key, camera_data_value in traj["static_cameras"][0][camera_name].items():
+                                for camera_data_key, camera_data_value in traj[
+                                    "static_cameras"
+                                ][0][camera_name].items():
                                     ep_data_grp.create_dataset(
                                         f"camera_params/static/{camera_name}/{camera_data_key}",
                                         data=camera_data_value,
                                     )
                         except IndexError as e:
                             static_cam_info = traj["static_cameras"]
-                            print(f"Attempt to store information about static cameras but there are no static cameras: {static_cam_info}.")
+                            print(
+                                f"Attempt to store information about static cameras but there are no static cameras: {static_cam_info}."
+                            )
 
                     if "dynamic_cameras" in traj:
                         for camera_name in traj["dynamic_cameras"][0].keys():
-                            for camera_data_key, camera_data_value in traj["dynamic_cameras"][0][camera_name].items(): 
+                            for camera_data_key, camera_data_value in traj[
+                                "dynamic_cameras"
+                            ][0][camera_name].items():
                                 ep_data_grp.create_dataset(
                                     f"camera_params/dynamic/{camera_name}/{camera_data_key}",
                                     data=camera_data_value,
@@ -563,7 +594,7 @@ def extract_multiple_trajectories_with_error(
             # store transitions
 
             # !!! IMPORTANT !!! keep name of group the same as source file, to make sure that filter keys are consistent as well
-            mul_queue.put([ep, traj, process_num])
+            mul_queue.put([ep, traj, process_num], block=True)
 
             ind = retrieve_new_index(process_num, current_work_array, work_queue, lock)
         except Exception as e:
@@ -573,7 +604,9 @@ def extract_multiple_trajectories_with_error(
             print(traceback.format_exc())
             print("_" * 50)
             del env
-            env_meta = DatasetUtils.get_env_metadata_from_dataset(dataset_path=args.dataset)
+            env_meta = DatasetUtils.get_env_metadata_from_dataset(
+                dataset_path=args.dataset
+            )
             if args.generative_textures:
                 env_meta["env_kwargs"]["generative_textures"] = "100p"
             if args.randomize_cameras:
@@ -642,7 +675,7 @@ def dataset_states_to_obs_multiprocessing(args):
     lock = multiprocessing.Lock()
     total_samples_shared = multiprocessing.Value("i", 0)
     num_finished = multiprocessing.Value("i", 0)
-    mul_queue = multiprocessing.Queue()
+    mul_queue = multiprocessing.Queue(maxsize=2)
     work_queue = multiprocessing.Queue()
     for index in range(num_demos):
         work_queue.put(index)
@@ -792,7 +825,7 @@ if __name__ == "__main__":
         help="(optional) disable compressing observations with gzip option in hdf5",
     )
 
-    # !!! IMPORTANT !!! Don't use more than one processes as occaisionally the re-rendered trajectory is partially stored.  
+    # !!! IMPORTANT !!! Don't use more than one processes as occaisionally the re-rendered trajectory is partially stored.
     parser.add_argument(
         "--num_procs",
         type=int,

@@ -1,0 +1,3 @@
+_target_: transforms.action_ee_to_five_points.AbsoluteEEPoseToFivePointsTransform
+_partial_: True
+ee_pose_key: ee_pose

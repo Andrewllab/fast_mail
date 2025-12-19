@@ -1,8 +1,11 @@
 # @package _global_
 
 defaults:
-  - /transforms@data.preprocess.t01_dinov3: dinov3
-  - /transforms@data.preprocess.t02_cotracker: cotracker
+
+  - /transforms@data.prepreprocess.t01_samv3_segmenter: samv3_segmenter
+  - /transforms@data.preprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
+  - /transforms@data.preprocess.t03_dinov3: dinov3
+  - /transforms@data.preprocess.t04_cotracker: cotracker
   - /transforms@data.preprocess.t15_to_pcd: to_pointcloud
 
   # we can't crop tightly around the scene because each scene is in a different location in the world frame
@@ -23,6 +26,9 @@ defaults:
   # - /transforms@data.gpu_batch_transforms.t5_normalize: pointcloud_normalize
 
 data:
+  prepreprocess:
+    backend: hdf5
+    root_dir: ${paths.prepreprocessed_dir}/robocasa/${data.name}
   # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities

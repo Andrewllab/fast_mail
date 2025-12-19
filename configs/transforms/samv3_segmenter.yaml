@@ -1,0 +1,6 @@
+_target_: transforms.samv3.SamV3SegmenterTransform
+_partial_: True
+
+camera_key: left_cam
+segmenter_out_key: samv3_segmentation
+segmentation_text_prompt: "plate"

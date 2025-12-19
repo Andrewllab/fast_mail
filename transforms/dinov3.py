@@ -41,11 +41,6 @@ class Dinov3FeatureExtractorTransform(Transform):
             device_map="auto",
         ).to(device)
 
-        self.feature_extractor = pipeline(
-            model="facebook/dinov3-vitb16-pretrain-lvd1689m",
-            task="image-feature-extraction",
-        )
-
         self._specs = specs
         self.device = device
 
