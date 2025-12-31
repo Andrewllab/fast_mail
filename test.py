@@ -43,12 +43,12 @@ def test(cfg: DictConfig) -> None:
     # init wandb first so we can log any info or errors from instantiating dataset and model
     log.debug("Instantiating loggers...")
     logger: list[Logger] = instantiate_loggers(cfg.get("logger"))
+    train_tags = None
+    train_notes = None
 
     agent_cfg = cfg.get("agent", {})
     data_cfg = cfg.get("data", {})
     checkpoint_cfg = cfg.get("checkpoint", {})
-    train_tags = None
-    train_notes = None
     if checkpoint := resolve_checkpoint(checkpoint_cfg):
         # load agent config and specs from checkpoint
         run, train_cfg, checkpoint_paths = checkpoint
@@ -68,7 +68,6 @@ def test(cfg: DictConfig) -> None:
         agent_cfg = OmegaConf.merge(train_cfg.agent, agent_cfg)
         data_cfg = merge_data_configs(train_cfg.data, data_cfg)
 
-        # replace legacy _target_ with updated ones
         agent_cfg = patch_legacy_configs(agent_cfg)
         data_cfg = patch_legacy_configs(data_cfg)
 

@@ -12,6 +12,7 @@ import lightning as L
 import torch
 import torch.nn as nn
 from gymnasium import Wrapper
+from gymnasium.vector import SyncVectorEnv, VectorWrapper
 from gymnasium.wrappers import RecordVideo
 from hydra.errors import InstantiationException
 from omegaconf import DictConfig
@@ -625,10 +626,12 @@ class TrajectoryDataModule(L.LightningDataModule):
 
             wrappers = []
             env = self.env.env
-            # TODO: what about VectorWrapper?
-            while isinstance(env, Wrapper):
+            while isinstance(env, (Wrapper, VectorWrapper)):
                 wrappers.append(env)
                 env = env.env  # go one level deeper
+
+                if isinstance(env, SyncVectorEnv):
+                    env = env.envs[0]
 
             video_recorders = [w for w in wrappers if isinstance(w, RecordVideo)]
             if video_recorders:

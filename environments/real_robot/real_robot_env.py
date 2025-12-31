@@ -16,6 +16,7 @@ from torchcontrol.policies import (
 
 from environments.real_robot.hardware.base_camera import BaseCamera
 from environments.real_robot.hardware.franka_control import HumanControl
+from environments.signals import DoneEvalSignal
 from environments.specs import ActionSpec, DataSpecs, ObsSpec, specs_to_spaces
 from utils.math import make_pose, normalize, quaternion_to_matrix
 
@@ -26,6 +27,9 @@ log = logging.getLogger(__name__)
 
 
 class RealRobotEnv(gym.Env):
+    # we don't implement a render method, but the obs contains camera images
+    render_mode = "rgb_array"
+
     def __init__(
         self,
         robot: DictConfig,
@@ -320,6 +324,8 @@ class RealRobotEnv(gym.Env):
                     elif event.key == pygame.K_RETURN:
                         log.info("Trajectory succeeded - will reset after current step")
                         return "success"
+                    elif event.key == pygame.K_BACKSPACE:
+                        raise DoneEvalSignal
                     elif event.key == pygame.K_SPACE:
                         if paused:
                             log.info("Rollout unpaused.")
@@ -333,31 +339,3 @@ class RealRobotEnv(gym.Env):
                 time.sleep(0.1)
             else:
                 return None
-
-
-from functools import partial
-
-from gymnasium.vector import AutoresetMode, SyncVectorEnv
-
-from environments.wrappers import VectorToTorchWrapper
-
-
-def make_env(**kwargs) -> gym.Env:
-
-    env = partial(RealRobotEnv, **kwargs)
-
-    # we need to disable automatic resets, since the agent predicts action
-    # sequences
-    env = SyncVectorEnv([env], copy=False, autoreset_mode=AutoresetMode.DISABLED)
-
-    # gymnasium's VectorEnv converts Tensors to numpy arrays, so we need to
-    # convert them back to Tensors
-    env = VectorToTorchWrapper(env)
-
-    # VecEnvs return a tuple of results whenever an attribute is accessed
-    one_step_specs: DataSpecs = env.unwrapped.get_attr("specs")[0]
-
-    # assign as new attribute so that GymEnvDataset can access it
-    env.specs = one_step_specs
-
-    return env

@@ -5,7 +5,7 @@ import hydra
 import rootutils
 from lightning import Callback, Trainer
 from lightning.pytorch.loggers import Logger
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 # enables importing local modules regardless of where the script is run
 rootutils.setup_root(__file__, indicator=".isort.cfg", pythonpath=True)
@@ -15,6 +15,7 @@ from environments.datamodule import TrajectoryDataModule
 from loggers.wandb import resolve_checkpoint, update_wandb_config
 from utils.conf import (
     delete_keys_recursively,
+    merge_data_configs,
     patch_load_from_checkpoint,
     setup_resolvers,
 )
@@ -41,12 +42,12 @@ def predict(cfg: DictConfig) -> None:
     # init wandb first so we can log any info or errors from instantiating dataset and model
     log.debug("Instantiating loggers...")
     logger: list[Logger] = instantiate_loggers(cfg.get("logger"))
+    train_tags = None
+    train_notes = None
 
     agent_cfg = cfg.get("agent", {})
     data_cfg = cfg.get("data", {})
     checkpoint_cfg = cfg.get("checkpoint", {})
-    train_tags = None
-    train_notes = None
     if checkpoint := resolve_checkpoint(checkpoint_cfg):
         # load agent config and specs from checkpoint
         run, train_cfg, checkpoint_paths = checkpoint
@@ -64,10 +65,8 @@ def predict(cfg: DictConfig) -> None:
 
         # merge the agent and data configs, with the current config taking precedence
         agent_cfg = OmegaConf.merge(train_cfg.agent, agent_cfg)
-        train_cfg.data.pop("env_dataset")
-        data_cfg = OmegaConf.merge(train_cfg.data, data_cfg)
+        data_cfg = merge_data_configs(train_cfg.data, data_cfg)
 
-        # replace legacy _target_ with updated ones
         agent_cfg = patch_legacy_configs(agent_cfg)
         data_cfg = patch_legacy_configs(data_cfg)
 
@@ -75,8 +74,10 @@ def predict(cfg: DictConfig) -> None:
         agent_cfg = patch_load_from_checkpoint(agent_cfg, checkpoint_path)
 
         # save the merged configs back to cfg so they can be logged to wandb
-        cfg.agent = agent_cfg
-        cfg.data = data_cfg
+        with open_dict(cfg):
+            cfg.agent = agent_cfg
+            cfg.data = data_cfg
+            cfg.train_platform = train_cfg.platform
 
     update_wandb_config(cfg, train_tags, train_notes)
 

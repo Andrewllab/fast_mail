@@ -1,0 +1,7 @@
+record_video:
+  _target_: environments.real_robot.wrappers.RecordRobotEnvVideo
+  _partial_: True  # requires 'env' argument
+  video_folder: ${paths.recording_dir}
+  name_prefix: rollout
+  fps: 10
+  disable_logger: True

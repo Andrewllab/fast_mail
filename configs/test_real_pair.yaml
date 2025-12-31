@@ -5,7 +5,7 @@ defaults:
   - logger:
   - python_logging: default
   - paths: default
-  - hydra: checkpoint_dir_naming
+  - hydra: checkpoint_pair_dir_naming
   # Render cameras after preprocessing but before normalization
   # - transforms@data.gpu_batch_transforms.t9_render_cameras: render_cameras
   # - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
@@ -17,7 +17,19 @@ defaults:
 # task name, determines output directory path
 job_type: test_real
 
-checkpoint:
+checkpoint_1:
+  # either specify a complete checkpoint path...
+  log_dir:
+  # ...or specify the wandb run name
+  wandb_run_id: ???
+  # project and entity are only needed if they differ from the settings in the wandb logger config
+  wandb_project: 3d-sim2real
+  wandb_entity: alr-3d-sim2real
+  epochs: last  # options: last, all, last_n (default: last)
+  artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
+  use_artifact: false  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
+
+checkpoint_2:
   # either specify a complete checkpoint path...
   log_dir:
   # ...or specify the wandb run name
@@ -58,4 +70,3 @@ trainer:
   default_root_dir: ${paths.output_dir}
   enable_progress_bar: False
   log_every_n_steps: 10
-  inference_mode: False  # TODO: why is this needed?

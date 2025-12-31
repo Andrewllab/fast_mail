@@ -13,7 +13,7 @@ name: real_robot
 env:
   _target_: environments.gym_env_dataset.GymEnvDataset
   env:
-    _target_: environments.real_robot.real_robot_env.make_env
+    _target_: environments.real_robot.build_env.make
     action_type: joint
     impedance_type: hybrid_joint
     cameras:

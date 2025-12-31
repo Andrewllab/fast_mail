@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Callable, Iterable
 
 import lightning as L
@@ -147,6 +148,18 @@ class BaseAgent(L.LightningModule):
     def on_load_checkpoint(self, checkpoint: dict[str, Any]) -> None:
         state_dict = checkpoint["state_dict"]
 
+        # Regex pattern explanation:
+        # ^                         — matches the beginning of the string
+        # (?:_ema)?                 — matches the optional _ema prefix
+        # _obs_encoder\.module\.    — matches the literal core path
+        # ([^\.]+)                  — captures the NAME (any characters up to the next dot)
+        # \.                        — ensures the NAME is followed by a dot
+        STATE_DICT_KEY_PATTERN = re.compile(
+            r"^(?:_ema)?_obs_encoder\.module\.([^\.]+)\."
+        )
+        # only consider submodules of the obs_encoder, as this is where the
+        # transforms are
+
         # BackCompat
         for full_name in self.obs_encoder.keys():
             match = KEY_PATTERN.match("t" + full_name)  # add back the t prefix
@@ -155,21 +168,22 @@ class BaseAgent(L.LightningModule):
             assert short_name is not None
 
             for key in list(state_dict.keys()):
-                # only consider submodules of the obs_encoder, as this is where
-                # the transforms are
-                if "obs_encoder" not in key:
+                if (match := STATE_DICT_KEY_PATTERN.match(key)) is None:
                     continue
 
                 # if the key contains the old short name without the ordinal
                 # prefix, replace it with the full name
-                if "." + short_name in key:
+                if match.group(1) == short_name:
                     log.debug(
                         "Replacing `%s` with `%s` in state dict key %s",
                         short_name,
                         full_name,
                         key,
                     )
-                    state_dict[key.replace(short_name, full_name)] = state_dict.pop(key)
+                    new_key = STATE_DICT_KEY_PATTERN.sub(
+                        lambda m: m.group(0).replace(short_name, full_name), key
+                    )
+                    state_dict[new_key] = state_dict.pop(key)
 
         if self.ema_decay > 0:
             # we have instantiated the model, but we only have weights for the

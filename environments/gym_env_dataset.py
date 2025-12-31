@@ -7,6 +7,7 @@ import torch
 from tensordict import TensorDict
 from torch.utils.data import IterableDataset
 
+from environments.signals import DoneEvalSignal
 from environments.specs import DataSpecs
 
 log = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ class GymEnvDataset(IterableDataset):
         while True:
             # stop iterating if num_episodes is reached
             if self.num_episodes is not None and num_episodes >= self.num_episodes:
+                log.debug(f"Reached target of {self.num_episodes} episodes.")
                 break
 
             time += 1
@@ -86,36 +88,50 @@ class GymEnvDataset(IterableDataset):
             # actions: [num_envs, action_horizon, action_dim]
             # therefore we need to unbind the actions along the time dimension
 
-            actions = actions.transpose(0, 1)[: self.action_horizon]
-            for action in actions:
-                if self.fps is not None:
-                    self.clock.tick(self.fps)
+            try:
+                actions = actions.transpose(0, 1)[: self.action_horizon]
+                for action in actions:
+                    if self.fps is not None:
+                        self.clock.tick(self.fps)
 
-                obs, step_reward, step_terminated, step_truncated, step_info = (
-                    self.env.step(action)
+                    obs, step_reward, step_terminated, step_truncated, step_info = (
+                        self.env.step(action)
+                    )
+
+                    # accumulate the return values over time
+                    # we drop all observations except the last, since stacking
+                    # observations is done by the FrameStackObservation wrapper
+                    reward += step_reward
+                    step_done = torch.logical_or(step_terminated, step_truncated)
+
+                    # accumulate the "max" of any success-like metrics
+                    info = accumulate_dict(info, unnest_dict(step_info), aggr="max")
+
+                    # check if any envs are done for this first time at this step
+                    if torch.logical_and(step_done, ~done).any():
+                        # store the accumulated info for the envs that are done
+                        # (indexing with a boolean tensor is always a copy)
+                        # TODO: also store the total reward and length of the episode
+                        episode_infos.append(info[step_done])
+
+                    done = torch.logical_or(done, step_done)
+
+                    # Break out of action loop if all environments are done
+                    if done.all():
+                        break
+
+            except DoneEvalSignal:
+                log.info(
+                    "Received DoneEvalSignal, resetting envs and ending evaluation."
                 )
-
-                # accumulate the return values over time
-                # we drop all observations except the last, since stacking
-                # observations is done by the FrameStackObservation wrapper
-                reward += step_reward
-                step_done = torch.logical_or(step_terminated, step_truncated)
-
-                # accumulate the "max" of any success-like metrics
-                info = accumulate_dict(info, unnest_dict(step_info), aggr="max")
-
-                # check if any envs are done for this first time at this step
-                if torch.logical_and(step_done, ~done).any():
-                    # store the accumulated info for the envs that are done
-                    # (indexing with a boolean tensor is always a copy)
-                    # TODO: also store the total reward and length of the episode
-                    episode_infos.append(info[step_done])
-
-                done = torch.logical_or(done, step_done)
-
-                # Break out of action loop if all environments are done
-                if done.all():
-                    break
+                # TODO: In a future version we should reset the envs here so
+                # that recorded videos are saved properly and envs are always
+                # reset between evaluation runs.
+                # We can't do that yet because the real env reset pauses and
+                # waits for user input.
+                # The solution may be to reset in the init and store the reset
+                # obs.
+                break
 
             # reset the envs that are done
             if done.any():
