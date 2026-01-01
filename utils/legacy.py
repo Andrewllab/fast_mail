@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import logging
-import os
-import os.path as osp
 import re
-from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Sequence
 
-import numpy as np
-from omegaconf import DictConfig, OmegaConf, open_dict
+from omegaconf import DictConfig, open_dict
+
+from transforms.base_transform import KEY_PATTERN as TRANSFORM_KEY_PATTERN
+from transforms.base_transform import Sequential
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +59,8 @@ def patch_legacy_configs(cfg: DictConfig) -> DictConfig:
                         cfg._target_ = replace
                     elif callable(replace):
                         log.info(
-                            "Applying custom callback to legacy target `%s`",
+                            "Applying custom callback `%s` to legacy target `%s`",
+                            replace.__name__,
                             cfg._target_,
                         )
                         cfg = replace(cfg, match)
@@ -72,3 +72,64 @@ def patch_legacy_configs(cfg: DictConfig) -> DictConfig:
             cfg[key] = patch_legacy_configs(value)
 
     return cfg
+
+
+def add_transform_prefixes(
+    state_dict: dict[str, Any], transforms: Sequential
+) -> dict[str, Any]:
+    """The Sequential transform used to remove the numerical prefixes from
+    transform names, e.g., t0_depth_remove_inf -> depth_remove_inf. This
+    affects the keys in the state dict, which need to be updated accordingly.
+    """
+
+    transform_keys = list(transforms.keys())
+
+    for transform_key in transform_keys:
+
+        # find the legacy short name (without ordinal prefix) from the transform key
+        # Sequential removes the t prefix from the transform keys, so we need
+        # to add it back
+        config_key = "t" + transform_key
+        match = TRANSFORM_KEY_PATTERN.match(config_key)
+        assert match is not None
+        short_name = match.group(3)
+        assert short_name is not None
+
+        # create regex pattern to match state dict keys containing this
+        # transform's short name
+        # Regex pattern explanation:
+        # (_ema_obs_encoder\.module\.)  - captures the fixed prefix.
+        # re.escape(name)               - ensures that special characters in name are treated literally.
+        # (\..*)                        - captures everything after the name (including the dot).
+        pattern = rf"(_ema_obs_encoder\.module\.){re.escape(short_name)}(\..*)"
+        # Regex pattern explanation:
+        # Backreferences (\g<1>, \g<2>) - preserve the unchanged parts of the string.
+        # Explicit backreferences (\g<1> instead of \1) avoids issues with
+        # numbers in the transform key.
+        replacement = rf"\g<1>{transform_key}\g<2>"
+
+        for key in list(state_dict.keys()):
+            if re.match(pattern, key):
+                new_key = re.sub(pattern, replacement, key)
+                log.debug(
+                    "Replacing `%s` with `%s` in state dict key %s",
+                    short_name,
+                    transform_key,
+                    key,
+                )
+                state_dict[new_key] = state_dict.pop(key)
+
+    return state_dict
+
+
+def patch_legacy_state_dict(
+    state_dict: dict[str, Any], transforms: Sequential
+) -> dict[str, Any]:
+    """Patches legacy state dicts by updating keys to match the current
+    model structure.
+
+    Currently, this only involves adding transform name prefixes to the
+    obs_encoder submodules in the state dict.
+    """
+    state_dict = add_transform_prefixes(state_dict, transforms)
+    return state_dict

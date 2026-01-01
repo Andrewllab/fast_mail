@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any, Callable, Iterable
 
 import lightning as L
@@ -13,12 +12,12 @@ from torch.optim.optimizer import Optimizer
 
 from environments.specs import DataSpecs
 from transforms.base_transform import (
-    KEY_PATTERN,
     Compose,
     Sequential,
     TransformPartialsDict,
     init_transforms,
 )
+from utils.legacy import patch_legacy_state_dict
 
 log = logging.getLogger(__name__)
 
@@ -148,73 +147,22 @@ class BaseAgent(L.LightningModule):
     def on_load_checkpoint(self, checkpoint: dict[str, Any]) -> None:
         state_dict = checkpoint["state_dict"]
 
-        # Regex pattern explanation:
-        # ^                         — matches the beginning of the string
-        # (?:_ema)?                 — matches the optional _ema prefix
-        # _obs_encoder\.module\.    — matches the literal core path
-        # ([^\.]+)                  — captures the NAME (any characters up to the next dot)
-        # \.                        — ensures the NAME is followed by a dot
-        STATE_DICT_KEY_PATTERN = re.compile(
-            r"^(?:_ema)?_obs_encoder\.module\.([^\.]+)\."
-        )
-        # only consider submodules of the obs_encoder, as this is where the
-        # transforms are
-
-        # BackCompat
-        for full_name in self.obs_encoder.keys():
-            match = KEY_PATTERN.match("t" + full_name)  # add back the t prefix
-            assert match is not None
-            short_name = match.group(3)
-            assert short_name is not None
-
-            for key in list(state_dict.keys()):
-                if (match := STATE_DICT_KEY_PATTERN.match(key)) is None:
-                    continue
-
-                # if the key contains the old short name without the ordinal
-                # prefix, replace it with the full name
-                if match.group(1) == short_name:
-                    log.debug(
-                        "Replacing `%s` with `%s` in state dict key %s",
-                        short_name,
-                        full_name,
-                        key,
-                    )
-                    new_key = STATE_DICT_KEY_PATTERN.sub(
-                        lambda m: m.group(0).replace(short_name, full_name), key
-                    )
-                    state_dict[new_key] = state_dict.pop(key)
+        patch_legacy_state_dict(state_dict, self._obs_encoder)
 
         if self.ema_decay > 0:
             # we have instantiated the model, but we only have weights for the
             # ema_model, so we have to instantiate a dummy AveragedModel to wrap
             # the model for loading weights
-            # TODO: it might be possible to just reorganize the state dict when
-            # saving the checkpoint so that the ema_model is unnecessary
+            # TODO: A better solution would be to directly save weights without
+            # the _ema_ prefix in the checkpoint, but this would cause issues
+            # when resuming training.
 
-            # Don't reinstantiate models if we already have them (e.g. multiple checkpoints)
-            if not hasattr(self, "_ema_model"):
-                from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
-
-                # only these models have learnable parameters
-                self._ema_model = AveragedModel(
-                    self._model,
-                    multi_avg_fn=get_ema_multi_avg_fn(self.ema_decay),
-                    # required for using EMA with BatchNorm
-                    # https://pytorch.org/docs/stable/generated/torch.optim.swa_utils.AveragedModel.html
-                    use_buffers=True,
-                )
-                self._ema_obs_encoder = AveragedModel(
-                    self._obs_encoder,
-                    multi_avg_fn=get_ema_multi_avg_fn(self.ema_decay),
-                    # required for using EMA with BatchNorm
-                    # https://pytorch.org/docs/stable/generated/torch.optim.swa_utils.AveragedModel.html
-                    use_buffers=True,
-                )
+            self.configure_optimizers()  # instantiate ema models
 
             # duplicate all state dict entries for ema_model and ema_obs_encoder
             # with entries for model and obs_encoder
             for key in list(state_dict.keys()):
+                # match "_ema_model.module" so that we don't match _ema_model.n_averaged
                 if key.startswith("_ema_model.module"):
                     new_key = key.replace("_ema_model.module.", "_model.")
                     state_dict[new_key] = state_dict[key]
