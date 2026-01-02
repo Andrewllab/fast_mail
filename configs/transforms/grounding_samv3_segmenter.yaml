@@ -1,4 +1,4 @@
-_target_: transforms.samv3.SamV3SegmenterTransform
+_target_: transforms.grounding_samv3.SamV3SegmenterTransform
 _partial_: True
 
 camera_keys: [left_cam, right_cam]

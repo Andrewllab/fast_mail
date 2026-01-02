@@ -2,7 +2,7 @@
 
 defaults:
 
-  - /transforms@data.prepreprocess.t01_samv3_segmenter: samv3_segmenter
+  - /transforms@data.prepreprocess.t01_samv3_segmenter: grounding_samv3_segmenter
   - /transforms@data.preprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
   - /transforms@data.preprocess.t03_dinov3: dinov3
   - /transforms@data.preprocess.t04_cotracker: cotracker
