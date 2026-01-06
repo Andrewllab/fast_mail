@@ -78,7 +78,7 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
 
         action_spec = specs.action
         # TODO: more graceful handling of different action specs
-        new_action_spec = dataclasses.replace(action_spec, action_dim=(5, 3))
+        new_action_spec = dataclasses.replace(action_spec, action_dim=5 * 3)
 
         self._specs = specs.replace(action=new_action_spec)
 

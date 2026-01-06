@@ -9,6 +9,8 @@ from tensordict import TensorDict
 from transformers import (
     AutoModelForZeroShotObjectDetection,
     AutoProcessor,
+    Sam3Model,
+    Sam3Processor,
     Sam3TrackerVideoModel,
     Sam3TrackerVideoProcessor,
 )
@@ -18,14 +20,14 @@ from transforms.base_transform import Transform
 
 
 def _gdino_text(text: str) -> str:
-    # GroundingDINO HF usage: lowercase + end with a dot :contentReference[oaicite:2]{index=2}
+    # GroundingDINO: lowercase + end with dot.
     t = (text or "").strip().lower()
     if not t.endswith("."):
         t += "."
     return t
 
 
-class SamV3SegmenterTransform(Transform):
+class SamV3VideoSegmenterTransform(Transform):
     """
     GroundingDINO selects initial object (box) on an anchor frame,
     then SAM3 Tracker Video propagates the mask through the whole video,
@@ -301,4 +303,258 @@ class SamV3SegmenterTransform(Transform):
         return tensordict
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
+        return tensordict
+
+
+class SamV3PictureSegmenterTransform(Transform):
+    """
+    Per-frame pipeline:
+      1) GroundingDINO detects boxes on each frame (batched).
+      2) SAM3 Tracker (image) segments each frame independently using the box prompt (batched).
+    No video session, no tracking IDs, no propagation.
+
+    Output:
+      tensordict["obs", camera_key, segmenter_out_key] = torch.bool [T, H, W]
+    """
+
+    def __init__(
+        self,
+        specs: DataSpecs,
+        segmenter_out_keys: str | List[str],
+        segmentation_text_keys: Optional[str | List[str]] = None,
+        segmentation_text_prompts: Optional[str | List[str]] = None,
+        segmentation_text_source: str = "prompt",
+        camera_keys: str | List[str] = "left_cam",
+        device: str | torch.device = "cuda",
+        # GroundingDINO
+        gdino_model_id: str = "IDEA-Research/grounding-dino-base",
+        gdino_box_threshold: float = 0.3,
+        gdino_text_threshold: float = 0.3,
+        # Batching
+        max_frames_per_batch: int = 16,
+        # SAM3 Tracker image settings
+        sam_dtype: torch.dtype = torch.bfloat16,
+        # Runtime improvements
+        compile_sam: bool = False,
+        compile_gdino: bool = False,
+    ):
+        super().__init__()
+        self._specs = specs
+        self.device = torch.device(device) if isinstance(device, str) else device
+
+        # GroundingDINO :contentReference[oaicite:4]{index=4}
+        self.gdino_processor = AutoProcessor.from_pretrained(gdino_model_id)
+        self.gdino_model = AutoModelForZeroShotObjectDetection.from_pretrained(
+            gdino_model_id
+        ).to(self.device)
+        self.gdino_model.eval()
+        self.gdino_box_threshold = gdino_box_threshold
+        self.gdino_text_threshold = gdino_text_threshold
+
+        if compile_gdino:
+            self.gdino_model = torch.compile(self.gdino_model, mode="reduce-overhead")
+
+        # SAM3 Tracker (single-image promptable visual segmentation) :contentReference[oaicite:5]{index=5}
+        self.sam_processor = Sam3Processor.from_pretrained("facebook/sam3")
+        self.sam_model = Sam3Model.from_pretrained("facebook/sam3").to(
+            self.device, dtype=sam_dtype
+        )
+
+        self.sam_model.eval()
+
+        if compile_sam:
+            self.sam_model = torch.compile(self.sam_model, mode="reduce-overhead")
+
+        self.max_frames_per_batch = max_frames_per_batch
+
+        # Same pattern as your existing transform :contentReference[oaicite:6]{index=6}
+        self.camera_keys = camera_keys
+        if isinstance(self.camera_keys, str):
+            self.camera_keys = [self.camera_keys]
+        self.segmenter_out_key = segmenter_out_keys
+        if isinstance(self.segmenter_out_key, str):
+            self.segmenter_out_key = [self.segmenter_out_key]
+        if len(self.segmenter_out_key) != len(self.camera_keys):
+            raise ValueError("segmenter_out_keys length must match camera_keys length")
+
+        if segmentation_text_source == "prompt":
+            self.segmentation_text_prompts = (
+                segmentation_text_prompts
+                if isinstance(segmentation_text_prompts, (list, ListConfig))
+                else [segmentation_text_prompts]
+            )
+        elif segmentation_text_source == "key":
+            self.segmentation_text_keys = (
+                segmentation_text_keys
+                if isinstance(segmentation_text_keys, (list, ListConfig))
+                else [segmentation_text_keys]
+            )
+        else:
+            raise ValueError("segmentation_text_source must be 'prompt' or 'key'")
+
+        self.segmentation_text_source = segmentation_text_source
+        self.sam_dtype = sam_dtype
+
+    @property
+    def specs(self) -> DataSpecs:
+        return self._specs
+
+    @torch.no_grad()
+    def _gdino_boxes_for_video(
+        self,
+        video_bchw_uint8: torch.Tensor,  # [T,3,H,W] uint8 on CPU or GPU
+        text_prompt: str,
+    ) -> torch.Tensor:
+        """
+        Returns per-frame best box in XYXY absolute pixels:
+          boxes_xyxy: [T,4] (float), with NaNs for frames with no detection.
+        """
+        T, _, H, W = video_bchw_uint8.shape
+        text = _gdino_text(text_prompt)
+
+        boxes_xyxy = torch.full((T, 4), float("nan"))
+        box_scores = torch.full((T,), float("-inf"))
+
+        # Batch the frames to keep memory stable.
+        for start in range(0, T, self.max_frames_per_batch):
+            end = min(T, start + self.max_frames_per_batch)
+            frames = video_bchw_uint8[start:end]  # [B,3,H,W]
+
+            inputs = self.gdino_processor(
+                images=frames,  # torch tensor batch
+                text=[text]
+                * (end - start),  # same text per frame to avoid batch-text edge cases
+                return_tensors="pt",
+            ).to(self.device)
+
+            outputs = self.gdino_model(**inputs)
+
+            # target_sizes expects list/array of (height,width) per image
+            target_sizes = [(H, W)] * (end - start)
+            results = self.gdino_processor.post_process_grounded_object_detection(
+                outputs,
+                inputs.input_ids,
+                threshold=self.gdino_box_threshold,
+                text_threshold=self.gdino_text_threshold,
+                target_sizes=target_sizes,
+            )
+
+            for bi, r in enumerate(results):
+                if r["boxes"].numel() == 0:
+                    continue
+                best_i = int(torch.argmax(r["scores"]).item())
+                boxes_xyxy[start + bi] = r["boxes"][best_i]
+                box_scores[start + bi] = r["scores"][best_i]
+
+        return boxes_xyxy, box_scores
+
+    @torch.no_grad()
+    def _sam_masks_from_boxes(
+        self,
+        video_bchw_uint8: torch.Tensor,  # [T,3,H,W] uint8
+        boxes_xyxy: torch.Tensor,  # [T,4] float (xyxy), may contain NaNs
+    ) -> torch.Tensor:
+        """
+        Uses SAM3 Tracker (image) to segment each frame independently with a box prompt.
+        Returns masks: [T,H,W] bool on self.device.
+        """
+        T, _, H, W = video_bchw_uint8.shape
+        masks_out = torch.zeros((T, H, W), dtype=torch.bool, device=self.device)
+        masks_scores = torch.full((T,), float("-inf"), device=self.device)
+
+        valid = torch.isfinite(boxes_xyxy).all(dim=1)  # [T]
+        if not valid.any():
+            return masks_out, masks_scores
+
+        # Process only valid frames, but keep output aligned with T
+        valid_idx = torch.nonzero(valid, as_tuple=False).squeeze(1)
+        frames_valid = video_bchw_uint8[valid_idx]  # [Tv,3,H,W]
+        boxes_valid = boxes_xyxy[valid_idx].unsqueeze(
+            1
+        )  # [Tv,1,4]  (batch, num_boxes, 4) :contentReference[oaicite:8]{index=8}
+
+        # Batch in chunks
+        Tv = frames_valid.shape[0]
+        for start in range(0, Tv, self.max_frames_per_batch):
+            end = min(Tv, start + self.max_frames_per_batch)
+            frames = frames_valid[start:end]
+            boxes = boxes_valid[start:end]
+
+            inputs = self.sam_processor(
+                images=frames,  # torch tensor batch
+                input_boxes=boxes.tolist(),  # [B,1,4] in xyxy pixel coords
+                input_boxes_labels=[[1]] * (end - start),  # all foreground
+                return_tensors="pt",
+            ).to(self.device, dtype=self.sam_dtype)
+
+            outputs = self.sam_model(**inputs)
+
+            # Post-process back to original sizes
+            # Returns a list (len=B) of tensors resized to original resolution.
+            results_list = self.sam_processor.post_process_instance_segmentation(
+                outputs, target_sizes=inputs["original_sizes"].tolist()
+            )
+
+            masks_list = [m["masks"] for m in results_list]  # get only masks
+            scores_list = [m["scores"] for m in results_list]  # get only scores
+
+            for bi, (mask, scores) in enumerate(zip(masks_list, scores_list)):
+                best_score_idx = int(torch.argmax(scores).item())
+                m2 = mask[best_score_idx]  # [H,W] float mask
+
+                # Typically float/bool-ish; binarize
+                mask_bool = (m2 > 0).to(torch.bool).to(self.device)
+
+                orig_t = int(valid_idx[start + bi].item())
+                masks_out[orig_t] = mask_bool
+                masks_scores[orig_t] = scores[best_score_idx]
+
+        return masks_out, masks_scores
+
+    @torch.no_grad()
+    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
+        for camera_key in self.camera_keys:
+            video = tensordict["obs"][camera_key]["rgb"]  # expected [T,H,W,C]
+            T, H, W, C = video.shape
+            assert C == 3, f"Expected RGB video with 3 channels, got {C}"
+
+            if self.segmentation_text_source == "prompt":
+                segmentation_texts = self.segmentation_text_prompts
+            else:
+                segmentation_texts = [
+                    tensordict["goal"][k] for k in self.segmentation_text_keys
+                ]
+
+            # Convert to BCHW torch tensor (stay in torch for batching)
+            # Keep as uint8; processors will handle scaling/normalization.
+            video_bchw = video.permute(0, 3, 1, 2).contiguous()
+
+            for text_prompt, segmenter_out_key in zip(
+                segmentation_texts, self.segmenter_out_key
+            ):
+                # 1) GroundingDINO per-frame boxes (batched)
+                boxes_xyxy, box_scores = self._gdino_boxes_for_video(
+                    video_bchw, str(text_prompt)
+                )
+
+                # 2) SAM3 per-frame segmentation from boxes (batched)
+                segmentations, segmentation_scores = self._sam_masks_from_boxes(
+                    video_bchw, boxes_xyxy
+                )
+
+                tensordict["obs", camera_key, segmenter_out_key] = segmentations
+                tensordict["obs", camera_key, f"{segmenter_out_key}_box_xyxy"] = (
+                    boxes_xyxy
+                )
+                tensordict["obs", camera_key, f"{segmenter_out_key}_box_scores"] = (
+                    box_scores
+                )
+                tensordict[
+                    "obs", camera_key, f"{segmenter_out_key}_segmentation_scores"
+                ] = segmentation_scores
+
+        return tensordict
+
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        # Do nothing if not called during preprocessing
         return tensordict

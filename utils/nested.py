@@ -1,7 +1,8 @@
 import math
-from typing import Optional, Sequence
+from typing import Any, MutableMapping, Optional, Sequence
 
 import torch
+from tensordict import TensorDict
 from torch import Tensor
 
 from utils.pyg import batch2ptr
@@ -288,3 +289,168 @@ def unflatten_nested_tensor(
     raise NotImplementedError(
         "Only unflattening [0..ragged_dim] or [ragged_dim..k] (k>ragged_dim) is supported."
     )
+
+
+# -----------------------------
+# Storage codec for NestedTensor (jagged)
+# -----------------------------
+
+# A marker key that is unlikely to collide with real data keys.
+# (If you want even safer, prefix with your project name.)
+_NT_MARKER_KEY = "__nested_jagged__"
+
+# Field names inside the packed representation:
+_NT_VALUES_KEY = "values"
+_NT_OFFSETS_KEY = "offsets"
+_NT_RAGGED_DIM_KEY = "ragged_dim"
+
+
+def _is_packed_jagged_nested_td(x: Any) -> bool:
+    return (
+        isinstance(x, TensorDict)
+        and _NT_MARKER_KEY in x.keys()
+        and _NT_VALUES_KEY in x.keys()
+        and _NT_OFFSETS_KEY in x.keys()
+    )
+
+
+def pack_jagged_nested_tensor(x: Tensor) -> TensorDict:
+    """
+    Convert a torch jagged NestedTensor into a pure-tensor TensorDict
+    representation that is backend-saveable (memmap/hdf5/etc).
+
+    Requirements:
+      - x.is_nested == True
+      - jagged layout (torch.jagged)
+      - currently only supports ragged_dim == 1 (matches your utils assumptions)
+
+    Returns:
+      TensorDict with batch_size=[] containing:
+        __nested_jagged__: uint8 scalar marker
+        values: Tensor (x.values())
+        offsets: Tensor (x.offsets())
+        ragged_dim: int64 scalar
+        shape: int64 1D tensor storing x.shape
+    """
+    if not x.is_nested:
+        raise ValueError("pack_jagged_nested_tensor expects a NestedTensor")
+
+    # You rely on _ragged_idx in several utils already; keep consistent.
+    ragged_dim = int(x._ragged_idx)  # type: ignore[attr-defined]
+    if ragged_dim != 1:
+        raise NotImplementedError(
+            "Only jagged NestedTensors with ragged_dim == 1 are supported."
+        )
+
+    # For jagged nested tensors, these are tensors and safe to store.
+    values = x.values()
+    offsets = x.offsets()
+
+    packed = TensorDict(
+        {
+            _NT_MARKER_KEY: torch.tensor(1, dtype=torch.uint8, device=values.device),
+            _NT_VALUES_KEY: values,
+            _NT_OFFSETS_KEY: offsets,
+            _NT_RAGGED_DIM_KEY: torch.tensor(
+                ragged_dim, dtype=torch.int64, device=values.device
+            ),
+        },
+        batch_size=[],
+    )
+    return packed
+
+
+def unpack_jagged_nested_tensor(packed: TensorDict) -> Tensor:
+    """
+    Inverse of pack_jagged_nested_tensor.
+    Reconstructs a torch jagged NestedTensor *view* from stored values+offsets.
+    """
+    if not _is_packed_jagged_nested_td(packed):
+        raise ValueError(
+            "unpack_jagged_nested_tensor expects a packed NestedTensor TensorDict"
+        )
+
+    ragged_dim = int(packed[_NT_RAGGED_DIM_KEY].item())
+    if ragged_dim != 1:
+        raise NotImplementedError(
+            "Only jagged NestedTensors with ragged_dim == 1 are supported."
+        )
+
+    values: Tensor = packed[_NT_VALUES_KEY]
+    offsets: Tensor = packed[_NT_OFFSETS_KEY]
+
+    # This should not copy values; it will build a NestedTensor referencing them.
+    x = torch.nested.nested_tensor_from_jagged(values=values, offsets=offsets)
+    return x
+
+
+# -----------------------------
+# Recursive pack/unpack over arbitrary nested structures
+# -----------------------------
+
+
+def pack_nested_for_storage(obj: Any) -> Any:
+    """
+    Recursively convert any jagged NestedTensor into a backend-friendly packed form.
+
+    Supports:
+      - Tensor
+      - TensorDict
+      - dict-like mappings
+      - list/tuple
+
+    Returns a structure with the same shape, but NestedTensors replaced by packed TensorDict.
+    """
+    if isinstance(obj, Tensor) and obj.is_nested:
+        return pack_jagged_nested_tensor(obj)
+
+    if isinstance(obj, TensorDict):
+        # Important: ensure this container does NOT enforce a parent batch_size prefix
+        # when we insert packed nested tensors with batch_size=[].
+        out = obj.clone(recurse=False)
+        out.auto_batch_size_(batch_dims=0)
+        for k in out.keys():
+            out[k] = pack_nested_for_storage(out[k])
+        return out
+
+    if isinstance(obj, MutableMapping):
+        for k, v in list(obj.items()):
+            obj[k] = pack_nested_for_storage(v)
+        return obj
+
+    if isinstance(obj, tuple):
+        return tuple(pack_nested_for_storage(v) for v in obj)
+
+    if isinstance(obj, list):
+        return [pack_nested_for_storage(v) for v in obj]
+
+    return obj
+
+
+def unpack_nested_from_storage(obj: Any) -> Any:
+    """
+    Recursively convert packed nested-tensor representations back into real NestedTensors.
+    """
+    if _is_packed_jagged_nested_td(obj):
+        return unpack_jagged_nested_tensor(obj)
+
+    if isinstance(obj, TensorDict):
+        out = obj.clone(recurse=False)
+        # keep batch_dims=0 to avoid prefix constraints during in-place replacement
+        out.auto_batch_size_(batch_dims=0)
+        for k in out.keys():
+            out[k] = unpack_nested_from_storage(out[k])
+        return out
+
+    if isinstance(obj, MutableMapping):
+        for k, v in list(obj.items()):
+            obj[k] = unpack_nested_from_storage(v)
+        return obj
+
+    if isinstance(obj, tuple):
+        return tuple(unpack_nested_from_storage(v) for v in obj)
+
+    if isinstance(obj, list):
+        return [unpack_nested_from_storage(v) for v in obj]
+
+    return obj

@@ -27,6 +27,8 @@ from environments.specs import (
 )
 from transforms.base_transform import Compose, TransformPartialsDict, init_transforms
 from tree import ArrayDict
+from utils.hdf5_utils import recursive_hdf5_to_dict
+from utils.nested import pack_nested_for_storage, unpack_nested_from_storage
 from utils.paths import iglob_follow_symlinks, resolve_path
 from utils.pyg import index_reduced_batch, reduce_batch, unreduce_batch
 
@@ -284,6 +286,8 @@ class Hdf5Dataset(TrajectoryDataset):
         relative_path = self.files[traj_idx].relative_to(self._root_dir)
         td["path"] = str(relative_path)
 
+        td = unpack_nested_from_storage(td)
+
         return td
 
     @classmethod
@@ -295,6 +299,9 @@ class Hdf5Dataset(TrajectoryDataset):
 
         traj["obs"] = compress_rgb_images(traj["obs"], specs)
         traj["obs"] = reduce_pyg_data(traj["obs"], specs)
+
+        # pack nested tensors for storage, mostly to handle nested jagged tensors
+        traj = pack_nested_for_storage(traj)
 
         relative_path = Path(traj.pop("path").data)
         if "name" in traj:

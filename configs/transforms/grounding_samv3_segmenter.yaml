@@ -1,7 +1,9 @@
-_target_: transforms.grounding_samv3.SamV3SegmenterTransform
+_target_: transforms.grounding_samv3.SamV3PictureSegmenterTransform
 _partial_: True
 
 camera_keys: [left_cam, right_cam]
 segmentation_text_source: key
 segmenter_out_keys: [obj_segmentation, target_segmentation]
 segmentation_text_keys: [obj_name, target_name]
+max_frames_per_batch: 2
+gdino_box_threshold: 0.4

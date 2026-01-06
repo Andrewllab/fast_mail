@@ -1,0 +1,9 @@
+_target_: transforms.sparse_to_pointcloud.SparseToPointCloudMaskOnly
+_partial_: True
+color: True
+max_depth: 5.0
+features: True
+camera_keys: [left_cam, right_cam]
+mask_key: target_segmentation
+features_key: dinov3_features
+out_key: target_points
