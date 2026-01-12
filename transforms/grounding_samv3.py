@@ -557,4 +557,4 @@ class SamV3PictureSegmenterTransform(Transform):
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         # Do nothing if not called during preprocessing
-        return tensordict
+        return self.call_trajectory(tensordict[0]).unsqueeze(0)

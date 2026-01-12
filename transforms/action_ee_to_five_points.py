@@ -211,3 +211,9 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         points_global: torch.Tensor = transform_points(total_points, ee_pos, ee_quat)
 
         return points_global
+
+    def __call__(
+        self,
+        tensordict: TensorDict,
+    ) -> TensorDict:
+        return tensordict

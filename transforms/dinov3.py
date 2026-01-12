@@ -73,7 +73,7 @@ class Dinov3FeatureExtractorTransform(Transform):
 
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
         for camera_key in self.camera_keys:
-            traj_len = tensordict["action"].shape[0]
+            traj_len = tensordict["obs"][camera_key]["rgb"].shape[0]
 
             video = (
                 tensordict["obs"][camera_key]["rgb"].float().permute(0, 3, 1, 2) / 255.0
@@ -160,4 +160,4 @@ class Dinov3FeatureExtractorTransform(Transform):
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         # Do nothing if not called during preprocessing
-        return tensordict
+        return self.call_trajectory(tensordict[0]).unsqueeze(0)

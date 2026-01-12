@@ -332,6 +332,15 @@ class PointCloudSpec(Spec):
 
 
 @dataclass(frozen=True)
+class NestedTensorSpec(Spec):
+    time: int | None = None
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        raise ValueError("A nested tensor does not have a fixed shape.")
+
+
+@dataclass(frozen=True)
 class EmbedSpec(Spec):
     embed_dim: int
     n_tokens: int | None = None

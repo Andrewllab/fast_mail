@@ -68,7 +68,7 @@ class CotrackerPointTrackingTransform(Transform):
         self.points_key = points_key
 
         # General settings
-        self.action_seq_len = specs.action_seq_len
+        self.track_len = specs.action_seq_len + 1
         self.camera_keys = camera_keys
         if isinstance(self.camera_keys, str):
             self.camera_keys = [self.camera_keys]
@@ -118,7 +118,7 @@ class CotrackerPointTrackingTransform(Transform):
             track_list = []
             visibility_list = []
             for start_frame in tqdm.tqdm(range(traj_len), desc="Cotracker tracking"):
-                sub_video = video[start_frame : start_frame + self.action_seq_len].to(
+                sub_video = video[start_frame : start_frame + self.track_len].to(
                     self.device
                 )
 
@@ -160,9 +160,9 @@ class CotrackerPointTrackingTransform(Transform):
                 pred_visibility = pred_visibility[0].cpu()  # remove batch dim
 
                 # Pad predictions if at end of trajectory
-                if start_frame + self.action_seq_len > traj_len:
+                if start_frame + self.track_len > traj_len:
                     # Pad to traj_len using the last valid prediction
-                    pad_size = start_frame + self.action_seq_len - traj_len
+                    pad_size = start_frame + self.track_len - traj_len
                     pred_tracks = torch.cat(
                         [
                             pred_tracks,

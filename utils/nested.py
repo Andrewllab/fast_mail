@@ -1,11 +1,16 @@
 import math
-from typing import Any, MutableMapping, Optional, Sequence
+from typing import Any, Dict, MutableMapping, Optional, Sequence
 
+import h5py
 import torch
-from tensordict import TensorDict
+from tensordict import NonTensorData, TensorDict
 from torch import Tensor
 
 from utils.pyg import batch2ptr
+
+
+def is_torch_nested_tensor(x: Any) -> bool:
+    return isinstance(x, torch.Tensor) and bool(getattr(x, "is_nested", False))
 
 
 def cat_nested(tensors: Sequence[Tensor], dim: int = 0) -> Tensor:
@@ -305,13 +310,27 @@ _NT_OFFSETS_KEY = "offsets"
 _NT_RAGGED_DIM_KEY = "ragged_dim"
 
 
-def _is_packed_jagged_nested_td(x: Any) -> bool:
+def is_packed_jagged_nested_td(x: Any) -> bool:
     return (
-        isinstance(x, TensorDict)
+        isinstance(x, (TensorDict, Dict, h5py.Group))
         and _NT_MARKER_KEY in x.keys()
         and _NT_VALUES_KEY in x.keys()
         and _NT_OFFSETS_KEY in x.keys()
     )
+
+
+def get_packed_jagged_length(packed: TensorDict) -> int:
+    """
+    Get the length (number of jagged elements) of a packed jagged NestedTensor
+    representation.
+    """
+    if not is_packed_jagged_nested_td(packed):
+        raise ValueError(
+            "get_packed_jagged_length expects a packed NestedTensor TensorDict"
+        )
+
+    offsets: Tensor = packed[_NT_OFFSETS_KEY]
+    return int(offsets.shape[0] - 1)
 
 
 def pack_jagged_nested_tensor(x: Tensor) -> TensorDict:
@@ -365,7 +384,7 @@ def unpack_jagged_nested_tensor(packed: TensorDict) -> Tensor:
     Inverse of pack_jagged_nested_tensor.
     Reconstructs a torch jagged NestedTensor *view* from stored values+offsets.
     """
-    if not _is_packed_jagged_nested_td(packed):
+    if not is_packed_jagged_nested_td(packed):
         raise ValueError(
             "unpack_jagged_nested_tensor expects a packed NestedTensor TensorDict"
         )
@@ -380,6 +399,10 @@ def unpack_jagged_nested_tensor(packed: TensorDict) -> Tensor:
     offsets: Tensor = packed[_NT_OFFSETS_KEY]
 
     # This should not copy values; it will build a NestedTensor referencing them.
+    if not isinstance(values, Tensor):
+        values = torch.as_tensor(values)
+    if not isinstance(offsets, Tensor):
+        offsets = torch.as_tensor(offsets)
     x = torch.nested.nested_tensor_from_jagged(values=values, offsets=offsets)
     return x
 
@@ -431,7 +454,7 @@ def unpack_nested_from_storage(obj: Any) -> Any:
     """
     Recursively convert packed nested-tensor representations back into real NestedTensors.
     """
-    if _is_packed_jagged_nested_td(obj):
+    if is_packed_jagged_nested_td(obj):
         return unpack_jagged_nested_tensor(obj)
 
     if isinstance(obj, TensorDict):
@@ -454,3 +477,64 @@ def unpack_nested_from_storage(obj: Any) -> Any:
         return [unpack_nested_from_storage(v) for v in obj]
 
     return obj
+
+
+def nested_unsqueeze(
+    x: Tensor,
+    dim: int,
+) -> Tensor:
+    """Unsqueeze a nested tensor along a given dimension.
+
+    Args:
+        x (Tensor): Input nested tensor.
+        dim (int): Dimension to unsqueeze.
+
+    Returns:
+        Tensor: Unsqueezed nested tensor.
+    """
+    if not x.is_nested:
+        return x.unsqueeze(dim)
+
+    # Convert dim to positive integer
+    dim %= x.ndim
+
+    ragged_dim = x._ragged_idx  # private, but kept since you depend on it
+    if dim == ragged_dim:
+        raise ValueError("Cannot unsqueeze along the jagged dimension.")
+
+    new_ragged_dim = ragged_dim + 1 if dim < ragged_dim else ragged_dim
+
+    values = x.values().unsqueeze(dim if dim < ragged_dim else dim - 1)
+    return torch.nested.nested_tensor_from_jagged(
+        values, offsets=x.offsets(), jagged_dim=new_ragged_dim
+    )
+
+
+def nested_safe_tensordict_unsqueeze(
+    td: TensorDict,
+    dim: int,
+    top_level: bool = True,
+) -> TensorDict:
+    """Unsqueeze all tensors in a tensordict, including nested tensors.
+
+    Args:
+        td (TensorDict): Input tensordict.
+        dim (int): Dimension to unsqueeze.
+
+    Returns:
+        TensorDict: Unsqueezed tensordict.
+    """
+    out_td = TensorDict({}, batch_size=td.batch_size)
+    for key, value in td.items():
+        if isinstance(value, Tensor) and value.is_nested:
+            out_td[key] = nested_unsqueeze(value, dim)
+        elif isinstance(value, (Tensor, NonTensorData)):
+            out_td[key] = value.unsqueeze(dim)
+        elif isinstance(value, TensorDict):
+            out_td[key] = nested_safe_tensordict_unsqueeze(value, dim, top_level=False)
+            out_td[key].auto_batch_size_(batch_dims=1)
+        else:
+            out_td[key] = value
+    if top_level:
+        out_td.auto_batch_size_(batch_dims=1)
+    return out_td

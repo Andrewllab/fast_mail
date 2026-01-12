@@ -3,13 +3,142 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Mapping, MutableMapping
 from operator import getitem
-from typing import Any, Callable, Generic, Iterable, Iterator, TypeVar
+from typing import Any, Callable, Generic, Iterable, Iterator, Sequence, TypeVar
 
 import numpy as np
+import torch
+
+from utils.nested import is_torch_nested_tensor
 
 from .types import ArrayLike, ArrayOrMapping, ArrayTree, ArrayType
 
 _T = TypeVar("_T")
+
+
+def _nested_unbind_list(nt):
+    # nt is a torch NestedTensor
+    # unbind() returns a tuple of (non-nested) tensors
+    return list(nt.unbind())
+
+
+def _nested_getitem(nt, key):
+    """
+    NestedTensor-safe equivalent of nt[key].
+
+    - int -> returns a single Tensor
+    - slice / sequence of indices / 1D LongTensor / 1D ndarray -> returns NestedTensor
+    """
+    key = _normalize_nested_key(key)
+    parts = _nested_unbind_list(nt)
+
+    # int indexing => return leaf tensor
+    if isinstance(key, (int, np.integer)):
+        return parts[int(key)]
+
+    # slice => return NestedTensor of sliced parts
+    if isinstance(key, slice):
+        return torch.nested.nested_tensor(
+            parts[key], device=nt.device, layout=nt.layout
+        )
+
+    # numpy integer array / list/tuple of ints
+    if isinstance(key, np.ndarray):
+        if key.dtype == np.bool_:
+            key = np.nonzero(key)[0]
+        key = key.tolist()
+
+    # torch index tensor
+    if torch is not None and isinstance(key, torch.Tensor):
+        if key.dtype == torch.bool:
+            key = torch.nonzero(key, as_tuple=False).flatten()
+        key = key.to(dtype=torch.long).flatten().tolist()
+
+    if isinstance(key, Sequence) and not isinstance(key, (str, bytes)):
+        idx = [int(i) for i in key]
+        return torch.nested.nested_tensor(
+            [parts[i] for i in idx], device=nt.device, layout=nt.layout
+        )
+
+    raise TypeError(f"Unsupported index type for NestedTensor: {type(key)!r}")
+
+
+def _nested_setitem(nt, key, value):
+    """
+    NestedTensor-safe equivalent of nt[key] = value.
+
+    Since NestedTensor doesn't reliably support in-place setitem,
+    we rebuild and return a new NestedTensor.
+    """
+    key = _normalize_nested_key(key)
+    parts = _nested_unbind_list(nt)
+
+    # Normalize key into something Python-list-assignable
+    if isinstance(key, np.ndarray):
+        if key.dtype == np.bool_:
+            key = np.nonzero(key)[0]
+        key = key.tolist()
+
+    if torch is not None and isinstance(key, torch.Tensor):
+        if key.dtype == torch.bool:
+            key = torch.nonzero(key, as_tuple=False).flatten()
+        key = key.to(dtype=torch.long).flatten().tolist()
+
+    # int assignment
+    if isinstance(key, (int, np.integer)):
+        parts[int(key)] = value
+        return torch.nested.nested_tensor(parts, device=nt.device, layout=nt.layout)
+
+    # slice assignment
+    if isinstance(key, slice):
+        # value should be a sequence of tensors of matching length
+        parts[key] = value
+        return torch.nested.nested_tensor(parts, device=nt.device, layout=nt.layout)
+
+    # sequence assignment
+    if isinstance(key, Sequence) and not isinstance(key, (str, bytes)):
+        idx = [int(i) for i in key]
+        # value can be broadcast (single tensor) or per-index sequence
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            if len(value) != len(idx):
+                raise ValueError(
+                    f"Length mismatch: {len(value)} values for {len(idx)} indices"
+                )
+            for i, v in zip(idx, value):
+                parts[i] = v
+        else:
+            for i in idx:
+                parts[i] = value
+        return torch.nested.nested_tensor(parts, device=nt.device, layout=nt.layout)
+
+    raise TypeError(
+        f"Unsupported index type for NestedTensor assignment: {type(key)!r}"
+    )
+
+
+def _normalize_nested_key(key):
+    # Treat "..." as "take everything"
+    if key is Ellipsis:
+        return slice(None)
+
+    # Handle tuple indexing like (..., i), (i, ...), (..., :)
+    if isinstance(key, tuple):
+        # Remove Ellipsis entries
+        non_ellipsis = [k for k in key if k is not Ellipsis]
+
+        # () or (...) => take all
+        if len(non_ellipsis) == 0:
+            return slice(None)
+
+        # If there is more than one actual index, NestedTensor "outer dim only"
+        # can't represent that safely.
+        if len(non_ellipsis) > 1:
+            raise TypeError(
+                f"NestedTensor only supports outer-dimension indexing here; got key={key!r}"
+            )
+
+        return non_ellipsis[0]
+
+    return key
 
 
 class ArrayDict(MutableMapping, Generic[ArrayType]):
@@ -49,14 +178,26 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
             return self._dict[key]
 
         try:
+
+            def _index(arr):
+                if isinstance(arr, ArrayDict):
+                    return arr[key]
+                if is_torch_nested_tensor(arr):
+                    return _nested_getitem(arr, key)
+                return arr[key]
+
             return ArrayDict(
-                ((field, arr[key]) for field, arr in self._dict.items()),
+                ((field, _index(arr)) for field, arr in self._dict.items()),
                 _run_checks=False,
             )
         except IndexError as e:
             for field, arr in self._dict.items():
                 try:
-                    _ = arr[key]
+                    _ = (
+                        arr[key]
+                        if not is_torch_nested_tensor(arr)
+                        else _nested_getitem(arr, key)
+                    )
                 except IndexError:
                     raise IndexError(
                         f"Index error in field '{field}' for index '{key}'"
@@ -68,23 +209,28 @@ class ArrayDict(MutableMapping, Generic[ArrayType]):
             self._dict[key] = value
             return
 
-        if isinstance(value, Mapping):  # i.e. dict, ArrayDict, etc.
+        if isinstance(value, Mapping):
             getter = getitem
-            fields = self._dict.keys() & value.keys()  # only common keys
+            fields = self._dict.keys() & value.keys()
         elif dataclasses.is_dataclass(value):
             getter = getattr
             fields = self._dict.keys() & set(dataclasses.fields(value))
         else:
-            # don't index into scalars, just assign the same scalar to all
-            # fields
             getter = lambda obj, field: obj
             fields = self._dict.keys()
 
         for field in fields:
             arr = self._dict[field]
             subvalue = getter(value, field)
+
             try:
-                arr[key] = subvalue
+                if isinstance(arr, ArrayDict):
+                    arr[key] = subvalue
+                elif is_torch_nested_tensor(arr):
+                    # rebuild and replace (NestedTensor may not support in-place setitem)
+                    self._dict[field] = _nested_setitem(arr, key, subvalue)
+                else:
+                    arr[key] = subvalue
             except IndexError as e:
                 raise IndexError(
                     f"Index error in field '{field}' for index '{key}'"

@@ -646,6 +646,8 @@ def dataset_states_to_obs_multiprocessing(args):
                 )
 
     output_path = os.path.join(os.path.dirname(args.dataset), output_name)
+    output_folder = os.path.dirname(output_path)
+    os.makedirs(output_folder, exist_ok=True)
 
     print("input file: {}".format(args.dataset))
     print("output file: {}".format(output_path))

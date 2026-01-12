@@ -9,7 +9,7 @@ import re
 import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import MutableMapping, Sequence, TypeVar, cast
+from typing import Mapping, MutableMapping, Sequence, TypeVar, cast
 
 import h5py
 import numpy as np
@@ -28,7 +28,13 @@ from environments.specs import (
 from transforms.base_transform import Compose, TransformPartialsDict, init_transforms
 from tree import ArrayDict
 from utils.hdf5_utils import recursive_hdf5_to_dict
-from utils.nested import pack_nested_for_storage, unpack_nested_from_storage
+from utils.nested import (
+    get_packed_jagged_length,
+    is_packed_jagged_nested_td,
+    is_torch_nested_tensor,
+    pack_nested_for_storage,
+    unpack_nested_from_storage,
+)
 from utils.paths import iglob_follow_symlinks, resolve_path
 from utils.pyg import index_reduced_batch, reduce_batch, unreduce_batch
 
@@ -149,8 +155,16 @@ class Hdf5Dataset(TrajectoryDataset):
         self.files = get_subset(files, load_subset)
 
         self.trajs = [h5py.File(str(file), "r") for file in self.files]
+        # self.trajs = [recursive_hdf5_to_dict(traj) for traj in self.trajs]
 
-        traj_lengths = [len(traj["action"]) for traj in self.trajs]
+        # self.trajs = [unpack_nested_from_storage(traj) for traj in self.trajs]
+
+        if is_packed_jagged_nested_td(self.trajs[0]["action"]):
+            traj_lengths = [
+                get_packed_jagged_length(traj["action"]) for traj in self.trajs
+            ]
+        else:
+            traj_lengths = [len(traj["action"]) for traj in self.trajs]
 
         self.slices = TrajectorySlices(
             traj_lengths,
@@ -250,11 +264,19 @@ class Hdf5Dataset(TrajectoryDataset):
 
     def get_trajectory(self, traj_idx: int) -> TensorDict:
         traj = self.trajs[traj_idx]
+        traj = recursive_hdf5_to_dict(traj)
+        traj = unpack_nested_from_storage(traj)
 
         # recursively convert all h5py datasets to numpy arrays
         obs = ArrayDict(traj["obs"])[...].to_dict()
-        action = traj["action"][...]
-        ref_action = traj["ref_action"][...]
+        if is_torch_nested_tensor(traj["action"]):
+            action = traj["action"]
+        else:
+            action = traj["action"][...]
+        if is_torch_nested_tensor(traj["ref_action"]):
+            ref_action = traj["ref_action"]
+        else:
+            ref_action = traj["ref_action"][...]
 
         td = TensorDict(
             {
@@ -270,7 +292,13 @@ class Hdf5Dataset(TrajectoryDataset):
         td["obs"].auto_batch_size_(batch_dims=1)
 
         if "goal" in traj.keys():
-            goal = ArrayDict(traj["goal"])[...].to_dict()
+            if isinstance(traj["goal"], Mapping) and not isinstance(
+                traj["goal"], h5py.Group
+            ):
+                goal = ArrayDict(traj["goal"]).to_dict()
+            else:
+                goal = ArrayDict(traj["goal"])[...].to_dict()
+
             for key, value in goal.items():
                 if (
                     isinstance(value, np.ndarray)
@@ -285,8 +313,6 @@ class Hdf5Dataset(TrajectoryDataset):
 
         relative_path = self.files[traj_idx].relative_to(self._root_dir)
         td["path"] = str(relative_path)
-
-        td = unpack_nested_from_storage(td)
 
         return td
 

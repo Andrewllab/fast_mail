@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from typing import Callable, Tuple
 
 import torch
 import torch.nn as nn
@@ -100,9 +100,13 @@ class PaktTokenizer(Transform, nn.Module):
         # TODO: Make color encoder optional
         # Encode color
         color_embed = self.color_encoder(point_color)
+        _, color_embed = make_jagged_nested_tensors_compatible(pos_embed, color_embed)
 
         # Encode features
         feature_embed = self.feature_encoder(point_features)
+        _, feature_embed = make_jagged_nested_tensors_compatible(
+            pos_embed, feature_embed
+        )
 
         # Add token type embedding
         token_type_embed = self.token_type_embedding(
@@ -245,7 +249,7 @@ class PaktTokenizer(Transform, nn.Module):
 
         return token_embed
 
-    def forward(self, batch: TensorDict) -> TensorDict:
+    def forward(self, batch: TensorDict) -> Tuple[TensorDict, Tensor, Tensor]:
         obs = batch["obs"]
         B = batch.batch_size[0]
         actions = batch["noisy_action"]  # (B, T, N_a, 3)
@@ -253,21 +257,9 @@ class PaktTokenizer(Transform, nn.Module):
 
         # === target point tokens ===
         target_points = obs["target_points"]
-        target_points_pos = pyg_to_nested_tensor(
-            target_points.pos,
-            batch=target_points.batch,
-            ptr=target_points.ptr,
-        )  # (B, N_t, 3)
-        target_points_color = pyg_to_nested_tensor(
-            target_points.color,
-            batch=target_points.batch,
-            ptr=target_points.ptr,
-        )  # (B, N_t, 3)
-        target_points_features = pyg_to_nested_tensor(
-            target_points.x,
-            batch=target_points.batch,
-            ptr=target_points.ptr,
-        )  # (B, N_t, F)
+        target_points_pos = target_points["points"]
+        target_points_color = target_points["colors"]
+        target_points_features = target_points["features"]
 
         target_points_tokens = self.__tokenize_pointcloud(
             point_pos=target_points_pos,
@@ -278,21 +270,9 @@ class PaktTokenizer(Transform, nn.Module):
 
         # === tool point tokens ===
         tool_points = obs["tool_points"]
-        tool_points_pos = pyg_to_nested_tensor(
-            tool_points.pos,
-            batch=tool_points.batch,
-            ptr=tool_points.ptr,
-        )  # (B, N_tool, 3)
-        tool_points_color = pyg_to_nested_tensor(
-            tool_points.color,
-            batch=tool_points.batch,
-            ptr=tool_points.ptr,
-        )  # (B, N_tool, 3)
-        tool_points_features = pyg_to_nested_tensor(
-            tool_points.x,
-            batch=tool_points.batch,
-            ptr=tool_points.ptr,
-        )  # (B, N_tool, F)
+        tool_points_pos = tool_points["points"]
+        tool_points_color = tool_points["colors"]
+        tool_points_features = tool_points["features"]
         tool_points_tokens = self.__tokenize_pointcloud(
             point_pos=tool_points_pos,
             point_color=tool_points_color,
@@ -302,13 +282,7 @@ class PaktTokenizer(Transform, nn.Module):
 
         # === gripper point tokens ===
         gripper_points = obs["gripper_points"]
-        gripper_points_pos = to_strided_tensor(
-            pyg_to_nested_tensor(
-                gripper_points.pos,
-                batch=gripper_points.batch,
-                ptr=gripper_points.ptr,
-            )
-        )  # (B, N_g, 3)
+        gripper_points_pos = to_strided_tensor(gripper_points["points"])  # (B, N_g, 3)
         gripper_points_ids = torch.arange(gripper_points_pos.shape[1], device=device)
         # (B, N_g) # should be 5
 
@@ -369,5 +343,67 @@ class PaktTokenizer(Transform, nn.Module):
         )
 
         batch["obs"]["embed"] = obs_tokens
+        # attention_mask = self.nested_decoder_attn_mask_no_padding(action_tokens)
+        action_tokens = torch.nested.as_nested_tensor(
+            [torch.nan_to_num(xb, nan=0.0) for xb in action_tokens.unbind()],
+            layout=torch.jagged,
+        )
+
+        if torch.isnan(action_tokens).any() or torch.isnan(obs_tokens).any():
+            log.warning("Action tokens contain NaNs!")
+
         # batch["action_embed"] = action_tokens
-        return batch, action_tokens
+        return batch, action_tokens  # , attention_mask
+
+    def nested_decoder_attn_mask_no_padding(self, x_nt: torch.Tensor) -> torch.Tensor:
+        """
+        Build a decoder-only attention mask as a NestedTensor, without padding.
+
+        Rules:
+        - causal (no attending to future tokens)
+        - tokens containing NaNs:
+            * cannot be attended to (as keys)
+            * cannot attend to anything (as queries)
+
+        Args:
+            x_nt: torch.nested.NestedTensor with logical shape (B, jL, D)
+
+        Returns:
+            attn_mask_nt: torch.nested.NestedTensor where each element has
+                        shape (L_b, L_b) and dtype float,
+                        with 0.0 for allowed attention and -inf for blocked.
+        """
+        if not x_nt.is_nested:
+            raise ValueError("Input must be a NestedTensor")
+
+        masks = []
+
+        # Iterate over batch elements (this preserves jaggedness)
+        for xb in x_nt.unbind():
+            # xb: (L, D)
+            L = xb.size(0)
+
+            # Identify NaN tokens
+            nan_tok = torch.isnan(xb).any(dim=-1)  # (L,)
+
+            # Causal mask: block j > i
+            causal_block = torch.triu(
+                torch.ones(L, L, device=xb.device, dtype=torch.bool), diagonal=1
+            )
+
+            # Block NaN tokens as keys (columns)
+            key_block = nan_tok.unsqueeze(0).expand(L, L)
+
+            # Block NaN tokens as queries (rows)
+            query_block = nan_tok.unsqueeze(1).expand(L, L)
+
+            block = causal_block | key_block | query_block
+
+            # Additive mask
+            attn_mask_b = torch.zeros((L, L), device=xb.device, dtype=xb.dtype)
+            attn_mask_b.masked_fill_(block, float("-inf"))
+
+            masks.append(attn_mask_b)
+
+        # Return as NestedTensor (no padding introduced)
+        return torch.nested.nested_tensor(masks, layout=torch.jagged)

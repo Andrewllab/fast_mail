@@ -134,6 +134,11 @@ def get_dataset_class(dataset_cfg: DictConfig) -> "type[TrajectoryDataset]":
 
         return PaktMemmapDataset
 
+    if backend.lower() == "pakt_hdf5":
+        from environments.datasets.pakt_hdf5_dataset import PaktHDF5Dataset
+
+        return PaktHDF5Dataset
+
     # This is the case when using a custom backend for preprocessing. We cannot
     # specify the class using _target_ here, otherwise hydra will try to
     # instantiate it (including the preprocess transforms) while instantiating
