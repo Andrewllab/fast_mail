@@ -332,7 +332,7 @@ class PointCloudSpec(Spec):
 
 
 @dataclass(frozen=True)
-class EmbedSpec:
+class EmbedSpec(Spec):
     embed_dim: int
     n_tokens: int | None = None
     fixed_shape: bool = True
