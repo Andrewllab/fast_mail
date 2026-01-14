@@ -69,7 +69,7 @@ def make(
     envs = gym.make(
         env_id,
         num_envs=num_envs,
-        obs_mode=obs_mode,
+        obs_mode="rgbd",
         control_mode=control_mode,
         render_mode=render_mode,
         reconfiguration_freq=(1 if reconfigure_on_reset else None),
