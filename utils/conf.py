@@ -175,8 +175,10 @@ def merge_data_configs(cfg: DictConfig, other: DictConfig) -> DictConfig:
         #     # standard merge algorithm. This keeps anything in cfg that isn't
         #     # explicitly overwritten
         #     cfg[key] = OmegaConf.merge(cfg[key], subcfg)
-
-        cfg[key] = OmegaConf.merge(cfg[key], subcfg)
+        if key not in cfg:
+            cfg[key] = subcfg
+        else:
+            cfg[key] = OmegaConf.merge(cfg[key], subcfg)
 
     primitive_keys = [
         k for k in other.keys() if k not in obj_keys and k not in transform_keys
