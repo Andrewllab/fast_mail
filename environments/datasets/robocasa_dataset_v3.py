@@ -20,7 +20,6 @@ from environments.specs import (
     ObsSpec,
     PinholeCameraIntrinsic,
     RGBStream,
-    TextSpec,
 )
 from transforms.base_transform import TransformPartialsDict, init_transforms
 from utils.paths import iglob_follow_symlinks, resolve_path
@@ -117,6 +116,11 @@ class RoboCasaDataset(CustomHdf5Dataset):
         # remove action dims related to static mobile platform
         action = traj["actions"][:, :7].astype(np.float32)
 
+        action_dict = traj["action_dict"]
+        obs_next_actions = {
+            f"next_{k}": action_dict[k][...] for k in action_dict.keys()
+        }
+
         # # ensure we are not ignoring any relevant actions
         # assert np.allclose(traj["actions"][:, 7:], np.array([0, 0, 0, 0, -1]))
 
@@ -139,64 +143,72 @@ class RoboCasaDataset(CustomHdf5Dataset):
         camera_poses = traj["camera_params"]["dynamic"]
 
         ep_meta = json.loads(traj.attrs["ep_meta"])
-        obj_name = [
-            obj_cfg for obj_cfg in ep_meta["object_cfgs"] if obj_cfg["name"] == "obj"
-        ][0]["info"]["cat"].replace("_", " ")
-        target_name = [
-            obj_cfg
-            for obj_cfg in ep_meta["object_cfgs"]
-            if obj_cfg["name"] == "container"
-        ][0]["info"]["cat"].replace("_", " ")
-        target_name = "frying pan"
 
         # TODO: does it use less memory if we explicitly convert to torch tensors first?
-        td = TensorDict(
-            {
-                "obs": {
-                    # cameras
-                    "left_cam": {
-                        # shape: (T, H, W, 3), uint8
-                        "rgb": traj["obs"]["robot0_agentview_left_image"][...],
-                        # shape: (T, H, W), float32
-                        "depth": traj["obs"]["robot0_agentview_left_depth"][..., 0],
-                    },
-                    "right_cam": {
-                        # shape: (T, H, W, 3), uint8
-                        "rgb": traj["obs"]["robot0_agentview_right_image"][...],
-                        # shape: (T, H, W), float32
-                        "depth": traj["obs"]["robot0_agentview_right_depth"][..., 0],
-                    },
-                    "gripper_cam": {
-                        # shape: (T, H, W, 3), uint8
-                        "rgb": traj["obs"]["robot0_eye_in_hand_image"][...],
-                        # shape: (T, H, W), float32
-                        "depth": traj["obs"]["robot0_eye_in_hand_depth"][..., 0],
-                    },
-                    # camera poses (shape: (T, 4, 4))
-                    "left_cam_pose": camera_poses["robot0_agentview_left"][
-                        "extrinsics"
-                    ][...],
-                    "right_cam_pose": camera_poses["robot0_agentview_right"][
-                        "extrinsics"
-                    ][...],
-                    "gripper_cam_pose": camera_poses["robot0_eye_in_hand"][
-                        "extrinsics"
-                    ][...],
-                    "joint_pos": joint_pos,  # shape: (T, 7), float32
-                    "robot_state": robot_state,  # shape: (T, 9), float32
-                    "ee_pose": ee_pose,  # shape: (T, 7), float32
+        td_dict = {
+            "obs": {
+                # cameras
+                "left_cam": {
+                    # shape: (T, H, W, 3), uint8
+                    "rgb": traj["obs"]["robot0_agentview_left_image"][...],
+                    # shape: (T, H, W), float32
+                    "depth": traj["obs"]["robot0_agentview_left_depth"][..., 0],
                 },
-                "action": action,
-                "ref_action": action.copy(),
-                "goal": {
-                    # language description of the current task
-                    "description": json.loads(traj.attrs["ep_meta"])["lang"]
+                "right_cam": {
+                    # shape: (T, H, W, 3), uint8
+                    "rgb": traj["obs"]["robot0_agentview_right_image"][...],
+                    # shape: (T, H, W), float32
+                    "depth": traj["obs"]["robot0_agentview_right_depth"][..., 0],
                 },
-                "path": str(path),
-                "name": name,
-            },  # type: ignore
-        )
+                "gripper_cam": {
+                    # shape: (T, H, W, 3), uint8
+                    "rgb": traj["obs"]["robot0_eye_in_hand_image"][...],
+                    # shape: (T, H, W), float32
+                    "depth": traj["obs"]["robot0_eye_in_hand_depth"][..., 0],
+                },
+                # camera poses (shape: (T, 4, 4))
+                "left_cam_pose": camera_poses["robot0_agentview_left"]["extrinsics"][
+                    ...
+                ],
+                "right_cam_pose": camera_poses["robot0_agentview_right"]["extrinsics"][
+                    ...
+                ],
+                "gripper_cam_pose": camera_poses["robot0_eye_in_hand"]["extrinsics"][
+                    ...
+                ],
+                "joint_pos": joint_pos,  # shape: (T, 7), float32
+                "robot_state": robot_state,  # shape: (T, 9), float32
+                "ee_pose": ee_pose,  # shape: (T, 7), float32
+                **obs_next_actions,  # next actions for all action components
+            },
+            "action": action,
+            "ref_action": action.copy(),
+            "goal": {
+                # language description of the current task
+                "text": ep_meta["lang"],
+            },
+            "path": str(path),
+            "name": name,
+        }  # type: ignore
 
+        # We assume that if we have the segmentation ids we also have the segmentation masks
+        if "segmentation_ids" in traj:
+            td_dict["obs"]["left_cam"]["segmentation"] = traj["obs"][
+                "robot0_agentview_left_segmentation_element"
+            ][...].squeeze(-1)
+            td_dict["obs"]["right_cam"]["segmentation"] = traj["obs"][
+                "robot0_agentview_right_segmentation_element"
+            ][...].squeeze(-1)
+            td_dict["obs"]["gripper_cam"]["segmentation"] = traj["obs"][
+                "robot0_eye_in_hand_segmentation_element"
+            ][...].squeeze(-1)
+
+            td_dict["segmentation_ids"] = {
+                key: traj["segmentation_ids"][key][...].astype(np.int32)
+                for key in traj["segmentation_ids"].keys()
+            }
+
+        td = TensorDict(td_dict)
         # add a batch dimension so we can index
         td["obs"].auto_batch_size_(batch_dims=1)
 
@@ -286,6 +298,6 @@ class RoboCasaDataset(CustomHdf5Dataset):
         # ignore action dims related to static mobile platform
         action = ActionSpec(action_dim=7, time=self.action_seq_len)
 
-        goal_specs = {"description": TextSpec()}
+        goal_specs = {"text": ObsSpec(elem_shape=(), time=None)}
 
         self._specs = DataSpecs(obs=obs_specs, action=action, goal=goal_specs)

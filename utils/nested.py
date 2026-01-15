@@ -96,6 +96,8 @@ def to_strided_tensor(
     by reshaping the values tensor. Otherwise, the nested tensor is converted
     by padding the elements to the same length.
     """
+    if not x.is_nested:
+        return x
     offsets, values = x.offsets(), x.values()
     lengths = offsets[1:] - offsets[:-1]
 
@@ -167,6 +169,8 @@ def make_jagged_nested_tensors_compatible(
     Returns:
         b_compat
     """
+    if not a.is_nested or not b.is_nested:
+        return a, b
     # --- Offsets checks ---
     a_off = a.offsets()
     b_off = b.offsets()

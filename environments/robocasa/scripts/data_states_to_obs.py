@@ -14,10 +14,12 @@ from copy import deepcopy
 from typing import OrderedDict
 
 import h5py
+import mujoco
 import numpy as np
 import robocasa.utils.robomimic.robomimic_dataset_utils as DatasetUtils
 import robocasa.utils.robomimic.robomimic_env_utils as EnvUtils
 import robocasa.utils.robomimic.robomimic_tensor_utils as TensorUtils
+from robosuite.models.tasks.task import get_subtree_geom_ids_by_group
 from robosuite.utils import camera_utils
 from tqdm import tqdm
 
@@ -128,6 +130,8 @@ def extract_trajectory(
                 # https://github.com/ARISE-Initiative/robomimic/issues/203
                 # https://github.com/ARISE-Initiative/robosuite/blob/9f28fb930ba1a07bd4a9a833f8a6b68e318aaf34/robosuite/utils/camera_utils.py#L106
                 obs[key] = camera_utils.get_real_depth_map(env.base_env.sim, obs[key])
+            if "segmentation_element" in key:
+                obs[key] = np.flip(obs[key], axis=0)
 
         if t == 0:
             # !!! IMPORTANT: record static camera parameters after environment reset to a particular state!!!
@@ -161,7 +165,7 @@ def extract_trajectory(
         done = False
         if (done_mode == 1) or (done_mode == 2):
             # done = 1 at end of trajectory
-            done = done or (t == traj_len)
+            done = t == traj_len - 1
         if (done_mode == 0) or (done_mode == 2):
             # done = 1 when s' is task success state
             done = done or env.is_success()["task"]
@@ -169,12 +173,24 @@ def extract_trajectory(
 
         # get the absolute action
         # action_abs = env.base_env.convert_rel_to_abs_action(actions[t])
+        segmentation_ids = {}
+        for body_key in env.env.obj_body_id.keys():
+            obj_body_id = env.env.obj_body_id[body_key]
+            segmentation_ids[body_key] = [
+                geom_id
+                for geom_id in range(env.env.sim.model.ngeom)
+                if env.env.sim.model.geom_bodyid[geom_id] == obj_body_id and geom_id
+            ]
+            segmentation_ids[body_key] += get_subtree_geom_ids_by_group(
+                env.env.sim.model, obj_body_id, group=1
+            )
 
         # collect transition
         traj["obs"].append(obs)
         traj["rewards"].append(r)
         traj["dones"].append(done)
         traj["datagen_info"].append(datagen_info)
+        traj["segmentation_ids"] = segmentation_ids
 
     # record intrinsics for all cameras only once as they don't change
     if dynamic_cam_names:
@@ -354,6 +370,13 @@ def write_traj_to_file(
                             ep_data_grp.create_dataset(
                                 "datagen_info/{}".format(k),
                                 data=np.array(traj["datagen_info"][k]),
+                            )
+
+                    if "segmentation_ids" in traj:
+                        for class_name in traj["segmentation_ids"]:
+                            ep_data_grp.create_dataset(
+                                f"segmentation_ids/{class_name}",
+                                data=np.array(traj["segmentation_ids"][class_name]),
                             )
 
                     # copy action dict (if applicable)

@@ -1,0 +1,5 @@
+_target_: transforms.to_pakt_action_obs.ToPaktActionObsTransform
+_partial_: True
+
+tool_points_key: tool_points
+target_points_key: target_points

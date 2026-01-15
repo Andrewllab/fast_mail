@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 import tensordict
 import torch
-from tensordict import TensorDict
+from tensordict import NonTensorData, TensorDict
 from torch.utils.data import IterableDataset
 
 from environments.specs import DataSpecs
