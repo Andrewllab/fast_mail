@@ -28,6 +28,8 @@ def create_env(
     ],
     camera_widths=128,
     camera_heights=128,
+    camera_depths=False,
+    camera_segmentations=None,
     seed=None,
     render_onscreen=False,
     # robocasa-related configs
@@ -37,6 +39,7 @@ def create_env(
     layout_and_style_ids=None,
     layout_ids=None,
     style_ids=None,
+    absolute_actions=False,
 ):
     """Copied and adapted from robocasa.utils.env_utils.create_env
 
@@ -52,22 +55,24 @@ def create_env(
         robot=robots if isinstance(robots, str) else robots[0],
     )
 
+    if absolute_actions:
+        controller_config["body_parts"]["right"]["input_type"] = "absolute"
+
     env_kwargs = dict(
         env_name=env_name,
-        # robosuite-related configs
         robots=robots,
         controller_configs=controller_config,
         camera_names=camera_names,
         camera_widths=camera_widths,
         camera_heights=camera_heights,
-        camera_depths=True,  # render RGBD
-        has_renderer=False,  # do not render in a viewer
-        has_offscreen_renderer=True,  # do render headless
+        camera_depths=camera_depths,
+        camera_segmentations=camera_segmentations,
+        has_renderer=render_onscreen,  # whether to render onscreen
+        has_offscreen_renderer=(not render_onscreen),  # whether to render headless
         ignore_done=True,  # no timeout
         use_object_obs=True,  # add proprioception to observation
         use_camera_obs=True,  # add rendered camera images to each observation
         seed=seed,
-        # robocasa-related configs
         obj_instance_split=obj_instance_split,
         generative_textures=generative_textures,
         randomize_cameras=randomize_cameras,
@@ -85,6 +90,7 @@ def make_one(
     env_name: str,
     img_height: int,
     img_width: int,
+    camera_names: list[str] | None = None,
     seed: int | None = None,
     max_episode_steps: int | float | None | Mapping[str, int] = None,
     render_cam_name: str | None = "robot0_agentview_left",
@@ -114,10 +120,19 @@ def make_one(
 
     log.info(f"Building RoboCasa environment: '{env_name}'")
 
+    if isinstance(camera_names, ListConfig):
+        camera_names = list(camera_names)
+    if isinstance(camera_names, str):
+        camera_names = [camera_names]
+
     env = create_env(
         env_name=env_name,
         camera_widths=img_width,
         camera_heights=img_height,
+        camera_depths=True,
+        camera_segmentations="element",
+        camera_names=camera_names,
+        absolute_actions=absolute_actions,
         seed=seed,
     )
 
