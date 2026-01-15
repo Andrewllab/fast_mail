@@ -24,7 +24,7 @@ checkpoint:
   wandb_run_id:  # REPLACE with desired wandb run id
   # project and entity are only needed if they differ from the settings in the wandb logger config
   wandb_project: 3d-sim2real
-  wandb_entity: alr-3d-sim2real
+  wandb_entity: nicolasschreiber
   epochs: last_3  # options: last, all, last_n (default: last)
   artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
   use_artifact: False  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
@@ -41,6 +41,7 @@ data:
     num_envs: 4
     parallel: null  # automatically use parallel if num_envs > 1
     action_horizon: 20  # modify if desired
+    top_level_keys: segmentation_ids
 
     record_video:
       video_folder: ${hydra:run.dir}/videos
@@ -50,6 +51,15 @@ data:
 
   preprocess:
     t99_cleanup: null  # disable cleanup transform added by default
+  prepreprocess:  
+    t06_to_tracked_featured_pointcloud:
+      mode: mask
+      mask_key: obj_segmentation
+      _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
+  preprepreprocess:
+    t78_some_preprocess_for_test:
+      a: 1  # dummy param to create a new transform for test preprocess stage
+
 
   gpu_batch_transforms:
     t90_render:

@@ -22,7 +22,7 @@ checkpoint:
   wandb_run_id: 
   # project and entity are only needed if they differ from the settings in the wandb logger config
   wandb_project: 3d-sim2real
-  wandb_entity: alr-3d-sim2real
+  wandb_entity: nicolasschreiber
   epochs: last  # options: last, all, last_n (default: last)
   artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
   use_artifact: false  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)

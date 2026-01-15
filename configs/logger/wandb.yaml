@@ -5,7 +5,7 @@ wandb:
 
   # passed to wandb.init()
   project: 3d-sim2real
-  entity: alr-3d-sim2real
+  entity: nicolasschreiber
   job_type: ${oc.select:job_type,null}
   notes: null
   tags: null

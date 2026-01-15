@@ -2,57 +2,50 @@
 
 defaults:
 
-  - /transforms@data.prepreprocess.t01_samv3_segmenter: grounding_samv3_segmenter
-  - /transforms@data.preprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
-  - /transforms@data.preprocess.t03_dinov3: dinov3
-  - /transforms@data.preprocess.t04_cotracker: cotracker
-  - /transforms@data.preprocess.t05_to_masked_featured_pointcloud: to_masked_featured_pointcloud
-  - /transforms@data.preprocess.t06_to_tracked_featured_pointcloud: to_tracked_featured_pointcloud
-  # - /transforms@data.preprocess.t15_to_pcd: to_pointcloud
-
-  # we can't crop tightly around the scene because each scene is in a different location in the world frame
-  # points very far away (>100m) are removed by the max_depth of the to_pointcloud transform
-
-  # no need to apply random transform for robocasa, since this is in the dataset already
-
-  # - /transforms@data.preprocess.t99_cleanup: cleanup
-
-  # - /transforms@data.gpu_batch_transforms.t1_sample_random: pointcloud_downsample_random
-  # - /transforms@data.gpu_batch_transforms.t2_sample_voxel: pointcloud_downsample_voxel
-
-  # apply jitter data augmentation
-  # - /transforms@data.gpu_batch_transforms.t10_jitter: jitter
+  # Remove unused defaults and get the actual segmentations from robocasa
+  - /transforms@data.preprepreprocess.t01_remove_inhand: cleanup
+  - /transforms@data.preprepreprocess.t02_apply_robocasa_segmentations: apply_robocasa_segmentations
   
-  # we don't need to normalize the pointclouds because they are already sort of
-  # within the range [0, 1] after cropping
-  # - /transforms@data.gpu_batch_transforms.t5_normalize: pointcloud_normalize
+  # Larger vision tasks
+  - /transforms@data.prepreprocess.t03_dinov3: dinov3
+  - /transforms@data.prepreprocess.t04_cotracker: cotracker
+  - /transforms@data.prepreprocess.t05_to_masked_featured_pointcloud: to_masked_featured_pointcloud
+  - /transforms@data.prepreprocess.t06_to_tracked_featured_pointcloud: to_tracked_featured_pointcloud
+  - /transforms@data.prepreprocess.t99_cleanup: cleanup
+
+  # Last little part that connects everyting
+  - /transforms@data.preprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
+  - /transforms@data.preprocess.t07_to_pakt_action_obs: to_pakt_action_obs
+  - /transforms@data.preprocess.t99_cleanup: cleanup
+
+
 
 data:
+  preprepreprocess:
+    backend: hdf5
+    root_dir: ${paths.preprepreprocessed_dir}/robocasa/${data.name}
+    t01_remove_inhand:
+      drop_keys: [gripper_cam]
+
+  # Below is just the default configuration copied here for convenience. Change as needed.
   prepreprocess:
     backend: hdf5
-    root_dir: ${paths.prepreprocessed_dir}/robocasa/${data.name}
-  # Below is just the default configuration copied here for convenience. Change as needed.
+    # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
+    root_dir: ${paths.prepreprocessed_dir}/robocasa/${data.name}_pointclouds
+    overwrite: True
+    t99_cleanup:
+      keep_stream_types: []  # keep no stream types, i.e. remove all
+      drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose, left_cam, right_cam, gripper_cam]
+
   preprocess:
-    backend: hdf5
+    backend: pakt_hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_pointclouds
     overwrite: True
 
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
-      drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose]
-
-  gpu_batch_transforms:
-    t1_sample_random:
-      # point clouds begin with (approx.) 224*224*3 = 150528 points
-      n_points: 32768
-
-    t2_sample_voxel:
-      # results in approx. 17000 points after downsampling
-      size: 0.01
-
-    t10_jitter:
-      sigma: 0.002  # slightly higher jitter for robocasa
+      drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose, left_cam, right_cam, gripper_cam]
 
 # disable the batch size finder for point clouds, because the data points 
 # don't have a consistent memory size
