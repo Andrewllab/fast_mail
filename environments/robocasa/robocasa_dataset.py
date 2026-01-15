@@ -139,15 +139,6 @@ class RoboCasaDataset(CustomHdf5Dataset):
         camera_poses = traj["camera_params"]["dynamic"]
 
         ep_meta = json.loads(traj.attrs["ep_meta"])
-        obj_name = [
-            obj_cfg for obj_cfg in ep_meta["object_cfgs"] if obj_cfg["name"] == "obj"
-        ][0]["info"]["cat"].replace("_", " ")
-        target_name = [
-            obj_cfg
-            for obj_cfg in ep_meta["object_cfgs"]
-            if obj_cfg["name"] == "container"
-        ][0]["info"]["cat"].replace("_", " ")
-        target_name = "frying pan"
 
         # TODO: does it use less memory if we explicitly convert to torch tensors first?
         td = TensorDict(

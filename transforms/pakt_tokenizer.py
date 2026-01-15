@@ -293,12 +293,17 @@ class PaktTokenizer(Transform, nn.Module):
 
         # === action point tokens ===
         action_points_pos = actions  # (B, T, N_a, 3)
-        action_points_pos = unflatten_nested_tensor(
-            action_points_pos,
-            orig_vshape=(self.num_timesteps,),
-            start_dim=1,
-            end_dim=2,
-        )  # (B, T, N_a, 3)
+        if action_points_pos.is_nested:
+            action_points_pos = unflatten_nested_tensor(
+                action_points_pos,
+                orig_vshape=(self.num_timesteps,),
+                start_dim=1,
+                end_dim=2,
+            )  # (B, T, N_a, 3)
+        else:
+            action_points_pos = action_points_pos.view(
+                B, -1, self.num_timesteps, 3
+            )  # (B, T, N_a, 3)
 
         # === gripper actions point tokens ===
         gripper_action_pos = torch.stack([x[:5] for x in action_points_pos.unbind(0)])

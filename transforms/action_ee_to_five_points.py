@@ -11,8 +11,11 @@ from tensordict import TensorDict
 from environments.specs import DataSpecs
 from transforms.base_transform import ReversibleTransform, TransformConstraint
 from utils.math import (
+    axis_angle_from_quat,
     combine_frame_transforms,
+    matrix_to_quaternion,
     normalize,
+    quat_from_axis_angle,
     quaternion_to_matrix,
     subtract_frame_transforms,
     transform_points,
@@ -36,27 +39,6 @@ POINTS_FINGERS = torch.tensor(
         [[0.05, 0.0, 0.00], [-0.05, 0.0, 0.00]],
     ]
 )
-
-
-def ee_pose_to_3D_points(
-    ee_pos: torch.Tensor, ee_quat: torch.Tensor, gripper: torch.Tensor
-) -> torch.Tensor:
-    global POINTS_LOCAL, POINTS_FINGERS
-
-    num_samples = ee_pos.shape[0]
-    num_total_points = POINTS_FINGERS.shape[1] + POINTS_LOCAL.shape[0]
-
-    total_points = torch.empty((num_samples, num_total_points, 3), device=ee_pos.device)
-    total_points[:, : POINTS_LOCAL.shape[0], :] = POINTS_LOCAL.unsqueeze(0).expand(
-        num_samples, -1, -1
-    )
-    total_points[:, POINTS_LOCAL.shape[0] :, :] = POINTS_FINGERS[
-        gripper.cpu().squeeze().long()
-    ]
-
-    points_global: torch.Tensor = transform_points(total_points, ee_pos, ee_quat)
-
-    return points_global
 
 
 class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
@@ -87,22 +69,51 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         return self._specs
 
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
-        ee_poses = tensordict["obs"][self.ee_pose_key]  # (T, 7)
-        gripper_action = tensordict["action"][..., -1]
+        action_pos = tensordict["obs"]["next_abs_pos"]  # (T, 3)
+        action_rot = tensordict["obs"]["next_abs_rot_axis_angle"]  # (T, 3)
+        gripper_action = tensordict["obs"]["next_gripper"]  # (T, 1)
 
-        points = ee_pose_to_3D_points(
-            ee_pos=ee_poses[:, :3], ee_quat=ee_poses[:, 3:], gripper=gripper_action
+        points = self.ee_pose_to_3D_points(
+            ee_pos=action_pos, ee_rot=action_rot, gripper=gripper_action
         )  # (T, 5, 3)
 
         tensordict["action"] = points
 
         return tensordict
 
+    def call_trajectory_rollout(self, tensordict: TensorDict) -> TensorDict:
+        if "_action" not in tensordict["obs"].keys():
+            ee_pos = tensordict["obs"]["ee_pose"][:, :3].to(torch.float32)  # (T, 3)
+            ee_quat = tensordict["obs"]["ee_pose"][:, 3:].to(torch.float32)  # (T, 4)
+            ee_rot = axis_angle_from_quat(ee_quat)  # (T, 3)
+            gripper_state = torch.zeros(
+                ee_pos.shape[0], device=ee_pos.device, dtype=ee_pos.dtype
+            )  # (T, 1)
+        else:
+            ee_pos = tensordict["obs"]["_action"][:, :3]  # (T, 3)
+            ee_rot = tensordict["obs"]["_action"][:, 3:6]  # (T, 3)
+            gripper_state = tensordict["obs"]["_action"][:, 6]  # (T,)
+
+        points = self.ee_pose_to_3D_points(
+            ee_pos=ee_pos, ee_rot=ee_rot, gripper=gripper_state
+        )  # (T, 5, 3)
+
+        tensordict["obs"]["gripper_points"] = {"points": points[0].to(torch.float32)}
+
+        return tensordict
+
     def reverse(self, tensordict: TensorDict) -> TensorDict:
-        points = tensordict["action"]  # (T, 5, 3)
-        ee_pos, ee_quat = self.points_to_pose(points)  # (T, 3), (T, 4)
+        points = tensordict["action"].float()  # (B, 5, T, 3)
+        B, N, T, _ = points.shape
+        points = points.swapaxes(1, 2).reshape(-1, 5, 3)  # (B*T, 5, 3)
+
+        ee_pos, ee_rot = self.points_to_pose(points[:, :3])  # (T, 3), (T, 3)
         gripper = self.points_to_gripper(points[:, 3:5, :])  # (T,)
-        ee_poses = torch.cat([ee_pos, ee_quat], dim=-1)  # (T, 7)
+        ee_poses = torch.cat([ee_pos, ee_rot], dim=-1)  # (T, 6)
+        # Convert back to original batched shape
+        ee_poses = ee_poses.view(B, T, 6)
+        gripper = gripper.view(B, T)
+
         tensordict["action"] = torch.cat(
             [ee_poses, gripper.unsqueeze(-1)], dim=-1
         )  # (T, 8)
@@ -136,14 +147,14 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         # Compute covariance matrices for each batch sample: H = X^T @ Y
         # Expand X^T to batch: [B, 3, N]
         X_T = X.t().unsqueeze(0).expand(T, 3, N)
-        H = torch.bmm(X_T, Y)  # [B, 3, 3]
+        H = torch.bmm(X_T, Y, out_dtype=X_T.dtype)  # [B, 3, 3]
 
         # Compute SVD for each batch sample
         U, S, Vh = torch.linalg.svd(H, full_matrices=False)
         V = Vh.transpose(-2, -1)  # [B, 3, 3]
 
         # Compute rotation: R = V @ U^T for each batch
-        R = torch.bmm(V, U.transpose(-2, -1))  # [B, 3, 3]
+        R = torch.bmm(V, U.transpose(-2, -1), out_dtype=V.dtype)  # [B, 3, 3]
 
         # Reflection correction: if det(R) < 0, flip sign of last column of V for that sample.
         det_R = torch.det(R)  # [B]
@@ -163,9 +174,9 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
 
         ee_pos = T
         # ee_pos = points_global[:,0,:]*0.5 + points_global[:,1,:]*0.5
-        ee_quat = quaternion_to_matrix(R)  # [B, 4]
+        ee_rot = axis_angle_from_quat(matrix_to_quaternion(R))  # [B, 4]
 
-        return ee_pos, ee_quat
+        return ee_pos, ee_rot
 
     def points_to_gripper(self, gripper_points: torch.Tensor):
         global POINTS_FINGERS
@@ -191,7 +202,7 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         return out_gripper
 
     def ee_pose_to_3D_points(
-        self, ee_pos: torch.Tensor, ee_quat: torch.Tensor, gripper: torch.Tensor
+        self, ee_pos: torch.Tensor, ee_rot: torch.Tensor, gripper: torch.Tensor
     ) -> torch.Tensor:
         global POINTS_LOCAL, POINTS_FINGERS
 
@@ -208,6 +219,7 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
             gripper.cpu().squeeze().long()
         ]
 
+        ee_quat = quat_from_axis_angle(ee_rot)
         points_global: torch.Tensor = transform_points(total_points, ee_pos, ee_quat)
 
         return points_global
@@ -216,4 +228,4 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         self,
         tensordict: TensorDict,
     ) -> TensorDict:
-        return tensordict
+        return self.call_trajectory_rollout(tensordict[0]).unsqueeze(0)

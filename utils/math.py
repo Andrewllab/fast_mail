@@ -722,6 +722,41 @@ def axis_angle_from_quat(quat: torch.Tensor, eps: float = 1.0e-6) -> torch.Tenso
 
 
 @torch.jit.script
+def quat_from_axis_angle(axis_angle: torch.Tensor, eps: float = 1.0e-6) -> torch.Tensor:
+    """Inverse of axis_angle_from_quat: convert axis-angle *vector* to quaternion.
+
+    Args:
+        axis_angle: Axis-angle vector of shape (..., 3). Direction is axis, magnitude is angle (radians).
+        eps: Small threshold for stable behavior near zero rotation.
+
+    Returns:
+        Quaternion in (w, x, y, z) of shape (..., 4), with w >= 0 (canonicalized).
+    """
+    angle = torch.linalg.norm(axis_angle, dim=-1)  # (...,)
+    half = 0.5 * angle  # (...,)
+
+    # axis = axis_angle / angle, but avoid divide-by-zero
+    axis = axis_angle / angle.clamp(min=eps).unsqueeze(-1)  # (..., 3)
+
+    sin_half = torch.sin(half)  # (...,)
+    xyz = axis * sin_half.unsqueeze(-1)  # (..., 3)
+    w = torch.cos(half)  # (...,)
+
+    quat = torch.cat([w.unsqueeze(-1), xyz], dim=-1)  # (..., 4)
+
+    # For angle ~ 0, axis is arbitrary; force xyz -> 0 cleanly
+    quat = torch.where(
+        (angle.unsqueeze(-1) > eps),
+        quat,
+        torch.cat([torch.ones_like(w).unsqueeze(-1), torch.zeros_like(xyz)], dim=-1),
+    )
+
+    # Match the canonicalization in axis_angle_from_quat: enforce w >= 0
+    quat = quat * (1.0 - 2.0 * (quat[..., 0:1] < 0.0))
+    return quat
+
+
+@torch.jit.script
 def quat_error_magnitude(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
     """Computes the rotation difference between two quaternions.
 

@@ -13,13 +13,17 @@ from environments.specs import (
     ObsSpec,
     PointCloudSpec,
 )
-from transforms.base_transform import Transform, TransformConstraint
-from utils.nested import cat_nested, flatten_nested_tensor
+from transforms.base_transform import ReversibleTransform
+from utils.nested import (
+    cat_nested,
+    flatten_nested_tensor,
+    nested_safe_tensordict_unsqueeze,
+)
 
 log = logging.getLogger(__name__)
 
 
-class ToPaktActionObsTransform(Transform):
+class ToPaktActionObsTransform(ReversibleTransform):
 
     def __init__(
         self,
@@ -35,7 +39,7 @@ class ToPaktActionObsTransform(Transform):
         self._load_specs()
 
     def _load_specs(self) -> None:
-        obs_specs = {}
+        obs_specs = dict(self._specs.obs)  # copy obs specs for local modification
 
         obs_specs["tool_points"] = NestedTensorSpec(time=False)
         obs_specs["target_points"] = NestedTensorSpec(time=False)
@@ -46,7 +50,7 @@ class ToPaktActionObsTransform(Transform):
 
         goal_specs = {"text": ObsSpec(elem_shape=(), time=None)}
 
-        self._specs = DataSpecs(obs=obs_specs, action=action, goal=goal_specs)
+        self._specs = self._specs.replace(obs=obs_specs, action=action, goal=goal_specs)
 
     @property
     def specs(self) -> DataSpecs:
@@ -85,14 +89,22 @@ class ToPaktActionObsTransform(Transform):
 
         robot_action_windows = self.sliding_windows_pad_last(
             robot_action_points, window=self.window_len
+        ).movedim(
+            -1, 2
         )  # (T, window, N_action, 3)
 
         action = cat_nested(
             [robot_action_windows, tool_action_points], dim=1
         )  # (T, N_action + N_tool, 3)
-        action, _, _ = flatten_nested_tensor(
+        action, orig_offsets, orig_vshape = flatten_nested_tensor(
             action, start_dim=1, end_dim=2
         )  # (T, (N_action + N_tool)*N_timesteps, 3)
+
+        ref_actions = self.sliding_windows_pad_last(
+            tensordict["ref_action"], window=self.window_len
+        ).movedim(
+            1, 2
+        )  # (T,  window, N_action, 3)
 
         obs = {
             "tool_points": {
@@ -108,8 +120,59 @@ class ToPaktActionObsTransform(Transform):
         tensordict["obs"] = tensordict["obs"].update(obs)
         tensordict["action"] = action
         tensordict["phantom_action"] = action.clone()
-        tensordict["ref_action"] = action.clone()
+        tensordict["ref_action"] = ref_actions.squeeze(0)
         return tensordict
+
+    def call_trajectory_rollout(self, tensordict: TensorDict) -> TensorDict:
+        tool_pcd = tensordict["obs"][self.tool_points_key]  # (T, N_tool, 3)
+        target_pcd = tensordict["obs"][self.target_points_key]  # (T, N_target, 3)
+        gripper_points = tensordict["obs"]["gripper_points"]
+
+        tool_pcd = {key: tool_pcd[key].squeeze(0) for key in tool_pcd.keys()}
+        target_pcd = {key: target_pcd[key].squeeze(0) for key in target_pcd.keys()}
+        gripper_points = {"points": gripper_points["points"].squeeze(0)}
+
+        obs = {
+            "tool_points": tool_pcd,
+            "target_points": target_pcd,
+            "gripper_points": gripper_points,
+        }
+
+        num_tool_points = tool_pcd["points"].shape[0]
+        num_timesteps = self.window_len
+        action_dim = tensordict["obs"]["gripper_points"]["points"].shape[0]
+        phantom_action = torch.zeros(
+            ((action_dim + num_tool_points) * num_timesteps, 3),
+            device=tool_pcd["points"].device,
+        )
+
+        tensordict["obs"] = tensordict["obs"].update(obs)
+        tensordict["phantom_action"] = phantom_action
+        return tensordict
+
+    def call_trajectory_reverse(self, tensordict: TensorDict) -> TensorDict:
+        """
+        Inverse of call_trajectory() w.r.t. tensordict["action"]:
+
+        Extracts the original per-timestep robot_action_points (T, N_action, 3)
+        from the packed/flattened tensordict["action"] and stores it back into
+        tensordict["action"].
+        """
+        action = tensordict["action"]  # (T, K, 3) where K >= window_len * N_action
+
+        # Prefer deriving N_action from existing obs if available (most robust).
+        n_action = 5  # TODO: get from specs or config
+        window_len = self.window_len
+        # Robot part is the prefix: (T, window_len*N_action, 3)
+        robot_flat = torch.stack(
+            [a.view(-1, window_len, 3)[:n_action] for a in action.unbind()]
+        )
+
+        tensordict["action"] = robot_flat  # (T, N_action, 3)
+        return tensordict
+
+    def reverse(self, tensordict):
+        return self.call_trajectory_reverse(tensordict)
 
     def sliding_windows_pad_last(self, x: torch.Tensor, window: int) -> torch.Tensor:
         """
@@ -132,5 +195,9 @@ class ToPaktActionObsTransform(Transform):
         # make all windows
         # [T+pad_len, ...] -> [T, window, ...]
         x_windows = x.unfold(dimension=0, size=window, step=1)  # [T, window, ...]
-        x_windows = x_windows.movedim(-1, 2)  # [T, window, ...]
         return x_windows
+
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        return nested_safe_tensordict_unsqueeze(
+            self.call_trajectory_rollout(tensordict[0]), dim=0
+        )

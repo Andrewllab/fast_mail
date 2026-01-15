@@ -123,9 +123,6 @@ class BesoAgent(BaseAgent):
         model_output = self.model(batch, noised_input * c_in, c_noise)
         target = (action - c_skip * noised_input) / c_out
         if model_output.is_nested:
-            target, model_output = make_jagged_nested_tensors_compatible(
-                target, model_output
-            )
             loss = F.mse_loss(model_output.values(), target.values())
         else:
             loss = F.mse_loss(model_output, target)
@@ -170,3 +167,31 @@ class BesoAgent(BaseAgent):
         batch = self.reverser.reverse(batch)
 
         return batch["action"]
+
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        # values logged here get averaged over an epoch
+
+        if "episode_info" in batch:
+            episode_info = batch["episode_info"]
+            assert self.checkpoint_metadata and "epoch" in self.checkpoint_metadata
+            self.log_dict(
+                {
+                    "ckpt_epoch": self.checkpoint_metadata["epoch"],
+                    **episode_info.to_dict(),
+                },
+                batch_size=episode_info.shape[0],
+            )
+
+        prediction = self.predict_step(batch, batch_idx)
+
+        if "ref_action" in batch:
+            # only if we are validating on demonstration data
+            mask = torch.isfinite(batch["ref_action"]) & torch.isfinite(prediction)
+            error = F.mse_loss(prediction[mask], batch["ref_action"][mask])
+            self.log("val_action_mse", error, batch_size=batch.shape[0])
+
+        # return the prediction in case we want to write it back to the environment
+        return prediction
+
+    # validation and testing are identical
+    test_step = validation_step

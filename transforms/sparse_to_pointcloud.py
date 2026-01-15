@@ -1,22 +1,35 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Dict, List, Literal, Sequence
 
 import torch
 import torch.nn.functional as F
 from tensordict import TensorDict
-from torch_geometric.data import Batch, Data
 
-from environments.specs import CameraSpec, DataSpecs, DepthStream, PointCloudSpec
+from environments.specs import (
+    CameraSpec,
+    DataSpecs,
+    DepthStream,
+    NestedTensorSpec,
+    PointCloudSpec,
+)
 from transforms.base_transform import Transform
 from utils.nested import nested_safe_tensordict_unsqueeze
 
 log = logging.getLogger(__name__)
 
 
-class _SparseToPointCloudBase(Transform):
-    """Shared utilities for sparse -> pointcloud transforms."""
+class SparseToPointCloudMerged(Transform):
+    """Sparse -> pointcloud transform supporting two modes.
+
+    Modes:
+        - "mask": sample one 3D point per masked patch (MaskOnly behavior)
+        - "track": unproject tracked 2D keypoints over a short horizon (TrackOnly behavior)
+
+    The output is written to tensordict["obs", out_key] as a dict of nested (jagged)
+    tensors, matching the behavior of the original two transforms.
+    """
 
     FEATURE_DIM: int = 768  # TODO: infer from specs instead of hard-coding
     PATCH_SIZE: int = 16  # TODO: infer from specs instead of hard-coding
@@ -24,30 +37,52 @@ class _SparseToPointCloudBase(Transform):
     def __init__(
         self,
         specs: DataSpecs,
-        *,
-        camera_keys: Sequence[str] | None,
-        features_key: str | Sequence[str] | None,
+        mode: Literal["mask", "track"] = "mask",
         color: bool = False,
         features: bool = False,
+        camera_keys: Sequence[str] | None = None,
+        # mask mode
+        mask_key: str | Sequence[str] | None = None,
+        # track mode
+        track_key: str | Sequence[str] | None = None,
+        visibility_key: str | Sequence[str] | None = None,
+        # shared
+        features_key: str | Sequence[str] | None = None,
         max_depth: float | None = None,
         out_key: str = "pcd",
     ) -> None:
+        if camera_keys is None:
+            raise ValueError("camera_keys must be provided")
+        if mode not in ("mask", "track"):
+            raise ValueError(f"Unsupported mode={mode!r}; expected 'mask' or 'track'")
+
+        self.mode: Literal["mask", "track"] = mode
         self.color = color
         self.features = features
         self.max_depth = max_depth
         self._out_key = out_key
 
-        if camera_keys is None:
-            raise ValueError("camera_keys must be provided")
         self.camera_keys = list(camera_keys)
-
+        self.mask_key = mask_key
+        self.track_key = track_key
+        self.visibility_key = visibility_key
         self.features_key = features_key
+
+        if self.mode == "mask" and self.mask_key is None:
+            raise ValueError("mask_key must be provided when mode='mask'")
+        if self.mode == "track":
+            if self.track_key is None:
+                raise ValueError("track_key must be provided when mode='track'")
+            if self.visibility_key is None:
+                raise ValueError("visibility_key must be provided when mode='track'")
+            self.track_len = specs.action_seq_len + 1
+
+        if self.features_key is None:
+            raise ValueError("features_key must be provided")
 
         # Copy obs specs for local modification
         obs_specs = dict(specs.obs)
-        obs_specs[self._out_key] = PointCloudSpec(
-            feature_dim=self.FEATURE_DIM, color=color
-        )
+        obs_specs[self._out_key] = NestedTensorSpec(time=False)
         self._output_specs = specs.replace(obs=obs_specs)
 
     @property
@@ -55,19 +90,6 @@ class _SparseToPointCloudBase(Transform):
         return self._output_specs
 
     # --------------------------- helpers ---------------------------
-
-    @staticmethod
-    def _normalize_key(key: str | Sequence[str] | None) -> str | tuple[str, ...]:
-        """Allow callers to pass either a string or a (nested) key path."""
-        if key is None:
-            raise ValueError("Required key is None")
-        if isinstance(key, str):
-            return key
-        key = tuple(key)
-        if len(key) == 1:
-            return key[0]
-        return key
-
     def _get_cam_spec(self, camera_key: str) -> CameraSpec:
         cam_spec = self._output_specs.obs[camera_key]
         if not isinstance(cam_spec, CameraSpec):
@@ -100,7 +122,11 @@ class _SparseToPointCloudBase(Transform):
     def _get_transforms(
         self, tensordict: TensorDict, cam_spec: CameraSpec, *, device: torch.device
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
-        """Return (T_static, dynamic_T) where dynamic_T is indexed by frame/batch."""
+        """Return (T_static, dynamic_T).
+
+        - T_static: (4,4) constant extrinsics
+        - dynamic_T: (T,4,4) or (B,4,4) dynamic transform pulled from obs, if present
+        """
         T_static = None
         if cam_spec.extrinsics is not None:
             T_static = cam_spec.extrinsics.to(device=device, dtype=torch.float32)
@@ -124,64 +150,58 @@ class _SparseToPointCloudBase(Transform):
         return valid
 
     @staticmethod
-    def _apply_extrinsics_points(
-        pts: torch.Tensor,  # (N,3)
+    def _apply_extrinsics(
+        pts: torch.Tensor,  # (...,3)
         *,
         T_static: torch.Tensor | None,
         dynamic_T: torch.Tensor | None,
-        dynamic_index: torch.Tensor | None,  # (N,) indexes into dynamic_T
+        dynamic_index: torch.Tensor | None,  # (...) indexes into dynamic_T
     ) -> torch.Tensor:
+        """Apply static and/or dynamic extrinsics to points.
+
+        Works with arbitrary leading dimensions; if dynamic_T is used, dynamic_index
+        must broadcast to the leading shape of pts.
+        """
         if T_static is None and dynamic_T is None:
             return pts
+
+        orig_shape = pts.shape
+        pts_f = pts.reshape(-1, 3)
 
         if dynamic_T is not None:
             if dynamic_index is None:
                 raise ValueError(
                     "dynamic_index must be provided when dynamic_T is used"
                 )
+            idx_f = dynamic_index.reshape(-1).to(dtype=torch.long)
+            T_eff = dynamic_T[idx_f]
             if T_static is not None:
-                T_eff = dynamic_T[dynamic_index] @ T_static  # (N,4,4)
-            else:
-                T_eff = dynamic_T[dynamic_index]
+                T_eff = T_eff @ T_static
             R = T_eff[:, :3, :3]
             t = T_eff[:, :3, 3]
-            return torch.bmm(R, pts.unsqueeze(-1)).squeeze(-1) + t
+            out = torch.einsum("nij,nj->ni", R, pts_f) + t
+            return out.reshape(orig_shape)
 
         # Only static
         R = T_static[:3, :3]
         t = T_static[:3, 3]
-        return (pts @ R.T) + t
-
-
-class SparseToPointCloudMaskOnly(_SparseToPointCloudBase):
-    """Create a point cloud by sampling one point per *masked* patch."""
-
-    def __init__(
-        self,
-        specs: DataSpecs,
-        *,
-        color: bool = False,
-        features: bool = False,
-        camera_keys: Sequence[str] | None = None,
-        mask_key: str | Sequence[str] | None = None,
-        features_key: str | Sequence[str] | None = None,
-        max_depth: float | None = None,
-        out_key: str = "pcd",
-    ) -> None:
-        super().__init__(
-            specs,
-            camera_keys=camera_keys,
-            features_key=features_key,
-            color=color,
-            features=features,
-            max_depth=max_depth,
-            out_key=out_key,
-        )
-        self.mask_key = mask_key
+        return ((pts_f @ R.T) + t).reshape(orig_shape)
 
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
-        mask_key = self._normalize_key(self.mask_key)
-        features_key = self._normalize_key(self.features_key)
+        if self.mode == "mask":
+            return self._call_mask(tensordict)
+        return self._call_track(tensordict)
+
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        return nested_safe_tensordict_unsqueeze(
+            self.call_trajectory(tensordict[0]), dim=0
+        )
+
+    # --------------------------- mask mode ---------------------------
+
+    def _call_mask(self, tensordict: TensorDict) -> TensorDict:
+        mask_key = self.mask_key
+        features_key = self.features_key
 
         # Batch size is the leading dimension for camera observations
         B = int(tensordict["obs", self.camera_keys[0], "depth"].shape[0])
@@ -246,7 +266,7 @@ class SparseToPointCloudMaskOnly(_SparseToPointCloudBase):
             pts = _sparse_unproject(u, v, d, K, is_ortho=is_ortho)  # (N,3)
 
             # Apply extrinsics (static + optional dynamic indexed by batch element)
-            pts = self._apply_extrinsics_points(
+            pts = self._apply_extrinsics(
                 pts, T_static=T_static, dynamic_T=dynamic_T, dynamic_index=b_idx
             )
 
@@ -290,48 +310,12 @@ class SparseToPointCloudMaskOnly(_SparseToPointCloudBase):
         tensordict["obs", self._out_key] = out_dict
         return tensordict
 
-    def __call__(self, tensordict: TensorDict) -> TensorDict:
-        return nested_safe_tensordict_unsqueeze(
-            self.call_trajectory(tensordict[0]), dim=0
-        )
-        # return self.call_trajectory(tensordict[0]).unsqueeze(0)
+    # --------------------------- track mode ---------------------------
 
-
-class SparseToPointCloudTrackOnly(_SparseToPointCloudBase):
-    """Create a point cloud from tracked 2D keypoints over a short horizon."""
-
-    def __init__(
-        self,
-        specs: DataSpecs,
-        *,
-        color: bool = False,
-        features: bool = False,
-        camera_keys: Sequence[str] | None = None,
-        track_key: str | Sequence[str] | None = None,
-        visibility_key: str | Sequence[str] | None = None,
-        features_key: str | Sequence[str] | None = None,
-        max_depth: float | None = None,
-        out_key: str = "pcd",
-    ) -> None:
-        super().__init__(
-            specs,
-            camera_keys=camera_keys,
-            features_key=features_key,
-            color=color,
-            features=features,
-            max_depth=max_depth,
-            out_key=out_key,
-        )
-        self.track_key = track_key
-        self.visibility_key = visibility_key
-        self.track_len = (
-            specs.action_seq_len + 1
-        )  # tracks over action_seq_len + 1 frames
-
-    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
-        track_key = self._normalize_key(self.track_key)
-        visibility_key = self._normalize_key(self.visibility_key)
-        features_key = self._normalize_key(self.features_key)
+    def _call_track(self, tensordict: TensorDict) -> TensorDict:
+        track_key = self.track_key
+        visibility_key = self.visibility_key
+        features_key = self.features_key
 
         video_len = int(tensordict["obs", self.camera_keys[0], "depth"].shape[0])
 
@@ -408,12 +392,19 @@ class SparseToPointCloudTrackOnly(_SparseToPointCloudBase):
                     )
                     points_cam.reshape(-1, 3)[flat_valid] = pts_valid
 
-                points_world = self._apply_extrinsics_tracks(
+                if dynamic_T is not None:
+                    L_eff = int(points_cam.shape[1])
+                    t_idx = (start_idx + torch.arange(L_eff, device=points_cam.device))[
+                        None, :
+                    ].expand(points_cam.shape[0], L_eff)
+                else:
+                    t_idx = None
+
+                points_world = self._apply_extrinsics(
                     points_cam,
-                    vis,
                     T_static=T_static,
                     dynamic_T=dynamic_T,
-                    start_idx=start_idx,
+                    dynamic_index=t_idx,
                 )
 
                 # Color / feature from the first timestep (t=0) track location
@@ -500,48 +491,68 @@ class SparseToPointCloudTrackOnly(_SparseToPointCloudBase):
         tensordict["obs", self._out_key] = out_dict
         return tensordict
 
-    def _apply_extrinsics_tracks(
+
+class SparseToPointCloudMaskOnly(SparseToPointCloudMerged):
+    """Sparse -> pointcloud transform using only mask mode.
+
+    See SparseToPointCloudMerged for details.
+    """
+
+    def __init__(
         self,
-        points_cam: torch.Tensor,  # (J,L,3)
-        vis: torch.Tensor,  # (J,L)
+        specs: DataSpecs,
         *,
-        T_static: torch.Tensor | None,
-        dynamic_T: torch.Tensor | None,
-        start_idx: int,
-    ) -> torch.Tensor:
-        """Apply static and/or dynamic transforms to tracked points."""
-        if T_static is None and dynamic_T is None:
-            return points_cam
+        color: bool = False,
+        features: bool = False,
+        camera_keys: Sequence[str] | None = None,
+        mask_key: str | Sequence[str] | None = None,
+        features_key: str | Sequence[str] | None = None,
+        max_depth: float | None = None,
+        out_key: str = "pcd",
+    ) -> None:
+        super().__init__(
+            specs,
+            mode="mask",
+            color=color,
+            features=features,
+            camera_keys=camera_keys,
+            mask_key=mask_key,
+            features_key=features_key,
+            max_depth=max_depth,
+            out_key=out_key,
+        )
 
-        points_world = points_cam.clone()
-        L_eff = int(points_world.shape[1])
 
-        for tt in range(L_eff):
-            vis_t = vis[:, tt]
-            if not vis_t.any():
-                continue
+class SparseToPointCloudTrackOnly(SparseToPointCloudMerged):
+    """Sparse -> pointcloud transform using only track mode.
 
-            pts_t = points_world[:, tt, :]  # (J,3)
+    See SparseToPointCloudMerged for details.
+    """
 
-            # Transform for absolute frame (start_idx + tt)
-            if dynamic_T is not None and T_static is not None:
-                T_eff = dynamic_T[start_idx + tt] @ T_static
-            elif dynamic_T is not None:
-                T_eff = dynamic_T[start_idx + tt]
-            else:
-                T_eff = T_static
-
-            R = T_eff[:3, :3]
-            t = T_eff[:3, 3]
-            pts_vis = pts_t[vis_t]
-            pts_t[vis_t] = (pts_vis @ R.T) + t
-            points_world[:, tt, :] = pts_t
-
-        return points_world
-
-    def __call__(self, tensordict: TensorDict) -> TensorDict:
-        return nested_safe_tensordict_unsqueeze(
-            self.call_trajectory(tensordict[0]), dim=0
+    def __init__(
+        self,
+        specs: DataSpecs,
+        *,
+        color: bool = False,
+        features: bool = False,
+        camera_keys: Sequence[str] | None = None,
+        track_key: str | Sequence[str] | None = None,
+        visibility_key: str | Sequence[str] | None = None,
+        features_key: str | Sequence[str] | None = None,
+        max_depth: float | None = None,
+        out_key: str = "pcd",
+    ) -> None:
+        super().__init__(
+            specs,
+            mode="track",
+            color=color,
+            features=features,
+            camera_keys=camera_keys,
+            track_key=track_key,
+            visibility_key=visibility_key,
+            features_key=features_key,
+            max_depth=max_depth,
+            out_key=out_key,
         )
 
 

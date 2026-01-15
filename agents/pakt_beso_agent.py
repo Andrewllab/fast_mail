@@ -11,7 +11,7 @@ from torch.nn import Module
 from torch.optim.lr_scheduler import LRScheduler
 from torch.optim.optimizer import Optimizer
 
-from agents.beso_agent import BesoAgent
+from agents.beso_agent import BesoAgent as BaseBesoAgent
 from agents.edm_diffusion.gc_sampling import NoiseScheduleType, SamplerType
 from agents.edm_diffusion.noise_distributions import NoiseDistributionType
 from environments.specs import DataSpecs
@@ -27,7 +27,7 @@ from utils.tensors import unsqueeze_to
 log = logging.getLogger(__name__)
 
 
-class BesoAgent(BesoAgent):
+class BesoAgent(BaseBesoAgent):
 
     def __init__(
         self,
@@ -85,35 +85,8 @@ class BesoAgent(BesoAgent):
         prediction = self.predict_step(batch, batch_idx)
 
         if "ref_action" in batch:
-            prediction_reshaped = unflatten_nested_tensor(
-                prediction,
-                orig_vshape=(self.num_timesteps,),
-                start_dim=1,
-                end_dim=2,
-            )
-            ref_action_reshaped = unflatten_nested_tensor(
-                batch["ref_action"],
-                orig_vshape=(self.num_timesteps,),
-                start_dim=1,
-                end_dim=2,
-            )
-
-            error = F.mse_loss(
-                prediction_reshaped.values(), ref_action_reshaped.values()
-            )
+            error = F.mse_loss(prediction, batch["ref_action"])
             self.log("val_action_mse", error, batch_size=batch["obs"].shape[0])
-
-            # only if we are validating on demonstration data
-            prediction_gripper_only = torch.stack(
-                [out[:5] for out in prediction_reshaped.unbind()]
-            )
-            ref_action_gripper_only = torch.stack(
-                [out[:5] for out in ref_action_reshaped.unbind()]
-            )
-            error = F.mse_loss(prediction_gripper_only, ref_action_gripper_only)
-            self.log(
-                "only_gripper_val_action_mse", error, batch_size=batch["obs"].shape[0]
-            )
 
         # return the prediction in case we want to write it back to the environment
         return prediction

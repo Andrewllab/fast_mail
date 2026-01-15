@@ -95,6 +95,13 @@ class PaktHDF5Dataset(Hdf5Dataset):
         obs.update(pcds)
 
         for key in self.nested_keys:
+            # if the entire nested tensor is stored as a single object
+            if not isinstance(obs[key], Mapping):
+                obs[key] = torch.nested.as_nested_tensor(
+                    [obs[key]], layout=torch.jagged
+                )
+                continue
+            # else, we have to handle the sub nested tensors
             sub_keys = obs[key].keys()
             for sub_key in sub_keys:
                 obs[key][sub_key] = torch.nested.as_nested_tensor(
@@ -104,9 +111,7 @@ class PaktHDF5Dataset(Hdf5Dataset):
         action = torch.nested.as_nested_tensor(
             traj["action"][action_slice.start][None], layout=torch.jagged
         )
-        ref_action = torch.nested.as_nested_tensor(
-            traj["ref_action"][action_slice.start][None], layout=torch.jagged
-        )
+        ref_action = traj["ref_action"][action_slice.start]
         phantom_action = action.clone()
 
         td = TensorDict(
