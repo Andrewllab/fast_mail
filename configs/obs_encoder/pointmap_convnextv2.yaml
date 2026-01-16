@@ -1,19 +1,18 @@
 # @package _global_
 
 defaults:
-  # tokenize the pointmaps using pretrained ConvNeXt
+  # tokenize the pointmaps using ConvNeXtv2
   - /tokenizers@agent.obs_encoder.t10_image_tokenizer: conv_tokenizer
 
   - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.encoder: timm_convnextv2
   - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.pointmap_encoder: timm_convnextv2
 
-# Below is just the default configuration copied here for convenience. Change as needed.
 agent:
   obs_encoder:
     embed_dim: 256
-    
+
     t10_image_tokenizer:
-      image_type: "pointmap"  # set to ["rgb", "pointmap"] for rgb + pointmap
+      image_type: pointmap  # set to [rgb, pointmap] for rgb + pointmap
       encoder:
         pretrained: False  # only applies to rgb encoder
       fusion_type: cat
@@ -25,3 +24,7 @@ data:
 logger:
   wandb:
     tags: ["pointmap", "convnextv2"]
+
+# metadata
+encoder: ConvNeXtV2
+has_fourier: False

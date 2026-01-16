@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  # tokenize the depth map using ConvNeXtv2
+  # tokenize the depth maps using ConvNeXtv2
   - /tokenizers@agent.obs_encoder.t10_image_tokenizer: conv_tokenizer
 
   - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.encoder: timm_convnextv2
@@ -11,9 +11,16 @@ agent:
     embed_dim: 256
 
     t10_image_tokenizer:
-      image_type: depth
+      image_type: depth  # set to [rgb, depth] for rgb + depth
+      encoder:
+        pretrained: False  # only applies to rgb encoder
+      fusion_type: cat
       shared_encoder: False
 
 logger:
   wandb:
     tags: ["depth", "convnextv2"]
+
+# metadata
+encoder: ConvNeXtV2
+has_fourier: False

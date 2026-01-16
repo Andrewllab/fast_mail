@@ -15,13 +15,8 @@ defaults:
 
   # apply jitter data augmentation
   - /transforms@data.gpu_batch_transforms.t10_jitter: jitter
-  
-  # we don't need to normalize the pointclouds because they are already sort of
-  # within the range [0, 1] after cropping
-  # - /transforms@data.gpu_batch_transforms.t5_normalize: pointcloud_normalize
 
 data:
-  # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_pointclouds

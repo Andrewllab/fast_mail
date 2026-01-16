@@ -1,22 +1,23 @@
 # @package _global_
 
 defaults:
-  # # Collect statistics to scale depth to [-1, 1]
-  # - /transforms@data.preprocess.t6_pointmap_normalize: depth_normalize
-
   - /transforms@data.preprocess.t99_cleanup: cleanup
 
   # apply jitter data augmentation
-  - /transforms@data.gpu_batch_transforms.t2_jitter: jitter
-  
+  - /transforms@data.gpu_batch_transforms.t10_jitter: jitter
+
 data:
   preprocess:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_depth
 
-    t0-0_cleanup:
-      keep_stream_types: [depth]
+    t99_cleanup:
+      keep_stream_types: depth  # only keep depth streams
       drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose]
+
+  gpu_batch_transforms:
+    t10_jitter:
+      sigma: 0.002  # slightly higher jitter for robocasa
 
 # metadata
 modality: depth

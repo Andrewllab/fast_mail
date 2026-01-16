@@ -13,7 +13,7 @@ agent:
     t10_image_tokenizer:
       image_type: rgb
       encoder:
-        pretrained: True
+        pretrained: False
       shared_encoder: False
 
 logger:
