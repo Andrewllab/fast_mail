@@ -6,7 +6,6 @@ from typing import Sequence
 import hydra
 import pygame
 import torch
-import torch.nn.functional as F
 from omegaconf import DictConfig, open_dict
 from torch import Tensor
 
@@ -132,21 +131,3 @@ class NullAgent(BaseAgent):
             self.clock.tick(self.fps)
 
         return batch["action"]
-
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        """This method can be used to validate action transforms, since the null agent
-        does not modify the actions in any way.
-        """
-
-        prediction = self.predict_step(batch, batch_idx)
-
-        if "ref_action" in batch:
-            # only if we are validating on demonstration data
-            error = F.mse_loss(prediction, batch["ref_action"])
-            self.log("val_action_mse", error, batch_size=batch.shape[0])
-
-        # return the prediction in case we want to write it back to the environment
-        return prediction
-
-    # validation and testing are identical
-    test_step = validation_step

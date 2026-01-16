@@ -1,0 +1,16 @@
+# @package _global_
+
+defaults:
+  - /transforms@data.preprocess.t99_cleanup: cleanup
+
+data:
+  preprocess:
+    # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
+    root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_rgb
+
+    t0-0_cleanup:
+      keep_stream_types: [rgb]
+      drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose]
+
+# metadata
+modality: rgb

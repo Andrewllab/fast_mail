@@ -4,11 +4,13 @@ import logging
 from typing import Any, Callable, Iterable
 
 import lightning as L
+import torch.nn.functional as F
 from lightning.pytorch.core.optimizer import LightningOptimizer
 from torch import Tensor
 from torch.nn import Module
 from torch.optim.lr_scheduler import LRScheduler
 from torch.optim.optimizer import Optimizer
+from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
 
 from environments.specs import DataSpecs
 from transforms.base_transform import (
@@ -82,7 +84,7 @@ class BaseAgent(L.LightningModule):
 
     @property
     def specs(self) -> DataSpecs:
-        """Make the specs available to the agent for acton sampling."""
+        """Make the specs available to subclasses for action sampling."""
         return self._specs
 
     @property
@@ -99,9 +101,9 @@ class BaseAgent(L.LightningModule):
         if self.ema_decay > 0:
             # https://pytorch.org/docs/stable/optim.html#putting-it-all-together-ema
 
-            from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
-
             # only these models have learnable parameters
+            # TODO: instead of assuming what submodules have parameters, iterate
+            # over children and check which ones have parameters
             self._ema_model = AveragedModel(
                 self._model,
                 multi_avg_fn=get_ema_multi_avg_fn(self.ema_decay),
@@ -170,3 +172,38 @@ class BaseAgent(L.LightningModule):
                 elif key.startswith("_ema_obs_encoder.module"):
                     new_key = key.replace("_ema_obs_encoder.module.", "_obs_encoder.")
                     state_dict[new_key] = state_dict[key]
+
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        # values logged here get averaged over an epoch instead of over a step
+
+        # Log info from completed episodes, if validating on environment
+        # rollouts.
+        # Do this before predicting the next action, just in case.
+        if "episode_info" in batch:
+            episode_info = batch["episode_info"]
+            assert self.checkpoint_metadata and "epoch" in self.checkpoint_metadata
+            self.log_dict(
+                {
+                    "ckpt_epoch": self.checkpoint_metadata["epoch"],
+                    **episode_info.to_dict(),
+                },
+                batch_size=episode_info.shape[0],
+            )
+
+        # predict the next action
+        prediction = self.predict_step(batch, batch_idx)
+
+        # Log MSE between predicted and reference actions, if we validating on
+        # demonstration data.
+        if "ref_action" in batch:
+            # only if we are validating on demonstration data
+            error = F.mse_loss(prediction, batch["ref_action"])
+            self.log("val_action_mse", error, batch_size=batch.shape[0])
+
+        # Return the prediction. If validating on environment rollouts, this
+        # will be written back to the environment.
+        return prediction
+
+    # validation and testing are identical
+    def test_step(self, batch, batch_idx, dataloader_idx=0):
+        return self.validation_step(batch, batch_idx, dataloader_idx)

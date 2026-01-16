@@ -91,11 +91,15 @@ class FourierFeaturesBase(nn.Module):
 
     def forward(self, frequencies: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
 
+        if self.input_dim == 1 and pos.size(-1) != 1:
+            pos = pos.unsqueeze(dim=-1)
+
         if self.axis_aligned:
             # multiply each coordinate by each frequency using broadcasting
-            # pos: (..., input_dim, 1) * (n_frequencies)
+            # pos -> (..., input_dim, 1) * (n_frequencies)
             # arg: (..., input_dim, n_frequencies)
             arg = pos.unsqueeze(dim=-1) * frequencies
+            flattened = False
 
         else:
             # matrix multiply coordinates with frequency vectors
@@ -103,51 +107,56 @@ class FourierFeaturesBase(nn.Module):
             # pos: (..., input_dim) @ (input_dim, input_dim * n_frequencies)
             # arg: (..., input_dim * n_frequencies)
             arg = pos @ frequencies
+            flattened = True
 
         if self.components == "sincos":
             # concatenate sin(ωx) and cos(ωx) of each feature
-            # if axis-aligned, each coordinate is kept separate
-            # features: (..., input_dim, 2 * n_frequencies) or (..., input_dim * 2 * n_frequencies)
-            features = torch.cat((arg.sin(), arg.cos()), dim=-1)
+            # if axis-aligned (not flattened), each coordinate is kept separate
+            features = (arg.sin(), arg.cos())
         else:  # components == "sin"
-            # features: (..., input_dim, n_frequencies) or (..., input_dim * n_frequencies)
-            features = arg.sin()
+            features = (arg.sin(),)
+
+        # features: (..., input_dim, n_components * n_frequencies)   if flattened == False
+        # features: (..., n_components * input_dim * n_frequencies)  if flattened == True
 
         if self.linear is not None:
-            if self.axis_aligned and not self.linear_axis_aligned:
+            # concatenate all features along the last dimension
+            features = torch.cat(features, dim=-1)
+
+            if not flattened and not self.linear_axis_aligned:
                 # flatten Cartesian dimensions for linear layer
-                # features -> (..., n * input_dim * n_frequencies)
+                # features -> (..., input_dim * n_components * n_frequencies)
                 features = features.flatten(start_dim=-2)
+                flattened = True
 
             # linear transform of the features (dimensionality not changed)
             features = self.linear(features).sin()
 
-            if self.axis_aligned and self.linear_axis_aligned:
-                # flatten Cartesian dimensions to match the non-axis-aligned case
-                # features -> (..., n * input_dim * n_frequencies)
-                features = features.flatten(start_dim=-2)
-
-        elif self.axis_aligned:
-            # flatten Cartesian dimensions to match the non-axis-aligned case
-            # features -> (..., n * input_dim * n_frequencies)
-            features = features.flatten(start_dim=-2)
-
-        # Cartesian dimensions are now flattened in all cases
-        # features: (..., n * input_dim * n_frequencies)
-        features = (features,)
+            # wrap back in a tuple
+            features = (features,)
 
         if self.cat_input_to_out:
             # concatenate the original coordinates with the sin/cos components
-            features = (pos, *features)
-
-        if self.padding_dim > 0:
-            padding_shape = pos.shape[:-1] + (self.padding_dim,)
-            features = (*features, pos.new_zeros(padding_shape))
+            identity = pos.unsqueeze(dim=-1) if not flattened else pos
+            features = (identity, *features)
 
         if len(features) > 1:
+            # concatenate all features along the last dimension
             features = torch.cat(features, dim=-1)
         else:
             features = features[0]
+
+        if not flattened:
+            # flatten Cartesian dimensions to match the non-axis-aligned case
+            # features -> (..., input_dim * n_components * n_frequencies)
+            features = features.flatten(start_dim=-2)
+
+        # features: (..., input_dim * n_components * n_frequencies)  if self.axis_aligned == True
+        # features: (..., n_components * input_dim * n_frequencies)  if self.axis_aligned == False
+
+        if self.padding_dim > 0:
+            padding_shape = pos.shape[:-1] + (self.padding_dim,)
+            features = torch.cat((features, pos.new_zeros(padding_shape)), dim=-1)
 
         return features
 

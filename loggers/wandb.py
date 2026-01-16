@@ -56,7 +56,7 @@ class WandbLogger(LightningWandbLogger):
             kwargs["notes"] = f"Overrides: {param_overrides}"
 
         if tags_from_overrides:
-            tags = kwargs.get("tags", [])
+            tags = kwargs.get("tags", []) or []
             if "obs_encoder" in overrides:
                 tags.append(overrides["obs_encoder"])
             if "experiment" in overrides:

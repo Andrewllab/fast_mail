@@ -31,18 +31,26 @@ def rand_log_normal(
 def rand_log_logistic(
     shape: ShapeType,
     loc: float,
-    min_value: float,
-    max_value: float,
     scale: float,
+    min_value: float | None = None,
+    max_value: float | None = None,
     device: DeviceType = "cpu",
     dtype: dtype = torch.float32,
 ) -> Tensor:
     """Draws samples from an optionally truncated log-logistic distribution."""
     loc = math.log(loc)
-    min_val = torch.as_tensor(min_value, device=device, dtype=torch.float64)
-    max_val = torch.as_tensor(max_value, device=device, dtype=torch.float64)
-    min_cdf = min_val.log().sub(loc).div(scale).sigmoid()
-    max_cdf = max_val.log().sub(loc).div(scale).sigmoid()
+
+    if min_value is not None:
+        min_val = torch.as_tensor(min_value, device=device, dtype=torch.float64)
+        min_cdf = min_val.log().sub(loc).div(scale).sigmoid()
+    else:
+        min_cdf = 0.0
+    if max_value is not None:
+        max_val = torch.as_tensor(max_value, device=device, dtype=torch.float64)
+        max_cdf = max_val.log().sub(loc).div(scale).sigmoid()
+    else:
+        max_cdf = 1.0
+
     u = (
         torch.rand(shape, device=device, dtype=torch.float64) * (max_cdf - min_cdf)
         + min_cdf

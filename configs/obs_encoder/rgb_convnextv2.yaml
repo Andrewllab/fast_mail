@@ -6,9 +6,6 @@ defaults:
 
   - override /models/vision_encoder@agent.obs_encoder.t10_image_tokenizer.encoder: timm_convnextv2
 
-  # increase size of transformer according to what David uses
-  - override /agent/noise_model/backbone@agent.noise_model.decoder: transformer_large
-
 agent:
   obs_encoder:
     embed_dim: 256
