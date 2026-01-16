@@ -2,9 +2,9 @@ name: FourierFeatures
 _target_: models.fourier_features.FourierFeatures
 _partial_: True  # requires input_dim
 n_wavelengths: 8
-max_wavelength: 4.0
+max_wavelength: 0.5
 min_wavelength: 0.02  # double the voxel size of 0.01m used in robocasa pointclouds
 learn: False
 linear_transform: False
 components: sincos
-cat_input_to_out: False
+cat_input_to_out: True
