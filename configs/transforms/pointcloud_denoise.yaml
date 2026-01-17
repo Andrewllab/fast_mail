@@ -1,5 +1,0 @@
-# name: denoise_pointcloud
-_target_: transforms.pointcloud_denoise.DenoisePointCloud
-_partial_: True
-nb_points: 30
-radius: 0.03

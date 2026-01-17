@@ -2,19 +2,17 @@ from __future__ import annotations
 
 from typing import Sequence
 
-import open3d as o3d
-import open3d.core as o3c
 import torch
 from tensordict import NonTensorData
 from torch_geometric.data import Data
+from torch_geometric.nn import radius
 
 from environments.specs import DataSpecs
 from transforms.base_transform import KeyMapping, Transform
-from utils.o3d import o3d_to_torch, torch_to_o3d
 from utils.pyg import apply_mask
 
 
-class DenoisePointCloud(Transform):
+class RemoveRadiusOutliers(Transform):
     def __init__(
         self,
         specs: DataSpecs,
@@ -48,18 +46,22 @@ class DenoisePointCloud(Transform):
         data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
 
         # TODO: batching
-        pos = data.pos
+        pos, batch = data.pos, data.batch
+        batch_size = getattr(data, "batch_size", None)
         assert pos is not None
-        pos = torch_to_o3d(pos)
-        pcd = o3d.t.geometry.PointCloud(pos)
 
-        filtered_pcd, mask = pcd.remove_radius_outliers(
-            nb_points=self.nb_points, search_radius=self.radius
+        src_idxs, target_idxs = radius(
+            x=pos,
+            y=pos,
+            r=self.radius,
+            batch_x=batch,
+            batch_y=batch,
+            max_num_neighbors=self.nb_points,
+            batch_size=batch_size,
         )
 
-        # cannot convert a boolean tensor directly back to torch, so we convert
-        # to uint8 and then back to bool
-        mask = o3d_to_torch(mask.to(o3c.Dtype.UInt8)).to(torch.bool)
+        neighbor_counts = torch.bincount(src_idxs, minlength=pos.size(0))
+        mask = neighbor_counts >= self.nb_points
 
         data = apply_mask(data, mask)
 

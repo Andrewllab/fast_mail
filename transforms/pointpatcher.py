@@ -67,6 +67,7 @@ class PointPatcher(Transform, nn.Module):
         assert isinstance(data, Batch)
 
         pos, batch, ptr, features = data.pos, data.batch, data.ptr, data.x
+        batch_size = getattr(data, "batch_size", None)
         assert pos is not None
         assert batch is not None
         assert ptr is not None
@@ -97,7 +98,7 @@ class PointPatcher(Transform, nn.Module):
             k=self.patch_size,  # G
             ptr_x=ptr,
             batch_y=center_batch,
-            batch_size=data.batch_size,
+            batch_size=batch_size,
             pad_too_small=True,
         )
 

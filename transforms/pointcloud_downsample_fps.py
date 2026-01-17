@@ -55,8 +55,6 @@ class FpsSamplePointCloud(Transform):
         pos = data.pos
         assert pos is not None
 
-        n_points = self.n_points
-
         if isinstance(data, Batch):
             batch, ptr = data.batch, data.ptr
             assert batch is not None
@@ -65,9 +63,6 @@ class FpsSamplePointCloud(Transform):
             # verify that ptr is up to date
             if data.ptr[-1] != batch.shape[0]:
                 ptr = batch2ptr(batch)
-
-            if n_points is not None:
-                n_points *= data.batch_size
 
         else:
             ptr = None
@@ -78,7 +73,7 @@ class FpsSamplePointCloud(Transform):
             pos,
             ptr=ptr,
             ratio=self.ratio,
-            n_points=n_points,
+            n_points=self.n_points,
             random_start=self.random_start,
         )
 

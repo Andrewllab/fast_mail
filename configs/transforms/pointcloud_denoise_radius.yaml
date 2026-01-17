@@ -1,0 +1,4 @@
+_target_: transforms.pointcloud_denoise.RemoveRadiusOutliers
+_partial_: True
+nb_points: 10
+radius: 0.03

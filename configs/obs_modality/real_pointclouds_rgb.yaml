@@ -16,7 +16,7 @@ defaults:
   - /transforms@data.gpu_batch_transforms.t1_sample_random: pointcloud_downsample_random
   - /transforms@data.gpu_batch_transforms.t2_sample_voxel: pointcloud_downsample_voxel
 
-  # - /transforms@data.gpu_batch_transforms.t6_denoise: pointcloud_denoise
+  - /transforms@data.gpu_batch_transforms.t6_denoise: pointcloud_denoise_radius
 
   - /transforms@data.gpu_batch_transforms.t10_jitter: jitter
 
