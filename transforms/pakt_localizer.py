@@ -12,7 +12,7 @@ from environments.specs import DataSpecs, ObsSpec
 from transforms.base_transform import ReversibleTransform, Transform
 
 
-class LocalizePAKT(Transform):
+class LocalizePAKT(ReversibleTransform):
     def __init__(
         self,
         specs: DataSpecs,
@@ -27,7 +27,7 @@ class LocalizePAKT(Transform):
         self.localization_target = localization_target
 
         obs_specs = dict(specs.obs)
-        obs_specs["localization_mean"] = ObsSpec(3)
+        obs_specs["localization_mean"] = ObsSpec((1, 3))
         self._output_specs = specs.replace(obs=obs_specs)
 
     @property
@@ -35,20 +35,30 @@ class LocalizePAKT(Transform):
         return self._output_specs
 
     def call_trajectory(self, traj: TensorDict) -> Data:
-        mean_point = traj["obs"][self.localization_target].pos.mean(dim=0, keepdim=True)
+        mean_point = traj["obs"][self.localization_target]["points"].mean(
+            dim=1, keepdim=True
+        )
 
-        traj["obs"]["gripper_points"].pos -= mean_point
-        traj["obs"]["tool_points"].pos -= mean_point
-        traj["obs"]["target_points"].pos -= mean_point
-        traj["action"] -= mean_point
-        traj["ref_action"] -= mean_point
+        traj["obs"]["gripper_points"]["points"] -= mean_point
+        traj["obs"]["tool_points"]["points"] -= mean_point
+        traj["obs"]["target_points"]["points"] -= mean_point
+        if "action" in traj:
+            traj["action"] -= mean_point
 
         traj["obs"]["localization_mean"] = mean_point
 
         return traj
 
+    def __call__(self, tensordict):
+        return self.call_trajectory(tensordict)
+
     def reverse(self, tensordict: TensorDict) -> TensorDict:
-        tensordict["action"] += tensordict["obs"]["localization_mean"]
-        tensordict["ref_action"] += tensordict["obs"]["localization_mean"]
+        mean_point = tensordict["obs"]["localization_mean"]
+
+        tensordict["obs"]["gripper_points"]["points"] += mean_point
+        tensordict["obs"]["tool_points"]["points"] += mean_point
+        tensordict["obs"]["target_points"]["points"] += mean_point
+        if "action" in tensordict:
+            tensordict["action"] += mean_point
 
         return tensordict

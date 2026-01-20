@@ -1,0 +1,4 @@
+_target_: transforms.action_switch_type.SwitchRobocasaActionType
+_partial_: True
+
+control_type: absolute

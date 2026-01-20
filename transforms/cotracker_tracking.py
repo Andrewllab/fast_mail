@@ -99,21 +99,21 @@ class CotrackerPointTrackingTransform(Transform):
                 The point indices for cotracker are in the last dimension in (frame, y, x) format.
                 We create a grid of points spaced by self.grid_spacing pixels.
                 """
-                ys = torch.arange(
-                    self.grid_spacing // 2,
-                    img_height,
-                    self.grid_spacing,
-                    device=self.device,
-                )
                 xs = torch.arange(
                     self.grid_spacing // 2,
                     img_width,
                     self.grid_spacing,
                     device=self.device,
                 )
+                ys = torch.arange(
+                    self.grid_spacing // 2,
+                    img_height,
+                    self.grid_spacing,
+                    device=self.device,
+                )
 
                 zeros_tensor = torch.zeros((1), dtype=torch.int64, device=self.device)
-                grid_indices = torch.cartesian_prod(zeros_tensor, ys, xs)
+                grid_indices = torch.cartesian_prod(zeros_tensor, xs, ys)
 
             track_list = []
             visibility_list = []
@@ -127,9 +127,9 @@ class CotrackerPointTrackingTransform(Transform):
                     local_grid_indices = grid_indices
 
                 elif self.track_mode == "masked_grid":
-                    sub_mask = mask[start_frame]
+                    sub_mask = mask[start_frame]  # H, W
                     grid_indices_mask_values = sub_mask[
-                        grid_indices[:, 1], grid_indices[:, 2]
+                        grid_indices[:, 2], grid_indices[:, 1]
                     ]
                     local_grid_indices = grid_indices[grid_indices_mask_values > 0.5]
 

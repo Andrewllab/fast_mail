@@ -14,8 +14,10 @@ defaults:
   - /transforms@data.prepreprocess.t99_cleanup: cleanup
 
   # Last little part that connects everyting
+  - /transforms@data.preprocess.t01_robocasa_use_abs_actions: robocasa_use_abs_actions
   - /transforms@data.preprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
   - /transforms@data.preprocess.t07_to_pakt_action_obs: to_pakt_action_obs
+  - /transforms@data.preprocess.t08_pakt_localizer: pakt_localizer
   - /transforms@data.preprocess.t99_cleanup: cleanup
 
 

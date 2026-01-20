@@ -47,6 +47,7 @@ class BesoAgent(BaseAgent):
         goal_encoder: TransformPartial | None = None,
         normalizer: Sequential | None = None,
         reverse_transform: Compose | None = None,
+        precondition_type: str = "edm",
     ):
         super().__init__(
             model=noise_model,
@@ -71,6 +72,14 @@ class BesoAgent(BaseAgent):
 
         self.action_shape = self.specs.action.shape
 
+        # Set preconditioning type
+        if precondition_type not in ["edm", "absolute", "delta"]:
+            raise ValueError(
+                f"Invalid precondition_type '{precondition_type}'. Must be one of "
+                "'edm', 'absolute', or 'delta'."
+            )
+        self.precondition_type = precondition_type
+
     def edm_preconditioning(
         self, sigma: Tensor, action: Tensor
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
@@ -91,6 +100,32 @@ class BesoAgent(BaseAgent):
         c_noise = sigma.log() / 4
         return c_skip, c_out, c_in, c_noise
 
+    def absolute_preconditioning(
+        self, sigma: Tensor, action: Tensor
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Compute the absolute scaling factors depending on the noise level."""
+        c_skip = torch.zeros_like(sigma)
+        c_out = torch.ones_like(sigma)
+        c_in = torch.ones_like(sigma)
+
+        c_skip, c_out, c_in = [unsqueeze_to(c, action) for c in (c_skip, c_out, c_in)]
+
+        c_noise = sigma.log() / 4
+        return c_skip, c_out, c_in, c_noise
+
+    def delta_preconditioning(
+        self, sigma: Tensor, action: Tensor
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Compute the delta scaling factors depending on the noise level."""
+        c_skip = torch.ones_like(sigma)
+        c_out = torch.ones_like(sigma)
+        c_in = torch.ones_like(sigma)
+
+        c_skip, c_out, c_in = [unsqueeze_to(c, action) for c in (c_skip, c_out, c_in)]
+
+        c_noise = sigma.log() / 4
+        return c_skip, c_out, c_in, c_noise
+
     def forward(self, batch: TensorDict, action: Tensor, sigma: Tensor) -> Tensor:
         """Predict the unnoised actions with the help of EDM preconditioning."""
         if self.ema_decay > 0 and not self.training:
@@ -98,7 +133,13 @@ class BesoAgent(BaseAgent):
 
             assert isinstance(self.model, AveragedModel)
 
-        c_skip, c_out, c_in, c_noise = self.edm_preconditioning(sigma, action)
+        if self.precondition_type == "edm":
+            c_skip, c_out, c_in, c_noise = self.edm_preconditioning(sigma, action)
+        elif self.precondition_type == "absolute":
+            c_skip, c_out, c_in, c_noise = self.absolute_preconditioning(sigma, action)
+        elif self.precondition_type == "delta":
+            c_skip, c_out, c_in, c_noise = self.delta_preconditioning(sigma, action)
+
         return self.model(batch, action * c_in, c_noise) * c_out + action * c_skip
 
     def training_step(self, batch: TensorDict, batch_idx: int) -> Tensor:

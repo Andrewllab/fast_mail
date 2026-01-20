@@ -52,3 +52,42 @@ class SwitchActionType(Transform):
         tensordict["ref_action"] = action.clone()
 
         return tensordict
+
+
+class SwitchRobocasaActionType(Transform):
+
+    def __init__(
+        self,
+        specs: DataSpecs,
+        control_type: str = "absolute",  # "absolute" or "relative"
+    ):
+
+        if control_type not in ["absolute", "relative"]:
+            raise ValueError(
+                f"control_type must be 'absolute' or 'relative', got {control_type}"
+            )
+
+        # Action spec stays the same, only values change
+        self._specs = specs
+        self.control_type = control_type
+        self.infix = "rel" if control_type == "relative" else "abs"
+
+    def call_trajectory(self, tensordict):
+        pos = tensordict["obs"][f"next_{self.infix}_pos"]  # (T, 3)
+        rot = tensordict["obs"][f"next_{self.infix}_rot_axis_angle"]  # (T, 3)
+        gripper = tensordict["obs"]["next_gripper"]  # (T, 1)
+
+        new_action = torch.cat((pos, rot, gripper), dim=-1)  # (T, 7)
+        tensordict["action"] = new_action
+        tensordict["ref_action"] = new_action.clone()
+
+        return tensordict
+
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        if "action" in tensordict:
+            return self.call_trajectory(tensordict)
+        return tensordict
+
+    @property
+    def specs(self) -> DataSpecs:
+        return self._specs

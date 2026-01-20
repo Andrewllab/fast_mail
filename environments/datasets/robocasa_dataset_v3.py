@@ -22,6 +22,7 @@ from environments.specs import (
     RGBStream,
 )
 from transforms.base_transform import TransformPartialsDict, init_transforms
+from utils.math import convert_quat
 from utils.paths import iglob_follow_symlinks, resolve_path
 
 log = logging.getLogger(__name__)
@@ -113,6 +114,33 @@ class RoboCasaDataset(CustomHdf5Dataset):
         ee_pos = traj["obs"]["robot0_eef_pos"][...].astype(np.float32)
         # shape: (T, 4), float32
         ee_quat = traj["obs"]["robot0_eef_quat"][...].astype(np.float32)
+        ee_quat = convert_quat(ee_quat, "wxyz")
+
+        base_to_ee_pos = traj["obs"]["robot0_base_to_eef_pos"][...].astype(np.float32)
+        base_to_ee_quat = traj["obs"]["robot0_base_to_eef_quat_site"][...].astype(
+            np.float32
+        )
+        base_to_ee_quat = convert_quat(base_to_ee_quat, "wxyz")
+
+        base_to_ee_pose = torch.cat(
+            (
+                torch.from_numpy(base_to_ee_pos),
+                torch.from_numpy(base_to_ee_quat),
+            ),
+            dim=-1,
+        )
+
+        base_pos = traj["obs"]["robot0_base_pos"][...].astype(np.float32)
+        base_quat = traj["obs"]["robot0_base_quat"][...].astype(np.float32)
+        base_quat = convert_quat(base_quat, "wxyz")
+        base_pose = torch.cat(
+            (
+                torch.from_numpy(base_pos),
+                torch.from_numpy(base_quat),
+            ),
+            dim=-1,
+        )
+
         # remove action dims related to static mobile platform
         action = traj["actions"][:, :7].astype(np.float32)
 
@@ -179,6 +207,8 @@ class RoboCasaDataset(CustomHdf5Dataset):
                 "joint_pos": joint_pos,  # shape: (T, 7), float32
                 "robot_state": robot_state,  # shape: (T, 9), float32
                 "ee_pose": ee_pose,  # shape: (T, 7), float32
+                "base_to_ee_pose": base_to_ee_pose,  # shape: (T, 7), float32
+                "base_pose": base_pose,  # shape: (T, 7), float32
                 **obs_next_actions,  # next actions for all action components
             },
             "action": action,

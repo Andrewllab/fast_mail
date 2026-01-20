@@ -47,6 +47,7 @@ class BesoAgent(BaseBesoAgent):
         goal_encoder: TransformPartial | None = None,
         normalizer: Sequential | None = None,
         reverse_transform: Compose | None = None,
+        precondition_type: str = "edm",
     ):
         super().__init__(
             noise_model=noise_model,
@@ -65,6 +66,7 @@ class BesoAgent(BaseBesoAgent):
             goal_encoder=goal_encoder,
             normalizer=normalizer,
             reverse_transform=reverse_transform,
+            precondition_type=precondition_type,
         )
         self.num_timesteps = specs.action_seq_len
 

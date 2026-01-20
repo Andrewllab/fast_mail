@@ -18,6 +18,7 @@ from utils.nested import (
     cat_nested,
     flatten_nested_tensor,
     nested_safe_tensordict_unsqueeze,
+    unflatten_nested_tensor,
 )
 
 log = logging.getLogger(__name__)
@@ -80,22 +81,22 @@ class ToPaktActionObsTransform(ReversibleTransform):
         tool_obs_points = [out[:, 0] for out in tool_pcd["points"].unbind()]
         tool_obs_points = torch.nested.as_nested_tensor(
             tool_obs_points, layout=torch.jagged
-        )
+        )  # (B, N_tool_points, 3)
 
         tool_action_points = [out[:, 1:] for out in tool_pcd["points"].unbind()]
         tool_action_points = torch.nested.as_nested_tensor(
             tool_action_points, layout=torch.jagged
-        )
+        )  # (B, N_tool_points, window, 3)
 
         robot_action_windows = self.sliding_windows_pad_last(
             robot_action_points, window=self.window_len
         ).movedim(
             -1, 2
-        )  # (T, window, N_action, 3)
+        )  # (B, N_action, window, 3)
 
         action = cat_nested(
             [robot_action_windows, tool_action_points], dim=1
-        )  # (T, N_action + N_tool, 3)
+        )  # (B, N_action + N_tool_points, window, 3)
         action, orig_offsets, orig_vshape = flatten_nested_tensor(
             action, start_dim=1, end_dim=2
         )  # (T, (N_action + N_tool)*N_timesteps, 3)
@@ -104,7 +105,7 @@ class ToPaktActionObsTransform(ReversibleTransform):
             tensordict["ref_action"], window=self.window_len
         ).movedim(
             1, 2
-        )  # (T,  window, N_action, 3)
+        )  # (B,  window, action_dim)
 
         obs = {
             "tool_points": {
@@ -158,18 +159,65 @@ class ToPaktActionObsTransform(ReversibleTransform):
         from the packed/flattened tensordict["action"] and stores it back into
         tensordict["action"].
         """
-        action = tensordict["action"]  # (T, K, 3) where K >= window_len * N_action
+        action = tensordict["action"]
+        action = unflatten_nested_tensor(
+            action,
+            orig_vshape=(self.window_len,),
+            start_dim=1,
+            end_dim=2,
+        )  # (T, N_action + N_tool_points, window_len, 3)
 
         # Prefer deriving N_action from existing obs if available (most robust).
         n_action = 5  # TODO: get from specs or config
-        window_len = self.window_len
-        # Robot part is the prefix: (T, window_len*N_action, 3)
         robot_flat = torch.stack(
-            [a.view(-1, window_len, 3)[:n_action] for a in action.unbind()]
-        )
+            [a[:n_action] for a in action.unbind()],
+            dim=0,
+        )  # (B, N_action, 20, 3)
 
         tensordict["action"] = robot_flat  # (T, N_action, 3)
         return tensordict
+
+    # def call_trajectory_reverse(self, tensordict: TensorDict) -> TensorDict:
+    #     action = tensordict["action"]  # (T, K, 3) expected
+
+    #     window_len = self.window_len
+
+    #     # So you MUST have N_action available from specs/config, otherwise reverse is ambiguous.
+    #     n_action = 5  # TODO: get from specs or config
+
+    #     # 1) Take just the gripper prefix
+    #     n_gripper_flat = window_len * n_action
+
+    #     # Case 1: NestedTensor (common if you used jagged tool points)
+    #     if isinstance(action, torch.Tensor) and action.is_nested:
+    #         # action is shape like: (T, *, 3) but jagged in dim=1 per timestep
+    #         # We extract the first n_gripper_flat rows (the gripper prefix) for each timestep.
+    #         robot_flat_list = []
+    #         for a in action.unbind():  # each `a` is a dense tensor of shape (K_t, 3)
+    #             robot_flat_list.append(
+    #                 a[:n_gripper_flat, :]
+    #             )  # (window_len*n_action, 3)
+
+    #         # Stack back to dense (this should work if n_gripper_flat is constant, which it is)
+    #         robot_flat = torch.stack(
+    #             robot_flat_list, dim=0
+    #         )  # (T, window_len*n_action, 3)
+
+    #     else:
+    #         # Case 2: regular dense tensor
+    #         # action: (T, K, 3)
+    #         robot_flat = action[:, :n_gripper_flat, :]
+
+    #     # 2) Unflatten into windows
+    #     robot_win = robot_flat.reshape(
+    #         -1, window_len, n_action, 3
+    #     )  # (T, window_len, n_action, 3)
+
+    #     # 3) Invert the sliding-window transform: pick the "current timestep" element
+    #     # robot_action_points = robot_win[:, 0, :, :]  # (T, n_action, 3)
+
+    #     tensordict["action"] = robot_win
+    #     return tensordict
 
     def reverse(self, tensordict):
         return self.call_trajectory_reverse(tensordict)

@@ -131,7 +131,11 @@ def test(cfg: DictConfig) -> None:
 
     log.debug("Instantiating trainer...")
     trainer: Trainer = hydra.utils.instantiate(
-        cfg.trainer, _target_=Trainer, callbacks=callbacks, logger=logger
+        cfg.trainer,
+        _target_=Trainer,
+        callbacks=callbacks,
+        logger=logger,
+        inference_mode=False,
     )
 
     log.info("Starting testing loop...")

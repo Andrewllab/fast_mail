@@ -356,8 +356,8 @@ class SparseToPointCloudMerged(Transform):
                 tracks_xy = sub_tracks[:, :L_eff, :]  # (J, L_eff, 2)
                 vis = sub_visibility[:, :L_eff].bool()  # (J, L_eff)
 
-                u = torch.round(tracks_xy[..., 1]).long()  # (J, L_eff)
-                v = torch.round(tracks_xy[..., 0]).long()  # (J, L_eff)
+                u = torch.round(tracks_xy[..., 0]).long()  # x along width
+                v = torch.round(tracks_xy[..., 1]).long()  # y along height
 
                 in_bounds = (u >= 0) & (u < W) & (v >= 0) & (v < H)
                 vis = vis & in_bounds
@@ -591,7 +591,7 @@ def _sparse_unproject(
 def _pool_mask_to_patches(
     mask_hw: torch.Tensor, Hp: int, Wp: int, patch: int = 16
 ) -> torch.Tensor:
-    """Downsample a pixel mask to a patch grid using max-pooling.
+    """Downsample a pixel mask to a patch grid, keeping patches with >50% positives.
 
     Args:
         mask_hw: (B,H,W) bool/0-1
@@ -606,5 +606,9 @@ def _pool_mask_to_patches(
     mask_crop = mask_hw[:, :Hc, :Wc]
 
     m = mask_crop.to(dtype=torch.float32).unsqueeze(1)  # (B,1,Hc,Wc)
-    pooled = F.max_pool2d(m, kernel_size=patch, stride=patch)  # (B,1,Hp,Wp)
-    return pooled.squeeze(1) > 0.0
+
+    # Average pooling gives fraction of positive pixels per patch
+    pooled = F.avg_pool2d(m, kernel_size=patch, stride=patch)
+
+    # Accept patch only if more than half the pixels are positive
+    return pooled.squeeze(1) > 0.5

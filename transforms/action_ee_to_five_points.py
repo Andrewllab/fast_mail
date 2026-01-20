@@ -13,6 +13,7 @@ from transforms.base_transform import ReversibleTransform, TransformConstraint
 from utils.math import (
     axis_angle_from_quat,
     combine_frame_transforms,
+    convert_quat,
     matrix_to_quaternion,
     normalize,
     quat_from_axis_angle,
@@ -20,6 +21,7 @@ from utils.math import (
     subtract_frame_transforms,
     transform_points,
 )
+from utils.nested import to_strided_tensor
 
 log = logging.getLogger(__name__)
 
@@ -69,13 +71,18 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         return self._specs
 
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
-        action_pos = tensordict["obs"]["next_abs_pos"]  # (T, 3)
-        action_rot = tensordict["obs"]["next_abs_rot_axis_angle"]  # (T, 3)
-        gripper_action = tensordict["obs"]["next_gripper"]  # (T, 1)
+        action_pos = tensordict["action"][..., :3]  # (T, 3)
+        action_rot = tensordict["action"][..., 3:6]  # (T, 3)
+        gripper_action = tensordict["action"][..., 6:]  # (T, 1)
 
         points = self.ee_pose_to_3D_points(
             ee_pos=action_pos, ee_rot=action_rot, gripper=gripper_action
         )  # (T, 5, 3)
+
+        base_pose = tensordict["obs"]["base_pose"]  # (T, 7)
+        base_pos = base_pose[..., :3]  # (T, 3)
+        base_quat = base_pose[..., 3:]  # (T, 4)
+        points = transform_points(points, base_pos, base_quat)
 
         tensordict["action"] = points
 
@@ -86,7 +93,7 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
             ee_pos = tensordict["obs"]["ee_pose"][:, :3].to(torch.float32)  # (T, 3)
             ee_quat = tensordict["obs"]["ee_pose"][:, 3:].to(torch.float32)  # (T, 4)
             ee_rot = axis_angle_from_quat(ee_quat)  # (T, 3)
-            gripper_state = torch.zeros(
+            gripper_state = torch.ones(
                 ee_pos.shape[0], device=ee_pos.device, dtype=ee_pos.dtype
             )  # (T, 1)
         else:
@@ -98,17 +105,35 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
             ee_pos=ee_pos, ee_rot=ee_rot, gripper=gripper_state
         )  # (T, 5, 3)
 
+        base_pose = tensordict["obs"]["base_pose"]  # (T, 7)
+        base_pos = base_pose[..., :3]  # (T, 3)
+        base_quat = base_pose[..., 3:]  # (T, 4)
+        points = transform_points(points, base_pos, base_quat)
+
         tensordict["obs"]["gripper_points"] = {"points": points[0].to(torch.float32)}
 
         return tensordict
 
     def reverse(self, tensordict: TensorDict) -> TensorDict:
         points = tensordict["action"].float()  # (B, 5, T, 3)
+        if points.is_nested:
+            if (torch.diff(points.offsets()) == 5).all():
+                points = to_strided_tensor(points).unsqueeze(2)
+            else:
+                raise ValueError(
+                    "Cannot reverse transform: action points tensor is jagged with unexpected offsets."
+                )
         B, N, T, _ = points.shape
         points = points.swapaxes(1, 2).reshape(-1, 5, 3)  # (B*T, 5, 3)
 
+        base_pose = tensordict["obs"]["base_pose"]  # (T, 7)
+        base_pos = base_pose[..., 0, :3]  # (T, 3)
+        base_quat = base_pose[..., 0, 3:]  # (T, 4)
+        inv_base_pos, inv_base_quat = subtract_frame_transforms(base_pos, base_quat)
+        points = transform_points(points, inv_base_pos, inv_base_quat)
+
         ee_pos, ee_rot = self.points_to_pose(points[:, :3])  # (T, 3), (T, 3)
-        gripper = self.points_to_gripper(points[:, 3:5, :])  # (T,)
+        gripper = self.points_to_gripper(points[:, 3:5])  # (T,)
         ee_poses = torch.cat([ee_pos, ee_rot], dim=-1)  # (T, 6)
         # Convert back to original batched shape
         ee_poses = ee_poses.view(B, T, 6)
@@ -120,6 +145,7 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
 
         return tensordict
 
+    @torch.no_grad()
     def points_to_pose(self, points_global):
         """
         Recovers the translation (ee_pos) and rotation (ee_quat) for each batch sample.
@@ -147,17 +173,17 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         # Compute covariance matrices for each batch sample: H = X^T @ Y
         # Expand X^T to batch: [B, 3, N]
         X_T = X.t().unsqueeze(0).expand(T, 3, N)
-        H = torch.bmm(X_T, Y, out_dtype=X_T.dtype)  # [B, 3, 3]
+        H = torch.bmm(X_T, Y)  # , out_dtype=X_T.dtype)  # [B, 3, 3]
 
         # Compute SVD for each batch sample
-        U, S, Vh = torch.linalg.svd(H, full_matrices=False)
+        U, S, Vh = torch.linalg.svd(H.to(torch.float32), full_matrices=False)
         V = Vh.transpose(-2, -1)  # [B, 3, 3]
 
         # Compute rotation: R = V @ U^T for each batch
-        R = torch.bmm(V, U.transpose(-2, -1), out_dtype=V.dtype)  # [B, 3, 3]
+        R = torch.bmm(V, U.transpose(-2, -1))  # , out_dtype=V.dtype)  # [B, 3, 3]
 
         # Reflection correction: if det(R) < 0, flip sign of last column of V for that sample.
-        det_R = torch.det(R)  # [B]
+        det_R = torch.det(R.to(torch.float32))  # [B]
         for i in range(T):
             if det_R[i] < 0:
                 V[i, :, -1] *= -1

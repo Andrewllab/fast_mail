@@ -348,14 +348,6 @@ class PaktTokenizer(Transform, nn.Module):
         )
 
         batch["obs"]["embed"] = obs_tokens
-        # attention_mask = self.nested_decoder_attn_mask_no_padding(action_tokens)
-        action_tokens = torch.nested.as_nested_tensor(
-            [torch.nan_to_num(xb, nan=0.0) for xb in action_tokens.unbind()],
-            layout=torch.jagged,
-        )
-
-        if torch.isnan(action_tokens).any() or torch.isnan(obs_tokens).any():
-            log.warning("Action tokens contain NaNs!")
 
         # batch["action_embed"] = action_tokens
         return batch, action_tokens  # , attention_mask
