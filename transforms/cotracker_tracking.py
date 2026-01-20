@@ -4,7 +4,6 @@ from typing import List, Sequence
 
 import torch
 import tqdm
-from cotracker.utils.visualizer import Visualizer
 from tensordict import TensorDict
 from torch_geometric.data import Data
 
