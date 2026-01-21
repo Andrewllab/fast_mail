@@ -1,0 +1,9 @@
+name: warmup_cosine
+_target_: lr_schedulers.warmup_cosine_lr_scheduler.WarmupCosineLRScheduler
+_partial_: True
+# optimizer: ???
+
+peak_lr: 1e-4  # peak lr
+init_lr: 1e-6  # initial lr
+warmup_ratio: 0.03  # fraction of total steps for warmup
+# total_steps: ${trainer.max_epochs}

@@ -5,21 +5,21 @@ defaults:
   - noise_schedule: exponential
   - sampler: ddim
   - optimizer: adamw
-  - lr_scheduler: none
+  - lr_scheduler: warmup_cosine
   - goal_encoder: null
 
 _target_: agents.pakt_beso_agent.BesoAgent
 
 # Arguments passed at runtime:
 # specs: ???
-
+precondition_type: absolute
 obs_encoder:
-  embed_dim: 256
+  embed_dim: 512
 
 # diffusion params
-num_sampling_steps: 4
+num_sampling_steps: 10
 sigma_data: 0.5
-sigma_min: 0.001
-sigma_max: 80
+sigma_min: 0.01
+sigma_max: 10
 
 ema_decay: 0.995

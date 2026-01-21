@@ -2226,3 +2226,25 @@ def matrix_from_quat(quaternions: torch.Tensor) -> torch.Tensor:
         -1,
     )
     return o.reshape(quaternions.shape[:-1] + (3, 3))
+
+
+@torch.jit.script
+def quat_rotation_distance(q1: torch.Tensor, q2: torch.Tensor) -> torch.Tensor:
+    """
+    Geodesic (shortest-path) rotation distance between two quaternions.
+
+    Args:
+        q1, q2: quaternions in (w, x, y, z), shape (..., 4). They should be (approximately) unit quats.
+
+    Returns:
+        angle error in radians, shape (...,), always in [0, pi].
+    """
+    # relative rotation: q_rel = q1 * inv(q2) = q1 * conj(q2) for unit quats
+    q_rel = quat_mul(q1, quat_conjugate(q2))
+
+    # force canonical hemisphere (w >= 0) so we take the shortest rotation
+    q_rel = quat_unique(q_rel)
+
+    # convert to axis-angle vector (magnitude is the angle), then take norm
+    aa = axis_angle_from_quat(q_rel)  # (..., 3)
+    return torch.linalg.norm(aa, dim=-1)

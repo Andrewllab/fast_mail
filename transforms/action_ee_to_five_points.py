@@ -93,7 +93,7 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
             ee_pos = tensordict["obs"]["ee_pose"][:, :3].to(torch.float32)  # (T, 3)
             ee_quat = tensordict["obs"]["ee_pose"][:, 3:].to(torch.float32)  # (T, 4)
             ee_rot = axis_angle_from_quat(ee_quat)  # (T, 3)
-            gripper_state = torch.ones(
+            gripper_state = -torch.ones(
                 ee_pos.shape[0], device=ee_pos.device, dtype=ee_pos.dtype
             )  # (T, 1)
         else:

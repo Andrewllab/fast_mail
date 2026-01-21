@@ -133,14 +133,18 @@ class BesoAgent(BaseAgent):
 
             assert isinstance(self.model, AveragedModel)
 
-        if self.precondition_type == "edm":
-            c_skip, c_out, c_in, c_noise = self.edm_preconditioning(sigma, action)
-        elif self.precondition_type == "absolute":
-            c_skip, c_out, c_in, c_noise = self.absolute_preconditioning(sigma, action)
-        elif self.precondition_type == "delta":
-            c_skip, c_out, c_in, c_noise = self.delta_preconditioning(sigma, action)
-
+        c_skip, c_out, c_in, c_noise = self.get_preconditioning_factors(sigma, action)
         return self.model(batch, action * c_in, c_noise) * c_out + action * c_skip
+
+    def get_preconditioning_factors(
+        self, sigma: Tensor, action: Tensor
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        if self.precondition_type == "edm":
+            return self.edm_preconditioning(sigma, action)
+        elif self.precondition_type == "absolute":
+            return self.absolute_preconditioning(sigma, action)
+        elif self.precondition_type == "delta":
+            return self.delta_preconditioning(sigma, action)
 
     def training_step(self, batch: TensorDict, batch_idx: int) -> Tensor:
         """
@@ -160,7 +164,7 @@ class BesoAgent(BaseAgent):
         # Equation 8 of https://arxiv.org/pdf/2206.00364. Note that lambda(sigma)
         # is set by the authors to 1/c_out**2, such that each term has an equal
         # weight in the MSE loss.
-        c_skip, c_out, c_in, c_noise = self.edm_preconditioning(sigma, action)
+        c_skip, c_out, c_in, c_noise = self.get_preconditioning_factors(sigma, action)
         model_output = self.model(batch, noised_input * c_in, c_noise)
         target = (action - c_skip * noised_input) / c_out
         if model_output.is_nested:
@@ -169,8 +173,16 @@ class BesoAgent(BaseAgent):
             loss = F.mse_loss(model_output, target)
 
         # log these values per step and per epoch
+        log_dict = {
+            "loss": loss,
+        }
+        if self._lr_scheduler_func is not None:
+            log_dict["lr"] = self.trainer.optimizers[0].param_groups[0]["lr"]
         self.log_dict(
-            {"loss": loss}, on_epoch=True, prog_bar=True, batch_size=batch.shape[0]
+            log_dict,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=batch.shape[0],
         )
 
         return loss
@@ -215,9 +227,13 @@ class BesoAgent(BaseAgent):
         if "episode_info" in batch:
             episode_info = batch["episode_info"]
             assert self.checkpoint_metadata and "epoch" in self.checkpoint_metadata
+
+            ckpt_epoch = self.checkpoint_metadata["epoch"]
+            if isinstance(ckpt_epoch, str) and ckpt_epoch.startswith("v"):
+                ckpt_epoch = int(ckpt_epoch[1:])  # remove 'v' prefix
             self.log_dict(
                 {
-                    "ckpt_epoch": self.checkpoint_metadata["epoch"],
+                    "ckpt_epoch": ckpt_epoch,
                     **episode_info.to_dict(),
                 },
                 batch_size=episode_info.shape[0],
@@ -227,8 +243,7 @@ class BesoAgent(BaseAgent):
 
         if "ref_action" in batch:
             # only if we are validating on demonstration data
-            mask = torch.isfinite(batch["ref_action"]) & torch.isfinite(prediction)
-            error = F.mse_loss(prediction[mask], batch["ref_action"][mask])
+            error = F.mse_loss(prediction, batch["ref_action"])
             self.log("val_action_mse", error, batch_size=batch.shape[0])
 
         # return the prediction in case we want to write it back to the environment
