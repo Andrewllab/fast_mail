@@ -92,9 +92,9 @@ def delete_keys_recursively(
         for field in keys_to_delete:
             cfg.pop(field, None)
 
-    for key, value in cfg.items():
+    for value in cfg.values():
         if isinstance(value, DictConfig):
-            cfg[key] = delete_keys_recursively(value, keys_to_delete)
+            delete_keys_recursively(value, keys_to_delete)
 
     return cfg
 

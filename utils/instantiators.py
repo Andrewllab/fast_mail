@@ -7,6 +7,8 @@ from lightning import Callback
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig, OmegaConf, open_dict
 
+from utils.conf import delete_keys_recursively
+
 log = logging.getLogger(__name__)
 
 
@@ -73,17 +75,18 @@ def instantiate_datamodule(datamodule_cfg: DictConfig) -> "TrajectoryDataModule"
     OmegaConf.resolve(datamodule_cfg)
 
     with open_dict(datamodule_cfg):
-        # delete these fields in config dictionary
-        # we want these to be saved to WandB but we don't want them for instantiation
-        for key in ["name", "task", "task_suite", "randomness"]:
-            datamodule_cfg.pop(key, None)
-
         # do not instantiate dataset config, as we need to manipulate the config first
         dataset_cfg = datamodule_cfg.pop("dataset", None)
 
         # do not instantiate env config recursively, as it may import simulation
         # modules that are not available in the current environment
         env_cfg = datamodule_cfg.pop("env", None)
+
+        # Delete these fields in config dictionary. We want these to be saved
+        # to WandB but we don't want them for instantiation. We do this after
+        # popping the env config because it may have name fields that can't be
+        # removed.
+        delete_keys_recursively(datamodule_cfg, ["name", "task", "task_suite"])
 
         # instantiate the config for the datamodule, which creates dictionaries
         # of partials for the transforms
