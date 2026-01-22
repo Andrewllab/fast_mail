@@ -1,10 +1,10 @@
-name: Gaussian RFFs
+name: Gaussian RFFs + learned
 _target_: models.fourier_features.RandomFourierFeatures
 _partial_: True  # requires input_dim
 sigma: 10.0
 n_wavelengths: 16
 axis_aligned: False
-learn: False
+learn: True
 linear_transform: False
 components: sincos
 cat_input_to_out: False

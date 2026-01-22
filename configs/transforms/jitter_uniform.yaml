@@ -1,7 +1,7 @@
-name: VariableJitter
+name: uniform jitter
 _target_: transforms.jitter.RandomTranslationalJitter
 _partial_: True
 sigma: 0.002  # slightly higher jitter for robocasa
 distribution: uniform
-random_sigma: True
+random_sigma: False
 clamp_depth_nonnegative: False

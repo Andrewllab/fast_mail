@@ -1,9 +1,0 @@
-name: Learnable Gaussian RFFs
-_target_: models.pos_encoder.GaussianRandomFourierFeatures
-_partial_: True  # requires input_dim
-n_wavelengths: 8
-rff_sigma: 10.0
-axis_aligned: False
-learnable_frequencies: False
-linear_transform: True
-cat_input_to_out: False

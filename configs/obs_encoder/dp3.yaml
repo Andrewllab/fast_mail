@@ -1,8 +1,8 @@
 # @package _global_
 
 defaults:
-  # # FPS sampling seems to hurt performance (at least on RoboCasa)
-  # - /transforms@data.gpu_batch_transforms.t9_sample_fps: pointcloud_downsample_fps
+  # FPS sampling seems to hurt performance (at least on RoboCasa)
+  - /transforms@data.gpu_batch_transforms.t9_sample_fps: pointcloud_downsample_fps
 
   - /tokenizers@agent.obs_encoder.t10_tokenizer: dp3_tokenizer
   - /models/spatial_encoder@agent.obs_encoder.t10_tokenizer.spatial_encoder: fourier_features
