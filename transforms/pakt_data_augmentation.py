@@ -9,10 +9,60 @@ from torch_geometric.data import Data
 from environments.specs import DataSpecs, ObsSpec
 from transforms.base_transform import ReversibleTransform, Transform
 from transforms.pointmap_random_transform import BaseRandomlyTransform
-from utils.math import make_pose, quaternion_to_matrix, transform_pointcloud
+from utils.math import make_pose, quat_mul, quaternion_to_matrix, transform_pointcloud
 
 
-class RandomRotation(Transform):
+def get_random_rotation_axes(
+    axes: Union[str, Sequence[str]] = "x",
+    device: Union[str, torch.device] = "cpu",
+    batch_size: int = 1,
+) -> torch.Tensor:
+    """
+    Generate random rotation quaternions *only* about the specified axis or axes.
+
+    Args:
+        axes:   One of "x", "y", "z", or a list/tuple of two of these.
+        device: torch device
+        batch_size: how many quaternions to sample.
+
+    Returns:
+        Tensor of shape (batch_size, 4) of unit quaternions [w, x, y, z].
+    """
+    # normalize input to a list
+    if isinstance(axes, str):
+        axes = [axes]
+    assert 1 <= len(axes) <= 2, "axes must be 'x','y','z', or a pair of them"
+
+    # map axis names to unit vectors
+    axis_map = {
+        "x": torch.tensor([1.0, 0.0, 0.0], device=device),
+        "y": torch.tensor([0.0, 1.0, 0.0], device=device),
+        "z": torch.tensor([0.0, 0.0, 1.0], device=device),
+    }
+
+    # sample uniform angles in [0,2π) for each requested axis
+    thetas = torch.rand(batch_size, len(axes), device=device) * 2 * torch.pi
+
+    # build one quaternion per axis
+    qs = []
+    for i, ax in enumerate(axes):
+        u = axis_map[ax].unsqueeze(0).expand(batch_size, -1)  # (B,3)
+        half = thetas[:, i] * 0.5  # (B,)
+        w = torch.cos(half).unsqueeze(-1)  # (B,1)
+        xyz = torch.sin(half).unsqueeze(-1) * u  # (B,3)
+        qs.append(torch.cat([w, xyz], dim=-1))  # (B,4)
+
+    # if only one axis, that's our rotation
+    if len(qs) == 1:
+        return qs[0]
+
+    # if two axes, compose: first rotate about axes[0], then about axes[1]
+    # using your provided quat_mul
+    # note: quat_mul(q1, q2) means “apply q2, then q1”
+    return quat_mul(qs[1], qs[0])
+
+
+class RandomRotation(ReversibleTransform):
     """Apply a random translation and rotation to the entire pointcloud
     trajectory during preprocessing, which is then constant throughout
     training.
@@ -24,46 +74,40 @@ class RandomRotation(Transform):
     def __init__(
         self,
         specs: DataSpecs,
+        rotation_axes: Union[str, Sequence[str]] = "x",
     ):
         obs_specs = dict(specs.obs)
         obs_specs["random_rotation_tf"] = ObsSpec((4, 4))
-        self._specs = specs
+        self._specs = specs.replace(obs=obs_specs)
+
+        self.rotation_axes = rotation_axes
+
+        self.obs_keys = ["target_points", "tool_points", "gripper_points"]
+        self.action_keys = [
+            "action",
+        ]
 
     @property
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def random_rotation(self, device: Union[str, torch.device] = "cpu") -> torch.Tensor:
-        """
-        Generate a random rotation quaternion as a PyTorch tensor.
-
-        Returns:
-            torch.Tensor: Random rotation quaternion (4,).
-        """
-        # Generate a random quaternion
-        # Source https://imois.in/posts/random-vectors-and-rotations-in-3d/#Quaternions
-        # (III.6 - UNIFORM RANDOM ROTATIONS, Shoemake, 1992)
-        q = torch.normal(mean=0, std=1, size=(1, 4), device=device)
-        q = q / torch.norm(q, dim=1, keepdim=True)
-
-        return q
-
-    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
         device = tensordict.device or "cpu"
+        B = tensordict.batch_size[0]
 
-        rotation = self.random_rotation(device)
-        transform = make_pose(
-            torch.zeros((1, 3), device=device), quaternion_to_matrix(rotation)
+        rotation = get_random_rotation_axes(
+            self.rotation_axes, device=device, batch_size=B
         )
-        transform = transform.squeeze(0)
+        transform = quaternion_to_matrix(rotation)  # (B,4,4)
 
-        for key in ["target_points", "tool_points", "gripper_points"]:
-            data: Data = tensordict["obs", key]
-            data.pos = transform_pointcloud(data.pos, transform)
-        for key in ["action", "ref_action"]:
-            tensordict[key] = transform_pointcloud(tensordict[key], transform)
+        for key in self.obs_keys:
+            tensordict["obs", key, "points"] = tensordict["obs", key, "points"].matmul(
+                transform
+            )
+        for key in self.action_keys:
+            tensordict[key] = tensordict[key].matmul(transform)
 
-        tensordict["obs"]["random_rotation_tf"] = transform.unsqueeze(0)
+        tensordict["obs"]["random_rotation_tf"] = transform
 
         return tensordict
 
@@ -71,13 +115,7 @@ class RandomRotation(Transform):
         transform = tensordict["obs"]["random_rotation_tf"]
         inv_transform = torch.inverse(transform)
 
-        tensordict["action"] = transform_pointcloud(tensordict["action"], inv_transform)
-        tensordict["ref_action"] = transform_pointcloud(
-            tensordict["ref_action"], inv_transform
-        )
+        for key in self.action_keys:
+            tensordict[key] = tensordict[key].matmul(inv_transform)
 
-        return tensordict
-
-    def __call__(self, tensordict: TensorDict) -> TensorDict:
-        # Do nothing if not called during preprocessing
         return tensordict

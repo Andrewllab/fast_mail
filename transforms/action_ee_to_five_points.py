@@ -71,38 +71,49 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         return self._specs
 
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
+        # Action from pos rot to 5 3D points
         action_pos = tensordict["action"][..., :3]  # (T, 3)
         action_rot = tensordict["action"][..., 3:6]  # (T, 3)
         gripper_action = tensordict["action"][..., 6:]  # (T, 1)
 
-        points = self.ee_pose_to_3D_points(
+        action_points = self.ee_pose_to_3D_points(
             ee_pos=action_pos, ee_rot=action_rot, gripper=gripper_action
         )  # (T, 5, 3)
 
+        # Transform action points to world frame
         base_pose = tensordict["obs"]["base_pose"]  # (T, 7)
         base_pos = base_pose[..., :3]  # (T, 3)
         base_quat = base_pose[..., 3:]  # (T, 4)
-        points = transform_points(points, base_pos, base_quat)
+        action_points = transform_points(action_points, base_pos, base_quat)
 
-        tensordict["action"] = points
+        # Compute current points
+        current_pos = tensordict["obs"][self.ee_pose_key][..., :3]  # (T, 3)
+        current_quat = tensordict["obs"][self.ee_pose_key][..., 3:]  # (T, 4)
+        current_gripper = -torch.ones_like(gripper_action)
+        current_gripper[1:] = tensordict["action"][:-1, 6:]  # (T, 1)
+        current_points = self.ee_pose_to_3D_points(
+            ee_pos=current_pos,
+            ee_quat=current_quat,
+            gripper=current_gripper,
+        )  # (T, 5, 3)
+
+        tensordict["action"] = action_points
+        tensordict["obs"]["gripper_points"] = {"points": current_points}
 
         return tensordict
 
     def call_trajectory_rollout(self, tensordict: TensorDict) -> TensorDict:
+        ee_pos = tensordict["obs"]["ee_pose"][:, :3].to(torch.float32)  # (T, 3)
+        ee_quat = tensordict["obs"]["ee_pose"][:, 3:].to(torch.float32)  # (T, 4)
         if "_action" not in tensordict["obs"].keys():
-            ee_pos = tensordict["obs"]["ee_pose"][:, :3].to(torch.float32)  # (T, 3)
-            ee_quat = tensordict["obs"]["ee_pose"][:, 3:].to(torch.float32)  # (T, 4)
-            ee_rot = axis_angle_from_quat(ee_quat)  # (T, 3)
             gripper_state = -torch.ones(
                 ee_pos.shape[0], device=ee_pos.device, dtype=ee_pos.dtype
             )  # (T, 1)
         else:
-            ee_pos = tensordict["obs"]["_action"][:, :3]  # (T, 3)
-            ee_rot = tensordict["obs"]["_action"][:, 3:6]  # (T, 3)
             gripper_state = tensordict["obs"]["_action"][:, 6]  # (T,)
 
         points = self.ee_pose_to_3D_points(
-            ee_pos=ee_pos, ee_rot=ee_rot, gripper=gripper_state
+            ee_pos=ee_pos, ee_quat=ee_quat, gripper=gripper_state
         )  # (T, 5, 3)
 
         base_pose = tensordict["obs"]["base_pose"]  # (T, 7)
@@ -228,9 +239,20 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         return out_gripper
 
     def ee_pose_to_3D_points(
-        self, ee_pos: torch.Tensor, ee_rot: torch.Tensor, gripper: torch.Tensor
+        self,
+        ee_pos: torch.Tensor,
+        gripper: torch.Tensor,
+        ee_rot: torch.Tensor = None,
+        ee_quat: torch.Tensor = None,
     ) -> torch.Tensor:
         global POINTS_LOCAL, POINTS_FINGERS
+
+        if ee_quat is None and ee_rot is None:
+            raise ValueError("Either ee_quat or ee_rot must be provided.")
+        if ee_quat is not None and ee_rot is not None:
+            raise ValueError("Only one of ee_quat or ee_rot should be provided.")
+        if ee_rot is not None:
+            ee_quat = quat_from_axis_angle(ee_rot)
 
         num_samples = ee_pos.shape[0]
         num_total_points = POINTS_FINGERS.shape[1] + POINTS_LOCAL.shape[0]
@@ -245,7 +267,6 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
             gripper.cpu().squeeze().long()
         ]
 
-        ee_quat = quat_from_axis_angle(ee_rot)
         points_global: torch.Tensor = transform_points(total_points, ee_pos, ee_quat)
 
         return points_global

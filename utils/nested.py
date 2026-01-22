@@ -542,3 +542,53 @@ def nested_safe_tensordict_unsqueeze(
     if top_level:
         out_td.auto_batch_size_(batch_dims=1)
     return out_td
+
+
+def nested_index(index_nt: torch.Tensor, src_nt: torch.Tensor) -> torch.Tensor:
+    return torch.nested.nested_tensor(
+        [emb[pid] for pid, emb in zip(index_nt.unbind(), src_nt.unbind())],
+        layout=torch.jagged,
+    )
+
+
+def nested_index_fast(index_nt: torch.Tensor, src_nt: torch.Tensor) -> torch.Tensor:
+    """
+    Vectorized nested 'src_row[pid]' for jagged NestedTensors (layout=torch.jagged),
+    with no Python loops.
+
+    index_nt: jagged NT of indices, logical shape (R, jL_out) or similar
+    src_nt:   jagged NT of values,  logical shape (R, jL_src, D...)
+    Returns:  jagged NT, offsets from index_nt, values picked from src_nt
+    """
+    if not (index_nt.is_nested and src_nt.is_nested):
+        raise ValueError("Expected nested tensors")
+
+    # Offsets define the ragged rows for each NT
+    idx_off = index_nt.offsets()  # (R+1,)
+    src_off = src_nt.offsets()  # (R+1,)
+
+    if idx_off.numel() != src_off.numel():
+        raise RuntimeError("index_nt and src_nt must have same number of ragged rows")
+
+    # Row id for each element in index_nt.values()
+    idx_lengths = idx_off[1:] - idx_off[:-1]  # (R,)
+    row_ids = torch.repeat_interleave(
+        torch.arange(idx_lengths.numel(), device=idx_off.device), idx_lengths
+    )  # (sum(idx_lengths),)
+
+    # Base offset into src.values() for the corresponding row
+    base = src_off[row_ids]  # (sum_idx,)
+
+    # Flatten indices into src.values() indexing space
+    pid = index_nt.values().to(base.dtype)  # ensure integer dtype compatible
+    flat_idx = base + pid  # (sum_idx,)
+
+    # Optional: bounds check (debug only; remove for speed)
+    # src_lengths = (src_off[1:] - src_off[:-1])[row_ids]
+    # if torch.any(pid < 0) or torch.any(pid >= src_lengths):
+    #     raise RuntimeError("Out-of-bounds pid for some ragged row")
+
+    out_vals = src_nt.values().index_select(0, flat_idx)
+
+    # Rewrap using *index_nt's offsets* (because output has index_nt's ragged lengths)
+    return torch.nested.nested_tensor_from_jagged(values=out_vals, offsets=idx_off)

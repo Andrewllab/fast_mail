@@ -1,3 +1,4 @@
 _target_: transforms.pakt_data_augmentation.RandomRotation
 _partial_: True
 
+rotation_axes: "z"  # can be "x", "y", "z", or a list of axes

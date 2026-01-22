@@ -3,3 +3,4 @@ _partial_: True
 
 tool_points_key: tool_points
 target_points_key: target_points
+gripper_points_key: gripper_points

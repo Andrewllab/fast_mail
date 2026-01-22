@@ -22,16 +22,16 @@ feature_encoder:
   norm: LayerNorm
   dropout: 0.1
 
-color_encoder:
-  name: pointpatch_color_encoder
-  _target_: models.mlp.MlpModel
-  _partial_: true
-  in_features: 3
-  out_features: ${..embed_dim}
-  hidden_sizes: [128, 256]
-  activation: GELU
-  norm: LayerNorm
-  dropout: 0.1
+color_encoder: Null
+  # name: pointpatch_color_encoder
+  # _target_: models.mlp.MlpModel
+  # _partial_: true
+  # in_features: 3
+  # out_features: ${..embed_dim}
+  # hidden_sizes: [128, 256]
+  # activation: GELU
+  # norm: LayerNorm
+  # dropout: 0.1
 
 
 embed_dim: 256

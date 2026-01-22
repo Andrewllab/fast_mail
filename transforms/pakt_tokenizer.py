@@ -13,11 +13,8 @@ from environments.specs import DataSpecs, EmbedSpec, PointCloudSpec
 from transforms.base_transform import KeyMapping, Transform
 from utils.nested import (
     cat_nested,
-    flatten_nested_tensor,
     make_jagged_nested_tensors_compatible,
-    pyg_to_nested_tensor,
-    to_strided_tensor,
-    unflatten_nested_tensor,
+    nested_index_fast,
 )
 
 log = logging.getLogger(__name__)
@@ -30,8 +27,8 @@ class PaktTokenizer(Transform, nn.Module):
         specs: DataSpecs,
         embed_dim: int,
         feature_encoder: Callable[[int], nn.Linear],
-        color_encoder: Callable[[int], nn.Linear],
         pos_encoder: Callable[[int, int], nn.Linear],
+        color_encoder: Callable[[int], nn.Linear] = None,
         num_timesteps: int = 15,
         cartesian_dim: int = 3,
         num_gripper_points: int = 5,
@@ -41,22 +38,18 @@ class PaktTokenizer(Transform, nn.Module):
         self._input_spec = specs.obs
 
         self.feature_encoder = feature_encoder()
-        self.color_encoder = color_encoder()
+        self.color_encoder = color_encoder() if color_encoder is not None else None
         self.pos_encoder = pos_encoder()
-
-        # assert (
-        #     feature_encoder.out_features
-        #     == color_encoder.out_features
-        #     == pos_encoder.out_features
-        #     == embed_dim
-        # )
 
         self.gripper_points_id_embedding = nn.Embedding(num_gripper_points, embed_dim)
         self.token_type_embedding = nn.Embedding(
             cartesian_dim, embed_dim
         )  # target, tool, gripper
-        self.timestep_embedding = nn.Embedding(num_timesteps, embed_dim)
+        self.timestep_embedding = nn.Embedding(
+            num_timesteps + 1, embed_dim
+        )  # +1 because we predict the future num_timesteps but also condition on the current timestep
 
+        # Define output specs
         obs_embed_spec = EmbedSpec(
             embed_dim=embed_dim,
             n_tokens=None,
@@ -68,8 +61,19 @@ class PaktTokenizer(Transform, nn.Module):
         self._output_specs = specs.replace(
             obs=obs_specs,
         )
+
+        # Store parameters
         self.embed_dim = embed_dim
         self.num_timesteps = num_timesteps
+        self.num_gripper_points = num_gripper_points
+
+        # Store semi-permanent tensors
+        # fmt: off
+        self.register_buffer("_tok_target", torch.tensor([0], dtype=torch.long), persistent=False)
+        self.register_buffer("_tok_tool",   torch.tensor([1], dtype=torch.long), persistent=False)
+        self.register_buffer("_tok_grip",   torch.tensor([2], dtype=torch.long), persistent=False)
+        self.register_buffer("_gripper_point_ids", torch.arange(num_gripper_points, dtype=torch.long), persistent=False)
+        # fmt: on
 
     @property
     def specs(self) -> DataSpecs:
@@ -80,7 +84,7 @@ class PaktTokenizer(Transform, nn.Module):
         point_pos: Tensor,
         point_color: Tensor,
         point_features: Tensor,
-        token_type: int,
+        token_type: Tensor,
     ) -> Tensor:
         """
         Tokenize a point cloud into a set of embedding tokens.
@@ -99,8 +103,11 @@ class PaktTokenizer(Transform, nn.Module):
 
         # TODO: Make color encoder optional
         # Encode color
-        color_embed = self.color_encoder(point_color)
-        _, color_embed = make_jagged_nested_tensors_compatible(pos_embed, color_embed)
+        if self.color_encoder is not None:
+            color_embed = self.color_encoder(point_color)
+            _, color_embed = make_jagged_nested_tensors_compatible(
+                pos_embed, color_embed
+            )
 
         # Encode features
         feature_embed = self.feature_encoder(point_features)
@@ -109,19 +116,20 @@ class PaktTokenizer(Transform, nn.Module):
         )
 
         # Add token type embedding
-        token_type_embed = self.token_type_embedding(
-            torch.tensor([token_type], device=point_pos.device)
-        )
+        token_type_embed = self.token_type_embedding(token_type)
 
         # Sum embeddings
-        token_embed = pos_embed + color_embed + feature_embed + token_type_embed
+        token_embed = pos_embed
+        token_embed += feature_embed
+        token_embed += token_type_embed
+        if self.color_encoder is not None:
+            token_embed += color_embed
 
         return token_embed
 
     def __tokenize_gripper_points(
         self,
         point_pos: Tensor,
-        gripper_point_ids: Tensor,
     ) -> Tensor:
         """
         Tokenize gripper points into a set of embedding tokens.
@@ -139,15 +147,15 @@ class PaktTokenizer(Transform, nn.Module):
         pos_embed = self.pos_encoder(point_pos)
 
         # Add gripper point ID embedding
-        gripper_id_embed = self.gripper_points_id_embedding(gripper_point_ids)
+        gripper_id_embed = self.gripper_points_id_embedding(self._gripper_point_ids)
 
         # Add token type embedding for gripper points (token_type=2)
-        token_type_embed = self.token_type_embedding(
-            torch.tensor([2], device=point_pos.device)
-        )
+        token_type_embed = self.token_type_embedding(self._tok_grip)
 
         # Sum embeddings
-        token_embed = pos_embed + gripper_id_embed + token_type_embed
+        token_embed = pos_embed
+        token_embed += gripper_id_embed
+        token_embed += token_type_embed
 
         return token_embed
 
@@ -168,7 +176,6 @@ class PaktTokenizer(Transform, nn.Module):
         Returns:
             Tensor: Gripper action point tokens, shape (B, T, N, D).
         """
-        B, N, T, _ = point_pos.shape
 
         # Encode position
         pos_embed = self.pos_encoder(point_pos)
@@ -180,17 +187,13 @@ class PaktTokenizer(Transform, nn.Module):
         timestep_embed = self.timestep_embedding(timesteps)
 
         # Add token type embedding for gripper points (token_type=2)
-        token_type_embed = self.token_type_embedding(
-            torch.tensor([2], device=point_pos.device)
-        )
+        token_type_embed = self.token_type_embedding(self._tok_grip)
 
         # Sum embeddings
-        token_embed = (
-            pos_embed
-            + gripper_id_embed.unsqueeze(1)
-            + timestep_embed.unsqueeze(0)
-            + token_type_embed.unsqueeze(0)
-        )
+        token_embed = pos_embed
+        token_embed += gripper_id_embed
+        token_embed += timestep_embed
+        token_embed += token_type_embed.unsqueeze(0)
 
         return token_embed
 
@@ -199,6 +202,7 @@ class PaktTokenizer(Transform, nn.Module):
         point_pos: Tensor,
         point_color: Tensor,
         point_features: Tensor,
+        point_ids: Tensor,
         timesteps: Tensor,
     ) -> Tensor:
         """
@@ -208,44 +212,49 @@ class PaktTokenizer(Transform, nn.Module):
             point_pos (Tensor): Tool action point positions, shape (B, T, N, 3).
             point_color (Tensor): Tool action point colors, shape (B, T, N, 3).
             point_features (Tensor): Tool action point features, shape (B, T, N, F).
+            point_ids (Tensor): Tool action point IDs, shape (B, T, N).
             timesteps (Tensor): Timesteps, shape (B, T).
 
         Returns:
             Tensor: Tool action point tokens, shape (B, T, N, D).
         """
-        B, T, N, _ = point_pos.shape
 
         # Encode position
         pos_embed = self.pos_encoder(point_pos)
 
-        # Encode color
-        color_embed = self.color_encoder(point_color)
-        pos_embed, color_embed = make_jagged_nested_tensors_compatible(
-            pos_embed, color_embed
-        )
-
-        # Encode features
+        # Encode color and feature
         feature_embed = self.feature_encoder(point_features)
-        pos_embed, feature_embed = make_jagged_nested_tensors_compatible(
-            pos_embed, feature_embed
+
+        color_feat_embed = feature_embed
+        if self.color_encoder is not None:
+            color_embed = self.color_encoder(point_color)
+
+            color_embed, feature_embed = make_jagged_nested_tensors_compatible(
+                color_embed, feature_embed
+            )
+            color_feat_embed += color_embed
+
+        # Index by point IDs
+        color_feat_embed = nested_index_fast(point_ids, color_feat_embed)
+
+        pos_embed, color_feat_embed = make_jagged_nested_tensors_compatible(
+            pos_embed, color_feat_embed
         )
 
         # Add timestep embedding
         timestep_embed = self.timestep_embedding(timesteps)
+        pos_embed, timestep_embed = make_jagged_nested_tensors_compatible(
+            pos_embed, timestep_embed
+        )
 
         # Add token type embedding for tool points (token_type=1)
-        token_type_embed = self.token_type_embedding(
-            torch.tensor([1], device=point_pos.device)
-        )
+        token_type_embed = self.token_type_embedding(self._tok_tool)
 
         # Sum embeddings
-        token_embed = (
-            pos_embed
-            + color_embed.unsqueeze(-2)
-            + feature_embed.unsqueeze(-2)
-            + timestep_embed.unsqueeze(0)
-            + token_type_embed.unsqueeze(0)
-        )
+        token_embed = pos_embed
+        token_embed += color_feat_embed
+        token_embed += timestep_embed
+        token_embed += token_type_embed.unsqueeze(0)
 
         return token_embed
 
@@ -265,7 +274,7 @@ class PaktTokenizer(Transform, nn.Module):
             point_pos=target_points_pos,
             point_color=target_points_color,
             point_features=target_points_features,
-            token_type=0,  # target
+            token_type=self._tok_target,  # target
         )  # (B, N_t, D)
 
         # === tool point tokens ===
@@ -277,62 +286,51 @@ class PaktTokenizer(Transform, nn.Module):
             point_pos=tool_points_pos,
             point_color=tool_points_color,
             point_features=tool_points_features,
-            token_type=1,  # tool
+            token_type=self._tok_tool,  # tool
         )  # (B, N_tool, D)
 
         # === gripper point tokens ===
         gripper_points = obs["gripper_points"]
-        gripper_points_pos = to_strided_tensor(gripper_points["points"])  # (B, N_g, 3)
-        gripper_points_ids = torch.arange(gripper_points_pos.shape[1], device=device)
+        gripper_points_pos = gripper_points["points"]  # (B, N_g, 3)
         # (B, N_g) # should be 5
 
         gripper_points_tokens = self.__tokenize_gripper_points(
             point_pos=gripper_points_pos,
-            gripper_point_ids=gripper_points_ids,
         )  # (B, N_g, D)
 
         # === action point tokens ===
         action_points_pos = actions  # (B, T, N_a, 3)
-        if action_points_pos.is_nested:
-            action_points_pos = unflatten_nested_tensor(
-                action_points_pos,
-                orig_vshape=(self.num_timesteps,),
-                start_dim=1,
-                end_dim=2,
-            )  # (B, T, N_a, 3)
-        else:
-            action_points_pos = action_points_pos.view(
-                B, -1, self.num_timesteps, 3
-            )  # (B, T, N_a, 3)
+        gripper_action_meta = batch["obs"]["robot_action_points"]
+        tool_action_meta = batch["obs"]["tool_action_points"]
 
         # === gripper actions point tokens ===
-        gripper_action_pos = torch.stack([x[:5] for x in action_points_pos.unbind(0)])
-        # (B, T, 5) # first 5 dims are robot actions
-        gripper_action_ids = torch.arange(5, device=device)
-        # (B, T, 5)
+        num_gripper_action_tokens = self.num_gripper_points * self.num_timesteps
+        gripper_action_pos = torch.stack(
+            [x[:num_gripper_action_tokens] for x in action_points_pos.unbind(0)]
+        )
+        gripper_action_timesteps = gripper_action_meta["timesteps"]
+        gripper_action_point_ids = gripper_action_meta["point_ids"]
 
-        gripper_action_timesteps = torch.arange(
-            gripper_action_pos.shape[2], device=device
-        )  # (B, T)
         gripper_action_tokens = self.__tokenize_gripper_action_points(
             point_pos=gripper_action_pos,
-            gripper_point_ids=gripper_action_ids,
+            gripper_point_ids=gripper_action_point_ids,
             timesteps=gripper_action_timesteps,
         )  # (B, T, 5, D)
 
         # === tool action point tokens ===
         tool_action_pos = torch.nested.nested_tensor(
-            [x[5:] for x in action_points_pos.unbind(0)], layout=torch.jagged
+            [x[num_gripper_action_tokens:] for x in action_points_pos.unbind(0)],
+            layout=torch.jagged,
         )  # (B, T, N_tool, 3) # rest are tool actions
         tool_action_features = tool_points_features  # (B, T, N_tool, F)
         tool_action_color = tool_points_color  # (B, T, N_tool, 3)
-        tool_action_timesteps = torch.arange(
-            tool_action_pos.shape[2], device=device
-        )  # (B, T)
+        tool_action_timesteps = tool_action_meta["timesteps"]
+        tool_action_point_ids = tool_action_meta["point_ids"]
         tool_action_tokens = self.__tokenize_tool_action_points(
             point_pos=tool_action_pos,
             point_color=tool_action_color,
             point_features=tool_action_features,
+            point_ids=tool_action_point_ids,
             timesteps=tool_action_timesteps,
         )  # (B, T, N_tool, D)
 
@@ -343,64 +341,7 @@ class PaktTokenizer(Transform, nn.Module):
         )
         action_tokens = cat_nested([gripper_action_tokens, tool_action_tokens], dim=1)
 
-        action_tokens, _, _ = flatten_nested_tensor(
-            action_tokens, start_dim=1, end_dim=2
-        )
-
         batch["obs"]["embed"] = obs_tokens
 
         # batch["action_embed"] = action_tokens
         return batch, action_tokens  # , attention_mask
-
-    def nested_decoder_attn_mask_no_padding(self, x_nt: torch.Tensor) -> torch.Tensor:
-        """
-        Build a decoder-only attention mask as a NestedTensor, without padding.
-
-        Rules:
-        - causal (no attending to future tokens)
-        - tokens containing NaNs:
-            * cannot be attended to (as keys)
-            * cannot attend to anything (as queries)
-
-        Args:
-            x_nt: torch.nested.NestedTensor with logical shape (B, jL, D)
-
-        Returns:
-            attn_mask_nt: torch.nested.NestedTensor where each element has
-                        shape (L_b, L_b) and dtype float,
-                        with 0.0 for allowed attention and -inf for blocked.
-        """
-        if not x_nt.is_nested:
-            raise ValueError("Input must be a NestedTensor")
-
-        masks = []
-
-        # Iterate over batch elements (this preserves jaggedness)
-        for xb in x_nt.unbind():
-            # xb: (L, D)
-            L = xb.size(0)
-
-            # Identify NaN tokens
-            nan_tok = torch.isnan(xb).any(dim=-1)  # (L,)
-
-            # Causal mask: block j > i
-            causal_block = torch.triu(
-                torch.ones(L, L, device=xb.device, dtype=torch.bool), diagonal=1
-            )
-
-            # Block NaN tokens as keys (columns)
-            key_block = nan_tok.unsqueeze(0).expand(L, L)
-
-            # Block NaN tokens as queries (rows)
-            query_block = nan_tok.unsqueeze(1).expand(L, L)
-
-            block = causal_block | key_block | query_block
-
-            # Additive mask
-            attn_mask_b = torch.zeros((L, L), device=xb.device, dtype=xb.dtype)
-            attn_mask_b.masked_fill_(block, float("-inf"))
-
-            masks.append(attn_mask_b)
-
-        # Return as NestedTensor (no padding introduced)
-        return torch.nested.nested_tensor(masks, layout=torch.jagged)
