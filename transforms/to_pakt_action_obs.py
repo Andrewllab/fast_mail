@@ -208,18 +208,57 @@ class ToPaktActionObsTransform(ReversibleTransform):
         target_pcd = {key: target_pcd[key].squeeze(0) for key in target_pcd.keys()}
         gripper_points = {"points": gripper_points["points"].squeeze(0)}
 
+        num_tool_points = tool_pcd["points"].shape[0]
+        num_timesteps = self.window_len
+        device = tool_pcd["points"].device
+
+        tool_action_timestep = (
+            torch.arange(num_timesteps, device=device)
+            .unsqueeze(0)
+            .expand(num_tool_points, -1)
+        ).reshape(
+            -1
+        )  # (N_tool, window_len)
+        tool_action_point_id = (
+            torch.arange(num_tool_points, device=device)
+            .unsqueeze(1)
+            .expand(-1, num_timesteps)
+        ).reshape(
+            -1
+        )  # (N_tool, window_len)
+
+        robot_action_timestep = (
+            torch.arange(num_timesteps, device=device)
+            .unsqueeze(0)
+            .expand(self.num_action_points, -1)
+        ).reshape(
+            -1
+        )  # (N_action, window_len)
+        robot_action_point_id = (
+            torch.arange(self.num_action_points, device=device)
+            .unsqueeze(1)
+            .expand(-1, num_timesteps)
+        ).reshape(
+            -1
+        )  # (N_action, window_len)
+
         obs = {
             "tool_points": tool_pcd,
             "target_points": target_pcd,
             "gripper_points": gripper_points,
+            "tool_action_points": {
+                "timesteps": tool_action_timestep + 1,
+                "point_ids": tool_action_point_id,
+            },
+            "robot_action_points": {
+                "timesteps": robot_action_timestep + 1,
+                "point_ids": robot_action_point_id,
+            },
         }
 
-        num_tool_points = tool_pcd["points"].shape[0]
-        num_timesteps = self.window_len
-        action_dim = tensordict["obs"]["gripper_points"]["points"].shape[0]
         phantom_action = torch.zeros(
-            ((action_dim + num_tool_points) * num_timesteps, 3),
-            device=tool_pcd["points"].device,
+            ((self.num_action_points + num_tool_points) * num_timesteps, 3),
+            device=device,
         )
 
         tensordict["obs"] = tensordict["obs"].update(obs)

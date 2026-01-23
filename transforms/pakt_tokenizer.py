@@ -42,9 +42,7 @@ class PaktTokenizer(Transform, nn.Module):
         self.pos_encoder = pos_encoder()
 
         self.gripper_points_id_embedding = nn.Embedding(num_gripper_points, embed_dim)
-        self.token_type_embedding = nn.Embedding(
-            cartesian_dim, embed_dim
-        )  # target, tool, gripper
+        self.token_type_embedding = nn.Embedding(3, embed_dim)  # target, tool, gripper
         self.timestep_embedding = nn.Embedding(
             num_timesteps + 1, embed_dim
         )  # +1 because we predict the future num_timesteps but also condition on the current timestep
@@ -235,7 +233,11 @@ class PaktTokenizer(Transform, nn.Module):
             color_feat_embed += color_embed
 
         # Index by point IDs
-        color_feat_embed = nested_index_fast(point_ids, color_feat_embed)
+        if point_ids.is_nested or color_feat_embed.is_nested:
+            color_feat_embed = nested_index_fast(point_ids, color_feat_embed)
+        else:
+            index = point_ids.unsqueeze(-1).expand(-1, -1, color_feat_embed.size(-1))
+            color_feat_embed = torch.gather(color_feat_embed, dim=1, index=index)
 
         pos_embed, color_feat_embed = make_jagged_nested_tensors_compatible(
             pos_embed, color_feat_embed

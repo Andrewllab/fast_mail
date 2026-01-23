@@ -60,14 +60,8 @@ data:
     t78_some_preprocess_for_test:
       a: 1  # dummy param to create a new transform for test preprocess stage
 
-
   gpu_batch_transforms:
-    t90_render:
-      stream_names: [rgb, depth]
-    t90_render_pcd:
-      render_camera_poses: True
-      render_ee_pose: False
-      render_action: False
+    t01_random_rotation: Null
 
 logger:
   wandb:

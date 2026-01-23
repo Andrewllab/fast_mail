@@ -112,6 +112,8 @@ class RandomRotation(ReversibleTransform):
         return tensordict
 
     def reverse(self, tensordict: TensorDict) -> TensorDict:
+        if "random_rotation_tf" not in tensordict["obs"]:
+            return tensordict
         transform = tensordict["obs"]["random_rotation_tf"]
         inv_transform = torch.inverse(transform)
 
