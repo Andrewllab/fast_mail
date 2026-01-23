@@ -20,7 +20,7 @@ defaults:
   - /transforms@data.preprocess.t08_pakt_localizer: pakt_localizer
   - /transforms@data.preprocess.t99_cleanup: cleanup
 
-  - /transforms@data.gpu_batch_transforms.t01_random_rotation: pakt_random_rotation
+  # - /transforms@data.gpu_batch_transforms.t01_random_rotation: pakt_random_rotation
 
 
 

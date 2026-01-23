@@ -125,7 +125,7 @@ class ToPaktActionObsTransform(ReversibleTransform):
         )  # (B, N_tool_action)
         tool_action_points = torch.nested.as_nested_tensor(
             tool_action_points, layout=torch.jagged
-        )  # (B, N_tool_action, num_timesteps, 3)
+        )  # (B, N_tool_action * num_timesteps, 3)
 
         # TOOL OBS POINTS
         tool_obs_points = torch.nested.as_nested_tensor(
@@ -135,9 +135,12 @@ class ToPaktActionObsTransform(ReversibleTransform):
         # ROBOT ACTION POINTS
         robot_action_windows = self.sliding_windows_pad_last(
             robot_action_points, window=self.window_len
-        ).movedim(
-            -1, 2
-        )  # (B, N_action, window, 3)
+        )
+        # robot_action_windows: (T, window, N_action, 3)
+        robot_action_windows = robot_action_windows.permute(
+            0, 2, 1, 3
+        )  # (T, N_action, window, 3)
+
         robot_action_timesteps = (
             torch.arange(self.window_len, device=robot_action_points.device)
             .view(1, 1, -1)
@@ -169,9 +172,7 @@ class ToPaktActionObsTransform(ReversibleTransform):
 
         ref_actions = self.sliding_windows_pad_last(
             tensordict["ref_action"], window=self.window_len
-        ).movedim(
-            1, 2
-        )  # (B,  window, action_dim)
+        )
 
         obs = {
             "tool_points": {
@@ -286,28 +287,52 @@ class ToPaktActionObsTransform(ReversibleTransform):
     def reverse(self, tensordict):
         return self.call_trajectory_reverse(tensordict)
 
-    def sliding_windows_pad_last(self, x: torch.Tensor, window: int) -> torch.Tensor:
+    def sliding_windows_pad_last(
+        self, x: torch.Tensor, window: int, time_dim: int = 0
+    ) -> torch.Tensor:
         """
-        x: [T, ...]
-        returns: [T, window, ...] windows over dim=0, padding the end
-                by repeating the last valid timestep.
-        """
-        assert x.dim() >= 1
-        T = x.size(0)
-        assert window >= 1
+        Windows over time_dim, pads by repeating the last timestep.
 
-        # pad on the end along time so we can still start a window at t=T-1
+        Returns a tensor where the new window dimension is inserted right after time_dim.
+        """
+        if window < 1:
+            raise ValueError("window must be >= 1")
+        if x.dim() <= time_dim:
+            raise ValueError("time_dim out of range")
+
+        T = x.size(time_dim)
         pad_len = window - 1
-        if pad_len > 0:
-            # F.pad pads last dimension(s), so we temporarily move time to the last dim
-            x_last = x.movedim(0, -1)  # [..., T]
-            x_last = F.pad(x_last, (0, pad_len), mode="replicate")  # [..., T+pad_len]
-            x = x_last.movedim(-1, 0)  # [T+pad_len, ...]
 
-        # make all windows
-        # [T+pad_len, ...] -> [T, window, ...]
-        x_windows = x.unfold(dimension=0, size=window, step=1)  # [T, window, ...]
-        return x_windows
+        if pad_len > 0:
+            # take last timestep slice along time_dim
+            index = [slice(None)] * x.dim()
+            index[time_dim] = slice(T - 1, T)
+            last = x[tuple(index)]  # shape has time_dim size 1
+
+            # expand last along time_dim to pad_len
+            expand_shape = list(last.shape)
+            expand_shape[time_dim] = pad_len
+            last = last.expand(*expand_shape)
+
+            x = torch.cat([x, last], dim=time_dim)
+
+        out = x.unfold(dimension=time_dim, size=window, step=1)
+
+        # Unfold inserts the window dimension at the end in some cases;
+        # enforce "window_dim = time_dim + 1"
+        desired_window_dim = time_dim + 1
+        actual_window_dim = out.dim() - 1  # often last
+        # Detect where the window dimension is by matching its size
+        # (safe if no other dim equals `window`; otherwise you can track it explicitly).
+        if out.size(desired_window_dim) != window:
+            # Find a dim with size == window that is NOT the time axis itself
+            cand = [
+                d for d in range(out.dim()) if out.size(d) == window and d != time_dim
+            ]
+            if cand:
+                out = out.movedim(cand[0], desired_window_dim)
+
+        return out
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         return nested_safe_tensordict_unsqueeze(
