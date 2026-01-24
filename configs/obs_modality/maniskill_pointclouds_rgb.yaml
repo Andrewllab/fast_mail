@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - robocasa_pointclouds
+  - maniskill_pointclouds
 
   # apply ImageNet normalization
   - /transforms@data.gpu_batch_transforms.t99_norm_image: imagenet_norm
@@ -9,7 +9,7 @@ defaults:
 data:
   preprocess:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_pointclouds_rgb
+    root_dir: ${paths.preprocessed_dir}/maniskill/${data.name}_pointclouds_rgb
 
     t99_cleanup:
       keep_stream_types: rgb  # only keep rgb streams

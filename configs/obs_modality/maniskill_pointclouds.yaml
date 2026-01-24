@@ -16,13 +16,8 @@ defaults:
 
   # apply jitter data augmentation
   - /transforms@data.gpu_batch_transforms.t10_jitter: jitter
-  
-  # we don't need to normalize the pointclouds because they are already sort of
-  # within the range [0, 1] after cropping
-  # - /transforms@data.gpu_batch_transforms.t5_normalize: pointcloud_normalize
 
 data:
-  # Below is just the default configuration copied here for convenience. Change as needed.
   preprocess:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.preprocessed_dir}/maniskill/${data.name}_pointclouds
@@ -44,9 +39,12 @@ data:
       size: 0.01
 
     t10_jitter:
-      sigma: 0.002
+      sigma: 0.005
 
 # disable the batch size finder for point clouds, because the data points 
 # don't have a consistent memory size
 callbacks:
   batch_size_finder: null
+
+# metadata
+modality: pointcloud

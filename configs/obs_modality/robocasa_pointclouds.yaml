@@ -40,7 +40,7 @@ data:
       size: 0.01
 
     t10_jitter:
-      sigma: 0.002  # slightly higher jitter for robocasa
+      sigma: 0.002
 
 # disable the batch size finder for point clouds, because the data points 
 # don't have a consistent memory size
