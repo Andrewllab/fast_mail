@@ -28,10 +28,6 @@ class GymEnvDataset(IterableDataset):
         env: VectorEnv,
         num_episodes: int | None = 20,
     ):
-        # TODO: Once vectorization is properly factored out, we need to remove
-        # the calling of reset here, not least because we don't know how to
-        # merge the reset info with the info from the last step.
-
         self.env = env
         self.num_episodes = num_episodes
 
@@ -130,6 +126,9 @@ class GymEnvDataset(IterableDataset):
             yield self._step_return_to_tensor_dict(obs, info, reward=reward, done=done)
 
         # TODO: flush video recorder here
+
+        # TODO: flush video recorder here
+        log.info("stop here")
 
     def write_actions(self, actions: torch.Tensor):
         if self._next_action is not None:
