@@ -9,7 +9,9 @@ obs_seq_len: 1
 
 dataset:
   _target_: environments.maniskill.maniskill_cam1_joint_goal_region.ManiSkillDataset
-  root_dir: ${paths.data_dir}/maniskill/maniskill_1cam_joint_delta_pos_no_color
+  root_dir: ${paths.data_dir}/maniskill
+  subfolders: [PokeCube-v1_joint_delta_pos,PushCube-v1_joint_delta_pos,PullCube-v1_joint_delta_pos,RollBall-v1_joint_delta_pos]
+  load_subset: 500  # load only 500 trajectories from each task
 
 env:
   env:

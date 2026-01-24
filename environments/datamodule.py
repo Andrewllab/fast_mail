@@ -287,7 +287,11 @@ class TrajectoryDataModule(L.LightningDataModule):
                             transformed = transform.call_trajectory(traj)
                         except EmptyPointCloudError as e:
                             log.warning(
-                                f"Skipping trajectory {traj['name']} due to empty point cloud after {transform.__class__.__name__}: {e}"
+                                "Skipping trajectory %sfrom %s due to empty point cloud after %s: %s",
+                                f"named {traj['name']} " if "name" in traj else "",
+                                traj["path"],
+                                transform.__class__.__name__,
+                                e,
                             )
                             continue
 

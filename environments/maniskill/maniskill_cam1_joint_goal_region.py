@@ -44,33 +44,40 @@ class ManiSkillDataset(CustomHdf5Dataset):
         self.action_seq_len = action_seq_len
         self.obs_seq_len = obs_seq_len
 
-        files = iglob_follow_symlinks(self._root_dir, "**/*.h5")
-        self.files = list(sorted(files, key=self.filename_keyfunc))
+        self.files = list(iglob_follow_symlinks(self._root_dir, "**/*.h5"))
 
         if subfolders is not None:
             if isinstance(subfolders, str):
                 subfolders = (subfolders,)
-            subfolders_set = set(subfolders)
-            files = [file for file in self.files if set(file.parts) & subfolders_set]
+
             log.info(
-                f"Loading only data in the following subfolders: {list(subfolders)} ({len(files)} files out of {len(self.files)} total)"
+                f"Loading only data in the following subfolders: {list(subfolders)}"
             )
-            self.files = files
+
+            all_files = []
+            for subfolder in subfolders:
+                files = [f for f in self.files if f.parent.name == subfolder]
+                files = list(sorted(files, key=self.filename_keyfunc))
+                files = get_subset(files, load_subset)
+                all_files.extend(files)
+
+            self.files = all_files
+
+        else:
+            self.files = list(sorted(self.files, key=self.filename_keyfunc))
+            self.files = get_subset(self.files, load_subset)
 
         if not self.files:
             raise FileNotFoundError(
                 f"No raw files found in {self._root_dir}. Please check the path."
             )
 
-        # TODO: take identical subset of the contents of each subfolder
-        self.files = get_subset(self.files, load_subset)
-
-        self.trajs: list[tuple[Path, str, Group]] = [
-            (file.relative_to(self._root_dir), file.stem, h5py.File(str(file), "r"))
+        self.trajs: list[tuple[Path, Group]] = [
+            (file.relative_to(self._root_dir), h5py.File(str(file), "r"))
             for file in self.files
         ]
 
-        traj_lengths = [len(traj["actions"]) for _, _, traj in self.trajs]
+        traj_lengths = [len(traj["actions"]) for _, traj in self.trajs]
 
         self.slices = TrajectorySlices(
             traj_lengths,
@@ -87,7 +94,7 @@ class ManiSkillDataset(CustomHdf5Dataset):
         )
 
     def get_trajectory(self, traj_idx: int) -> TensorDict:
-        path, name, traj = self.trajs[traj_idx]
+        path, traj = self.trajs[traj_idx]
 
         base_camera = traj["obs"]["sensor_data"]["base_camera"]
         rgb = base_camera["rgb"][:-1]
@@ -120,15 +127,15 @@ class ManiSkillDataset(CustomHdf5Dataset):
                 "goal": {
                     "embed": traj["goal"]["preprocessed_embedding"][...],
                 },
+                # since each trajectory is stored in a separate file, we only need to store the path
                 "path": str(path),
-                "name": name,
             },  # type: ignore
         )
 
         return traj
 
     def _load_specs(self) -> None:
-        _, _, traj = self.trajs[0]
+        _, traj = self.trajs[0]
 
         obs_specs = {}
         T = len(traj["actions"])

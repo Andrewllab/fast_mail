@@ -41,7 +41,7 @@ data:
 
   gpu_batch_transforms:
     t2_sample_voxel:
-      size: 0.006
+      size: 0.01
 
     t10_jitter:
       sigma: 0.002

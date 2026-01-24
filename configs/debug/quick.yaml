@@ -15,7 +15,7 @@ trainer:
 
 data:
   dataset:
-    load_subset: 1  # load only one trajectory
+    load_subset: 0.01  # load only 1% of the trajectories
   preprocess:
     overwrite: True  # don't worry about overwriting the preprocessed data since we are using a small subset
 

@@ -492,13 +492,15 @@ class MemmapDataset(TrajectoryDataset):
 
         relative_path = Path(traj.pop("path").data)
         if "name" in traj:
+            name = traj.pop("name").data
             relative_path = relative_path.with_stem(
-                relative_path.stem + "_" + str(traj.pop("name").data)
+                relative_path.stem + "_" + str(name)
             )
 
         # save memmaps in a flat folder hierarchy relative to root_dir,
         # otherwise we can't distinguish between memmaps and directories
-        filepath = root_dir / relative_path.name
+        filename = "_".join(relative_path.parts)
+        filepath = root_dir / filename
         filepath = filepath.with_suffix("")  # ensure no suffix
 
         traj.memmap(str(filepath), num_threads=8)
