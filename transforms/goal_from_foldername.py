@@ -30,14 +30,20 @@ class GoalTextFromFolderName(Transform):
         if "path" in tensordict:
             # during training or eval on data, we extract the goal from the
             # folder name
-            path = Path(tensordict["path"])
-            folder_name = path.parent.name
+            path = Path(tensordict["path"]).with_suffix("")  # remove suffix
 
-            try:
-                goal_text = self.goal_mapping[folder_name]
-            except KeyError:
+            while len(path.parts) > 0:
+                key = "_".join(path.parts)
+
+                if key in self.goal_mapping:
+                    goal_text = self.goal_mapping[key]
+                    break
+
+                path = path.parent
+            else:
+                # if we reach here, no matching folder name was found
                 raise KeyError(
-                    f"No goal text found for folder name {folder_name} (full path is `{path}`)"
+                    f"No matching goal text found for path {tensordict['path']}"
                 )
 
         elif self.current_task is not None:

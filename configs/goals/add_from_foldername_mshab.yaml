@@ -1,0 +1,16 @@
+# @package _global_
+
+data:
+  preprocess:
+    # add a goal text based on the folder name of the demonstration
+    t40_add_goal:
+      _target_: transforms.goal_from_foldername.GoalTextFromFolderName
+      _partial_: True
+      current_task: null
+      goal_mapping:
+        # pick
+        pick_013_apple: "pick up the apple"
+        pick_024_bowl: "pick up the bowl"
+        # place
+        place_013_apple: "place the apple"
+        place_024_bowl: "place the bowl"

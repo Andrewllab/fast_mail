@@ -1,0 +1,36 @@
+defaults:
+  - default
+
+task_suite: maniskill-HAB
+
+obs_seq_len: 1
+
+dataset:
+  _target_: environments.maniskill.maniskill_dataset.ManiSkillDataset
+
+env:
+  env:
+    _target_: environments.maniskill.build_env.make
+    _recursive_: False  # don't try to import any targets for wrappers, in case IsaacLab is not installed
+    env_id: null  # placeholder
+    num_envs: 1
+    obs_mode: state_dict+rgb+depth  # `state_dict` ensures that obs/extra also contains goal_pos if it exists
+    control_mode: pd_joint_delta_pos  # 'pd_joint_pos', 'pd_joint_delta_pos', 'pd_joint_vel', 'pd_torque'
+    render_mode: rgb_array  # "rgb_array" for human view perspective, "sensors" for agent perspective, "all" for both
+    action_horizon: null  # use all predicted actions
+    obs_seq_len: ${data.obs_seq_len}
+    max_episode_steps: 500
+    reconfigure_on_reset: False  # whether to reconfigure the env on each reset
+    wrappers:
+      record_video:
+        _target_: mani_skill.utils.wrappers.record.RecordEpisode
+        _partial_: True  # requires 'env' argument
+        output_dir: ${paths.recording_dir}
+        save_trajectory: False  # don't save h5 file of each episode
+        save_video: True  # just save videos
+        info_on_video: True  # print actions, rewards, and info on each frame
+        save_on_reset: False  # don't stop recording on reset (required for vector envs)
+        max_steps_per_video: 500  # same as max_episode_steps
+        video_fps: 50  # speed up the videos
+
+  num_episodes: 50  # evaluate on 50 episodes

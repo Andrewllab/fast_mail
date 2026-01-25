@@ -1,0 +1,12 @@
+defaults:
+  - mshab
+
+task: SetTable-Place
+name: MS-HAB-SetTable
+
+action_seq_len: 10
+
+dataset:
+  root_dir: ${paths.data_dir}/mshab/SetTable
+  subfolders: place
+  steps_after_success: 10

@@ -1,0 +1,12 @@
+defaults:
+  - mshab
+
+task: SetTable-Pick
+name: MS-HAB-SetTable
+
+action_seq_len: 10
+
+dataset:
+  root_dir: ${paths.data_dir}/mshab/SetTable
+  subfolders: pick
+  steps_after_success: 10

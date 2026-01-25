@@ -1,0 +1,14 @@
+# @package _global_
+
+data:
+  preprocess:
+    # remove actions that are all zeros, as they are not useful for training
+    t6_drop_empty_actions:
+      _target_: transforms.action_drop_dims.DropActionDims
+      _partial_: True
+      indices_to_drop: [8, 9]
+
+    # normalize absolute actions so that they lie within [-1,1]
+    t9_normalize_actions:
+      _target_: transforms.action_norm_max.ActionNormMinMax
+      _partial_: True   
