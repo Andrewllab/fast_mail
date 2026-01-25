@@ -8,13 +8,12 @@ import torch.nn as nn
 from tensordict import NonTensorData
 from torch import Tensor
 from torch_geometric.data import Batch, Data
-from torch_geometric.nn import knn
 from torch_geometric.nn.aggr import MaxAggregation
 
 from environments.specs import DataSpecs, EmbedSpec, PointCloudSpec
 from transforms.base_transform import KeyMapping, Transform
 from utils.nested import cat_nested
-from utils.pyg import batch2ptr, fps
+from utils.pyg import batch2ptr, fps, knn
 
 log = logging.getLogger(__name__)
 
@@ -165,9 +164,10 @@ class PCMPointNetTokenizer(Transform, nn.Module):
             x=pos,
             y=center_pos,
             k=self.patch_size,
-            batch_x=batch,
+            ptr_x=ptr,
             batch_y=center_batch,
             batch_size=ptr.size(0) - 1,
+            pad_too_small=True,
         )
 
         patch_pos = pos[patch_idxs]  # patch_pos: (B*C*G, 3)
