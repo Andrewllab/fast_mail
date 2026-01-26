@@ -13,7 +13,7 @@ defaults:
 data:
   preprocess:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.preprocessed_dir}/mshab/${data.name}_pointclouds
+    root_dir: ${paths.preprocessed_dir}/${data.task_suite}/${data.name}_pointclouds
 
     # point clouds begin with (approx.) 128*128*2 = 32768 points
     t15_to_pcd:

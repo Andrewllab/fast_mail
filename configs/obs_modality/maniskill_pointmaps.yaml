@@ -1,11 +1,9 @@
 # @package _global_
 
 defaults:
+  - /transforms@data.preprocess.t10_resize: image_resize
+
   - /transforms@data.preprocess.t15_to_pointmap: to_pointmap
-
-  # we can't really crop because of the random world frame, but the cameras don't see any faraway points anyway  
-
-  # no need to apply random transform for robocasa, since this is in the dataset already
 
   # # Collect statistics to scale pointmaps to [-1, 1]^3
   # # Do this after translations/cropping and before masking/jittering
@@ -21,22 +19,19 @@ data:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.preprocessed_dir}/${data.task_suite}/${data.name}_pointmaps
 
+    t10_resize:
+      shape: 128  # rescale streams from 256x256 to 128x128
+
     t15_to_pointmap:
       color: False
       max_depth: null  # disabled because we don't know the effect of setting points far away to zero depth
-
-    t30_pointmap_normalize:
-      cutoff_depth: 10.0  # ignore any points with depth>10m when computing max/min
-      quantile: 0.95
-      scale: 0.95
-      clamp: True
 
     t99_cleanup:
       keep_stream_types: pointmap  # only keep pointmap streams
 
   gpu_batch_transforms:
     t10_jitter:
-      sigma: 0.002
+      sigma: 0.005
 
 # metadata
 modality: pointmap

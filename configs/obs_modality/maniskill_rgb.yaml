@@ -1,6 +1,8 @@
 # @package _global_
 
 defaults:
+  - /transforms@data.preprocess.t10_resize: image_resize
+
   - /transforms@data.preprocess.t99_cleanup: cleanup
 
   # apply ImageNet normalization
@@ -10,6 +12,9 @@ data:
   preprocess:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.preprocessed_dir}/${data.task_suite}/${data.name}_rgb
+
+    t10_resize:
+      shape: 128  # rescale streams from 256x256 to 128x128
 
     t99_cleanup:
       keep_stream_types: rgb  # only keep rgb streams

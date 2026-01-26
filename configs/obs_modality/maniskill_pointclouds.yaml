@@ -20,10 +20,10 @@ defaults:
 data:
   preprocess:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.preprocessed_dir}/maniskill/${data.name}_pointclouds
+    root_dir: ${paths.preprocessed_dir}/${data.task_suite}/${data.name}_pointclouds
 
     t10_resize:
-      shape: 128  # scale shortest side to 128 and keep aspect ratio
+      shape: 128  # rescale streams from 256x256 to 128x128
 
     t15_to_pcd:
       color: False
@@ -32,7 +32,6 @@ data:
 
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
-      drop_keys: [base_cam_transform, gripper_cam_transform]
 
   gpu_batch_transforms:
     t2_sample_voxel:

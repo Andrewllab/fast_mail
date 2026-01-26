@@ -19,7 +19,7 @@ defaults:
 data:
   preprocess:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_pointclouds
+    root_dir: ${paths.preprocessed_dir}/${data.task_suite}/${data.name}_pointclouds
 
     t15_to_pcd:
       color: False
@@ -28,7 +28,6 @@ data:
 
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
-      drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose]
 
   gpu_batch_transforms:
     t1_sample_random:
