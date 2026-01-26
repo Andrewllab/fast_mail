@@ -156,6 +156,9 @@ class AttentionPoolingLayer(nn.Module):
         queries = self.query_tokens.unsqueeze(0).expand(x.size(0), -1, -1)
 
         if x.is_nested:
+            if x.numel() == 0:  # empty token sequence
+                return queries
+
             # if any of the inputs are nested, we need to convert the query tokens
             # to a nested tensor as well
             # we try to create a view, but there is no way to avoid a copy here
@@ -213,6 +216,9 @@ class TransformerEncoder(nn.Module):
         self.norm = norm(embed_dim)
 
     def forward(self, x, attn_mask=None):
+        if x.is_nested and x.numel() == 0:  # empty token sequence
+            return x
+
         for layer in self.layers:
             x = layer(x, attn_mask=attn_mask)
         x = self.norm(x)

@@ -103,9 +103,12 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
 
         assert isinstance(data, Data)
         assert isinstance(data, Batch)
-        pos, batch, color = data.pos, data.batch, data.x
+
+        pos, batch, ptr, color = data.pos, data.batch, data.ptr, data.x
+        batch_size = getattr(data, "batch_size", None)
         assert pos is not None
         assert batch is not None
+        assert ptr is not None
 
         # features: (B*N, 3)
         features = pos
@@ -121,7 +124,7 @@ class DiffusionPolicy3DTokenizer(Transform, nn.Module):
         features = self.mlp_1(features)
 
         # features -> (B, D)
-        features = self.aggr(features, batch)
+        features = self.aggr(features, batch, ptr=ptr, dim_size=batch_size, dim=-2)
 
         # features -> (B, D)
         features = self.mlp_2(features)

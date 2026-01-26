@@ -117,7 +117,7 @@ class PointPatchTokenizer(Transform, nn.Module):
         features = self.mlp_1(features)  # features -> (B*C, G, D)
 
         # max pool over each patch
-        aggr_features = torch.max(features, dim=1, keepdim=True).values
+        aggr_features = torch.max(features, dim=-2, keepdim=True).values
 
         # add the neighborhood max to the original features for each node
         aggr_features = aggr_features.expand(-1, features.shape[-2], -1)
@@ -127,7 +127,7 @@ class PointPatchTokenizer(Transform, nn.Module):
         features = self.mlp_2(features)  # features -> (B*C, G, D)
 
         # max pool over each patch
-        features = torch.max(features, dim=1).values  # features -> (B*C, D)
+        features = torch.max(features, dim=-2).values  # features -> (B*C, D)
 
         # add encoding of the center position of the token to the token
         center_pos = self.token_pos_encoder(center_pos)
