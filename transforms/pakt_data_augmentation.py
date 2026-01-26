@@ -63,61 +63,105 @@ def get_random_rotation_axes(
 
 
 class RandomRotation(ReversibleTransform):
-    """Apply a random translation and rotation to the entire pointcloud
-    trajectory during preprocessing, which is then constant throughout
-    training.
-
-    Args:
-        specs (DataSpecs): The data specifications.
-    """
+    """Apply a random rotation to specified obs pointclouds and action points."""
 
     def __init__(
         self,
         specs: DataSpecs,
         rotation_axes: Union[str, Sequence[str]] = "x",
+        obs_keys: Sequence[str] = ("target_points", "tool_points", "gripper_points"),
+        action_keys: Sequence[str] = ("action",),
     ):
         obs_specs = dict(specs.obs)
-        obs_specs["random_rotation_tf"] = ObsSpec((4, 4))
+        obs_specs["random_rotation_tf"] = ObsSpec((3, 3))
+        obs_specs["random_rotation_quat"] = ObsSpec((4,))
         self._specs = specs.replace(obs=obs_specs)
 
         self.rotation_axes = rotation_axes
-
-        self.obs_keys = ["target_points", "tool_points", "gripper_points"]
-        self.action_keys = [
-            "action",
-        ]
+        self.obs_keys = list(obs_keys)
+        self.action_keys = list(action_keys)
 
     @property
     def specs(self) -> DataSpecs:
         return self._specs
 
+    @torch.no_grad()
+    def _rotate_batched_rowvec(self, x: torch.Tensor, R: torch.Tensor) -> torch.Tensor:
+        """Rotate row-vectors x using per-batch rotation matrices.
+
+        Supports:
+        - Dense tensors: x shape (B, ..., 3)
+        - Nested jagged tensors: x is torch.nested (layout=jagged), with batch dim first.
+            Each element x[b] must be a dense tensor shaped (..., 3).
+
+        Convention:
+        row-vectors: x' = x @ R^T
+        """
+        if R.ndim != 3 or R.shape[-2:] != (3, 3):
+            raise ValueError(f"Expected R of shape (B,3,3), got {tuple(R.shape)}")
+        B = R.shape[0]
+        Rt = R.transpose(-1, -2)
+
+        # Nested jagged: rotate each batch element with its own matrix
+        if getattr(x, "is_nested", False):
+            if x.size(0) != B:
+                raise ValueError(f"Batch mismatch: x has B={x.size(0)} but R has B={B}")
+
+            out = []
+            for b in range(B):
+                xb = x[b]  # dense (..., 3)
+                if xb.numel() == 0:
+                    out.append(xb)
+                    continue
+                if xb.shape[-1] != 3:
+                    raise ValueError(f"Expected last dim 3 for nested element {b}, got {xb.shape[-1]}")
+                out.append(torch.einsum("...j,ij->...i", xb, Rt[b]))
+
+            return torch.nested.as_nested_tensor(out, layout=torch.jagged)
+
+        # Dense
+        if x.ndim < 2:
+            raise ValueError(f"Expected x to have at least 2 dims (B,...,3), got {x.ndim}")
+        if x.shape[0] != B:
+            raise ValueError(f"Batch mismatch: x has B={x.shape[0]} but R has B={B}")
+        if x.shape[-1] != 3:
+            raise ValueError(f"Expected last dim 3 for points, got {x.shape[-1]}")
+
+        return torch.einsum("b...j,bij->b...i", x, Rt)
+
+
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         device = tensordict.device or "cpu"
         B = tensordict.batch_size[0]
 
-        rotation = get_random_rotation_axes(
-            self.rotation_axes, device=device, batch_size=B
-        )
-        transform = quaternion_to_matrix(rotation)  # (B,4,4)
+        quat = get_random_rotation_axes(self.rotation_axes, device=device, batch_size=B)  # [w,x,y,z]
+        R = quaternion_to_matrix(quat)  # (B,3,3) in your utils' convention
 
+        # Rotate obs point clouds (only their "points" field)
         for key in self.obs_keys:
-            tensordict["obs", key, "points"] = tensordict["obs", key, "points"].matmul(
-                transform
-            )
+            pts = tensordict["obs", key, "points"]
+            tensordict["obs", key, "points"] = self._rotate_batched_rowvec(pts, R)
+
+        # Rotate action points
         for key in self.action_keys:
-            tensordict[key] = tensordict[key].matmul(transform)
+            tensordict[key] = self._rotate_batched_rowvec(tensordict[key], R)
 
-        tensordict["obs"]["random_rotation_tf"] = transform
-
+        tensordict["obs"]["random_rotation_tf"] = R
+        tensordict["obs"]["random_rotation_quat"] = quat
         return tensordict
 
     def reverse(self, tensordict: TensorDict) -> TensorDict:
         if "random_rotation_tf" not in tensordict["obs"]:
             return tensordict
-        transform = tensordict["obs"]["random_rotation_tf"]
-        inv_transform = torch.inverse(transform)
+
+        R = tensordict["obs"]["random_rotation_tf"]  # (B,3,3)
+
+        # Forward used: x' = x @ R^T
+        # So reverse must use: x = x' @ R
+        # Our helper always does x @ (matrix)^T, so pass (R^T) to get x @ R:
+        R_for_reverse = R.transpose(-1, -2)
 
         for key in self.action_keys:
-            tensordict[key] = tensordict[key].matmul(inv_transform)
+            tensordict[key] = self._rotate_batched_rowvec(tensordict[key], R_for_reverse)
 
         return tensordict

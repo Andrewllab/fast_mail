@@ -1,0 +1,8 @@
+_target_: transforms.pakt_render_pointcloud.RenderPointCloud
+_partial_: True
+
+pcd_keys:
+  - obs/gripper_points/points
+  - obs/tool_points/points
+  - obs/target_points/points
+  - action

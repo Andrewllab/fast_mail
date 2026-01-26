@@ -20,7 +20,7 @@ defaults:
   - /transforms@data.preprocess.t08_pakt_localizer: pakt_localizer
   - /transforms@data.preprocess.t99_cleanup: cleanup
 
-  # - /transforms@data.gpu_batch_transforms.t01_random_rotation: pakt_random_rotation
+  - /transforms@data.gpu_batch_transforms.t01_random_rotation: pakt_random_rotation
 
 
 
@@ -39,7 +39,7 @@ data:
     overwrite: True
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
-      drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose, left_cam, right_cam, gripper_cam]
+      drop_keys: [left_cam, right_cam, gripper_cam]
 
   preprocess:
     backend: pakt_hdf5

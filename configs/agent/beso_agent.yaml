@@ -13,9 +13,6 @@ _target_: agents.beso_agent.BesoAgent
 # Arguments passed at runtime:
 # specs: ???
 
-obs_encoder:
-  embed_dim: 256
-
 # diffusion params
 num_sampling_steps: 4
 sigma_data: 0.5

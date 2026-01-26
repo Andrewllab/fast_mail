@@ -113,7 +113,7 @@ class RoboCasaDataset(CustomHdf5Dataset):
         # shape: (T, 3), float32
         ee_pos = traj["obs"]["robot0_eef_pos"][...].astype(np.float32)
         # shape: (T, 4), float32
-        ee_quat = traj["obs"]["robot0_eef_quat"][...].astype(np.float32)
+        ee_quat = traj["obs"]["robot0_eef_quat_site"][...].astype(np.float32)
         ee_quat = convert_quat(ee_quat, "wxyz")
 
         base_to_ee_pos = traj["obs"]["robot0_base_to_eef_pos"][...].astype(np.float32)
@@ -319,7 +319,7 @@ class RoboCasaDataset(CustomHdf5Dataset):
         # end-effector pose
         ee_pos = traj["obs"]["robot0_eef_pos"]
         assert ee_pos.shape == (T, 3)
-        ee_quat = traj["obs"]["robot0_eef_quat"]
+        ee_quat = traj["obs"]["robot0_eef_quat_site"]
         assert ee_quat.shape == (T, 4)
         # we concatenate ee_pos and ee_quat to get a shape of (T, 7)
         obs_specs["ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
