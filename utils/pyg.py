@@ -307,9 +307,10 @@ def knn(
             # find which batch elements are too small
             idxs_y_invalid = torch.nonzero(invalid).squeeze(dim=-1)
             log.warning(
-                "Padding knn matches because batch elements %s have fewer than %d points.",
-                torch.bucketize(idxs_y_invalid, ptr_y).tolist(),
+                "Padding knn matches for k=%d because batch elements %s have only %s points.",
                 k,
+                torch.bucketize(idxs_y_invalid, ptr_y).tolist(),
+                n_neighbors[invalid].tolist(),
             )
 
             # clamp n_neighbors to be at least k

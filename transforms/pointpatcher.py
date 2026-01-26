@@ -72,6 +72,21 @@ class PointPatcher(Transform, nn.Module):
         assert batch is not None
         assert ptr is not None
 
+        if pos.numel() == 0:
+            # empty point cloud
+
+            # add empty fields to data with the correct shapes to match the
+            # expected output
+            patch_pos = pos.new_zeros(0, self.patch_size, pos.size(-1))
+
+            if features is not None:
+                features = features.unflatten(dim=0, sizes=(0, self.patch_size))
+
+            data.x = features  # (B*C, G, D) or None
+            data.patch_pos = patch_pos  # (B*C, G, 3)
+
+            return data
+
         # verify that ptr is up to date
         if data.ptr[-1] != batch.shape[0]:
             ptr = batch2ptr(batch)

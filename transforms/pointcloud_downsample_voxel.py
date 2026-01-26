@@ -73,10 +73,15 @@ class GridSamplePointCloud(Transform):
     def _call_one(self, nt_data: NonTensorData) -> Data:
         data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
 
+        pos, batch = data.pos, data.batch
         num_nodes = data.num_nodes
+        assert pos is not None
+        assert batch is not None
 
-        assert data.pos is not None
-        c = voxel_grid(data.pos, self.size, data.batch, self.start, self.end)
+        if pos.numel() == 0:
+            return data  # empty point cloud
+
+        c = voxel_grid(pos, self.size, batch, self.start, self.end)
         c, perm = consecutive_cluster(c)
 
         default_dtype = torch.get_default_dtype()
