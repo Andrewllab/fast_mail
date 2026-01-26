@@ -2,7 +2,6 @@
 
 defaults:
   - data: maniskill_cam1_joint_delta_pos_w_goal  # BackCompat
-  # - data/wrappers@data.env.env.wrappers: record_video  # record videos
   # log test results to new wandb run, since test parameters affect results
   - logger: wandb
   - python_logging: default
@@ -36,7 +35,7 @@ agent:
 data:
   eval_mode: env
   env:
-    num_episodes: 50  # 15 episodes in total across 3 checkpoints
+    num_episodes: 50  # 150 episodes in total across 3 checkpoints
     action_horizon: 10  # modify if desired
 
     env:
@@ -45,7 +44,7 @@ data:
         record_video:
           num_episodes: ${data.env.num_episodes}  # number of episodes to record
           fps: 60  # increase if the videos are too long
-  
+
   preprocess:
     t99_cleanup: null  # disable cleanup transform added by default
 
@@ -68,3 +67,4 @@ trainer:
   default_root_dir: ${paths.output_dir}
   enable_progress_bar: False
   log_every_n_steps: 10
+  inference_mode: False  # TODO: why is this needed?
