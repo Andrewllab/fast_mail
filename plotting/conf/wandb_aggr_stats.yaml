@@ -1,0 +1,33 @@
+defaults:
+  - series: main_roca_pp
+  - _self_
+  # enable color logging
+  - override hydra/hydra_logging: colorlog
+  - override hydra/job_logging: colorlog
+
+entity: alr-3d-sim2real
+project: 3d-sim2real
+
+job_type: test_sim
+
+expected_seeds: 3
+verify_n_ckpt_epochs: False
+
+hydra:
+  # output directory, generated dynamically on each run
+  run:
+    dir: stats/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: stats/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.override_dirname}
+  job:
+    config:
+      override_dirname:
+        kv_sep: "-"
+        item_sep: _
+
+  job_logging:
+    handlers:
+      file:
+        # Incorporates fix from https://github.com/facebookresearch/hydra/pull/2242
+        filename: ${hydra:runtime.output_dir}/${hydra:job.config_name}.log

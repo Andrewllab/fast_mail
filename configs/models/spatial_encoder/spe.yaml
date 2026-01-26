@@ -1,4 +1,4 @@
-name: FourierFeatures
+name: FourierFeatures + SPE
 _target_: models.fourier_features.FourierFeatures
 _partial_: True  # requires input_dim
 n_wavelengths: 16

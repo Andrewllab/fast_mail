@@ -1,0 +1,10 @@
+# @package _global_
+
+tags: [abl_frequencies, abl_ours]
+
+group_by_config_keys:
+  - agent.obs_encoder.t11_tokenizer.spatial_encoder.min_wavelength
+  - agent.obs_encoder.t11_tokenizer.spatial_encoder.n_wavelengths
+
+env_name_key: data.env.env.env_name
+expected_envs: [TurnOnSinkFaucet,TurnOffSinkFaucet,TurnSinkSpout,TurnOnStove,TurnOffStove,CoffeePressButton,TurnOnMicrowave,TurnOffMicrowave]

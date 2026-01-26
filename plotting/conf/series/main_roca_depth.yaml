@@ -1,0 +1,8 @@
+# @package _global_
+
+tags: main_roca_depth
+
+group_by_config_keys: noop
+
+env_name_key: data.env.env.env_name
+expected_envs: [TurnOnSinkFaucet,TurnOffSinkFaucet,TurnSinkSpout,TurnOnStove,TurnOffStove,CoffeePressButton,TurnOnMicrowave,TurnOffMicrowave,OpenSingleDoor,CloseSingleDoor,OpenDoubleDoor,CloseDoubleDoor,OpenDrawer,CloseDrawer,CoffeeSetupMug,CoffeeServeMug]

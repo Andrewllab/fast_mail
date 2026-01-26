@@ -1,0 +1,8 @@
+# @package _global_
+
+tags: main_ms_dp3
+
+group_by_config_keys: agent.obs_encoder.t10_tokenizer.spatial_encoder._partial_
+
+env_name_key: data.env.env.env_id
+expected_envs: [PokeCube-v1,PushCube-v1,PullCube-v1,RollBall-v1]
