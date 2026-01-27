@@ -56,13 +56,14 @@ class FpsSamplePointCloud(Transform):
         assert pos is not None
 
         if isinstance(data, Batch):
-            batch, ptr = data.batch, data.ptr
+            batch, ptr, batch_size = data.batch, data.ptr, data.batch_size
             assert batch is not None
             assert ptr is not None
+            assert batch_size is not None
 
             # verify that ptr is up to date
             if data.ptr[-1] != batch.shape[0]:
-                ptr = batch2ptr(batch)
+                ptr = batch2ptr(batch, batch_size=batch_size)
 
         else:
             ptr = None

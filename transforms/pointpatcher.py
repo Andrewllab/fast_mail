@@ -66,14 +66,16 @@ class PointPatcher(Transform, nn.Module):
         assert isinstance(data, Data)
         assert isinstance(data, Batch)
 
-        pos, batch, ptr, features = data.pos, data.batch, data.ptr, data.x
-        batch_size = getattr(data, "batch_size", None)
+        pos, features = data.pos, data.x
+        batch, ptr, batch_size = data.batch, data.ptr, data.batch_size
         assert pos is not None
         assert batch is not None
         assert ptr is not None
+        assert batch_size is not None
 
         if pos.numel() == 0:
             # empty point cloud
+            # TODO: can this case be removed since fps handles empty inputs?
 
             # add empty fields to data with the correct shapes to match the
             # expected output
@@ -89,7 +91,7 @@ class PointPatcher(Transform, nn.Module):
 
         # verify that ptr is up to date
         if data.ptr[-1] != batch.shape[0]:
-            ptr = batch2ptr(batch)
+            ptr = batch2ptr(batch, batch_size=batch_size)
 
         # pos: (B*N, 3)
         # center_idxs: (B*C,)

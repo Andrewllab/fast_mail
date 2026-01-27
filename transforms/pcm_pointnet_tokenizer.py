@@ -172,7 +172,7 @@ class PCMPointNetTokenizer(Transform, nn.Module):
 
         patch_pos = pos[patch_idxs]  # patch_pos: (B*C*G, 3)
         # patch_pos -> (B*C, G, 3)
-        patch_pos = patch_pos.view(n_patches, self.patch_size, 3)
+        patch_pos = patch_pos.unflatten(dim=0, sizes=(n_patches, self.patch_size))
 
         # convert to relative coordinates around patch center
         patch_pos = patch_pos - center_pos.unsqueeze(1)
@@ -185,17 +185,15 @@ class PCMPointNetTokenizer(Transform, nn.Module):
         # point features
         features = features[patch_idxs]  # features -> (B*C*G, D)
         # features -> (B*C, G, D)
-        features = features.view(n_patches, self.patch_size, -1)
+        features = features.unflatten(dim=0, sizes=(n_patches, self.patch_size))
         features = torch.cat([features, patch_pos], dim=-1)
 
         # transform the point features after concatenation with relative position
         features = self.point_mlp(features)
 
         # max pool over each patch
-        # features -> (B*C, G, D)
-        features = features.view(n_patches, self.patch_size, -1)
         # features -> (B*C, D)
-        features = torch.max(features, dim=1).values
+        features = torch.max(features, dim=-2).values
 
         return features, center_batch
 
@@ -204,14 +202,17 @@ class PCMPointNetTokenizer(Transform, nn.Module):
 
         assert isinstance(data, Data)
         assert isinstance(data, Batch)
-        pos, batch, ptr, color = data.pos, data.batch, data.ptr, data.x
+
+        pos, color = data.pos, data.x
+        batch, ptr, batch_size = data.batch, data.ptr, data.batch_size
         assert pos is not None
         assert batch is not None
         assert ptr is not None
+        assert batch_size is not None
 
         # verify that ptr is up to date
         if data.ptr[-1] != batch.shape[0]:
-            ptr = batch2ptr(batch)
+            ptr = batch2ptr(batch, batch_size=batch_size)
 
         features = pos
 
@@ -232,12 +233,13 @@ class PCMPointNetTokenizer(Transform, nn.Module):
             # 2.,3.,4. fps + KNN on sampled points + group with features
             # features: (B*C, D)
             features, batch = self.fps_and_knn(pos, ptr, batch, features)
+            ptr = batch2ptr(batch, batch_size=batch_size)
 
         # features: (B*C, D)
         features = self.patch_mlp(features)
 
         # max pool over all patches in each batch element
-        features = self.max_aggr(features, index=batch)
+        features = self.max_aggr(features, batch, ptr=ptr, dim_size=batch_size, dim=-2)
 
         # features -> (B, D)
         features = self.head_mlp(features)

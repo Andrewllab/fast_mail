@@ -162,6 +162,10 @@ def fps(
     elif batch is not None:
         raise ValueError("Only one of ptr or batch can be set.")
 
+    if x.numel() == 0:
+        # empty point cloud
+        return torch.empty(0, dtype=torch.long, device=x.device)
+
     # Remove any empty pointclouds in the batch. Empty pointclouds make it very
     # likely that the first point of the next non-empty pointcloud is selected,
     # which is undesirable behavior.
