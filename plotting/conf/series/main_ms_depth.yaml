@@ -1,0 +1,8 @@
+# @package _global_
+
+tags: main_ms_depth
+
+group_by_config_keys: noop
+
+env_name_key: data.env.env.env_id
+expected_envs: [PokeCube-v1,PushCube-v1,PullCube-v1,RollBall-v1]
