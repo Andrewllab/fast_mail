@@ -156,6 +156,7 @@ def test(cfg: DictConfig) -> None:
 
         log.info("Continuing testing...")
         trainer.test(agent, datamodule=datamodule)
+        agent.eval()  # set back to eval mode after test() sets it to train()
 
     log.info("Testing loop completed.")
 

@@ -123,6 +123,7 @@ class BaseAgent(L.LightningModule):
         if (
             self._lr_scheduler_func is not None
             and getattr(self, "_trainer", None) is not None
+            and self.trainer.training
         ):
             lr_scheduler = self._lr_scheduler_func(
                 optimizer, total_steps=self.trainer.estimated_stepping_batches

@@ -55,7 +55,6 @@ class Dinov3FeatureExtractorTransform(Transform):
         self.camera_keys = camera_keys
         if isinstance(self.camera_keys, str):
             self.camera_keys = [self.camera_keys]
-        self.camera_key = self.camera_keys[0]
         self.feature_out_key = feature_out_key
 
         self.generate_tracking_points = generate_tracking_points
@@ -111,7 +110,7 @@ class Dinov3FeatureExtractorTransform(Transform):
                 with torch.inference_mode():
                     outputs = self.model(**inputs)
 
-                tensordict["obs"][self.camera_key][self.feature_out_key][
+                tensordict["obs"][camera_key][self.feature_out_key][
                     start_idx : start_idx + self.processing_batch_size
                 ] = (
                     outputs.last_hidden_state[:, :num_patches]
@@ -152,9 +151,7 @@ class Dinov3FeatureExtractorTransform(Transform):
                 grid_indices = grid_indices.unsqueeze(0).repeat(
                     traj_len, 1, 1
                 )  # (T, N, 2)
-                tensordict["obs"][self.camera_key][
-                    self.tracking_points_key
-                ] = grid_indices
+                tensordict["obs"][camera_key][self.tracking_points_key] = grid_indices
 
         return tensordict
 
