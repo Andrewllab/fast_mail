@@ -42,7 +42,7 @@ class Dinov3FeatureExtractorTransform(Transform):
         self.model = AutoModel.from_pretrained(
             dinov3_model,
             device_map="auto",
-        ).to(device)
+        )
         # Model attributes
         self.feature_size = self.model.config.hidden_size
         self.patch_size = self.model.config.patch_size
@@ -110,10 +110,11 @@ class Dinov3FeatureExtractorTransform(Transform):
                 with torch.inference_mode():
                     outputs = self.model(**inputs)
 
+                num_special_tokens = 1 + self.model.config.num_register_tokens
                 tensordict["obs"][camera_key][self.feature_out_key][
                     start_idx : start_idx + self.processing_batch_size
                 ] = (
-                    outputs.last_hidden_state[:, :num_patches]
+                    outputs.last_hidden_state[:, num_special_tokens:]
                     .reshape(sub_video_len, patches_height, patches_width, -1)
                     .cpu()
                 )

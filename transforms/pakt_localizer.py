@@ -42,6 +42,7 @@ class LocalizePAKT(ReversibleTransform):
         traj["obs"]["gripper_points"]["points"] -= mean_point
         traj["obs"]["tool_points"]["points"] -= mean_point
         traj["obs"]["target_points"]["points"] -= mean_point
+        traj["obs"]["des_gripper_points"]["points"] -= mean_point
         if "action" in traj:
             traj["action"] -= mean_point
 
@@ -58,6 +59,7 @@ class LocalizePAKT(ReversibleTransform):
         tensordict["obs"]["gripper_points"]["points"] += mean_point
         tensordict["obs"]["tool_points"]["points"] += mean_point
         tensordict["obs"]["target_points"]["points"] += mean_point
+        tensordict["obs"]["des_gripper_points"]["points"] += mean_point
         if "action" in tensordict:
             tensordict["action"] += mean_point
 

@@ -7,7 +7,7 @@ import logging
 import torch
 from tensordict import TensorDict
 
-from environments.specs import DataSpecs
+from environments.specs import DataSpecs, ObsSpec
 from transforms.base_transform import ReversibleTransform
 from utils.math import (
     axis_angle_from_quat,
@@ -119,7 +119,12 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         # Update action spec to 5*3
         action_spec = specs.action
         new_action_spec = dataclasses.replace(action_spec, action_dim=5 * 3)
-        self._specs = specs.replace(action=new_action_spec)
+
+        obs_spec = dict(specs.obs)
+        obs_spec["gripper_points"] = ObsSpec(elem_shape=(5, 3))
+        obs_spec["des_gripper_points"] = ObsSpec(elem_shape=(5, 3))
+
+        self._specs = specs.replace(action=new_action_spec, obs=obs_spec)
 
     @property
     def specs(self) -> DataSpecs:
@@ -159,8 +164,12 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
             gripper=current_gripper,
         )  # (T, 5, 3)
 
+        desired_points = current_points.clone()
+        desired_points[1:] = action_points[:-1]
+
         tensordict["action"] = action_points
         tensordict["obs"]["gripper_points"] = {"points": current_points}
+        tensordict["obs"]["des_gripper_points"] = {"points": desired_points}
         return tensordict
 
     def call_trajectory_rollout(self, tensordict: TensorDict) -> TensorDict:
@@ -171,14 +180,42 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
             gripper_state = -torch.ones(
                 ee_pos.shape[0], device=ee_pos.device, dtype=ee_pos.dtype
             )  # (T,)
+
+            des_pos = ee_pos.clone()
+            des_quat = ee_quat.clone()
+            des_gripper_state = gripper_state.clone()
+
+            des_points = self.ee_pose_to_3D_points(
+                ee_pos=des_pos,
+                ee_quat=des_quat,
+                gripper=des_gripper_state,
+            )
         else:
             gripper_state = tensordict["obs"]["_action"][:, 6].to(ee_pos.dtype)  # (T,)
+
+            des_pos = tensordict["obs"]["_action"][:, :3].to(torch.float32)  # (T, 3)
+            des_rot = tensordict["obs"]["_action"][:, 3:6].to(torch.float32)  # (T, 3)
+
+            des_points = self.ee_pose_to_3D_points(
+                ee_pos=des_pos,
+                ee_rot=des_rot,
+                gripper=gripper_state,
+            )  # (T, 5, 3)
+
+            base_pose = tensordict["obs"]["base_pose"]  # (T, 7)
+            base_pos = base_pose[..., :3]  # (T, 3)
+            base_quat = base_pose[..., 3:]  # (T, 4)
+            des_points = transform_points(des_points, base_pos, base_quat)
 
         points = self.ee_pose_to_3D_points(
             ee_pos=ee_pos, ee_quat=ee_quat, gripper=gripper_state
         )  # (T, 5, 3)
 
         tensordict["obs"]["gripper_points"] = {"points": points[0].to(torch.float32)}
+        tensordict["obs"]["des_gripper_points"] = {
+            "points": des_points[0].to(torch.float32)
+        }
+
         return tensordict
 
     # ----------------------------------------------------------------------------------

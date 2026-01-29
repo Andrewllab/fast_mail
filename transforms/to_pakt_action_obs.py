@@ -32,10 +32,12 @@ class ToPaktActionObsTransform(ReversibleTransform):
         tool_points_key: str = "tool_points",
         target_points_key: str = "target_points",
         gripper_points_key: str = "gripper_points",
+        des_gripper_points_key: str = "des_gripper_points",
     ):
         self.tool_points_key = tool_points_key
         self.target_points_key = target_points_key
         self.gripper_points_key = gripper_points_key
+        self.des_gripper_points_key = des_gripper_points_key
         self.window_len = specs.action_seq_len
         self.num_action_points = 5
         self._specs = specs
@@ -65,6 +67,7 @@ class ToPaktActionObsTransform(ReversibleTransform):
         tool_pcd = tensordict["obs"][self.tool_points_key]  # (T, N_tool, 3)
         target_pcd = tensordict["obs"][self.target_points_key]  # (T, N_target, 3)
         gripper_pcd = tensordict["obs"][self.gripper_points_key]
+        des_gripper_pcd = tensordict["obs"][self.des_gripper_points_key]
 
         num_tool_points = torch.diff(tool_pcd["points"].offsets())
         num_timesteps = self.window_len + 1
@@ -165,6 +168,7 @@ class ToPaktActionObsTransform(ReversibleTransform):
 
         # ROBOT OBS POINTS
         gripper_obs_points = gripper_pcd["points"]  # (B, N_gripper, 3)
+        des_gripper_obs_points = des_gripper_pcd["points"]  # (B, N_gripper, 3)
 
         action = cat_nested(
             [robot_action_windows, tool_action_points], dim=1
@@ -183,6 +187,9 @@ class ToPaktActionObsTransform(ReversibleTransform):
             "target_points": target_pcd,
             "gripper_points": {
                 "points": gripper_obs_points,
+            },
+            "des_gripper_points": {
+                "points": des_gripper_obs_points,
             },
             "tool_action_points": {
                 "timesteps": tool_action_timesteps,
@@ -203,12 +210,13 @@ class ToPaktActionObsTransform(ReversibleTransform):
     def call_trajectory_rollout(self, tensordict: TensorDict) -> TensorDict:
         tool_pcd = tensordict["obs"][self.tool_points_key]  # (T, N_tool, 3)
         target_pcd = tensordict["obs"][self.target_points_key]  # (T, N_target, 3)
-        gripper_points = tensordict["obs"]["gripper_points"]
+        gripper_points = tensordict["obs"][self.gripper_points_key]
+        des_gripper_points = tensordict["obs"][self.des_gripper_points_key]
 
         tool_pcd = {key: tool_pcd[key].squeeze(0) for key in tool_pcd.keys()}
         target_pcd = {key: target_pcd[key].squeeze(0) for key in target_pcd.keys()}
         gripper_points = {"points": gripper_points["points"].squeeze(0)}
-
+        des_gripper_points = {"points": des_gripper_points["points"].squeeze(0)}
         num_tool_points = tool_pcd["points"].shape[0]
         num_timesteps = self.window_len
         device = tool_pcd["points"].device
@@ -247,6 +255,7 @@ class ToPaktActionObsTransform(ReversibleTransform):
             "tool_points": tool_pcd,
             "target_points": target_pcd,
             "gripper_points": gripper_points,
+            "des_gripper_points": des_gripper_points,
             "tool_action_points": {
                 "timesteps": tool_action_timestep + 1,
                 "point_ids": tool_action_point_id,

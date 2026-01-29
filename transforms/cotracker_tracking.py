@@ -95,7 +95,7 @@ class CotrackerPointTrackingTransform(Transform):
 
             if "grid" in self.track_mode:
                 """
-                The point indices for cotracker are in the last dimension in (frame, y, x) format.
+                The point indices for cotracker are in the last dimension in (frame, x, y) format.
                 We create a grid of points spaced by self.grid_spacing pixels.
                 """
                 xs = torch.arange(

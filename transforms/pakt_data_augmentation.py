@@ -69,7 +69,12 @@ class RandomRotation(ReversibleTransform):
         self,
         specs: DataSpecs,
         rotation_axes: Union[str, Sequence[str]] = "x",
-        obs_keys: Sequence[str] = ("target_points", "tool_points", "gripper_points"),
+        obs_keys: Sequence[str] = (
+            "target_points",
+            "tool_points",
+            "gripper_points",
+            "des_gripper_points",
+        ),
         action_keys: Sequence[str] = ("action",),
     ):
         obs_specs = dict(specs.obs)
@@ -114,14 +119,18 @@ class RandomRotation(ReversibleTransform):
                     out.append(xb)
                     continue
                 if xb.shape[-1] != 3:
-                    raise ValueError(f"Expected last dim 3 for nested element {b}, got {xb.shape[-1]}")
+                    raise ValueError(
+                        f"Expected last dim 3 for nested element {b}, got {xb.shape[-1]}"
+                    )
                 out.append(torch.einsum("...j,ij->...i", xb, Rt[b]))
 
             return torch.nested.as_nested_tensor(out, layout=torch.jagged)
 
         # Dense
         if x.ndim < 2:
-            raise ValueError(f"Expected x to have at least 2 dims (B,...,3), got {x.ndim}")
+            raise ValueError(
+                f"Expected x to have at least 2 dims (B,...,3), got {x.ndim}"
+            )
         if x.shape[0] != B:
             raise ValueError(f"Batch mismatch: x has B={x.shape[0]} but R has B={B}")
         if x.shape[-1] != 3:
@@ -129,12 +138,13 @@ class RandomRotation(ReversibleTransform):
 
         return torch.einsum("b...j,bij->b...i", x, Rt)
 
-
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         device = tensordict.device or "cpu"
         B = tensordict.batch_size[0]
 
-        quat = get_random_rotation_axes(self.rotation_axes, device=device, batch_size=B)  # [w,x,y,z]
+        quat = get_random_rotation_axes(
+            self.rotation_axes, device=device, batch_size=B
+        )  # [w,x,y,z]
         R = quaternion_to_matrix(quat)  # (B,3,3) in your utils' convention
 
         # Rotate obs point clouds (only their "points" field)
@@ -162,6 +172,8 @@ class RandomRotation(ReversibleTransform):
         R_for_reverse = R.transpose(-1, -2)
 
         for key in self.action_keys:
-            tensordict[key] = self._rotate_batched_rowvec(tensordict[key], R_for_reverse)
+            tensordict[key] = self._rotate_batched_rowvec(
+                tensordict[key], R_for_reverse
+            )
 
         return tensordict

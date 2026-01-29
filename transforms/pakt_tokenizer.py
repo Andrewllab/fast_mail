@@ -59,8 +59,8 @@ class PaktTokenizer(Transform, nn.Module):
         # Embeddings
         self.gripper_points_id_embedding = nn.Embedding(num_gripper_points, embed_dim)
 
-        # IMPORTANT: token types are (target=0, tool=1, gripper=2) => 3 types, not cartesian_dim
-        self.token_type_embedding = nn.Embedding(3, embed_dim)
+        # IMPORTANT: token types are (target=0, tool=1, gripper=2, des_gripper=3) => 4 types, not cartesian_dim
+        self.token_type_embedding = nn.Embedding(4, embed_dim)
 
         # +1 because we predict future num_timesteps but also condition on current timestep
         self.timestep_embedding = nn.Embedding(num_timesteps + 1, embed_dim)
@@ -134,6 +134,7 @@ class PaktTokenizer(Transform, nn.Module):
         self.register_buffer("_tok_target", torch.tensor([0], dtype=torch.long), persistent=False)
         self.register_buffer("_tok_tool",   torch.tensor([1], dtype=torch.long), persistent=False)
         self.register_buffer("_tok_grip",   torch.tensor([2], dtype=torch.long), persistent=False)
+        self.register_buffer("_tok_des_grip",   torch.tensor([3], dtype=torch.long), persistent=False)
         self.register_buffer("_gripper_point_ids", torch.arange(num_gripper_points, dtype=torch.long), persistent=False)
         # fmt: on
 
@@ -243,6 +244,7 @@ class PaktTokenizer(Transform, nn.Module):
     def __tokenize_gripper_points(
         self,
         point_pos: Tensor,
+        token_type: Tensor,
     ) -> Tensor:
         """
         Tokenize current gripper points (conditioning tokens).
@@ -261,7 +263,7 @@ class PaktTokenizer(Transform, nn.Module):
         gripper_id_embed = self.gripper_points_id_embedding(self._gripper_point_ids)
         gripper_id_embed = self._ln(gripper_id_embed, self.id_ln)
 
-        token_type_embed = self.token_type_embedding(self._tok_grip)  # (1,D)
+        token_type_embed = self.token_type_embedding(token_type)  # (1,D)
         token_type_embed = self._ln(token_type_embed, self.type_ln)
 
         token_embed = pos_embed + gripper_id_embed + token_type_embed
@@ -273,6 +275,7 @@ class PaktTokenizer(Transform, nn.Module):
         point_pos: Tensor,
         gripper_point_ids: Tensor,
         timesteps: Tensor,
+        token_type: Tensor,
     ) -> Tensor:
         """
         Tokenize gripper action points (future points).
@@ -294,7 +297,7 @@ class PaktTokenizer(Transform, nn.Module):
         timestep_embed = self.timestep_embedding(timesteps)  # (B,T,1,D)
         timestep_embed = self._ln(timestep_embed, self.time_ln)
 
-        token_type_embed = self.token_type_embedding(self._tok_grip)  # (1,D)
+        token_type_embed = self.token_type_embedding(token_type)  # (1,D)
         token_type_embed = self._ln(token_type_embed, self.type_ln)
         token_type_embed = token_type_embed.view(1, 1, -1)  # (1,1,1,D)
 
@@ -411,6 +414,15 @@ class PaktTokenizer(Transform, nn.Module):
 
         gripper_points_tokens = self.__tokenize_gripper_points(
             point_pos=gripper_points_pos,
+            token_type=self._tok_grip,
+        )  # (B, N_g, D)
+
+        # === desired gripper point tokens ===
+        des_gripper_points = obs["des_gripper_points"]
+        des_gripper_points_pos = des_gripper_points["points"]  # (B, N_g, 3)
+        des_gripper_points_tokens = self.__tokenize_gripper_points(
+            point_pos=des_gripper_points_pos,
+            token_type=self._tok_des_grip,
         )  # (B, N_g, D)
 
         # === action point tokens ===
@@ -434,6 +446,7 @@ class PaktTokenizer(Transform, nn.Module):
             point_pos=gripper_action_pos,
             gripper_point_ids=gripper_action_point_ids,
             timesteps=gripper_action_timesteps,
+            token_type=self._tok_des_grip,
         )  # (B, T, 5, D)
 
         # === tool action point tokens ===
@@ -459,7 +472,13 @@ class PaktTokenizer(Transform, nn.Module):
 
         # Concatenate along token dimension
         obs_tokens = cat_nested(
-            [target_points_tokens, tool_points_tokens, gripper_points_tokens], dim=1
+            [
+                target_points_tokens,
+                tool_points_tokens,
+                gripper_points_tokens,
+                des_gripper_points_tokens,
+            ],
+            dim=1,
         )
         action_tokens = cat_nested([gripper_action_tokens, tool_action_tokens], dim=1)
 
