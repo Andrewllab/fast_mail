@@ -71,13 +71,6 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         ee_pose_key: str = "ee_pose",
         # Gripper decode options:
         binary_gripper: bool = True,
-        use_hysteresis: bool = True,
-        # If hysteresis is enabled, we switch:
-        #   open  -> close when width < w_close_thresh
-        #   close -> open  when width > w_open_thresh
-        # with w_close_thresh < w_open_thresh.
-        w_close_thresh: float | None = None,
-        w_open_thresh: float | None = None,
         # Geometry params:
         w_open: float = W_OPEN,
         w_closed: float = W_CLOSED,
@@ -90,7 +83,6 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         self.ee_pose_key = ee_pose_key
 
         self.binary_gripper = binary_gripper
-        self.use_hysteresis = use_hysteresis
 
         self.w_open = float(w_open)
         self.w_closed = float(w_closed)
@@ -98,19 +90,6 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
             raise ValueError(
                 f"Expected w_open > w_closed, got {self.w_open} <= {self.w_closed}"
             )
-
-        # Default hysteresis thresholds (if not provided): midpoint +/- small margin
-        # You should tune these from demo stats.
-        mid = 0.5 * (self.w_open + self.w_closed)
-        margin = 0.1 * (self.w_open - self.w_closed)
-        self.w_close_thresh = (
-            float(w_close_thresh) if w_close_thresh is not None else float(mid - margin)
-        )
-        self.w_open_thresh = (
-            float(w_open_thresh) if w_open_thresh is not None else float(mid + margin)
-        )
-        if not (self.w_close_thresh < self.w_open_thresh):
-            raise ValueError("Expected w_close_thresh < w_open_thresh for hysteresis.")
 
         # Store axis/center as buffers for easy device/dtype alignment
         self._gripper_axis_local = gripper_axis_local.to(torch.float32).clone()
@@ -238,35 +217,40 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
             raise ValueError(f"Expected 5 points, got {N}")
 
         # reshape to (B*T, 5, 3), operating in the same frame as stored in tensordict["action"]
-        points = points.swapaxes(1, 2).reshape(-1, 5, 3)  # (B*T, 5, 3)
+        points = points.swapaxes(1, 2)  # (B, T, 5, 3)
 
         # Inverse base transform: world -> base local (or whatever your original action frame is)
         base_pose = tensordict["obs"][
             "base_pose"
         ]  # (T, 7) or (B, T, 7)? you use [:,0] later.
-        base_pos = base_pose[..., 0, :3]  # (T, 3)
-        base_quat = base_pose[..., 0, 3:]  # (T, 4)
+        if base_pose.ndim == 3 and base_pose.shape[1] == 1:
+            base_pose = base_pose[:, 0, :]  # (T, 7)
+
+        base_pos = base_pose[..., :3]  # (T, 3)
+        base_quat = base_pose[..., 3:]  # (T, 4)
 
         inv_base_pos, inv_base_quat = subtract_frame_transforms(base_pos, base_quat)
-        points = transform_points(points, inv_base_pos, inv_base_quat)
+        points = transform_points(
+            points.reshape(B, -1, 3), inv_base_pos, inv_base_quat
+        ).view(
+            B, T, N, 3
+        )  # (B, T, 5, 3)
 
         # Pose from first 3 points (in "action frame")
-        ee_pos, ee_rot = self.points_to_pose(
-            points[:, :3]
-        )  # (B*T, 3), (B*T, 3 axis-angle)
+        ee_pos, ee_rot = self.points_to_pose(points[..., :3, :].reshape(B * T, 3, 3))
 
         # Gripper from last 2 points: project in EE local frame (robust)
         gripper = self.points_to_gripper(
-            points[:, 3:5], ee_pos=ee_pos, ee_rot=ee_rot, B=B, T=T
+            points[..., 3:5, :].reshape(B * T, 2, 3), ee_pos=ee_pos, ee_rot=ee_rot
         )  # (B*T,)
 
-        ee_poses = torch.cat([ee_pos, ee_rot], dim=-1)  # (B*T, 6)
-        ee_poses = ee_poses.view(B, T, 6)
-        gripper = gripper.view(B, T)
+        ee_pos = ee_pos.view(B, T, 3)
+        ee_rot = ee_rot.view(B, T, 3)
+        gripper = gripper.view(B, T, 1)
 
-        tensordict["action"] = torch.cat(
-            [ee_poses, gripper.unsqueeze(-1)], dim=-1
-        )  # (B, T, 7)
+        action = torch.cat([ee_pos, ee_rot, gripper], dim=-1)  # (B*T, 7)
+
+        tensordict["action"] = action
         return tensordict
 
     # ----------------------------------------------------------------------------------
@@ -355,40 +339,12 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         g = 1.0 - 2.0 * (w - self.w_closed) / (self.w_open - self.w_closed)
         return g.clamp(-1.0, 1.0).to(width.dtype)
 
-    def _hysteresis_binarize(
-        self, width_bt: torch.Tensor, init: float = -1.0
-    ) -> torch.Tensor:
-        """
-        width_bt: (B, T)
-        returns: (B, T) with values in {-1, +1} using hysteresis thresholds.
-        """
-        B, T = width_bt.shape
-        out = torch.empty((B, T), device=width_bt.device, dtype=width_bt.dtype)
-        state = torch.full(
-            (B,), float(init), device=width_bt.device, dtype=width_bt.dtype
-        )
-
-        for t in range(T):
-            w = width_bt[:, t]
-            # closed -> open only if w > w_open_thresh
-            state = torch.where(
-                (state > 0) & (w > self.w_open_thresh), -torch.ones_like(state), state
-            )
-            # open -> close only if w < w_close_thresh
-            state = torch.where(
-                (state < 0) & (w < self.w_close_thresh), torch.ones_like(state), state
-            )
-            out[:, t] = state
-        return out
-
     def points_to_gripper(
         self,
         gripper_points_world: torch.Tensor,
         *,
         ee_pos: torch.Tensor,
         ee_rot: torch.Tensor,
-        B: int,
-        T: int,
     ) -> torch.Tensor:
         """
         Decode gripper from the last two points by:
@@ -422,12 +378,6 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
 
         if not self.binary_gripper:
             return self._action_from_gripper_width(width)
-
-        # binary decode
-        if self.use_hysteresis:
-            width_bt = width.view(B, T)
-            g_bt = self._hysteresis_binarize(width_bt, init=-1.0)
-            return g_bt.reshape(-1)
 
         # simple midpoint threshold (no temporal state)
         mid = 0.5 * (self.w_open + self.w_closed)
