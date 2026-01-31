@@ -131,6 +131,10 @@ class SparseToPointCloudMerged(Transform):
         if cam_spec.extrinsics is not None:
             T_static = cam_spec.extrinsics.to(device=device, dtype=torch.float32)
 
+            I = torch.eye(4, device=device, dtype=T_static.dtype)
+            if torch.allclose(T_static, I, atol=1e-6, rtol=1e-6):
+                T_static = None  # treat identity as “no static transform”
+
         dynamic_T = None
         pose_key = cam_spec.dynamic_pose_obs_key
         if pose_key is not None:

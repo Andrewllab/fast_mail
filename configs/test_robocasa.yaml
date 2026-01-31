@@ -30,7 +30,7 @@ checkpoint:
   use_artifact: False  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
 
 agent:
-  num_sampling_steps: 10  # modify if desired
+  num_sampling_steps: 50  # modify if desired
 
 data:
   eval_mode: env

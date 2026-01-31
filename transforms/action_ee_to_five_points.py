@@ -251,6 +251,11 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         action = torch.cat([ee_pos, ee_rot, gripper], dim=-1)  # (B*T, 7)
 
         tensordict["action"] = action
+
+        if torch.any(torch.isnan(tensordict["action"])) or torch.any(
+            torch.isinf(tensordict["action"])
+        ):
+            log.warning("NaNs or Infs detected in reversed action tensor.")
         return tensordict
 
     # ----------------------------------------------------------------------------------

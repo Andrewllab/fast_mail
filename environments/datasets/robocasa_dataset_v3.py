@@ -175,35 +175,7 @@ class RoboCasaDataset(CustomHdf5Dataset):
         # TODO: does it use less memory if we explicitly convert to torch tensors first?
         td_dict = {
             "obs": {
-                # cameras
-                "left_cam": {
-                    # shape: (T, H, W, 3), uint8
-                    "rgb": traj["obs"]["robot0_agentview_left_image"][...],
-                    # shape: (T, H, W), float32
-                    "depth": traj["obs"]["robot0_agentview_left_depth"][..., 0],
-                },
-                "right_cam": {
-                    # shape: (T, H, W, 3), uint8
-                    "rgb": traj["obs"]["robot0_agentview_right_image"][...],
-                    # shape: (T, H, W), float32
-                    "depth": traj["obs"]["robot0_agentview_right_depth"][..., 0],
-                },
-                "gripper_cam": {
-                    # shape: (T, H, W, 3), uint8
-                    "rgb": traj["obs"]["robot0_eye_in_hand_image"][...],
-                    # shape: (T, H, W), float32
-                    "depth": traj["obs"]["robot0_eye_in_hand_depth"][..., 0],
-                },
                 # camera poses (shape: (T, 4, 4))
-                "left_cam_pose": camera_poses["robot0_agentview_left"]["extrinsics"][
-                    ...
-                ],
-                "right_cam_pose": camera_poses["robot0_agentview_right"]["extrinsics"][
-                    ...
-                ],
-                "gripper_cam_pose": camera_poses["robot0_eye_in_hand"]["extrinsics"][
-                    ...
-                ],
                 "joint_pos": joint_pos,  # shape: (T, 7), float32
                 "robot_state": robot_state,  # shape: (T, 9), float32
                 "ee_pose": ee_pose,  # shape: (T, 7), float32
@@ -221,18 +193,29 @@ class RoboCasaDataset(CustomHdf5Dataset):
             "name": name,
         }  # type: ignore
 
-        # We assume that if we have the segmentation ids we also have the segmentation masks
-        if "segmentation_ids" in traj:
-            td_dict["obs"]["left_cam"]["segmentation"] = traj["obs"][
-                "robot0_agentview_left_segmentation_element"
-            ][...].squeeze(-1)
-            td_dict["obs"]["right_cam"]["segmentation"] = traj["obs"][
-                "robot0_agentview_right_segmentation_element"
-            ][...].squeeze(-1)
-            td_dict["obs"]["gripper_cam"]["segmentation"] = traj["obs"][
-                "robot0_eye_in_hand_segmentation_element"
-            ][...].squeeze(-1)
+        cam_names = ["left_cam", "right_cam", "gripper_cam"]
+        raw_keys = [
+            "robot0_agentview_left",
+            "robot0_agentview_right",
+            "robot0_eye_in_hand",
+        ]
+        for key, cam_name in zip(raw_keys, cam_names):
+            if not f"{key}_image" in traj["obs"]:
+                continue
+            td_dict["obs"][cam_name] = {
+                "rgb": traj["obs"][f"{key}_image"][...],
+                "depth": traj["obs"][f"{key}_depth"][..., 0],
+            } 
 
+            td_dict["obs"][f"{cam_name}_pose"] = camera_poses[key]["extrinsics"][...]
+
+            # We assume that if we have the segmentation ids we also have the segmentation masks
+            if "segmentation_ids" in traj:
+                td_dict["obs"][cam_name]["segmentation"] = traj["obs"][
+                    f"{key}_segmentation_element"
+                ][...].squeeze(-1)
+
+        if "segmentation_ids" in traj:
             td_dict["segmentation_ids"] = {
                 key: traj["segmentation_ids"][key][...].astype(np.int32)
                 for key in traj["segmentation_ids"].keys()
@@ -258,6 +241,8 @@ class RoboCasaDataset(CustomHdf5Dataset):
 
         for key, cam_name in zip(raw_keys, cam_names):
             # !!! IMPORTANT: "static" cameras are attached to the robot platform which sometimes moves caused by the robot-arm movements, so they move as well !!!
+            if not f"{key}_image" in traj["obs"]:
+                continue
 
             rgb = traj["obs"][f"{key}_image"]
             match rgb.shape:
