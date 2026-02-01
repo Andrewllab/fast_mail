@@ -11,6 +11,7 @@ defaults:
   - /transforms@data.prepreprocess.t04_cotracker: cotracker
   - /transforms@data.prepreprocess.t05_to_masked_featured_pointcloud: to_masked_featured_pointcloud
   - /transforms@data.prepreprocess.t06_to_tracked_featured_pointcloud: to_tracked_featured_pointcloud
+  # - /transforms@data.prepreprocess.t07_to_masked_tool_pointcloud: to_masked_featured_pointcloud
   - /transforms@data.prepreprocess.t99_cleanup: cleanup
 
   # Last little part that connects everyting
@@ -20,7 +21,7 @@ defaults:
   - /transforms@data.preprocess.t08_pakt_localizer: pakt_localizer
   - /transforms@data.preprocess.t99_cleanup: cleanup
 
-  # - /transforms@data.gpu_batch_transforms.t01_random_rotation: pakt_random_rotation
+  - /transforms@data.gpu_batch_transforms.t01_random_rotation: pakt_random_rotation
   # - /transforms@data.gpu_batch_transforms.t99_render_pcd: pakt_render_pointcloud
 
 
@@ -41,6 +42,10 @@ data:
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
       drop_keys: [left_cam, right_cam, gripper_cam]
+    
+    t07_to_masked_tool_pointcloud:
+      mask_key: obj_segmentation
+      out_key: mask_tool_points
 
   preprocess:
     backend: pakt_hdf5
