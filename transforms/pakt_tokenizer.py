@@ -40,6 +40,7 @@ class PaktTokenizer(Transform, nn.Module):
         feature_encoder: Callable[[], nn.Module],
         pos_encoder: Callable[[], nn.Module],
         color_encoder: Optional[Callable[[], nn.Module]] = None,
+        timestep_encoder: Optional[Callable[[], nn.Module]] = None,
         num_timesteps: int = 15,
         cartesian_dim: int = 3,  # kept for API compatibility; not used for token types
         num_gripper_points: int = 5,
@@ -63,7 +64,10 @@ class PaktTokenizer(Transform, nn.Module):
         self.token_type_embedding = nn.Embedding(4, embed_dim)
 
         # +1 because we predict future num_timesteps but also condition on current timestep
-        self.timestep_embedding = nn.Embedding(num_timesteps + 1, embed_dim)
+        if timestep_encoder is not None:
+            self.timestep_encoder = timestep_encoder()
+        else:
+            self.timestep_embedding = nn.Embedding(num_timesteps + 1, embed_dim)
 
         # -------- Normalization & mixing (key stability improvements) --------
         # Branch-wise LayerNorm BEFORE summation
@@ -131,11 +135,33 @@ class PaktTokenizer(Transform, nn.Module):
 
         # Store semi-permanent tensors
         # fmt: off
-        self.register_buffer("_tok_target", torch.tensor([0], dtype=torch.long), persistent=False)
-        self.register_buffer("_tok_tool",   torch.tensor([1], dtype=torch.long), persistent=False)
-        self.register_buffer("_tok_grip",   torch.tensor([2], dtype=torch.long), persistent=False)
-        self.register_buffer("_tok_des_grip",   torch.tensor([3], dtype=torch.long), persistent=False)
+        self.register_buffer("_tok_target",   torch.tensor([0], dtype=torch.long), persistent=False)
+        self.register_buffer("_tok_tool",     torch.tensor([1], dtype=torch.long), persistent=False)
+        self.register_buffer("_tok_grip",     torch.tensor([2], dtype=torch.long), persistent=False)
+        self.register_buffer("_tok_des_grip", torch.tensor([3], dtype=torch.long), persistent=False)
+        
         self.register_buffer("_gripper_point_ids", torch.arange(num_gripper_points, dtype=torch.long), persistent=False)
+        self.register_buffer("_zero_timestep", torch.zeros(1, dtype=torch.long), persistent=False)
+
+        # Store gains used to scale the embedding sums
+        def _gain():
+            return nn.Parameter(torch.ones(1, 1, embed_dim))
+
+        # Observation/conditioning tokens
+        self.g_pos_obs  = _gain()
+        self.g_feat_obs = _gain()
+        self.g_time_obs = _gain()
+        self.g_type_obs = _gain()
+        self.g_id_obs   = _gain()  # only used for gripper-id branch
+        self.g_col_obs  = _gain() if self.color_encoder is not None else None
+
+        # Action/prediction tokens
+        self.g_pos_act  = _gain()
+        self.g_feat_act = _gain()
+        self.g_time_act = _gain()
+        self.g_type_act = _gain()
+        self.g_id_act   = _gain()
+        self.g_col_act  = _gain() if self.color_encoder is not None else None
         # fmt: on
 
     @property
@@ -148,39 +174,29 @@ class PaktTokenizer(Transform, nn.Module):
     def _is_nested(x: Tensor) -> bool:
         return hasattr(x, "is_nested") and bool(x.is_nested)
 
-    def _apply_module_nested_safe(self, x: Tensor, module: nn.Module) -> Tensor:
-        """
-        Applies `module` to x, handling nested/jagged tensors by mapping per-sample.
-        This is slower than fused ops but is robust and keeps your current nested pipeline working.
-        """
-        if self._is_nested(x):
-            # Map module over nested elements
-            elems = x.unbind()
-            out = [module(e) for e in elems]
-            return torch.nested.nested_tensor(out, layout=x.layout)
-        return module(x)
-
-    def _ln(self, x: Tensor, ln: Optional[nn.LayerNorm]) -> Tensor:
-        if ln is None:
-            return x
-        return self._apply_module_nested_safe(x, ln)
-
-    def _mix(self, x: Tensor, mix: nn.Module) -> Tensor:
-        return self._apply_module_nested_safe(x, mix)
-
     def _post_mix_norm(self, x: Tensor, *, is_action: bool) -> Tensor:
         if self.separate_obs_action_norms:
             if is_action:
-                x = self._mix(x, self.token_mix_action)
-                x = self._ln(x, self.token_ln_action)
+                x = self.token_mix_action(x)
+                x = self.token_ln_action(x)
             else:
-                x = self._mix(x, self.token_mix_obs)
-                x = self._ln(x, self.token_ln_obs)
+                x = self.token_mix_obs(x)
+                x = self.token_ln_obs(x)
             return x
 
-        x = self._mix(x, self.token_mix)
-        x = self._ln(x, self.token_ln)
+        x = self.token_mix(x)
+        x = self.token_ln(x)
         return x
+
+    # ----------------- Helpers for different configs -----------------
+    def _encode_timestep(self, timesteps: Tensor) -> Tensor:
+        if hasattr(self, "timestep_encoder"):
+            cur_timesteps = timesteps.to(dtype=torch.float32) / float(
+                self.num_timesteps
+            )  # normalize to [0,1]
+            return self.timestep_encoder(cur_timesteps)
+        else:
+            return self.timestep_embedding(timesteps)
 
     # ----------------- tokenizers -----------------
 
@@ -204,37 +220,52 @@ class PaktTokenizer(Transform, nn.Module):
             (B, N, D) or nested equivalent
         """
         # Encode position
-        pos_embed = self.pos_encoder(point_pos)
-        pos_embed = self._ln(pos_embed, self.pos_ln)
+        pos_embed = self.pos_encoder(point_pos)  # (B, N_t, D) -> (B, N_t, D)
+        pos_embed = self.pos_ln(pos_embed)
 
         # Encode features
-        feature_embed = self.feature_encoder(point_features)
+        feature_embed = self.feature_encoder(
+            point_features
+        )  # (B, N_t, F) -> (B, N_t, D)
+        feature_embed = self.feature_ln(feature_embed)
         feature_embed = self.feature_dropout(feature_embed)
-        feature_embed = self._ln(feature_embed, self.feature_ln)
+        pos_embed, feature_embed = make_jagged_nested_tensors_compatible(
+            pos_embed, feature_embed
+        )
 
         # Optional color branch
         color_embed = None
         if self.color_encoder is not None:
-            color_embed = self.color_encoder(point_color)
-            color_embed = self._ln(color_embed, self.color_ln)
+            color_embed = self.color_encoder(point_color)  # (B, N_t, 3) -> (B, N_t, D)
+            color_embed = self.color_ln(color_embed)
 
             # Make jagged tensors compatible if needed
-            _, color_embed = make_jagged_nested_tensors_compatible(
+            pos_embed, color_embed = make_jagged_nested_tensors_compatible(
                 pos_embed, color_embed
             )
 
-        # Make feature jagged-compatible with pos
-        _, feature_embed = make_jagged_nested_tensors_compatible(
-            pos_embed, feature_embed
-        )
-
         # Token type embedding (normalize it too)
-        token_type_embed = self.token_type_embedding(token_type)
-        token_type_embed = self._ln(token_type_embed, self.type_ln)
+        token_type_embed = self.token_type_embedding(token_type)  # (1,D)
+        token_type_embed = self.type_ln(token_type_embed)
+        token_type_embed = token_type_embed.view(1, 1, -1)  # (1,1,D)
+
+        # Timestep embedding (current timestep = 0 for obs tokens)
+        timestep_embed = self._encode_timestep(self._zero_timestep)  # (1,D)
+        timestep_embed = self.time_ln(timestep_embed)
+        timestep_embed = timestep_embed.view(1, 1, -1)  # (1,1,D)
+
+        # Apply gains
+        pos_embed = pos_embed * self.g_pos_obs
+        feature_embed = feature_embed * self.g_feat_obs
+        timestep_embed = timestep_embed * self.g_time_obs
+        token_type_embed = token_type_embed * self.g_type_obs
 
         # Sum branches
-        token_embed = pos_embed + feature_embed + token_type_embed
+        token_embed = (
+            pos_embed + feature_embed + token_type_embed + timestep_embed
+        )  # (B, N, D)
         if color_embed is not None:
+            color_embed = color_embed * self.g_col_obs
             token_embed = token_embed + color_embed
 
         # Post-sum mixing & normalization (key stability improvement)
@@ -255,18 +286,34 @@ class PaktTokenizer(Transform, nn.Module):
         Returns:
             (B, N, D)
         """
-        B, N, _ = point_pos.shape
 
-        pos_embed = self._ln(self.pos_encoder(point_pos), self.pos_ln)
+        pos_embed = self.pos_encoder(point_pos)
+        pos_embed = self.pos_ln(pos_embed)  # (B, N, 3) -> (B, N, D)
 
-        # ID embedding: (N,D) -> (B,N,D)
-        gripper_id_embed = self.gripper_points_id_embedding(self._gripper_point_ids)
-        gripper_id_embed = self._ln(gripper_id_embed, self.id_ln)
+        gripper_id_embed = self.gripper_points_id_embedding(
+            self._gripper_point_ids
+        )  # -> (N, D)
+        gripper_id_embed = self.id_ln(gripper_id_embed)
+        gripper_id_embed = gripper_id_embed.unsqueeze(0)  # (1, N, D)
 
         token_type_embed = self.token_type_embedding(token_type)  # (1,D)
-        token_type_embed = self._ln(token_type_embed, self.type_ln)
+        token_type_embed = self.type_ln(token_type_embed)
+        token_type_embed = token_type_embed.view(1, 1, -1)  # (1,1,D)
 
-        token_embed = pos_embed + gripper_id_embed + token_type_embed
+        timestep_embed = self._encode_timestep(self._zero_timestep)  # (1,D)
+        timestep_embed = self.time_ln(timestep_embed)
+        timestep_embed = timestep_embed.view(1, 1, -1)  # (1,1,D)
+
+        # Apply gains
+        pos_embed = pos_embed * self.g_pos_obs
+        gripper_id_embed = gripper_id_embed * self.g_id_obs
+        timestep_embed = timestep_embed * self.g_time_obs
+        token_type_embed = token_type_embed * self.g_type_obs
+
+        # Sum branches
+        token_embed = (
+            pos_embed + gripper_id_embed + token_type_embed + timestep_embed
+        )  # (B, N, D)
         token_embed = self._post_mix_norm(token_embed, is_action=False)
         return token_embed
 
@@ -281,26 +328,39 @@ class PaktTokenizer(Transform, nn.Module):
         Tokenize gripper action points (future points).
 
         Args:
-            point_pos:          (B, T, N, 3)
-            gripper_point_ids:  (B, T, N)
-            timesteps:          (B, T)
+            point_pos:          (B, T*N_g, 3)
+            gripper_point_ids:  (B, N_g*T)
+            timesteps:          (B, T*N_g)
+            token_type:         scalar tensor [0|1|2|3] (target/tool/gripper/des_gripper)
 
         Returns:
-            (B, T, N, D)
+            (B, T*N, D)
         """
-        pos_embed = self._ln(self.pos_encoder(point_pos), self.pos_ln)
+        pos_embed = self.pos_encoder(point_pos)  # (B, T*N_g, 3) -> (B, T*N_g, D)
+        pos_embed = self.pos_ln(pos_embed)
 
-        gripper_id_embed = self.gripper_points_id_embedding(gripper_point_ids)
-        gripper_id_embed = self._ln(gripper_id_embed, self.id_ln)
+        # Gripper point ID embedding
+        gripper_id_embed = self.gripper_points_id_embedding(
+            gripper_point_ids
+        )  # (B, T*N_g, D)
+        gripper_id_embed = self.id_ln(gripper_id_embed)
 
-        # IMPORTANT: broadcast timestep over N
-        timestep_embed = self.timestep_embedding(timesteps)  # (B,T,1,D)
-        timestep_embed = self._ln(timestep_embed, self.time_ln)
+        # Timestep embedding (broadcast over N)
+        timestep_embed = self._encode_timestep(timesteps)  # (B,T*N_g, D)
+        timestep_embed = self.time_ln(timestep_embed)
 
+        # Token type embedding
         token_type_embed = self.token_type_embedding(token_type)  # (1,D)
-        token_type_embed = self._ln(token_type_embed, self.type_ln)
-        token_type_embed = token_type_embed.view(1, 1, -1)  # (1,1,1,D)
+        token_type_embed = self.type_ln(token_type_embed)
+        token_type_embed = token_type_embed.view(1, 1, -1)  # (1,1,D)
 
+        # Apply gains
+        pos_embed = pos_embed * self.g_pos_act
+        gripper_id_embed = gripper_id_embed * self.g_id_act
+        timestep_embed = timestep_embed * self.g_time_act
+        token_type_embed = token_type_embed * self.g_type_act
+
+        # Sum branches
         token_embed = pos_embed + gripper_id_embed + timestep_embed + token_type_embed
         token_embed = self._post_mix_norm(token_embed, is_action=True)
         return token_embed
@@ -317,61 +377,96 @@ class PaktTokenizer(Transform, nn.Module):
         Tokenize tool/env action points (future points).
 
         Args:
-            point_pos:       (B, T, N, 3) (often nested/jagged)
+            point_pos:       (B, T*N, 3) (often nested/jagged)
             point_color:     (B, N_src, 3) OR nested equivalent (current obs colors)
             point_features:  (B, N_src, F) OR nested equivalent (current obs features)
-            point_ids:       (B, T, N) indices mapping each future point to a source (obs) point
-            timesteps:       (B, T)
+            point_ids:       (B, T*N) indices mapping each future point to a source (obs) point
+            timesteps:       (B, N*T) timesteps for each future point
 
         Returns:
-            (B, T, N, D) (often nested/jagged)
+            (B, T*N, D) (often nested/jagged)
         """
-        pos_embed = self._ln(self.pos_encoder(point_pos), self.pos_ln)
+        pos_embed = self.pos_encoder(point_pos)  # (B, T*N, 3) -> (B, T*N, D)
+        pos_embed = self.pos_ln(pos_embed)
 
+        # ------- Feature Embedding Branch -------
         # Encode features/colors from source set (obs), then index by point_ids to align with future points
-        feature_embed_src = self.feature_encoder(point_features)
-        feature_embed_src = self.feature_dropout(feature_embed_src)
-        feature_embed_src = self._ln(feature_embed_src, self.feature_ln)
-
-        color_embed_src = None
-        if self.color_encoder is not None:
-            color_embed_src = self.color_encoder(point_color)
-            color_embed_src = self._ln(color_embed_src, self.color_ln)
-            color_embed_src, feature_embed_src = make_jagged_nested_tensors_compatible(
-                color_embed_src, feature_embed_src
-            )
-
-        # Combine feature+color at source resolution
-        color_feat_src = feature_embed_src
-        if color_embed_src is not None:
-            color_feat_src = color_feat_src + color_embed_src
+        feature_embed_src = self.feature_encoder(
+            point_features
+        )  # (B, N_src, F) -> (B, N_src, D)
+        feature_embed_src = self.feature_ln(feature_embed_src)
 
         # Index source embeddings by point_ids to match each future token
-        if self._is_nested(point_ids) or self._is_nested(color_feat_src):
+        if self._is_nested(point_ids) or self._is_nested(feature_embed_src):
             # nested_index_fast is assumed to handle jagged indexing for your pipeline
-            color_feat_embed = nested_index_fast(point_ids, color_feat_src)
+            feature_embed = nested_index_fast(
+                point_ids, feature_embed_src
+            )  # (B, T*N), (B, N_src, D) -> (B, T*N, D)
         else:
             # Robust non-nested gather:
-            index = point_ids.unsqueeze(-1).expand(-1, -1, color_feat_src.size(-1))
-            color_feat_embed = torch.gather(color_feat_src, dim=1, index=index)
+            index = point_ids.unsqueeze(-1).expand(-1, -1, feature_embed_src.size(-1))
+            feature_embed = torch.gather(
+                feature_embed_src, dim=1, index=index
+            )  # (B, T*N, D), (B, N_src, D) -> (B, T*N, D)
+
+        # Apply feature dropout after indexing for better noise robustness
+        feature_embed = self.feature_dropout(feature_embed)
 
         # Align jagged-ness with pos_embed if needed
-        pos_embed, color_feat_embed = make_jagged_nested_tensors_compatible(
-            pos_embed, color_feat_embed
+        pos_embed, feature_embed = make_jagged_nested_tensors_compatible(
+            pos_embed, feature_embed
         )
 
-        # Timestep embedding (broadcast over N)
-        timestep_embed = self.timestep_embedding(timesteps)  # (B,T,1,D)
-        timestep_embed = self._ln(timestep_embed, self.time_ln)
+        # ------- Optional Color Embedding Branch -------
+        color_embed_src = None
+        if self.color_encoder is not None:
+            color_embed_src = self.color_encoder(
+                point_color
+            )  # (B, N_src, 3) -> (B, N_src, D)
+            color_embed_src = self.color_ln(color_embed_src)
+            pos_embed, feature_embed_src = make_jagged_nested_tensors_compatible(
+                pos_embed, feature_embed_src
+            )
+
+            # Index source embeddings by point_ids to match each future token
+            if self._is_nested(point_ids) or self._is_nested(color_embed_src):
+                color_embed = nested_index_fast(
+                    point_ids, color_embed_src
+                )  # (B, T*N), (B, N_src, D) -> (B, T*N, D)
+            else:
+                # Robust non-nested gather:
+                index = point_ids.unsqueeze(-1).expand(-1, -1, color_embed_src.size(-1))
+                color_embed = torch.gather(
+                    color_embed_src, dim=1, index=index
+                )  # (B, T*N, D), (B, N_src, D) -> (B, T*N, D)
+
+            # Align jagged-ness with pos_embed if needed
+            pos_embed, color_embed = make_jagged_nested_tensors_compatible(
+                pos_embed, color_embed
+            )
+
+        # ---- Timestep & Token Type Embeddings ----
+        timestep_embed = self._encode_timestep(timesteps)  # (B,T*N,D)
+        timestep_embed = self.time_ln(timestep_embed)
         pos_embed, timestep_embed = make_jagged_nested_tensors_compatible(
             pos_embed, timestep_embed
         )
 
+        # ---- Token Type Embedding ----
         token_type_embed = self.token_type_embedding(self._tok_tool)  # (1,D)
-        token_type_embed = self._ln(token_type_embed, self.type_ln)
-        token_type_embed = token_type_embed.view(1, 1, -1)
+        token_type_embed = self.type_ln(token_type_embed)
+        token_type_embed = token_type_embed.view(1, 1, -1)  # (1,1,D)
 
-        token_embed = pos_embed + color_feat_embed + timestep_embed + token_type_embed
+        # Apply gains
+        pos_embed = pos_embed * self.g_pos_act
+        feature_embed = feature_embed * self.g_feat_act
+        timestep_embed = timestep_embed * self.g_time_act
+        token_type_embed = token_type_embed * self.g_type_act
+
+        token_embed = pos_embed + feature_embed + timestep_embed + token_type_embed
+        if color_embed_src is not None:
+            color_embed = color_embed * self.g_col_act
+            token_embed = token_embed + color_embed
         token_embed = self._post_mix_norm(token_embed, is_action=True)
         return token_embed
 
@@ -380,13 +475,12 @@ class PaktTokenizer(Transform, nn.Module):
     def forward(self, batch: TensorDict) -> Tuple[TensorDict, Tensor]:
         obs = batch["obs"]
         actions = batch["noisy_action"]  # shape depends on your pipeline
-        device = actions.device
 
         # === target point tokens ===
         target_points = obs["target_points"]
-        target_points_pos = target_points["points"]
-        target_points_color = target_points["colors"]
-        target_points_features = target_points["features"]
+        target_points_pos = target_points["points"]  # (B, N_t, 3)
+        target_points_color = target_points["colors"]  # (B, N_t, 3)
+        target_points_features = target_points["features"]  # (B, N_t, F)
 
         target_points_tokens = self.__tokenize_pointcloud(
             point_pos=target_points_pos,
@@ -397,9 +491,9 @@ class PaktTokenizer(Transform, nn.Module):
 
         # === tool point tokens ===
         tool_points = obs["tool_points"]
-        tool_points_pos = tool_points["points"]
-        tool_points_color = tool_points["colors"]
-        tool_points_features = tool_points["features"]
+        tool_points_pos = tool_points["points"]  # (B, N_tool, 3)
+        tool_points_color = tool_points["colors"]  # (B, N_tool, 3)
+        tool_points_features = tool_points["features"]  # (B, N_tool, F)
 
         tool_points_tokens = self.__tokenize_pointcloud(
             point_pos=tool_points_pos,
@@ -438,29 +532,42 @@ class PaktTokenizer(Transform, nn.Module):
         # you may want to revisit this extraction.
         gripper_action_pos = torch.stack(
             [x[:num_gripper_action_tokens] for x in action_points_pos.unbind(0)]
-        )
-        gripper_action_timesteps = gripper_action_meta["timesteps"]
-        gripper_action_point_ids = gripper_action_meta["point_ids"]
+        )  # (B, T*N_g, 3)
+        gripper_action_timesteps = gripper_action_meta["timesteps"].long()  # (B, T*N_g)
+        gripper_action_point_ids = gripper_action_meta["point_ids"].long()  # (B, N_g*T)
+
+        if ():
+            raise ValueError(
+                f"Gripper action timesteps out of range [1, {self.num_timesteps}] ({gripper_action_timesteps.min()} < 1 or {gripper_action_timesteps.max()} > {self.num_timesteps})"
+            )
 
         gripper_action_tokens = self.__tokenize_gripper_action_points(
             point_pos=gripper_action_pos,
             gripper_point_ids=gripper_action_point_ids,
             timesteps=gripper_action_timesteps,
             token_type=self._tok_des_grip,
-        )  # (B, T, 5, D)
+        )  # (B, T*N_g, D)
 
         # === tool action point tokens ===
         tool_action_pos = torch.nested.nested_tensor(
             [x[num_gripper_action_tokens:] for x in action_points_pos.unbind(0)],
             layout=torch.jagged,
-        )
+        )  # (B, T*N_tool, 3)
 
         # These are *source* features/colors for indexing via tool_action_point_ids
-        tool_action_features = tool_points_features
-        tool_action_color = tool_points_color
+        tool_action_features = tool_points_features  # (B, N_tool, F)
+        tool_action_color = tool_points_color  # (B, N_tool, 3)
 
-        tool_action_timesteps = tool_action_meta["timesteps"]
-        tool_action_point_ids = tool_action_meta["point_ids"]
+        tool_action_timesteps = tool_action_meta["timesteps"].long()  # (B, N_tool*T)
+        tool_action_point_ids = tool_action_meta["point_ids"].long()  # (B, N_tool*T)
+
+        # if (
+        #     tool_action_timesteps.max() > self.num_timesteps
+        #     or tool_action_timesteps.min() < 1
+        #     or gripper_action_timesteps.max() > self.num_timesteps
+        #     or gripper_action_timesteps.min() < 1
+        # ):
+        #     pass
 
         tool_action_tokens = self.__tokenize_tool_action_points(
             point_pos=tool_action_pos,
@@ -468,7 +575,7 @@ class PaktTokenizer(Transform, nn.Module):
             point_features=tool_action_features,
             point_ids=tool_action_point_ids,
             timesteps=tool_action_timesteps,
-        )  # (B, T, N_tool, D)
+        )  # (B, T * N_tool, D)
 
         # Concatenate along token dimension
         obs_tokens = cat_nested(
