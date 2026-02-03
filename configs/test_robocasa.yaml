@@ -56,7 +56,9 @@ data:
       mode: mask
       mask_key: obj_segmentation
       _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
+    t99_cleanup: null  # disable cleanup transform added by default
   preprepreprocess:
+    t99_cleanup: null  # disable cleanup transform added by default
     t78_some_preprocess_for_test:
       a: 1  # dummy param to create a new transform for test preprocess stage
 

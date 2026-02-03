@@ -273,6 +273,18 @@ def resolve_checkpoint(
             elif match := re.fullmatch(r"last_(\d+)", epochs):
                 n = int(match.group(1))
                 artifacts_by_epoch = artifacts_by_epoch[-n:]
+            elif match := re.fullmatch(r"last_(\d+)_step_(\d+)", epochs):
+                n = int(match.group(1))
+                step = int(match.group(2))
+                # filter artifacts to only those matching the last N with given step between
+                artifacts_by_epoch = artifacts_by_epoch[-1::-step][:n][::-1]
+            elif match := re.fullmatch(r"spread_(\d+)", epochs):
+                spread = int(match.group(1))
+                indices = [
+                    round(i * (len(artifacts_by_epoch) - 1) / (spread - 1))
+                    for i in range(spread)
+                ]
+                artifacts_by_epoch = [artifacts_by_epoch[i] for i in indices]
             else:
                 raise ValueError(
                     f"Invalid value for cfg.epochs: {epochs}. "
