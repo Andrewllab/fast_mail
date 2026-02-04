@@ -67,12 +67,12 @@ def create_env(
         camera_heights=camera_heights,
         camera_depths=camera_depths,
         camera_segmentations=camera_segmentations,
-        has_renderer=render_onscreen,  # whether to render onscreen
-        has_offscreen_renderer=(not render_onscreen),  # whether to render headless
+        has_renderer=False,  # whether to render onscreen
+        has_offscreen_renderer=True,  # whether to render headless
         renderer="mujoco",
         ignore_done=True,  # no timeout
         use_object_obs=True,  # add proprioception to observation
-        use_camera_obs=True,  # add rendered camera images to each observation
+        use_camera_obs=False,  # whether to add rendering to obs
         seed=seed,
         obj_instance_split=obj_instance_split,
         generative_textures=generative_textures,

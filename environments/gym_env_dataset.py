@@ -9,6 +9,7 @@ from tensordict import NonTensorData, TensorDict
 from torch.utils.data import IterableDataset
 
 from environments.specs import DataSpecs
+from environments.wrappers import call_on_each_wrapper
 
 if TYPE_CHECKING:
     from gymnasium.vector import VectorEnv
