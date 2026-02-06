@@ -17,11 +17,14 @@ defaults:
   # Last little part that connects everyting
   - /transforms@data.preprocess.t01_robocasa_use_abs_actions: robocasa_use_abs_actions
   - /transforms@data.preprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
-  - /transforms@data.preprocess.t07_to_pakt_action_obs: to_pakt_action_obs
-  - /transforms@data.preprocess.t08_pakt_localizer: pakt_localizer
+  - /transforms@data.preprocess.t03_to_sliding_window_action: to_sliding_window_action
   - /transforms@data.preprocess.t99_cleanup: cleanup
 
-  - /transforms@data.gpu_batch_transforms.t01_random_rotation: pakt_random_rotation
+  - /transforms@data.gpu_batch_transforms.t01_fps_prep: nested_pointcloud_prep_downsample_fps
+  - /transforms@data.gpu_batch_transforms.t02_to_pakt_action_obs: to_pakt_action_obs
+  - /transforms@data.gpu_batch_transforms.t03_pakt_localizer: pakt_localizer
+  - /transforms@data.gpu_batch_transforms.t04_random_rotation: pakt_random_rotation
+
   # - /transforms@data.gpu_batch_transforms.t99_render_pcd: pakt_render_pointcloud
 
 

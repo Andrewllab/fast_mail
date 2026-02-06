@@ -281,7 +281,7 @@ def resolve_checkpoint(
             elif match := re.fullmatch(r"spread_(\d+)", epochs):
                 spread = int(match.group(1))
                 indices = [
-                    round(i * (len(artifacts_by_epoch) - 1) / (spread - 1))
+                    round((i+1) * (len(artifacts_by_epoch) - 1) / (spread))
                     for i in range(spread)
                 ]
                 artifacts_by_epoch = [artifacts_by_epoch[i] for i in indices]

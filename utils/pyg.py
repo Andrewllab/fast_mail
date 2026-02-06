@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Mapping
+from typing import Mapping, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -543,3 +543,43 @@ def index_reduced_batch(batch: Mapping[str, Tensor], idx: int | slice) -> Data:
     )
 
     return out
+
+
+def nested_tensor_to_pyg(
+    x: Tensor,
+    return_batch: bool = False,
+) -> Union[Tuple[Tensor, Tensor], Tuple[Tensor, Tensor, Tensor]]:
+    """
+    Inverse of `pyg_to_nested_tensor(...)` for *jagged* nested tensors.
+
+    Given a jagged nested tensor `x`, returns:
+      - `values`: the packed values buffer
+      - `ptr`   : the offsets/ptr tensor of shape (B + 1)
+      - optionally `batch`: the batch vector of shape (sum_i N_i,)
+
+    This is the data needed to reconstruct via:
+        torch.nested.nested_tensor_from_jagged(values, offsets=ptr)
+    """
+    if not getattr(x, "is_nested", False):
+        raise ValueError("Expected a nested tensor input.")
+
+    # We assume jagged layout as requested.
+    if getattr(x, "layout", None) is not torch.jagged:
+        raise ValueError(
+            f"Expected a jagged nested tensor (layout=torch.jagged), got {x.layout}."
+        )
+
+    values = x.values()  # (sum_i N_i, *feature_dims)
+    ptr = x.offsets()  # (B + 1,) int64 typically
+
+    if not return_batch:
+        return values, ptr
+
+    # Convert ptr -> batch
+    lengths = ptr[1:] - ptr[:-1]  # (B,)
+    B = lengths.numel()
+    batch = torch.arange(B, device=ptr.device, dtype=torch.long).repeat_interleave(
+        lengths
+    )
+
+    return values, ptr, batch

@@ -13,7 +13,7 @@ from environments.specs import (
     ObsSpec,
     PointCloudSpec,
 )
-from transforms.base_transform import ReversibleTransform
+from transforms.base_transform import ReversibleTransform, Transform
 from utils.nested import (
     cat_nested,
     flatten_nested_tensor,
@@ -63,7 +63,7 @@ class ToPaktActionObsTransform(ReversibleTransform):
         return self._specs
 
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
-        robot_action_points = tensordict["action"]  # (T, N_action, 3)
+        robot_action_windows = tensordict["action"]  # (T, N_action, N_timesteps, 3)
         tool_pcd = tensordict["obs"][self.tool_points_key]  # (T, N_tool, 3)
         target_pcd = tensordict["obs"][self.target_points_key]  # (T, N_target, 3)
         gripper_pcd = tensordict["obs"][self.gripper_points_key]
@@ -73,84 +73,23 @@ class ToPaktActionObsTransform(ReversibleTransform):
         num_timesteps = self.window_len + 1
         num_batches = tool_pcd["points"].size(0)
 
-        tool_action_timestep_list = []
-        tool_action_point_id_list = []
-        tool_action_points = []
+        device = tool_pcd["points"].device
 
-        tool_obs_points = []
-
-        for idx, b in enumerate(range(tool_pcd["points"].size(0))):
-            n_points = num_tool_points[idx].item()
-            # Prepare timestep and point ID tensors
-            timestep_vector = (
-                torch.arange(
-                    num_timesteps,
-                    device=tool_pcd["points"].device,
-                )
-                .unsqueeze(0)
-                .expand(n_points, -1)
-            )  # (N_tool, num_timesteps)
-
-            point_id_vector = (
-                torch.arange(
-                    n_points,
-                    device=tool_pcd["points"].device,
-                )
-                .unsqueeze(1)
-                .expand(-1, num_timesteps)
-            )  # (N_tool, num_timesteps)
-
-            # Extract tool observation points
-            tool_obs_points.append(tool_pcd["points"][b, :, 0, :])  # (N_tool, 3)
-
-            # Extract tool action points
-            visibility = tool_pcd["visibility"][idx]
-            visibility[:, 0] = False  # Don't include obs points in action extraction
-
-            action_points = tool_pcd["points"][
-                idx, visibility
-            ]  # (N_tool_action, num_timesteps, 3)
-            action_timestep = timestep_vector[visibility]  # (N_tool_action,)
-            action_point_id = point_id_vector[visibility]  # (N_tool_action,)
-
-            tool_action_points.append(
-                action_points
-            )  # (N_tool_action, num_timesteps, 3)
-            tool_action_timestep_list.append(action_timestep)  # (N_tool_action,)
-            tool_action_point_id_list.append(action_point_id)  # (N_tool_action,)
-
-        # TOOL ACTION POINTS
-        tool_action_timesteps = torch.nested.as_nested_tensor(
-            tool_action_timestep_list, layout=torch.jagged
-        )  # (B, N_tool_action)
-        tool_action_point_ids = torch.nested.as_nested_tensor(
-            tool_action_point_id_list, layout=torch.jagged
-        )  # (B, N_tool_action)
-        tool_action_points = torch.nested.as_nested_tensor(
-            tool_action_points, layout=torch.jagged
-        )  # (B, N_tool_action * num_timesteps, 3)
-
-        # TOOL OBS POINTS
-        tool_obs_points = torch.nested.as_nested_tensor(
-            tool_obs_points, layout=torch.jagged
-        )  # (B, N_tool, 3)
+        (
+            tool_obs_points,
+            tool_action_points,
+            tool_action_timesteps,
+            tool_action_point_ids,
+        ) = self._tool_action_and_obs_from_jagged(tool_pcd)
 
         # ROBOT ACTION POINTS
-        robot_action_windows = self.sliding_windows_pad_last(
-            robot_action_points, window=self.window_len
-        )
-        # robot_action_windows: (T, window, N_action, 3)
-        robot_action_windows = robot_action_windows.permute(
-            0, 2, 1, 3
-        )  # (T, N_action, window, 3)
-
         robot_action_timesteps = (
-            torch.arange(self.window_len, device=robot_action_points.device)
+            torch.arange(self.window_len, device=device)
             .view(1, 1, -1)
             .expand(num_batches, self.num_action_points, self.window_len)
         ) + 1
         robot_action_point_ids = (
-            torch.arange(self.num_action_points, device=robot_action_points.device)
+            torch.arange(self.num_action_points, device=device)
             .view(1, -1, 1)
             .expand(num_batches, self.num_action_points, self.window_len)
         )
@@ -173,10 +112,6 @@ class ToPaktActionObsTransform(ReversibleTransform):
         action = cat_nested(
             [robot_action_windows, tool_action_points], dim=1
         )  # (B, N_action + N_tool_points, window, 3)
-
-        ref_actions = self.sliding_windows_pad_last(
-            tensordict["ref_action"], window=self.window_len
-        )
 
         obs = {
             "tool_points": {
@@ -204,7 +139,6 @@ class ToPaktActionObsTransform(ReversibleTransform):
         tensordict["obs"] = tensordict["obs"].update(obs)
         tensordict["action"] = action
         tensordict["phantom_action"] = action.clone()
-        tensordict["ref_action"] = ref_actions.squeeze(0)
         return tensordict
 
     def call_trajectory_rollout(self, tensordict: TensorDict) -> TensorDict:
@@ -213,42 +147,28 @@ class ToPaktActionObsTransform(ReversibleTransform):
         gripper_points = tensordict["obs"][self.gripper_points_key]
         des_gripper_points = tensordict["obs"][self.des_gripper_points_key]
 
-        tool_pcd = {key: tool_pcd[key].squeeze(0) for key in tool_pcd.keys()}
-        target_pcd = {key: target_pcd[key].squeeze(0) for key in target_pcd.keys()}
-        gripper_points = {"points": gripper_points["points"].squeeze(0)}
-        des_gripper_points = {"points": des_gripper_points["points"].squeeze(0)}
-        num_tool_points = tool_pcd["points"].shape[0]
         num_timesteps = self.window_len
+        B = tool_pcd["points"].size(0)
         device = tool_pcd["points"].device
 
-        tool_action_timestep = (
-            torch.arange(num_timesteps, device=device)
-            .unsqueeze(0)
-            .expand(num_tool_points, -1)
-        ).reshape(
-            -1
-        )  # (N_tool, window_len)
-        tool_action_point_id = (
-            torch.arange(num_tool_points, device=device)
-            .unsqueeze(1)
-            .expand(-1, num_timesteps)
-        ).reshape(
-            -1
-        )  # (N_tool, window_len)
+        # Tool indices + phantom action without per-batch Python loops
+        tool_action_timesteps, tool_action_point_ids, phantom_action = (
+            self._rollout_tool_indices_and_phantom(tool_pcd["points"])
+        )
 
-        robot_action_timestep = (
+        robot_action_timesteps = (
             torch.arange(num_timesteps, device=device)
-            .unsqueeze(0)
-            .expand(self.num_action_points, -1)
+            .view(1, 1, -1)
+            .expand(B, self.num_action_points, -1)
         ).reshape(
-            -1
+            B, -1
         )  # (N_action, window_len)
-        robot_action_point_id = (
+        robot_action_point_ids = (
             torch.arange(self.num_action_points, device=device)
-            .unsqueeze(1)
-            .expand(-1, num_timesteps)
+            .view(1, -1, 1)
+            .expand(B, -1, num_timesteps)
         ).reshape(
-            -1
+            B, -1
         )  # (N_action, window_len)
 
         obs = {
@@ -257,19 +177,14 @@ class ToPaktActionObsTransform(ReversibleTransform):
             "gripper_points": gripper_points,
             "des_gripper_points": des_gripper_points,
             "tool_action_points": {
-                "timesteps": tool_action_timestep + 1,
-                "point_ids": tool_action_point_id,
+                "timesteps": tool_action_timesteps + 1,
+                "point_ids": tool_action_point_ids,
             },
             "robot_action_points": {
-                "timesteps": robot_action_timestep + 1,
-                "point_ids": robot_action_point_id,
+                "timesteps": robot_action_timesteps + 1,
+                "point_ids": robot_action_point_ids,
             },
         }
-
-        phantom_action = torch.zeros(
-            ((self.num_action_points + num_tool_points) * num_timesteps, 3),
-            device=device,
-        )
 
         tensordict["obs"] = tensordict["obs"].update(obs)
         tensordict["phantom_action"] = phantom_action
@@ -296,54 +211,239 @@ class ToPaktActionObsTransform(ReversibleTransform):
     def reverse(self, tensordict):
         return self.call_trajectory_reverse(tensordict)
 
-    def sliding_windows_pad_last(
-        self, x: torch.Tensor, window: int, time_dim: int = 0
-    ) -> torch.Tensor:
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        if "action" in tensordict.keys():
+            return self.call_trajectory(tensordict)
+        else:
+            return self.call_trajectory_rollout(tensordict)
+
+    def _tool_action_and_obs_from_jagged(self, tool_pcd):
+        # Jagged points: logical shape (B, N_tool, num_timesteps, 3)
+        tool_points_nt = tool_pcd["points"]
+        points_off = tool_points_nt.offsets()  # (B+1,)
+        points_val = tool_points_nt.values()  # (sum_N, num_timesteps, 3)
+
+        B = points_off.numel() - 1
+        lengths = torch.diff(points_off)  # (B,)
+
+        # Tool obs points: timestep 0 for every tool point, rewrapped with SAME offsets (no Python loop)
+        tool_obs_vals = points_val[:, 0, :]  # (sum_N, 3)
+        tool_obs_points = torch.nested.nested_tensor_from_jagged(
+            values=tool_obs_vals, offsets=points_off
+        )  # (B, N_tool, 3)
+
+        # Visibility: logical shape (B, N_tool, num_timesteps)
+        vis_nt = tool_pcd["visibility"]
+        vis_off = vis_nt.offsets()
+        vis_val = vis_nt.values()  # (sum_N, num_timesteps)
+
+        # Sanity: ragged structure must match points' ragged structure
+        # (if it doesn't, you have bigger issues than speed)
+        if vis_off.numel() != points_off.numel() or not torch.equal(
+            vis_off, points_off
+        ):
+            raise RuntimeError(
+                "tool_pcd['visibility'] ragged structure must match tool_pcd['points']."
+            )
+
+        # Exclude obs timestep (0) from action extraction ONCE (avoid per-batch clone)
+        # If visibility is reused elsewhere and must remain unchanged, clone once here.
+        vis_work = vis_val.clone()
+        vis_work[:, 0] = False
+
+        # Find all selected (flat_point, t) pairs at once
+        sel = vis_work.nonzero(
+            as_tuple=False
+        )  # (K, 2) columns: [flat_point_idx, timestep]
+        if sel.numel() == 0:
+            # No action points selected: return empty jagged tensors
+            empty_off = torch.zeros(
+                (B + 1,), device=points_off.device, dtype=points_off.dtype
+            )
+            empty_vals3 = points_val.new_empty((0, 3))
+            empty_vals1 = points_val.new_empty((0,), dtype=torch.long)
+
+            tool_action_points = torch.nested.nested_tensor_from_jagged(
+                empty_vals3, offsets=empty_off
+            )
+            tool_action_timesteps = torch.nested.nested_tensor_from_jagged(
+                empty_vals1, offsets=empty_off
+            )
+            tool_action_point_ids = torch.nested.nested_tensor_from_jagged(
+                empty_vals1, offsets=empty_off
+            )
+            return (
+                tool_obs_points,
+                tool_action_points,
+                tool_action_timesteps,
+                tool_action_point_ids,
+            )
+
+        flat_p = sel[:, 0]  # (K,)
+        t = sel[:, 1]  # (K,)
+
+        # Gather action point coordinates
+        tool_action_vals = points_val[flat_p, t, :]  # (K, 3)
+
+        # Map flat point index -> batch id (row id) so we can rewrap as jagged over B
+        # point_batch_ids has length sum_N; each tool point knows which batch it belongs to
+        point_batch_ids = torch.repeat_interleave(
+            torch.arange(B, device=points_off.device), lengths
+        )  # (sum_N,)
+        b_ids = point_batch_ids[flat_p]  # (K,)
+
+        # Local point id within each batch: flat_p - points_off[b]
+        local_pid = flat_p - points_off[b_ids]  # (K,)
+
+        # Build action jagged offsets from counts per batch
+        counts = torch.bincount(b_ids, minlength=B)  # (B,)
+        action_off = torch.empty(
+            (B + 1,), device=points_off.device, dtype=points_off.dtype
+        )
+        action_off[0] = 0
+        action_off[1:] = counts.cumsum(0)
+
+        # Rewrap outputs as jagged nested tensors over batch
+        tool_action_points = torch.nested.nested_tensor_from_jagged(
+            values=tool_action_vals, offsets=action_off
+        )  # (B, N_tool_action, 3)
+
+        tool_action_timesteps = torch.nested.nested_tensor_from_jagged(
+            values=t.to(torch.long), offsets=action_off
+        )  # (B, N_tool_action)
+
+        tool_action_point_ids = torch.nested.nested_tensor_from_jagged(
+            values=local_pid.to(torch.long), offsets=action_off
+        )  # (B, N_tool_action)
+
+        return (
+            tool_obs_points,
+            tool_action_points,
+            tool_action_timesteps,
+            tool_action_point_ids,
+        )
+
+    def _rollout_tool_indices_and_phantom(
+        self,
+        tool_points_nt: torch.Tensor,  # jagged NT: (B, N_tool, 3) or (B, N_tool, ...)
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Windows over time_dim, pads by repeating the last timestep.
-
-        Returns a tensor where the new window dimension is inserted right after time_dim.
+        Returns:
+        tool_action_timesteps: jagged NT (B, N_tool*num_timesteps)  (0..T-1) per point
+        tool_action_point_ids: jagged NT (B, N_tool*num_timesteps)  (0..N_tool-1) repeated across timesteps
+        phantom_action:        jagged NT (B, (num_action_points + N_tool)*num_timesteps, 3) zeros
         """
-        if window < 1:
-            raise ValueError("window must be >= 1")
-        if x.dim() <= time_dim:
-            raise ValueError("time_dim out of range")
+        assert tool_points_nt.is_nested, "expected jagged NestedTensor for tool points"
 
-        T = x.size(time_dim)
-        pad_len = window - 1
+        device = tool_points_nt.values().device
+        off = tool_points_nt.offsets()  # (B+1,)
+        B = off.numel() - 1
+        lengths = (off[1:] - off[:-1]).to(torch.long)  # (B,) == N_tool per batch
+        sum_N = int(lengths.sum().item())
 
-        if pad_len > 0:
-            # take last timestep slice along time_dim
-            index = [slice(None)] * x.dim()
-            index[time_dim] = slice(T - 1, T)
-            last = x[tuple(index)]  # shape has time_dim size 1
+        # -------- tool_action_* (size per batch = N_tool * T) --------
+        # For each tool point (flattened), repeat timesteps 0..T-1
+        t = torch.arange(self.window_len, device=device, dtype=torch.long)  # (T,)
+        tool_action_timesteps_vals = t.repeat(sum_N)  # (sum_N*T,)
 
-            # expand last along time_dim to pad_len
-            expand_shape = list(last.shape)
-            expand_shape[time_dim] = pad_len
-            last = last.expand(*expand_shape)
+        # For each tool point (flattened), its "local id" within its batch, repeated T times
+        # Build local ids in flattened order: [0..N0-1, 0..N1-1, ...]
+        # Create global ids 0..sum_N-1 and subtract batch starts.
+        global_pid = torch.arange(sum_N, device=device, dtype=torch.long)  # (sum_N,)
+        batch_ids = torch.repeat_interleave(
+            torch.arange(B, device=device), lengths
+        )  # (sum_N,)
+        local_pid = global_pid - off[batch_ids].to(torch.long)  # (sum_N,)
+        tool_action_point_ids_vals = local_pid.repeat_interleave(
+            self.window_len
+        )  # (sum_N*T,)
 
-            x = torch.cat([x, last], dim=time_dim)
+        # Offsets for (B, N_tool*T): multiply by T
+        tool_action_off = off.to(torch.long) * self.window_len  # (B+1,)
+        tool_action_timesteps = torch.nested.nested_tensor_from_jagged(
+            values=tool_action_timesteps_vals, offsets=tool_action_off
+        )
+        tool_action_point_ids = torch.nested.nested_tensor_from_jagged(
+            values=tool_action_point_ids_vals, offsets=tool_action_off
+        )
 
-        out = x.unfold(dimension=time_dim, size=window, step=1)
+        # -------- phantom_action (size per batch = (num_action_points + N_tool)*T) --------
+        phantom_lengths = (lengths + self.num_action_points) * self.window_len  # (B,)
+        phantom_off = torch.empty((B + 1,), device=device, dtype=torch.long)
+        phantom_off[0] = 0
+        phantom_off[1:] = phantom_lengths.cumsum(0)
 
-        # Unfold inserts the window dimension at the end in some cases;
-        # enforce "window_dim = time_dim + 1"
-        desired_window_dim = time_dim + 1
-        actual_window_dim = out.dim() - 1  # often last
-        # Detect where the window dimension is by matching its size
-        # (safe if no other dim equals `window`; otherwise you can track it explicitly).
-        if out.size(desired_window_dim) != window:
-            # Find a dim with size == window that is NOT the time axis itself
-            cand = [
-                d for d in range(out.dim()) if out.size(d) == window and d != time_dim
-            ]
-            if cand:
-                out = out.movedim(cand[0], desired_window_dim)
+        phantom_vals = torch.zeros(
+            (int(phantom_off[-1].item()), 3),
+            device=device,
+            dtype=tool_points_nt.values().dtype,
+        )
+        phantom_action = torch.nested.nested_tensor_from_jagged(
+            values=phantom_vals, offsets=phantom_off
+        )
 
-        return out
+        return tool_action_timesteps, tool_action_point_ids, phantom_action
+
+
+class ToActionSlidingWindowTransform(Transform):
+    def __init__(self, specs: DataSpecs):
+        self._specs = specs
+
+    @property
+    def specs(self) -> DataSpecs:
+        return self._specs
+
+    def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
+        action = tensordict["action"]  # (T, N_action, action_dim)
+        new_action = sliding_windows_pad_last(
+            action, window=self._specs.action_seq_len
+        )  # (T, N_action, window, action_dim)
+        new_action = new_action.permute(0, 2, 1, 3)  # (T, window, N_action, action_dim)
+
+        tensordict["action"] = new_action
+
+        ref_action = tensordict["ref_action"]
+        new_ref_action = sliding_windows_pad_last(
+            ref_action, window=self._specs.action_seq_len
+        )  # (T, window, action_dim)
+
+        tensordict["ref_action"] = new_ref_action
+
+        return tensordict
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
-        return nested_safe_tensordict_unsqueeze(
-            self.call_trajectory_rollout(tensordict[0]), dim=0
-        )
+        return tensordict
+
+
+def sliding_windows_pad_last(
+    x: torch.Tensor, window: int, time_dim: int = 0
+) -> torch.Tensor:
+    """
+    Windows over time_dim, pads by repeating the last timestep.
+
+    Returns a tensor where the new window dimension is inserted right after time_dim.
+    """
+    if window < 1:
+        raise ValueError("window must be >= 1")
+    if x.dim() <= time_dim:
+        raise ValueError("time_dim out of range")
+
+    T = x.size(time_dim)
+    pad_len = window - 1
+
+    if pad_len > 0:
+        # take last timestep slice along time_dim
+        index = [slice(None)] * x.dim()
+        index[time_dim] = slice(T - 1, T)
+        last = x[tuple(index)]  # shape has time_dim size 1
+
+        # expand last along time_dim to pad_len
+        expand_shape = list(last.shape)
+        expand_shape[time_dim] = pad_len
+        last = last.expand(*expand_shape)
+
+        x = torch.cat([x, last], dim=time_dim)
+
+    out = x.unfold(dimension=time_dim, size=window, step=1)
+    out = out.movedim(-1, time_dim + 1)
+    return out

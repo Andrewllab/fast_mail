@@ -197,9 +197,7 @@ class SparseToPointCloudMerged(Transform):
         return self._call_track(tensordict)
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
-        return nested_safe_tensordict_unsqueeze(
-            self.call_trajectory(tensordict[0]), dim=0
-        )
+        return self.call_trajectory(tensordict)
 
     # --------------------------- mask mode ---------------------------
 

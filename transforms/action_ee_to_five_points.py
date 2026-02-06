@@ -190,9 +190,9 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
             ee_pos=ee_pos, ee_quat=ee_quat, gripper=gripper_state
         )  # (T, 5, 3)
 
-        tensordict["obs"]["gripper_points"] = {"points": points[0].to(torch.float32)}
+        tensordict["obs"]["gripper_points"] = {"points": points.to(torch.float32)}
         tensordict["obs"]["des_gripper_points"] = {
-            "points": des_points[0].to(torch.float32)
+            "points": des_points.to(torch.float32)
         }
 
         return tensordict
@@ -442,4 +442,4 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         # Keep your existing behavior
-        return self.call_trajectory_rollout(tensordict[0]).unsqueeze(0)
+        return self.call_trajectory_rollout(tensordict)

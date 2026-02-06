@@ -63,7 +63,7 @@ data:
       a: 1  # dummy param to create a new transform for test preprocess stage
 
   gpu_batch_transforms:
-    t01_random_rotation: Null
+    t04_random_rotation: Null
 
 logger:
   wandb:

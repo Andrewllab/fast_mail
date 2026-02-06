@@ -108,9 +108,7 @@ class PaktHDF5Dataset(Hdf5Dataset):
                     [obs[key][sub_key]], layout=torch.jagged
                 )
 
-        action = torch.nested.as_nested_tensor(
-            traj["action"][action_slice.start][None], layout=torch.jagged
-        )
+        action = traj["action"][action_slice.start]
         ref_action = traj["ref_action"][action_slice.start]
         phantom_action = action.clone()
 

@@ -229,9 +229,9 @@ class PaktTokenizer(Transform, nn.Module):
         )  # (B, N_t, F) -> (B, N_t, D)
         feature_embed = self.feature_ln(feature_embed)
         feature_embed = self.feature_dropout(feature_embed)
-        pos_embed, feature_embed = make_jagged_nested_tensors_compatible(
-            pos_embed, feature_embed
-        )
+        # pos_embed, feature_embed = make_jagged_nested_tensors_compatible(
+        #     pos_embed, feature_embed
+        # )
 
         # Optional color branch
         color_embed = None
@@ -240,19 +240,19 @@ class PaktTokenizer(Transform, nn.Module):
             color_embed = self.color_ln(color_embed)
 
             # Make jagged tensors compatible if needed
-            pos_embed, color_embed = make_jagged_nested_tensors_compatible(
-                pos_embed, color_embed
-            )
+            # pos_embed, color_embed = make_jagged_nested_tensors_compatible(
+            #     pos_embed, color_embed
+            # )
 
         # Token type embedding (normalize it too)
         token_type_embed = self.token_type_embedding(token_type)  # (1,D)
         token_type_embed = self.type_ln(token_type_embed)
-        token_type_embed = token_type_embed.view(1, 1, -1)  # (1,1,D)
+        # token_type_embed = token_type_embed.view(1, 1, -1)  # (1,1,D)
 
         # Timestep embedding (current timestep = 0 for obs tokens)
         timestep_embed = self._encode_timestep(self._zero_timestep)  # (1,D)
         timestep_embed = self.time_ln(timestep_embed)
-        timestep_embed = timestep_embed.view(1, 1, -1)  # (1,1,D)
+        # timestep_embed = timestep_embed.view(1, 1, -1)  # (1,1,D)
 
         # Apply gains
         pos_embed = pos_embed * self.g_pos_obs
@@ -260,13 +260,23 @@ class PaktTokenizer(Transform, nn.Module):
         timestep_embed = timestep_embed * self.g_time_obs
         token_type_embed = token_type_embed * self.g_type_obs
 
+        timestep_embed = timestep_embed.view(-1, self.embed_dim)
+        token_type_embed = token_type_embed.view(1, self.embed_dim)
+
         # Sum branches
-        token_embed = (
-            pos_embed + feature_embed + token_type_embed + timestep_embed
-        )  # (B, N, D)
+        token_values = (
+            pos_embed.values()
+            + feature_embed.values()
+            + token_type_embed
+            + timestep_embed
+        )
         if color_embed is not None:
             color_embed = color_embed * self.g_col_obs
-            token_embed = token_embed + color_embed
+            token_values = token_values + color_embed.values()
+
+        token_embed = torch.nested.nested_tensor_from_jagged(
+            token_values, offsets=pos_embed.offsets()
+        )
 
         # Post-sum mixing & normalization (key stability improvement)
         token_embed = self._post_mix_norm(token_embed, is_action=False)
@@ -413,9 +423,9 @@ class PaktTokenizer(Transform, nn.Module):
         feature_embed = self.feature_dropout(feature_embed)
 
         # Align jagged-ness with pos_embed if needed
-        pos_embed, feature_embed = make_jagged_nested_tensors_compatible(
-            pos_embed, feature_embed
-        )
+        # pos_embed, feature_embed = make_jagged_nested_tensors_compatible(
+        #     pos_embed, feature_embed
+        # )
 
         # ------- Optional Color Embedding Branch -------
         color_embed_src = None
@@ -424,9 +434,9 @@ class PaktTokenizer(Transform, nn.Module):
                 point_color
             )  # (B, N_src, 3) -> (B, N_src, D)
             color_embed_src = self.color_ln(color_embed_src)
-            pos_embed, feature_embed_src = make_jagged_nested_tensors_compatible(
-                pos_embed, feature_embed_src
-            )
+            # pos_embed, feature_embed_src = make_jagged_nested_tensors_compatible(
+            #     pos_embed, feature_embed_src
+            # )
 
             # Index source embeddings by point_ids to match each future token
             if self._is_nested(point_ids) or self._is_nested(color_embed_src):
@@ -441,21 +451,21 @@ class PaktTokenizer(Transform, nn.Module):
                 )  # (B, T*N, D), (B, N_src, D) -> (B, T*N, D)
 
             # Align jagged-ness with pos_embed if needed
-            pos_embed, color_embed = make_jagged_nested_tensors_compatible(
-                pos_embed, color_embed
-            )
+            # pos_embed, color_embed = make_jagged_nested_tensors_compatible(
+            #     pos_embed, color_embed
+            # )
 
         # ---- Timestep & Token Type Embeddings ----
         timestep_embed = self._encode_timestep(timesteps)  # (B,T*N,D)
         timestep_embed = self.time_ln(timestep_embed)
-        pos_embed, timestep_embed = make_jagged_nested_tensors_compatible(
-            pos_embed, timestep_embed
-        )
+        # pos_embed, timestep_embed = make_jagged_nested_tensors_compatible(
+        #     pos_embed, timestep_embed
+        # )
 
         # ---- Token Type Embedding ----
         token_type_embed = self.token_type_embedding(self._tok_tool)  # (1,D)
         token_type_embed = self.type_ln(token_type_embed)
-        token_type_embed = token_type_embed.view(1, 1, -1)  # (1,1,D)
+        token_type_embed = token_type_embed.view(1, -1)  # (1,1,D)
 
         # Apply gains
         pos_embed = pos_embed * self.g_pos_act
@@ -463,10 +473,23 @@ class PaktTokenizer(Transform, nn.Module):
         timestep_embed = timestep_embed * self.g_time_act
         token_type_embed = token_type_embed * self.g_type_act
 
-        token_embed = pos_embed + feature_embed + timestep_embed + token_type_embed
+        # timestep_embed = timestep_embed.view(-1, self.embed_dim)
+        token_type_embed = token_type_embed.view(1, self.embed_dim)
+
+        token_values = (
+            pos_embed.values()
+            + feature_embed.values()
+            + timestep_embed.values()
+            + token_type_embed
+        )
+
         if color_embed_src is not None:
             color_embed = color_embed * self.g_col_act
-            token_embed = token_embed + color_embed
+            token_values = token_values + color_embed.values()
+
+        token_embed = torch.nested.nested_tensor_from_jagged(
+            token_values, offsets=pos_embed.offsets()
+        )
         token_embed = self._post_mix_norm(token_embed, is_action=True)
         return token_embed
 

@@ -158,4 +158,4 @@ class Dinov3FeatureExtractorTransform(Transform):
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         # Do nothing if not called during preprocessing
-        return self.call_trajectory(tensordict[0]).unsqueeze(0)
+        return self.call_trajectory(tensordict)
