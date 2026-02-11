@@ -1,8 +1,8 @@
 defaults:
   - robocasa
 
-task: kitchen_pnp
-name: kitchen_pnp_seg
+task: kitchen_pnp_counter_to_stove
+name: kitchen_pnp_counter_to_stove_seg
 
 dataset:
   root_dir: /mnt/SmallSandwich/3d-sim2real/demonstrations/robocasa/single_stage_1440x1080_mujoco/kitchen_pnp/PnPCounterToStove/

@@ -41,11 +41,13 @@ class SparseToPointCloudMerged(Transform):
         color: bool = False,
         features: bool = False,
         camera_keys: Sequence[str] | None = None,
+        rgb_key: str = "rgb",
         # mask mode
         mask_key: str | Sequence[str] | None = None,
         # track mode
         track_key: str | Sequence[str] | None = None,
         visibility_key: str | Sequence[str] | None = None,
+        filter_initial_invisible_tracks: bool = True,
         # shared
         features_key: str | Sequence[str] | None = None,
         max_depth: float | None = None,
@@ -61,12 +63,14 @@ class SparseToPointCloudMerged(Transform):
         self.features = features
         self.max_depth = max_depth
         self._out_key = out_key
+        self.filter_initial_invisible_tracks = filter_initial_invisible_tracks
 
         self.camera_keys = list(camera_keys)
         self.mask_key = mask_key
         self.track_key = track_key
         self.visibility_key = visibility_key
         self.features_key = features_key
+        self.rgb_key = rgb_key
 
         if self.mode == "mask" and self.mask_key is None:
             raise ValueError("mask_key must be provided when mode='mask'")
@@ -213,7 +217,7 @@ class SparseToPointCloudMerged(Transform):
         acc_features: list[list[torch.Tensor]] = [[] for _ in range(B)]
 
         for camera_key in self.camera_keys:
-            rgbs = tensordict["obs", camera_key, "rgb"]
+            rgbs = tensordict["obs", camera_key, self.rgb_key]
             depths = tensordict["obs", camera_key, "depth"]
             masks = tensordict["obs", camera_key, mask_key]
             features = tensordict["obs", camera_key, features_key]
@@ -329,7 +333,7 @@ class SparseToPointCloudMerged(Transform):
         for camera_key in self.camera_keys:
             tracks = tensordict["obs", camera_key, track_key]
             visibility = tensordict["obs", camera_key, visibility_key]
-            rgbs = tensordict["obs", camera_key, "rgb"]
+            rgbs = tensordict["obs", camera_key, self.rgb_key]
             depths = tensordict["obs", camera_key, "depth"]
             features = tensordict["obs", camera_key, features_key]
 
@@ -439,6 +443,12 @@ class SparseToPointCloudMerged(Transform):
                     points_world = torch.cat([points_world, pad_pts], dim=1)
                     vis = torch.cat([vis, pad_vis], dim=1)
 
+                if self.filter_initial_invisible_tracks:
+                    valid_start = vis[:, 0] & ~points_world[:, 0].isnan().any(axis=1)
+                    points_world = points_world[valid_start]
+                    vis = vis[valid_start]
+                    cols0 = cols0[valid_start]
+                    feats0 = feats0[valid_start]
                 if (~vis[:, 0]).any() or points_world[:, 0].isnan().any():
                     log.warning(
                         "Some tracks are not visible at the first timestep; these will have invalid points."
@@ -507,6 +517,7 @@ class SparseToPointCloudMaskOnly(SparseToPointCloudMerged):
         color: bool = False,
         features: bool = False,
         camera_keys: Sequence[str] | None = None,
+        rgb_key: str = "rgb",
         mask_key: str | Sequence[str] | None = None,
         features_key: str | Sequence[str] | None = None,
         max_depth: float | None = None,
@@ -518,6 +529,7 @@ class SparseToPointCloudMaskOnly(SparseToPointCloudMerged):
             color=color,
             features=features,
             camera_keys=camera_keys,
+            rgb_key=rgb_key,
             mask_key=mask_key,
             features_key=features_key,
             max_depth=max_depth,
@@ -538,6 +550,7 @@ class SparseToPointCloudTrackOnly(SparseToPointCloudMerged):
         color: bool = False,
         features: bool = False,
         camera_keys: Sequence[str] | None = None,
+        rgb_key: str = "rgb",
         track_key: str | Sequence[str] | None = None,
         visibility_key: str | Sequence[str] | None = None,
         features_key: str | Sequence[str] | None = None,
@@ -550,6 +563,7 @@ class SparseToPointCloudTrackOnly(SparseToPointCloudMerged):
             color=color,
             features=features,
             camera_keys=camera_keys,
+            rgb_key=rgb_key,
             track_key=track_key,
             visibility_key=visibility_key,
             features_key=features_key,

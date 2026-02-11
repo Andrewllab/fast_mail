@@ -69,6 +69,9 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         self,
         specs: DataSpecs,
         ee_pose_key: str = "ee_pose",
+        apply_base_pose: bool = True,
+        base_pose_obs_key: str = "base_pose",
+        quat_action: bool = False,  # whether input action uses quat (xyz + quat + gripper) instead of axis-angle (xyz + axis-angle + gripper)
         # Gripper decode options:
         binary_gripper: bool = True,
         # Geometry params:
@@ -81,8 +84,11 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
 
         self._specs = specs
         self.ee_pose_key = ee_pose_key
+        self.apply_base_pose = apply_base_pose
+        self.base_pose_obs_key = base_pose_obs_key
 
         self.binary_gripper = binary_gripper
+        self.quat_action = quat_action
 
         self.w_open = float(w_open)
         self.w_closed = float(w_closed)
@@ -115,19 +121,26 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
 
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
         # Action from (pos, rot, gripper) -> 5 points (EE frame) -> world frame
-        action_pos = tensordict["action"][..., :3]  # (T, 3)
-        action_rot = tensordict["action"][..., 3:6]  # (T, 3) axis-angle
-        gripper_action = tensordict["action"][..., 6:7]  # (T, 1)
+        if self.quat_action:  # xyz, quat, gripper
+            action_pos = tensordict["action"][..., :3]  # (T, 3)
+            action_quat = tensordict["action"][..., 3:7]  # (T, 4) quat
+            action_rot = axis_angle_from_quat(action_quat)  # convert to axis-angle
+            gripper_action = tensordict["action"][..., 7:8]  # (T, 1)
+        else:  # xyz, axis-angle, gripper
+            action_pos = tensordict["action"][..., :3]  # (T, 3)
+            action_rot = tensordict["action"][..., 3:6]  # (T, 3) axis-angle
+            gripper_action = tensordict["action"][..., 6:7]  # (T, 1)
 
         action_points = self.ee_pose_to_3D_points(
             ee_pos=action_pos, ee_rot=action_rot, gripper=gripper_action
         )  # (T, 5, 3) in world (EE pose is in world/base frame prior to base_pose transform below)
 
         # Transform action points to world frame via base_pose
-        base_pose = tensordict["obs"]["base_pose"]  # (T, 7)
-        base_pos = base_pose[..., :3]  # (T, 3)
-        base_quat = base_pose[..., 3:]  # (T, 4)
-        action_points = transform_points(action_points, base_pos, base_quat)
+        if self.apply_base_pose:
+            base_pose = tensordict["obs"][self.base_pose_obs_key]  # (T, 7)
+            base_pos = base_pose[..., :3]  # (T, 3)
+            base_quat = base_pose[..., 3:]  # (T, 4)
+            action_points = transform_points(action_points, base_pos, base_quat)
 
         # Compute current points for conditioning / observation
         current_pos = tensordict["obs"][self.ee_pose_key][..., :3]  # (T, 3)
@@ -135,7 +148,7 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
 
         # Use previous action gripper as current gripper state (as you did)
         current_gripper = -torch.ones_like(gripper_action)  # default open
-        current_gripper[1:] = tensordict["action"][:-1, 6:7]  # shift previous
+        current_gripper[1:] = tensordict["action"][:-1, -1:]  # shift previous
 
         current_points = self.ee_pose_to_3D_points(
             ee_pos=current_pos,
@@ -170,10 +183,24 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
                 gripper=des_gripper_state,
             )
         else:
-            gripper_state = tensordict["obs"]["_action"][:, 6].to(ee_pos.dtype)  # (T,)
 
-            des_pos = tensordict["obs"]["_action"][:, :3].to(torch.float32)  # (T, 3)
-            des_rot = tensordict["obs"]["_action"][:, 3:6].to(torch.float32)  # (T, 3)
+            gripper_state = tensordict["obs"]["_action"][:, -1].to(ee_pos.dtype)  # (T,)
+
+            if self.quat_action:
+                des_pos = tensordict["obs"]["_action"][:, :3].to(
+                    torch.float32
+                )  # (T, 3)
+                des_quat = tensordict["obs"]["_action"][:, 3:7].to(
+                    torch.float32
+                )  # (T, 4)
+                des_rot = axis_angle_from_quat(des_quat)
+            else:
+                des_pos = tensordict["obs"]["_action"][:, :3].to(
+                    torch.float32
+                )  # (T, 3)
+                des_rot = tensordict["obs"]["_action"][:, 3:6].to(
+                    torch.float32
+                )  # (T, 3)
 
             des_points = self.ee_pose_to_3D_points(
                 ee_pos=des_pos,
@@ -181,10 +208,11 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
                 gripper=gripper_state,
             )  # (T, 5, 3)
 
-            base_pose = tensordict["obs"]["base_pose"]  # (T, 7)
-            base_pos = base_pose[..., :3]  # (T, 3)
-            base_quat = base_pose[..., 3:]  # (T, 4)
-            des_points = transform_points(des_points, base_pos, base_quat)
+            if self.apply_base_pose:
+                base_pose = tensordict["obs"][self.base_pose_obs_key]  # (T, 7)
+                base_pos = base_pose[..., :3]  # (T, 3)
+                base_quat = base_pose[..., 3:]  # (T, 4)
+                des_points = transform_points(des_points, base_pos, base_quat)
 
         points = self.ee_pose_to_3D_points(
             ee_pos=ee_pos, ee_quat=ee_quat, gripper=gripper_state
@@ -219,22 +247,23 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         # reshape to (B*T, 5, 3), operating in the same frame as stored in tensordict["action"]
         points = points.swapaxes(1, 2)  # (B, T, 5, 3)
 
-        # Inverse base transform: world -> base local (or whatever your original action frame is)
-        base_pose = tensordict["obs"][
-            "base_pose"
-        ]  # (T, 7) or (B, T, 7)? you use [:,0] later.
-        if base_pose.ndim == 3 and base_pose.shape[1] == 1:
-            base_pose = base_pose[:, 0, :]  # (T, 7)
+        if self.apply_base_pose:
+            # Inverse base transform: world -> base local (or whatever your original action frame is)
+            base_pose = tensordict["obs"][
+                self.base_pose_obs_key
+            ]  # (T, 7) or (B, T, 7)? you use [:,0] later.
+            if base_pose.ndim == 3 and base_pose.shape[1] == 1:
+                base_pose = base_pose[:, 0, :]  # (T, 7)
 
-        base_pos = base_pose[..., :3]  # (T, 3)
-        base_quat = base_pose[..., 3:]  # (T, 4)
+            base_pos = base_pose[..., :3]  # (T, 3)
+            base_quat = base_pose[..., 3:]  # (T, 4)
 
-        inv_base_pos, inv_base_quat = subtract_frame_transforms(base_pos, base_quat)
-        points = transform_points(
-            points.reshape(B, -1, 3), inv_base_pos, inv_base_quat
-        ).view(
-            B, T, N, 3
-        )  # (B, T, 5, 3)
+            inv_base_pos, inv_base_quat = subtract_frame_transforms(base_pos, base_quat)
+            points = transform_points(
+                points.reshape(B, -1, 3), inv_base_pos, inv_base_quat
+            ).view(
+                B, T, N, 3
+            )  # (B, T, 5, 3)
 
         # Pose from first 3 points (in "action frame")
         ee_pos, ee_rot = self.points_to_pose(points[..., :3, :].reshape(B * T, 3, 3))
@@ -248,7 +277,11 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         ee_rot = ee_rot.view(B, T, 3)
         gripper = gripper.view(B, T, 1)
 
-        action = torch.cat([ee_pos, ee_rot, gripper], dim=-1)  # (B*T, 7)
+        if self.quat_action:
+            ee_quat = quat_from_axis_angle(ee_rot.reshape(B * T, 3)).view(B, T, 4)
+            action = torch.cat([ee_pos, ee_quat, gripper], dim=-1)  # (B*T, 8)
+        else:
+            action = torch.cat([ee_pos, ee_rot, gripper], dim=-1)  # (B*T, 7)
 
         tensordict["action"] = action
 

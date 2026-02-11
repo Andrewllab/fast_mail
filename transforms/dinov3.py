@@ -28,6 +28,7 @@ class Dinov3FeatureExtractorTransform(Transform):
         specs: DataSpecs,
         device: str | torch.device = "cuda",
         camera_keys: str | List[str] = "left_cam",
+        rgb_key: str = "rgb",
         feature_out_key: str = "dinov3_features",
         dinov3_model: str = "facebook/dinov3-vitb16-pretrain-lvd1689m",
         dinov3_patch_size: int = 16,
@@ -56,6 +57,7 @@ class Dinov3FeatureExtractorTransform(Transform):
         if isinstance(self.camera_keys, str):
             self.camera_keys = [self.camera_keys]
         self.feature_out_key = feature_out_key
+        self.rgb_key = rgb_key
 
         self.generate_tracking_points = generate_tracking_points
         self.tracking_points_key = tracking_points_key
@@ -72,10 +74,11 @@ class Dinov3FeatureExtractorTransform(Transform):
 
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
         for camera_key in self.camera_keys:
-            traj_len = tensordict["obs"][camera_key]["rgb"].shape[0]
+            traj_len = tensordict["obs"][camera_key][self.rgb_key].shape[0]
 
             video = (
-                tensordict["obs"][camera_key]["rgb"].float().permute(0, 3, 1, 2) / 255.0
+                tensordict["obs"][camera_key][self.rgb_key].float().permute(0, 3, 1, 2)
+                / 255.0
             )
 
             img_height, img_width = video.shape[2], video.shape[3]

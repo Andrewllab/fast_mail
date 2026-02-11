@@ -46,7 +46,9 @@ class SamV3VideoSegmenterTransform(Transform):
         segmentation_text_prompts: Optional[str | List[str]] = None,
         segmentation_text_source: str = "prompt",
         camera_keys: str | List[str] = "left_cam",
+        rgb_key: str = "rgb",
         device: str = "cuda",
+        out_device: str | torch.device = "cpu",
         # GroundingDINO
         gdino_model_id: str = "IDEA-Research/grounding-dino-base",
         gdino_box_threshold: float = 0.3,
@@ -55,11 +57,12 @@ class SamV3VideoSegmenterTransform(Transform):
         anchor_frame_idx: int = 0,
         sam_dtype: torch.dtype = torch.bfloat16,
         max_frame_num_to_track: int = 10_000,
+        add_backward_tracking: bool = True,
     ):
         super().__init__()
         self._specs = specs
         self.device = torch.device(device)
-
+        self.out_device = torch.device(out_device)
         # ---- GroundingDINO (box proposals) :contentReference[oaicite:4]{index=4}
         self.gdino_processor = AutoProcessor.from_pretrained(gdino_model_id)
         self.gdino_model = AutoModelForZeroShotObjectDetection.from_pretrained(
@@ -83,7 +86,7 @@ class SamV3VideoSegmenterTransform(Transform):
             if isinstance(camera_keys, (list, ListConfig))
             else [camera_keys]
         )
-        self.segmenter_out_key = (
+        self.segmenter_out_keys = (
             segmenter_out_keys
             if isinstance(segmenter_out_keys, (list, ListConfig))
             else [segmenter_out_keys]
@@ -105,6 +108,8 @@ class SamV3VideoSegmenterTransform(Transform):
             raise ValueError("segmentation_text_source must be 'prompt' or 'key'")
 
         self.segmentation_text_source = segmentation_text_source
+        self.rgb_key = rgb_key
+        self.add_backward_tracking = add_backward_tracking
 
     @property
     def specs(self) -> DataSpecs:
@@ -125,7 +130,7 @@ class SamV3VideoSegmenterTransform(Transform):
         outputs = self.gdino_model(**inputs)
 
         # target_sizes expects [height,width]
-        H, W = frame.size[1], frame.size[0]
+        H, W = frame.shape[0], frame.shape[1]
         results = self.gdino_processor.post_process_grounded_object_detection(
             outputs,
             inputs.input_ids,
@@ -139,47 +144,6 @@ class SamV3VideoSegmenterTransform(Transform):
 
         best_i = int(torch.argmax(r0["scores"]).item())
         return r0["boxes"][best_i].to(self.device)  # [x1,y1,x2,y2]
-
-    @torch.no_grad()
-    def _gdino_best_box_xyxy_video(
-        self, frames: List[Image.Image], text_prompt: str
-    ) -> Optional[torch.Tensor]:
-        """
-        Returns best detection box as torch.Tensor[4] in XYXY absolute pixels, on self.device.
-        """
-        text = _gdino_text(text_prompt)
-
-        best_frame_idx = -1
-        best_score = -float("inf")
-        best_box = None
-
-        for frame_idx, frame in enumerate(frames):
-            inputs = self.gdino_processor(
-                images=frame, text=text, return_tensors="pt"
-            ).to(self.device)
-            outputs = self.gdino_model(**inputs)
-
-            # target_sizes expects [height,width]
-            H, W = frame.shape[0], frame.shape[1]
-            results = self.gdino_processor.post_process_grounded_object_detection(
-                outputs,
-                inputs.input_ids,
-                threshold=self.gdino_box_threshold,
-                text_threshold=self.gdino_text_threshold,
-                target_sizes=[(H, W)],
-            )
-            r0 = results[0]
-            if r0["boxes"].numel() == 0:
-                continue
-
-            best_i = int(torch.argmax(r0["scores"]).item())
-            if r0["scores"][best_i] > best_score:
-                best_score = r0["scores"][best_i]
-                best_box = r0["boxes"][best_i]
-                best_frame_idx = frame_idx
-        if best_box is None:
-            return None, -1
-        return best_box.to(self.device), best_frame_idx  # [x1,y1,x2,y2]
 
     @torch.no_grad()
     def _track_with_sam3_tracker(
@@ -246,7 +210,7 @@ class SamV3VideoSegmenterTransform(Transform):
     @torch.no_grad()
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
         for camera_key in self.camera_keys:
-            video = tensordict["obs"][camera_key]["rgb"]  # [T,H,W,C]
+            video = tensordict["obs"][camera_key][self.rgb_key]  # [T,H,W,C]
             T = int(video.shape[0])
 
             if self.segmentation_text_source == "prompt":
@@ -261,11 +225,11 @@ class SamV3VideoSegmenterTransform(Transform):
             ann_frame_idx = int(max(0, min(T - 1, self.anchor_frame_idx)))
 
             for text_prompt, segmenter_out_key in zip(
-                segmentation_texts, self.segmenter_out_key
+                segmentation_texts, self.segmenter_out_keys
             ):
                 # 1) GroundingDINO on anchor frame to pick initial object :contentReference[oaicite:8]{index=8}
-                init_box, ann_frame_idx = self._gdino_best_box_xyxy_video(
-                    video_frames, str(text_prompt)
+                init_box = self._gdino_best_box_xyxy(
+                    video_frames[ann_frame_idx], str(text_prompt)
                 )
 
                 # If no detection, return empty mask
@@ -278,7 +242,7 @@ class SamV3VideoSegmenterTransform(Transform):
                     continue
 
                 # 2) Track forward from anchor frame
-                fwd_masks = self._track_with_sam3_tracker(
+                segmentations = self._track_with_sam3_tracker(
                     video_frames=video_frames,
                     ann_frame_idx=ann_frame_idx,
                     init_box_xyxy=init_box,
@@ -288,22 +252,103 @@ class SamV3VideoSegmenterTransform(Transform):
                 # rev_frames = torch.flip(video_frames, dims=[0])
                 # rev_ann_idx = (T - 1) - ann_frame_idx
 
-                bwd_masks = self._track_with_sam3_tracker(
-                    video_frames=video_frames,
-                    ann_frame_idx=ann_frame_idx,
-                    init_box_xyxy=init_box,
-                    reverse=True,
+                if self.add_backward_tracking:
+                    bwd_masks = self._track_with_sam3_tracker(
+                        video_frames=video_frames,
+                        ann_frame_idx=ann_frame_idx,
+                        init_box_xyxy=init_box,
+                        reverse=True,
+                    )
+
+                    # 4) Merge (OR). If you prefer “trust forward over backward”, replace this with a directional stitch.
+                    segmentations = segmentations | bwd_masks
+
+                tensordict["obs", camera_key, segmenter_out_key] = segmentations.to(
+                    self.out_device
                 )
-
-                # 4) Merge (OR). If you prefer “trust forward over backward”, replace this with a directional stitch.
-                segmentations = fwd_masks | bwd_masks
-
-                tensordict["obs", camera_key, segmenter_out_key] = segmentations
 
         return tensordict
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         return tensordict
+
+
+class PersistentSamV3VideoSegmenterTransform(SamV3VideoSegmenterTransform):
+    """
+    A variant of SamV3VideoSegmenterTransform that keeps the same object mask across the whole video,
+    Only resetting the object selection with a reset signal in the tensordict, instead of re-running GroundingDINO on every new video segment.
+
+    Used for real world testing where we get one image at a time and want to keep tracking the same object until we get a reset signal (e.g. new episode).
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.video_sessions = (
+            {}
+        )  # dict of active SAM video sessions keyed by camera_key
+        for camera_key in self.camera_keys:
+            self.video_sessions[camera_key] = None
+
+    def __call__(self, tensordict):
+        if tensordict.batch_size != 1:
+            raise ValueError(
+                "PersistentSamV3VideoSegmenterTransform only supports batch_size=1"
+            )
+
+        for camera_key in self.camera_keys:
+            video_session = self.video_sessions[camera_key]
+            reset = tensordict.get(("reset"), False)
+
+            video_frame = tensordict["obs"][camera_key][self.rgb_key]  # [T,H,W,C]
+            ann_frame_idx = 0  # Always consider the first frame or first frame after reset as anchor for new sessions
+
+            # SAM Processing
+            inputs = self.sam_processor(
+                images=video_frame, device=self.device, return_tensors="pt"
+            )
+
+            if video_session is None or reset:
+                # Grounded Dino
+                init_boxes = []
+                for segmentation_text in self.segmentation_text_prompts:
+                    init_box = self._gdino_best_box_xyxy(video_frame, segmentation_text)
+                    init_boxes.append(init_box)
+                input_boxes = [[box.tolist() for box in init_boxes if box is not None]]
+
+                # init samv3 session
+                video_session = self.sam_processor.init_video_session(
+                    inference_device=self.device,
+                    dtype=torch.bfloat16,
+                )
+                self.video_sessions[camera_key] = (
+                    video_session  # Store session for this camera
+                )
+
+                self.sam_processor.add_inputs_to_inference_session(
+                    inference_session=video_session,
+                    frame_idx=0,
+                    obj_ids=torch.range(
+                        1, len(input_boxes) + 1, device=self.device, dtype=torch.int64
+                    ),
+                    input_boxes=[*init_boxes.tolist()],
+                    original_size=inputs.original_sizes[
+                        0
+                    ],  # need to be provided when using streaming video inference
+                )
+
+            sam3_tracker_video_output = self.sam_model(
+                inference_session=video_session, frame=inputs.pixel_values[0]
+            )
+            video_res_masks = self.sam_processor.post_process_masks(
+                [sam3_tracker_video_output.pred_masks],
+                original_sizes=inputs.original_sizes,
+                binarize=False,
+            )[0]
+            for segmenter_out_key in self.segmenter_out_keys:
+                tensordict["obs", camera_key, segmenter_out_key] = video_res_masks.to(
+                    self.out_device
+                )
 
 
 class SamV3PictureSegmenterTransform(Transform):
@@ -325,7 +370,9 @@ class SamV3PictureSegmenterTransform(Transform):
         segmentation_text_prompts: Optional[str | List[str]] = None,
         segmentation_text_source: str = "prompt",
         camera_keys: str | List[str] = "left_cam",
+        rgb_key: str = "rgb",
         device: str | torch.device = "cuda",
+        out_device: str | torch.device = "cpu",
         # GroundingDINO
         gdino_model_id: str = "IDEA-Research/grounding-dino-base",
         gdino_box_threshold: float = 0.3,
@@ -341,7 +388,9 @@ class SamV3PictureSegmenterTransform(Transform):
         super().__init__()
         self._specs = specs
         self.device = torch.device(device) if isinstance(device, str) else device
-
+        self.out_device = (
+            torch.device(out_device) if isinstance(out_device, str) else out_device
+        )
         # GroundingDINO :contentReference[oaicite:4]{index=4}
         self.gdino_processor = AutoProcessor.from_pretrained(gdino_model_id)
         self.gdino_model = AutoModelForZeroShotObjectDetection.from_pretrained(
@@ -371,10 +420,10 @@ class SamV3PictureSegmenterTransform(Transform):
         self.camera_keys = camera_keys
         if isinstance(self.camera_keys, str):
             self.camera_keys = [self.camera_keys]
-        self.segmenter_out_key = segmenter_out_keys
-        if isinstance(self.segmenter_out_key, str):
-            self.segmenter_out_key = [self.segmenter_out_key]
-        if len(self.segmenter_out_key) != len(self.camera_keys):
+        self.segmenter_out_keys = segmenter_out_keys
+        if isinstance(self.segmenter_out_keys, str):
+            self.segmenter_out_keys = [self.segmenter_out_keys]
+        if len(self.segmenter_out_keys) != len(self.camera_keys):
             raise ValueError("segmenter_out_keys length must match camera_keys length")
 
         if segmentation_text_source == "prompt":
@@ -394,6 +443,7 @@ class SamV3PictureSegmenterTransform(Transform):
 
         self.segmentation_text_source = segmentation_text_source
         self.sam_dtype = sam_dtype
+        self.rgb_key = rgb_key
 
     @property
     def specs(self) -> DataSpecs:
@@ -514,7 +564,7 @@ class SamV3PictureSegmenterTransform(Transform):
     @torch.no_grad()
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
         for camera_key in self.camera_keys:
-            video = tensordict["obs"][camera_key]["rgb"]  # expected [T,H,W,C]
+            video = tensordict["obs"][camera_key][self.rgb_key]  # expected [T,H,W,C]
             T, H, W, C = video.shape
             assert C == 3, f"Expected RGB video with 3 channels, got {C}"
 
@@ -530,7 +580,7 @@ class SamV3PictureSegmenterTransform(Transform):
             video_bchw = video.permute(0, 3, 1, 2).contiguous()
 
             for text_prompt, segmenter_out_key in zip(
-                segmentation_texts, self.segmenter_out_key
+                segmentation_texts, self.segmenter_out_keys
             ):
                 # 1) GroundingDINO per-frame boxes (batched)
                 boxes_xyxy, box_scores = self._gdino_boxes_for_video(
@@ -542,19 +592,21 @@ class SamV3PictureSegmenterTransform(Transform):
                     video_bchw, boxes_xyxy
                 )
 
-                tensordict["obs", camera_key, segmenter_out_key] = segmentations
+                tensordict["obs", camera_key, segmenter_out_key] = segmentations.to(
+                    self.out_device
+                )
                 tensordict["obs", camera_key, f"{segmenter_out_key}_box_xyxy"] = (
-                    boxes_xyxy
+                    boxes_xyxy.to(self.out_device)
                 )
                 tensordict["obs", camera_key, f"{segmenter_out_key}_box_scores"] = (
-                    box_scores
+                    box_scores.to(self.out_device)
                 )
                 tensordict[
                     "obs", camera_key, f"{segmenter_out_key}_segmentation_scores"
-                ] = segmentation_scores
+                ] = segmentation_scores.to(self.out_device)
 
         return tensordict
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         # Do nothing if not called during preprocessing
-        return self.call_trajectory(tensordict[0]).unsqueeze(0)
+        return self.call_trajectory(tensordict)

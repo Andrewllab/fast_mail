@@ -4,18 +4,20 @@ defaults:
 
   # Remove unused defaults and get the actual segmentations from robocasa
   - /transforms@data.preprepreprocess.t01_remove_inhand: cleanup
-  - /transforms@data.preprepreprocess.t02_apply_robocasa_segmentations: apply_robocasa_segmentations
-  
+  # - /transforms@data.preprepreprocess.t02_apply_robocasa_segmentations: apply_robocasa_segmentations
+  - /goals@data.preprepreprocess.t03_target_tool_from_foldername: add_target_tool_from_foldername_real
+
   # Larger vision tasks
+  - /transforms@data.prepreprocess.t02_samv3: grounding_samv3_segmenter
   - /transforms@data.prepreprocess.t03_dinov3: dinov3
   - /transforms@data.prepreprocess.t04_cotracker: cotracker
   - /transforms@data.prepreprocess.t05_to_masked_featured_pointcloud: to_masked_featured_pointcloud
   - /transforms@data.prepreprocess.t06_to_tracked_featured_pointcloud: to_tracked_featured_pointcloud
   # - /transforms@data.prepreprocess.t07_to_masked_tool_pointcloud: to_masked_featured_pointcloud
-  - /transforms@data.prepreprocess.t99_cleanup: cleanup
+  # - /transforms@data.prepreprocess.t99_cleanup: cleanup
 
   # Last little part that connects everyting
-  - /transforms@data.preprocess.t01_robocasa_use_abs_actions: robocasa_use_abs_actions
+  # - /transforms@data.preprocess.t01_robocasa_use_abs_actions: robocasa_use_abs_actions
   - /transforms@data.preprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
   - /transforms@data.preprocess.t03_to_sliding_window_action: to_sliding_window_action
   - /transforms@data.preprocess.t99_cleanup: cleanup
@@ -28,12 +30,12 @@ defaults:
   # - /transforms@data.gpu_batch_transforms.t99_render_pcd: pakt_render_pointcloud
 
 
-
-camera_keys: ["left_cam", "right_cam"]
+camera_keys: ["front_left_cam", "front_right_cam"]
 rgb_key: left
 
 data:
   preprepreprocess:
+    # overwrite: True
     backend: hdf5
     root_dir: ${paths.preprepreprocessed_dir}/robocasa/${data.name}
     t01_remove_inhand:
@@ -44,7 +46,7 @@ data:
     backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.prepreprocessed_dir}/robocasa/${data.name}_pointclouds
-    overwrite: True
+    # overwrite: True
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
       drop_keys: [left_cam, right_cam, gripper_cam]
@@ -59,9 +61,18 @@ data:
     root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_pointclouds
     overwrite: True
 
+    t01_action_type:
+      _target_: transforms.action_switch_type.SwitchActionType
+      _partial_: True
+      obs_key: next_target_ee_pose
+
+    t02_ee_pose_to_five_points:
+      apply_base_pose: False 
+      quat_action: True
+
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
-      drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose, left_cam, right_cam, gripper_cam]
+      drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose, front_left_cam, front_right_cam, gripper_cam]
 
 # disable the batch size finder for point clouds, because the data points 
 # don't have a consistent memory size

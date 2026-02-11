@@ -3,8 +3,9 @@ _partial_: True
 color: True
 max_depth: 5.0
 features: True
-camera_keys: [left_cam, right_cam]
+camera_keys: ${camera_keys}
 track_key: cotracker_tracks
 visibility_key: cotracker_visibility
 features_key: dinov3_features
 out_key: tool_points
+rgb_key: ${rgb_key}

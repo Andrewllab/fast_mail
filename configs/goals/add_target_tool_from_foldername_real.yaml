@@ -1,0 +1,37 @@
+_target_: transforms.goal_from_foldername.GoalObjectsFromFolderName
+_partial_: True
+current_task: null
+goal_mapping:
+  # drawer
+  top: 
+    tool: red cube
+    target: drawer
+  bottom: 
+    tool: red cube
+    target: drawer
+  # stack task
+  blue_in_purple: 
+    tool: blue cup
+    target: purple cup
+  orange_in_red: 
+    tool: orange cup
+    target: red cup
+  red_in_blue: 
+    tool: red cup
+    target: blue cup
+  yellow_in_orange: 
+    tool: yellow cup
+    target: orange cup
+  # arrange
+  blue_cup: 
+    tool: blue cup
+    target: coffee machine
+  orange_cup: 
+    tool: orange cup
+    target: coffee machine
+  pink_bowl: 
+    tool: pink bowl
+    target: coffee machine
+  red_cup: 
+    tool: red cup
+    target: coffee machine

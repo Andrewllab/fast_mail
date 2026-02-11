@@ -98,19 +98,25 @@ class BesoAgent(BaseBesoAgent):
                 "val_position_mse", position_error, batch_size=batch["obs"].shape[0]
             )
 
-            pred_rot = prediction[..., 3:6]
-            pred_quat = quat_from_axis_angle(pred_rot)
+            if (
+                prediction.shape[-1] == 7
+            ):  # if the action has 7 dimensions the rotation is a axis angle
+                pred_rot = prediction[..., 3:6]
+                pred_quat = quat_from_axis_angle(pred_rot)
 
-            ref_rot = batch["ref_action"][..., 3:6]
-            ref_quat = quat_from_axis_angle(ref_rot)
+                ref_rot = batch["ref_action"][..., 3:6]
+                ref_quat = quat_from_axis_angle(ref_rot)
+            else:
+                pred_quat = prediction[..., 3:7]
+                ref_quat = batch["ref_action"][..., 3:7]
 
             rotation_error = quat_rotation_distance(pred_quat, ref_quat).mean()
             self.log(
                 "val_rotation_mse", rotation_error, batch_size=batch["obs"].shape[0]
             )
 
-            pred_gripper = prediction[..., 6:]
-            ref_gripper = batch["ref_action"][..., 6:]
+            pred_gripper = prediction[..., -1:]
+            ref_gripper = batch["ref_action"][..., -1:]
             gripper_error = F.mse_loss(pred_gripper, ref_gripper)
             self.log("val_gripper_mse", gripper_error, batch_size=batch["obs"].shape[0])
 

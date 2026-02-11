@@ -40,6 +40,7 @@ class SamV3SegmenterTransform(Transform):
         segmentation_text_prompts: Optional[str | List[str]] = None,
         segmentation_text_source: str = "prompt",
         camera_keys: str | List[str] = "left_cam",
+        rgb_key: str = "rgb",
         device: str | torch.device = "cuda",
     ):
         super().__init__()
@@ -82,6 +83,7 @@ class SamV3SegmenterTransform(Transform):
             )
 
         self.segmentation_text_source = segmentation_text_source
+        self.rgb_key = rgb_key
 
     @property
     def specs(self) -> DataSpecs:
@@ -90,7 +92,7 @@ class SamV3SegmenterTransform(Transform):
     @torch.no_grad()
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
         for camera_key in self.camera_keys:
-            video = tensordict["obs"][camera_key]["rgb"]
+            video = tensordict["obs"][camera_key][self.rgb_key]
 
             if self.segmentation_text_source == "prompt":
                 segmentation_texts = self.segmentation_text_prompts

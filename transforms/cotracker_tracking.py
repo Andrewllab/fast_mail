@@ -26,6 +26,7 @@ class CotrackerPointTrackingTransform(Transform):
         device: str | torch.device = "cuda",
         track_mode: str = "grid",
         camera_keys: str | List[str] = "left_cam",
+        rgb_key: str = "rgb",
         track_out_key: str = "cotracker_tracks",
         visibility_out_key: str = "cotracker_visibility",
         # Grid tracking mode parameters
@@ -73,6 +74,7 @@ class CotrackerPointTrackingTransform(Transform):
             self.camera_keys = [self.camera_keys]
         self.track_out_key = track_out_key
         self.visibility_out_key = visibility_out_key
+        self.rgb_key = rgb_key
 
     @property
     def specs(self) -> DataSpecs:
@@ -82,7 +84,8 @@ class CotrackerPointTrackingTransform(Transform):
         for camera_key in self.camera_keys:
             traj_len = tensordict["action"].shape[0]
             video = (
-                tensordict["obs"][camera_key]["rgb"].permute(0, 3, 1, 2).float() / 255.0
+                tensordict["obs"][camera_key][self.rgb_key].permute(0, 3, 1, 2).float()
+                / 255.0
             )
 
             if "masked" in self.track_mode:
