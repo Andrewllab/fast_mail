@@ -8,6 +8,7 @@ defaults:
   # Render cameras after preprocessing but before normalization
   # - transforms@data.gpu_batch_transforms.t9_render_cameras: render_cameras
   # - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
+  # - /transforms@data.gpu_batch_transforms.t99_render_pcd: pakt_render_pointcloud
   - _self_
   - platform: default
   - optional local: default
@@ -20,38 +21,51 @@ checkpoint:
   # either specify a complete checkpoint path...
   log_dir:
   # ...or specify the wandb run name
-  wandb_run_id: ???
+  wandb_run_id: 1gjavb94
   # project and entity are only needed if they differ from the settings in the wandb logger config
-  wandb_project: 3d-sim2real
+  wandb_project: pakt_real_stack
   wandb_entity: nicolasschreiber
   epochs: last  # options: last, all, last_n (default: last)
   artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
   use_artifact: false  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
+  weights_only: false
 
 agent:
   num_sampling_steps: 10
+  weights_only: false
 
 data:
   eval_mode: env
   env:
-    action_horizon: 20
+    action_horizon: 30
     fps: 10
 
-  preprocess:
-    t1_drop: null
-    t99_cleanup: null
+  # preprocess:
+  #   t1_drop: null
+  #   t99_cleanup: null
+
+  #   # on rollout, we need to specify the goal text ourselves
+  #   t8_add_goal:
+  #     current_task:  # REPLACE with current goal command
+
+  prepreprocess:
+    t02_samv3:
+      _target_: transforms.grounding_samv3.PersistentSamV3VideoSegmenterTransform
+    t06_to_tracked_featured_pointcloud:
+      mode: mask
+      mask_key: obj_segmentation
+      _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
+
+  preprepreprocess:
+    t03_target_tool_from_foldername: 
+      current_task: "orange_in_red"
 
     # on rollout, we need to specify the goal text ourselves
     t40_add_goal:
       current_task:  # REPLACE with current goal command
 
   gpu_batch_transforms:
-    t9_render_pcd:
-      render_camera_poses: True
-      render_ee_pose: True
-
-    t9_render_cameras:
-      stream_names: ["rgb", "left", "depth"] # render all streams
+    t04_random_rotation: null
 
 trainer:
   default_root_dir: ${paths.output_dir}

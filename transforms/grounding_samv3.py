@@ -291,16 +291,27 @@ class PersistentSamV3VideoSegmenterTransform(SamV3VideoSegmenterTransform):
             self.video_sessions[camera_key] = None
 
     def __call__(self, tensordict):
-        if tensordict.batch_size != 1:
+        if tensordict.shape[0] != 1:
             raise ValueError(
                 "PersistentSamV3VideoSegmenterTransform only supports batch_size=1"
             )
+
+        if self.segmentation_text_source == "prompt":
+            segmentation_texts = self.segmentation_text_prompts
+        else:
+            segmentation_texts = [
+                tensordict["goal"][k] for k in self.segmentation_text_keys
+            ]
 
         for camera_key in self.camera_keys:
             video_session = self.video_sessions[camera_key]
             reset = tensordict.get(("reset"), False)
 
-            video_frame = tensordict["obs"][camera_key][self.rgb_key]  # [T,H,W,C]
+            video_frame = tensordict["obs"][camera_key][self.rgb_key][0]  # [T,H,W,C]
+            # Convert to BCHW torch tensor (stay in torch for batching)
+            # Keep as uint8; processors will handle scaling/normalization.
+            # video_frame = video_frame.permute(2, 0, 1).contiguous()
+
             ann_frame_idx = 0  # Always consider the first frame or first frame after reset as anchor for new sessions
 
             # SAM Processing
@@ -311,7 +322,7 @@ class PersistentSamV3VideoSegmenterTransform(SamV3VideoSegmenterTransform):
             if video_session is None or reset:
                 # Grounded Dino
                 init_boxes = []
-                for segmentation_text in self.segmentation_text_prompts:
+                for segmentation_text in segmentation_texts:
                     init_box = self._gdino_best_box_xyxy(video_frame, segmentation_text)
                     init_boxes.append(init_box)
                 input_boxes = [[box.tolist() for box in init_boxes if box is not None]]
@@ -319,7 +330,7 @@ class PersistentSamV3VideoSegmenterTransform(SamV3VideoSegmenterTransform):
                 # init samv3 session
                 video_session = self.sam_processor.init_video_session(
                     inference_device=self.device,
-                    dtype=torch.bfloat16,
+                    dtype=self.sam_model.dtype,
                 )
                 self.video_sessions[camera_key] = (
                     video_session  # Store session for this camera
@@ -328,10 +339,8 @@ class PersistentSamV3VideoSegmenterTransform(SamV3VideoSegmenterTransform):
                 self.sam_processor.add_inputs_to_inference_session(
                     inference_session=video_session,
                     frame_idx=0,
-                    obj_ids=torch.range(
-                        1, len(input_boxes) + 1, device=self.device, dtype=torch.int64
-                    ),
-                    input_boxes=[*init_boxes.tolist()],
+                    obj_ids=list(range(1, len(init_boxes) + 1)),
+                    input_boxes=input_boxes,
                     original_size=inputs.original_sizes[
                         0
                     ],  # need to be provided when using streaming video inference
@@ -340,15 +349,18 @@ class PersistentSamV3VideoSegmenterTransform(SamV3VideoSegmenterTransform):
             sam3_tracker_video_output = self.sam_model(
                 inference_session=video_session, frame=inputs.pixel_values[0]
             )
-            video_res_masks = self.sam_processor.post_process_masks(
+            video_res_masks_ = self.sam_processor.post_process_masks(
                 [sam3_tracker_video_output.pred_masks],
                 original_sizes=inputs.original_sizes,
-                binarize=False,
-            )[0]
-            for segmenter_out_key in self.segmenter_out_keys:
-                tensordict["obs", camera_key, segmenter_out_key] = video_res_masks.to(
+                binarize=True,
+            )
+            video_res_masks = video_res_masks_[0]
+            for mask_idx, segmenter_out_key in enumerate(self.segmenter_out_keys):
+                tensordict["obs", camera_key, segmenter_out_key] = video_res_masks[mask_idx].to(
                     self.out_device
                 )
+
+        return tensordict
 
 
 class SamV3PictureSegmenterTransform(Transform):

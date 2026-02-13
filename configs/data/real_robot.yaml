@@ -1,7 +1,8 @@
 defaults:
   - /cameras@env.env.cameras.front_left_cam: zed_mini_17008863
   - /cameras@env.env.cameras.front_right_cam: zed_mini_16055244
-  - /cameras@env.env.cameras.gripper_cam: realsense_d405_218622270040
+  # - /cameras@env.env.cameras.gripper_cam: realsense_d405_218622270040
+  - /cameras/calibration@dataset.extrinsics: 2025-09-16
   - /robot@env.env.robot: panda4
   - _self_
 

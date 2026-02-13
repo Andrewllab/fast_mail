@@ -97,7 +97,7 @@ class GoalObjectsFromFolderName(Transform):
 
         elif self.current_task is not None:
             # during rollout on an environment, we set the goal explicitly
-            goal_dict = self.goal_mapping[self.current_task]
+            goal_dict = dict(self.goal_mapping[self.current_task])
 
             # TODO: temporary fix
             # During training, data items are collated, which turns string goal
