@@ -33,11 +33,13 @@ class ToPaktActionObsTransform(ReversibleTransform):
         target_points_key: str = "target_points",
         gripper_points_key: str = "gripper_points",
         des_gripper_points_key: str = "des_gripper_points",
+        include_tool_in_action: bool = True,
     ):
         self.tool_points_key = tool_points_key
         self.target_points_key = target_points_key
         self.gripper_points_key = gripper_points_key
         self.des_gripper_points_key = des_gripper_points_key
+        self.include_tool_in_action = include_tool_in_action
         self.window_len = specs.action_seq_len
         self.num_action_points = 5
         self._specs = specs
@@ -255,7 +257,7 @@ class ToPaktActionObsTransform(ReversibleTransform):
         sel = vis_work.nonzero(
             as_tuple=False
         )  # (K, 2) columns: [flat_point_idx, timestep]
-        if sel.numel() == 0:
+        if sel.numel() == 0 or not self.include_tool_in_action:
             # No action points selected: return empty jagged tensors
             empty_off = torch.zeros(
                 (B + 1,), device=points_off.device, dtype=points_off.dtype
@@ -358,17 +360,35 @@ class ToPaktActionObsTransform(ReversibleTransform):
             self.window_len
         )  # (sum_N*T,)
 
-        # Offsets for (B, N_tool*T): multiply by T
-        tool_action_off = off.to(torch.long) * self.window_len  # (B+1,)
-        tool_action_timesteps = torch.nested.nested_tensor_from_jagged(
-            values=tool_action_timesteps_vals, offsets=tool_action_off
-        )
-        tool_action_point_ids = torch.nested.nested_tensor_from_jagged(
-            values=tool_action_point_ids_vals, offsets=tool_action_off
-        )
-
         # -------- phantom_action (size per batch = (num_action_points + N_tool)*T) --------
-        phantom_lengths = (lengths + self.num_action_points) * self.window_len  # (B,)
+        if self.include_tool_in_action:
+            # Offsets for (B, N_tool*T): multiply by T
+            tool_action_off = off.to(torch.long) * self.window_len  # (B+1,)
+            tool_action_timesteps = torch.nested.nested_tensor_from_jagged(
+                values=tool_action_timesteps_vals, offsets=tool_action_off
+            )
+            tool_action_point_ids = torch.nested.nested_tensor_from_jagged(
+                values=tool_action_point_ids_vals, offsets=tool_action_off
+            )
+
+            phantom_lengths = (
+                lengths + self.num_action_points
+            ) * self.window_len  # (B,)
+        else:
+            phantom_lengths = (
+                self.num_action_points * self.window_len * torch.ones_like(lengths)
+            )
+
+            empty_off = torch.zeros((B + 1,), device=device, dtype=torch.long)
+            empty_vals1 = torch.zeros((0,), device=device, dtype=torch.long)
+
+            tool_action_timesteps = torch.nested.nested_tensor_from_jagged(
+                values=empty_vals1, offsets=empty_off
+            )
+            tool_action_point_ids = torch.nested.nested_tensor_from_jagged(
+                values=empty_vals1, offsets=empty_off
+            )
+
         phantom_off = torch.empty((B + 1,), device=device, dtype=torch.long)
         phantom_off[0] = 0
         phantom_off[1:] = phantom_lengths.cumsum(0)

@@ -30,7 +30,7 @@ defaults:
 
 
 camera_keys: ["left_cam", "right_cam"]
-rgb_key: left
+rgb_key: rgb
 
 data:
   preprepreprocess:

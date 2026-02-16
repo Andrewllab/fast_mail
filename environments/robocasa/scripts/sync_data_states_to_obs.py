@@ -65,7 +65,7 @@ def extract_trajectory(
     default_dynamic_camera_names = [
         "robot0_agentview_left",
         "robot0_agentview_right",
-        "robot0_eye_in_hand",
+        # "robot0_eye_in_hand",
     ]
     dynamic_cam_names = [c for c in default_dynamic_camera_names if c in camera_names]
     static_cam_names = [c for c in camera_names if c not in dynamic_cam_names]
@@ -467,7 +467,7 @@ if __name__ == "__main__":
         default=[
             "robot0_agentview_left",
             "robot0_agentview_right",
-            "robot0_eye_in_hand",
+            # "robot0_eye_in_hand",
         ],
         help="camera name(s) to use for image observations",
     )

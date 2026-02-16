@@ -3,21 +3,22 @@
 defaults:
 
   # Remove unused defaults and get the actual segmentations from robocasa
-  - /transforms@data.preprepreprocess.t01_remove_inhand: cleanup
+  # - /transforms@data.preprepreprocess.t01_remove_inhand: cleanup
   # - /transforms@data.preprepreprocess.t02_apply_robocasa_segmentations: apply_robocasa_segmentations
-  - /goals@data.preprepreprocess.t03_target_tool_from_foldername: add_target_tool_from_foldername_real
 
   # Larger vision tasks
+  - /goals@data.prepreprocess.t01_target_tool_from_foldername: add_target_tool_from_foldername_real
   - /transforms@data.prepreprocess.t02_samv3: grounding_samv3_segmenter
   - /transforms@data.prepreprocess.t03_dinov3: dinov3
   - /transforms@data.prepreprocess.t04_cotracker: cotracker
   - /transforms@data.prepreprocess.t05_to_masked_featured_pointcloud: to_masked_featured_pointcloud
   - /transforms@data.prepreprocess.t06_to_tracked_featured_pointcloud: to_tracked_featured_pointcloud
   # - /transforms@data.prepreprocess.t07_to_masked_tool_pointcloud: to_masked_featured_pointcloud
-  # - /transforms@data.prepreprocess.t99_cleanup: cleanup
+  - /transforms@data.prepreprocess.t99_cleanup: cleanup
 
   # Last little part that connects everyting
   # - /transforms@data.preprocess.t01_robocasa_use_abs_actions: robocasa_use_abs_actions
+  # - /transforms@data.preprocess.t01_trim_idle: time_trim_idle_real
   - /transforms@data.preprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
   - /transforms@data.preprocess.t03_to_sliding_window_action: to_sliding_window_action
   - /transforms@data.preprocess.t99_cleanup: cleanup
@@ -35,9 +36,9 @@ rgb_key: left
 
 data:
   preprepreprocess:
-    # overwrite: True
+    overwrite: True
     backend: hdf5
-    root_dir: ${paths.preprepreprocessed_dir}/robocasa/${data.name}
+    root_dir: ${paths.preprepreprocessed_dir}/real/${data.name}
     t01_remove_inhand:
       drop_keys: [gripper_cam]
 
@@ -45,8 +46,8 @@ data:
   prepreprocess:
     backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.prepreprocessed_dir}/robocasa/${data.name}_pointclouds
-    # overwrite: True
+    root_dir: ${paths.prepreprocessed_dir}/real/${data.name}_pointclouds
+    overwrite: True
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
       drop_keys: [left_cam, right_cam, gripper_cam]
@@ -58,8 +59,14 @@ data:
   preprocess:
     backend: pakt_hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_pointclouds
+    root_dir: ${paths.preprocessed_dir}/real/${data.name}_pointclouds
     overwrite: True
+
+    t0_gripper_actions:
+      _target_: transforms.action_binarize_gripper.BinarizeGripperActions
+      _partial_: True
+      threshold: null  # use half the max gripper width as threshold
+      hysteris_steps: 30  # issue a warning if state changes happen more frequently than this 
 
     t01_action_type:
       _target_: transforms.action_switch_type.SwitchActionType
