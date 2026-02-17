@@ -1,0 +1,13 @@
+# @package _global_
+
+# Done
+data:
+  prepreprocess:
+    # convert absolute joint actions to delta joint action
+    t00_apply_robocasa_segmentations:
+      _target_: transforms.robocasa_segmentations.ApplyRobocasaSegmentations
+      _partial_: True
+
+      camera_keys: ${camera_keys}
+      segmentation_keys: [drawer]
+      mask_out_keys: [tool_segmentation]
