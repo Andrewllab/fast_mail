@@ -285,7 +285,7 @@ def knn(
                 assert y.size(0) == batch_y.numel()
                 batch_size = max(batch_size, batch_y[-1].item() + 1)
 
-        assert batch_size > 0
+        assert batch_size is not None and batch_size > 0
 
         if batch_size > 1:
             # create ptr vectors from batch vectors
@@ -300,21 +300,29 @@ def knn(
             ptr_x = torch.tensor([0, x.size(0)], device=x.device)
             ptr_y = torch.tensor([0, y.size(0)], device=y.device)
 
+    assert ptr_x is not None and ptr_y is not None
     idxs = torch.ops.torch_cluster.knn(x, y, ptr_x, ptr_y, k, cosine, num_workers)
 
     if pad_too_small:
-        # pad idxs to ensure that each batch element has at least k neighbors found
-        idxs_y = idxs[0]
+        # pad idxs to ensure that each point in x has at least k neighbors found
+        idxs_y = idxs[0]  # idxs_y index the tensor y
+        # Note: idxs_y is sorted so it has the form of a batch vector
         n_neighbors = batch2lengths(idxs_y)
         invalid = n_neighbors < k
         if torch.any(invalid):
-            # find which batch elements are too small
+            # find which clusters are too small
             idxs_y_invalid = torch.nonzero(invalid).squeeze(dim=-1)
+
+            # find which batch elements these belong to and log a warning
+            batch_idx_invalid = (
+                torch.bucketize(idxs_y_invalid, ptr_y[1:], right=True)
+            ).unique()
+            lengths_invalid = ptr2lengths(ptr_x)[batch_idx_invalid]
             log.warning(
-                "Padding knn matches for k=%d because batch elements %s have only %s points.",
+                "Padding knn matches because batch elements %s only have %s points, which is less than k=%d.",
+                batch_idx_invalid.tolist(),
+                lengths_invalid.tolist(),
                 k,
-                torch.bucketize(idxs_y_invalid, ptr_y).tolist(),
-                n_neighbors[invalid].tolist(),
             )
 
             # clamp n_neighbors to be at least k
@@ -327,12 +335,12 @@ def knn(
             new_idxs_y = lengths2batch(new_n_neighbors)
             new_idxs[0] = new_idxs_y
 
-            # copy over old x indices for valid batch elements
+            # copy over old x indices for valid clusters
             mask_new = ~torch.isin(new_idxs_y, idxs_y_invalid)
             mask_old = ~torch.isin(idxs_y, idxs_y_invalid)
             new_idxs[1, mask_new] = idxs[1, mask_old]
 
-            # for batch elements that are too small, pad by repeating until
+            # for clusters without enough neighbors, pad by repeating until
             # we have at least k neighbors, then truncate to k neighbors
             for idx in idxs_y_invalid:
                 mask_new = new_idxs_y == idx
