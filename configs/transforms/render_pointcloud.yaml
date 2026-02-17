@@ -3,4 +3,4 @@ _partial_: True
 render_camera_poses: False
 render_ee_pose: False
 render_action: False
-pose_frame_size: 0.1
+coordinate_frame_size: 0.1
