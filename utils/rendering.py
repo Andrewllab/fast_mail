@@ -176,3 +176,13 @@ def rgb_to_renderable(
     ), f"RGB image must have 3 channels, got {rgb.shape[-1]} instead."
 
     return rgb
+
+
+def to_rgb_color(color_code: str) -> list[int]:
+    assert color_code[0] == "#"
+    assert len(color_code) == 7
+    return [
+        int(color_code[1:3], 16),
+        int(color_code[3:5], 16),
+        int(color_code[5:7], 16),
+    ]

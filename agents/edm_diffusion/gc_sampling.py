@@ -199,7 +199,6 @@ class BrownianTreeNoiseSampler:
         return self.tree(t0, t1) / (t1 - t0).abs().sqrt()
 
 
-@torch.no_grad()
 def sample_euler(
     model,
     state: Any,
@@ -258,7 +257,6 @@ def sample_euler(
     return action
 
 
-@torch.no_grad()
 def sample_euler_ancestral(
     model,
     state: Any,
@@ -304,7 +302,6 @@ def sample_euler_ancestral(
     return action
 
 
-@torch.no_grad()
 def sample_ddim(
     model,
     state: Any,
@@ -340,7 +337,6 @@ def sample_ddim(
     return action
 
 
-@torch.no_grad()
 def sample_heun(
     model,
     state: Any,
@@ -405,7 +401,6 @@ def sample_heun(
     return action
 
 
-@torch.no_grad()
 def sample_dpm_2(
     model,
     state: Any,
@@ -473,7 +468,6 @@ def sample_dpm_2(
     return action
 
 
-@torch.no_grad()
 def sample_dpm_2_ancestral(
     model,
     state: Any,
@@ -544,7 +538,6 @@ def linear_multistep_coeff(order, t, i, j):
     return integrate.quad(fn, t[i], t[i + 1], epsrel=1e-4)[0]
 
 
-@torch.no_grad()
 def sample_lms(
     model,
     state: Any,
@@ -864,7 +857,6 @@ class DPMSolver(nn.Module):
         return action, info
 
 
-@torch.no_grad()
 def sample_dpm_fast(
     model,
     state: Any,
@@ -905,7 +897,6 @@ def sample_dpm_fast(
         )
 
 
-@torch.no_grad()
 def sample_dpm_adaptive(
     model,
     state: Any,
@@ -965,7 +956,6 @@ def sample_dpm_adaptive(
     return action
 
 
-@torch.no_grad()
 def sample_dpmpp_2s_ancestral(
     model,
     state: Any,
@@ -1022,7 +1012,6 @@ def sample_dpmpp_2s_ancestral(
     return action
 
 
-@torch.no_grad()
 def sample_dpmpp_sde(
     model,
     state: Any,
@@ -1091,7 +1080,6 @@ def sample_dpmpp_sde(
     return x
 
 
-@torch.no_grad()
 def sample_dpmpp_2m(
     model,
     state: Any,
@@ -1136,7 +1124,6 @@ def sample_dpmpp_2m(
     return action
 
 
-@torch.no_grad()
 def sample_dpmpp_2_with_lms(
     model,
     state: Any,
@@ -1181,7 +1168,6 @@ def sample_dpmpp_2_with_lms(
     return action
 
 
-@torch.no_grad()
 def sample_dpmpp_2s(
     model,
     state: Any,
