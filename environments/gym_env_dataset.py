@@ -127,9 +127,6 @@ class GymEnvDataset(IterableDataset):
 
         # TODO: flush video recorder here
 
-        # TODO: flush video recorder here
-        log.info("stop here")
-
     def write_actions(self, actions: torch.Tensor):
         if self._next_action is not None:
             log.warning(f"Overwriting unconsumed next action {self._next_action}.")
