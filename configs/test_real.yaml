@@ -53,7 +53,7 @@ data:
       _target_: transforms.grounding_samv3.PersistentSamV3VideoSegmenterTransform
     t06_to_tracked_featured_pointcloud:
       mode: mask
-      mask_key: obj_segmentation
+      mask_key: tool_segmentation
       _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
 
   preprepreprocess:

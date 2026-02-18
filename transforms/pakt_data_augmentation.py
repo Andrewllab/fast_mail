@@ -150,6 +150,8 @@ class RandomRotation(ReversibleTransform):
         # Rotate obs point clouds (only their "points" field)
         for key in self.obs_keys:
             pts = tensordict["obs", key, "points"]
+            if pts.numel() == 0:
+                continue
             tensordict["obs", key, "points"] = self._rotate_batched_rowvec(pts, R)
 
         # Rotate action points

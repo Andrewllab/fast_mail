@@ -9,6 +9,9 @@ goal_mapping:
   bottom: 
     tool: red cube
     target: drawer
+  one_cube: 
+    tool: red cube
+    target: white drawers
   # stack task
   blue_in_purple: 
     tool: blue cup
@@ -25,13 +28,13 @@ goal_mapping:
   # arrange
   blue_cup: 
     tool: blue cup
-    target: coffee machine
+    target: blue white pink mixer
   orange_cup: 
     tool: orange cup
-    target: coffee machine
+    target: blue white pink mixer
   pink_bowl: 
     tool: pink bowl
-    target: coffee machine
+    target: blue white pink mixer
   red_cup: 
     tool: red cup
-    target: coffee machine
+    target: blue white pink mixer

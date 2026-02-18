@@ -52,6 +52,7 @@ data:
   preprocess:
     t99_cleanup: null  # disable cleanup transform added by default
   prepreprocess:  
+    t04_cotracker: null  # disable cotracker transform added by default
     t06_to_tracked_featured_pointcloud:
       mode: mask
       mask_key: obj_segmentation

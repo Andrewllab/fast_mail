@@ -3,4 +3,4 @@ _partial_: True
 
 camera_keys: ${camera_keys}
 segmentation_keys: [obj, container]
-mask_out_keys: [obj_segmentation, target_segmentation]
+mask_out_keys: [tool_segmentation, target_segmentation]

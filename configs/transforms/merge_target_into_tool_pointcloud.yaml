@@ -1,0 +1,5 @@
+# name: voxel_downsample_pointcloud
+_target_: transforms.nested_pointcloud_merger.NestedPointCloudMergerTransform
+_partial_: True
+pointcloud_keys: ["tool_points", "target_points"]
+out_key: "tool_points"

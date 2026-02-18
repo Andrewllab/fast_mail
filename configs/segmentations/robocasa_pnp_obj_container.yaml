@@ -1,5 +1,6 @@
 # @package _global_
 
+# Used by most robocasa pnp environments, exceptions are counter_to_sink, counter_to_cab, cab_to_counter
 # Done
 data:
   prepreprocess:
@@ -9,5 +10,5 @@ data:
       _partial_: True
 
       camera_keys: ${camera_keys}
-      segmentation_keys: [door_fxtr]
-      mask_out_keys: [tool_segmentation]
+      segmentation_keys: [obj, container]
+      mask_out_keys: [tool_segmentation, target_segmentation]

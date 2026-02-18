@@ -34,17 +34,39 @@ class LocalizePAKT(ReversibleTransform):
     def specs(self) -> DataSpecs:
         return self._output_specs
 
-    def call_trajectory(self, traj: TensorDict) -> Data:
-        mean_point = traj["obs"][self.localization_target]["points"].mean(
-            dim=1, keepdim=True
-        )
+    def calculate_mean_point(self, traj: TensorDict) -> torch.Tensor:
+        local_points = traj["obs", self.localization_target, "points"]
+        if local_points.ndim == 4:
+            mean_point = local_points.mean(axis=1)[:, 0]
+        else:
+            mean_point = traj["obs"][self.localization_target]["points"].mean(
+                dim=1, keepdim=True
+            )
+        return mean_point
 
-        traj["obs"]["gripper_points"]["points"] -= mean_point
-        traj["obs"]["tool_points"]["points"] -= mean_point
-        traj["obs"]["target_points"]["points"] -= mean_point
-        traj["obs"]["des_gripper_points"]["points"] -= mean_point
+    def call_trajectory(self, traj: TensorDict) -> Data:
+        B = traj.batch_size[0]
+
+        mean_point = self.calculate_mean_point(traj)
+
+        for key in [
+            "gripper_points",
+            "tool_points",
+            "target_points",
+            "des_gripper_points",
+        ]:
+            if key not in traj["obs"]:
+                continue
+            if traj["obs", key, "points"].ndim == 4:
+                traj["obs", key, "points"] -= mean_point.view(B, 1, 1, 3)
+            elif traj["obs", key, "points"].ndim == 3:
+                traj["obs", key, "points"] -= mean_point.view(B, 1, 3)
+
         if "action" in traj:
-            traj["action"] -= mean_point
+            if traj["action"].ndim == 3 and traj["action"].shape[2] == 3:
+                traj["action"] -= mean_point.view(B, 1, 3)
+            elif traj["action"].ndim == 4 and traj["action"].shape[3] == 3:
+                traj["action"] -= mean_point.view(B, 1, 1, 3)
 
         traj["obs"]["localization_mean"] = mean_point
 
@@ -55,12 +77,24 @@ class LocalizePAKT(ReversibleTransform):
 
     def reverse(self, tensordict: TensorDict) -> TensorDict:
         mean_point = tensordict["obs"]["localization_mean"]
+        B = tensordict.batch_size[0]
+        for key in [
+            "gripper_points",
+            "tool_points",
+            "target_points",
+            "des_gripper_points",
+        ]:
+            if key not in tensordict["obs"]:
+                continue
+            if tensordict["obs", key, "points"].ndim == 4:
+                tensordict["obs", key, "points"] += mean_point.view(B, 1, 1, 3)
+            elif tensordict["obs", key, "points"].ndim == 3:
+                tensordict["obs", key, "points"] += mean_point.view(B, 1, 3)
 
-        tensordict["obs"]["gripper_points"]["points"] += mean_point
-        tensordict["obs"]["tool_points"]["points"] += mean_point
-        tensordict["obs"]["target_points"]["points"] += mean_point
-        tensordict["obs"]["des_gripper_points"]["points"] += mean_point
         if "action" in tensordict:
-            tensordict["action"] += mean_point
+            if tensordict["action"].ndim == 3 and tensordict["action"].shape[2] == 3:
+                tensordict["action"] += mean_point.view(B, 1, 3)
+            elif tensordict["action"].ndim == 4 and tensordict["action"].shape[3] == 3:
+                tensordict["action"] += mean_point.view(B, 1, 1, 3)
 
         return tensordict

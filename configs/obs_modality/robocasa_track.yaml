@@ -3,12 +3,12 @@
 defaults:
 
   # Remove unused defaults and get the actual segmentations from robocasa
-  - /transforms@data.preprepreprocess.t01_remove_inhand: cleanup
-  - /transforms@data.preprepreprocess.t02_apply_robocasa_segmentations: apply_robocasa_segmentations
+  - /transforms@data.prepreprocess.t00_apply_robocasa_segmentations: apply_robocasa_segmentations
+  - /transforms@data.prepreprocess.t01_remove_inhand: cleanup
   
   # Larger vision tasks
   - /transforms@data.prepreprocess.t03_dinov3: dinov3
-  - /transforms@data.prepreprocess.t04_cotracker: cotracker
+  - /transforms@data.prepreprocess.t04_cotracker: cotracker_single
   - /transforms@data.prepreprocess.t05_to_masked_featured_pointcloud: to_masked_featured_pointcloud
   - /transforms@data.prepreprocess.t06_to_tracked_featured_pointcloud: to_tracked_featured_pointcloud
   # - /transforms@data.prepreprocess.t07_to_masked_tool_pointcloud: to_masked_featured_pointcloud
@@ -36,8 +36,6 @@ data:
   preprepreprocess:
     backend: hdf5
     root_dir: ${paths.preprepreprocessed_dir}/robocasa/${data.name}
-    t01_remove_inhand:
-      drop_keys: [gripper_cam]
 
   # Below is just the default configuration copied here for convenience. Change as needed.
   prepreprocess:
@@ -45,13 +43,16 @@ data:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.prepreprocessed_dir}/robocasa/${data.name}_pointclouds
     overwrite: True
+    t01_remove_inhand:
+      drop_keys: [gripper_cam]
+    
+    t07_to_masked_tool_pointcloud:
+      mask_key: tool_segmentation
+      out_key: mask_tool_points
+
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
       drop_keys: [left_cam, right_cam, gripper_cam]
-    
-    t07_to_masked_tool_pointcloud:
-      mask_key: obj_segmentation
-      out_key: mask_tool_points
 
   preprocess:
     backend: pakt_hdf5

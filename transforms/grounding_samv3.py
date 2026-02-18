@@ -222,15 +222,28 @@ class SamV3VideoSegmenterTransform(Transform):
 
             # Convert whole video to PIL once (SAM tracker wants list of frames) :contentReference[oaicite:7]{index=7}
             video_frames = video
-            ann_frame_idx = int(max(0, min(T - 1, self.anchor_frame_idx)))
+            # ann_frame_idx = int(max(0, min(T - 1, self.anchor_frame_idx)))
 
             for text_prompt, segmenter_out_key in zip(
                 segmentation_texts, self.segmenter_out_keys
             ):
+                ann_frame_idx = int(max(0, min(T - 1, self.anchor_frame_idx)))
                 # 1) GroundingDINO on anchor frame to pick initial object :contentReference[oaicite:8]{index=8}
                 init_box = self._gdino_best_box_xyxy(
                     video_frames[ann_frame_idx], str(text_prompt)
                 )
+
+                # If we don't get a detection on the anchor frame, we can optionally search forward for the first frame with a detection to use as anchor (instead of giving up and returning empty masks). This is helpful for long videos where the object may not appear in the first few frames.
+                while init_box is None:
+                    ann_frame_idx += 1
+                    if ann_frame_idx >= T:
+                        break
+                    init_box = self._gdino_best_box_xyxy(
+                        video_frames[ann_frame_idx], str(text_prompt)
+                    )
+                if init_box is None:
+                    # No detection in any frame, skip to next text prompt
+                    continue
 
                 # If no detection, return empty mask
                 H, W = video.shape[1], video.shape[2]
@@ -356,9 +369,9 @@ class PersistentSamV3VideoSegmenterTransform(SamV3VideoSegmenterTransform):
             )
             video_res_masks = video_res_masks_[0]
             for mask_idx, segmenter_out_key in enumerate(self.segmenter_out_keys):
-                tensordict["obs", camera_key, segmenter_out_key] = video_res_masks[mask_idx].to(
-                    self.out_device
-                )
+                tensordict["obs", camera_key, segmenter_out_key] = video_res_masks[
+                    mask_idx
+                ].to(self.out_device)
 
         return tensordict
 

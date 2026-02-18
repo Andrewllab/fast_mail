@@ -3,7 +3,7 @@ _partial_: True
 
 camera_keys: ${camera_keys}
 segmentation_text_source: key
-segmenter_out_keys: [obj_segmentation, target_segmentation]
+segmenter_out_keys: [tool_segmentation, target_segmentation]
 segmentation_text_keys: [tool, target]
 rgb_key: ${rgb_key}
 # max_frames_per_batch: 2

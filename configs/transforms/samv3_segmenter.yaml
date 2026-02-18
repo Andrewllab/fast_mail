@@ -3,6 +3,6 @@ _partial_: True
 
 camera_keys: ${camera_keys}
 segmentation_text_source: key
-segmenter_out_keys: [obj_segmentation, target_segmentation]
-segmentation_text_keys: [obj_name, target_name]
+segmenter_out_keys: [tool_segmentation, target_segmentation]
+segmentation_text_keys: [tool_name, target_name]
 rgb_key: ${rgb_key}
