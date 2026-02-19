@@ -19,12 +19,11 @@ class LocalizePAKT(ReversibleTransform):
         localization_target: str,
     ) -> None:
 
-        assert localization_target in [
-            "gripper_points",
-            "tool_points",
-            "target_points",
-        ], f"Invalid localization target: {localization_target}"
         self.localization_target = localization_target
+        if localization_target not in specs.obs:
+            raise ValueError(
+                f"Localization target {localization_target} not found in specs.obs"
+            )
 
         obs_specs = dict(specs.obs)
         obs_specs["localization_mean"] = ObsSpec((1, 3))
@@ -50,10 +49,7 @@ class LocalizePAKT(ReversibleTransform):
         mean_point = self.calculate_mean_point(traj)
 
         for key in [
-            "gripper_points",
-            "tool_points",
-            "target_points",
-            "des_gripper_points",
+            "current_points",
         ]:
             if key not in traj["obs"]:
                 continue

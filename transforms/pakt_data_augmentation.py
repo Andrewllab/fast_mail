@@ -69,12 +69,7 @@ class RandomRotation(ReversibleTransform):
         self,
         specs: DataSpecs,
         rotation_axes: Union[str, Sequence[str]] = "x",
-        obs_keys: Sequence[str] = (
-            "target_points",
-            "tool_points",
-            "gripper_points",
-            "des_gripper_points",
-        ),
+        obs_keys: Sequence[str] = ("current_points",),
         action_keys: Sequence[str] = ("action",),
     ):
         obs_specs = dict(specs.obs)
