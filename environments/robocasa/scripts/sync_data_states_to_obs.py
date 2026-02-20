@@ -142,6 +142,17 @@ def extract_trajectory(
                 env.env.sim.model, obj_body_id, group=1
             )
 
+        for fixture_key in env.env.fixtures_id.keys():
+            fixture_body_id = env.env.fixtures_id[fixture_key]
+            segmentation_ids[fixture_key] = [
+                geom_id
+                for geom_id in range(env.env.sim.model.ngeom)
+                if env.env.sim.model.geom_bodyid[geom_id] == fixture_body_id and geom_id
+            ]
+            segmentation_ids[fixture_key] += get_subtree_geom_ids_by_group(
+                env.env.sim.model, fixture_body_id, group=1
+            )
+
         traj["obs"].append(obs)
         traj["rewards"].append(r)
         traj["dones"].append(done)
@@ -220,10 +231,16 @@ def write_one_episode(ep, traj, f_src, data_grp_out, args):
     """Write a single episode group into the output file."""
     ep_data_grp = data_grp_out.create_group(ep)
 
-    ep_data_grp.create_dataset("actions", data=np.array(traj["actions"]))
-    ep_data_grp.create_dataset("states", data=np.array(traj["states"]))
-    ep_data_grp.create_dataset("rewards", data=np.array(traj["rewards"]))
-    ep_data_grp.create_dataset("dones", data=np.array(traj["dones"]))
+    dataset_cfgs = {"compression": "gzip"}
+    if args.no_compress:
+        dataset_cfgs = {}
+
+    # fmt: off
+    ep_data_grp.create_dataset("actions", data=np.array(traj["actions"]), **dataset_cfgs)
+    ep_data_grp.create_dataset("states", data=np.array(traj["states"]), **dataset_cfgs)
+    ep_data_grp.create_dataset("rewards", data=np.array(traj["rewards"]), **dataset_cfgs)
+    ep_data_grp.create_dataset("dones", data=np.array(traj["dones"]), **dataset_cfgs)
+    # fmt: on
 
     # Write obs using require_group so intermediate groups exist
     obs_root = ep_data_grp.require_group("obs")
@@ -233,32 +250,25 @@ def write_one_episode(ep, traj, f_src, data_grp_out, args):
             k_grp = obs_root.require_group(str(k))
             for kp in traj["obs"][k]:
                 data = np.array(traj["obs"][k][kp])
-                if args.no_compress:
-                    k_grp.create_dataset(str(kp), data=data)
-                else:
-                    k_grp.create_dataset(str(kp), data=data, compression="gzip")
+                k_grp.create_dataset(str(kp), data=data, **dataset_cfgs)
         else:
             data = np.array(traj["obs"][k])
-            if args.no_compress:
-                obs_root.create_dataset(str(k), data=data)
-            else:
-                obs_root.create_dataset(str(k), data=data, compression="gzip")
+            obs_root.create_dataset(str(k), data=data, **dataset_cfgs)
 
     if args.include_next_obs and "next_obs" in traj and len(traj["next_obs"]) > 0:
         next_root = ep_data_grp.require_group("next_obs")
         for k in traj["next_obs"]:
             data = np.array(traj["next_obs"][k])
-            if args.no_compress:
-                next_root.create_dataset(str(k), data=data)
-            else:
-                next_root.create_dataset(str(k), data=data, compression="gzip")
+            next_root.create_dataset(str(k), data=data, **dataset_cfgs)
 
     # camera params
     if "static_cameras" in traj and len(traj["static_cameras"]) > 0:
         for camera_name, cam_dict in traj["static_cameras"][0].items():
             cam_grp = ep_data_grp.require_group(f"camera_params/static/{camera_name}")
             for camera_data_key, camera_data_value in cam_dict.items():
-                cam_grp.create_dataset(camera_data_key, data=camera_data_value)
+                cam_grp.create_dataset(
+                    camera_data_key, data=camera_data_value, **dataset_cfgs
+                )
 
     if "dynamic_cameras" in traj and len(traj["dynamic_cameras"]) > 0:
         for camera_name, cam_dict in traj["dynamic_cameras"][0].items():
@@ -270,14 +280,18 @@ def write_one_episode(ep, traj, f_src, data_grp_out, args):
     if "datagen_info" in traj and isinstance(traj["datagen_info"], dict):
         di_grp = ep_data_grp.require_group("datagen_info")
         for k in traj["datagen_info"]:
-            di_grp.create_dataset(str(k), data=np.array(traj["datagen_info"][k]))
+            di_grp.create_dataset(
+                str(k), data=np.array(traj["datagen_info"][k]), **dataset_cfgs
+            )
 
     # segmentation ids
     if "segmentation_ids" in traj and isinstance(traj["segmentation_ids"], dict):
         seg_grp = ep_data_grp.require_group("segmentation_ids")
         for class_name in traj["segmentation_ids"]:
             seg_grp.create_dataset(
-                str(class_name), data=np.array(traj["segmentation_ids"][class_name])
+                str(class_name),
+                data=np.array(traj["segmentation_ids"][class_name]),
+                **dataset_cfgs,
             )
 
     # copy action dict (if applicable)
@@ -285,7 +299,9 @@ def write_one_episode(ep, traj, f_src, data_grp_out, args):
         action_dict = f_src[f"data/{ep}/action_dict"]
         ad_grp = ep_data_grp.require_group("action_dict")
         for k in action_dict:
-            ad_grp.create_dataset(str(k), data=np.array(action_dict[k][()]))
+            ad_grp.create_dataset(
+                str(k), data=np.array(action_dict[k][()]), **dataset_cfgs
+            )
 
     # episode metadata
     ep_data_grp.attrs["model_file"] = traj["initial_state_dict"]["model"]
