@@ -201,7 +201,7 @@ class PaktTokenizer(Transform, nn.Module):
             return self.timestep_embedding(timesteps)
 
     # ----------------- tokenizers -----------------
-    def __tokenize_pcd(self, pcd: TensorDict, action: bool) -> Tensor:
+    def __tokenize_pcd(self, pcd: TensorDict, is_action: bool) -> Tensor:
         pos = pcd["points"]  # (B, N_c, 3)
         color = pcd["colors"]  # (B, N_c, 3)
         features = pcd["features"]  # (B, N_c, F)
@@ -211,7 +211,7 @@ class PaktTokenizer(Transform, nn.Module):
         object_ids = pcd["object_ids"]
         timesteps = pcd["timesteps"]  # (B, N_c)
 
-        gains = self.get_gains(for_action=action)
+        gains = self.get_gains(for_action=is_action)
 
         # Only gripper points have valid gripper IDs (assuming 0 means non-gripper)
         gripper_mask = gripper_ids.values() > 0
@@ -264,7 +264,7 @@ class PaktTokenizer(Transform, nn.Module):
             pos_embed, offsets=pos.offsets()
         )
 
-        token_embed = self._post_mix_norm(token_embed, is_action=False)
+        token_embed = self._post_mix_norm(token_embed, is_action=is_action)
         return token_embed
 
     # ----------------- forward -----------------
@@ -274,13 +274,13 @@ class PaktTokenizer(Transform, nn.Module):
 
         # === current obs tokens ===
         current_points = obs["current_points"]
-        current_points_tokens = self.__tokenize_pcd(current_points, action=False)
+        current_points_tokens = self.__tokenize_pcd(current_points, is_action=False)
         # (B, N_c, D) - not used directly but can be for debugging/visualization
 
         # === desired future point tokens ===
         future_points = obs["action_points"]
         future_points["points"] = actions
-        future_points_tokens = self.__tokenize_pcd(future_points, action=True)
+        future_points_tokens = self.__tokenize_pcd(future_points, is_action=True)
         # (B, T*N, D) - not used directly but can be for debugging/visualization
 
         batch["obs"]["embed"] = current_points_tokens

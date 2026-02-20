@@ -45,7 +45,9 @@ class ApplyRobocasaSegmentations(Transform):
             for seg_key, mask_out_key in zip(
                 self.segmentation_keys, self.mask_out_keys
             ):
-                local_seg_ids = segmentation_ids[seg_key]
+                local_seg_ids = torch.tensor(
+                    segmentation_ids[seg_key], device=segmentation.device
+                )
                 mask = torch.isin(segmentation, local_seg_ids)
                 tensordict[("obs", cam_key, mask_out_key)] = mask
 
