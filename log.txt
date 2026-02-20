@@ -1,0 +1,412 @@
+data:
+  task: robocasa_doors_close_single
+  task_suite: robocasa
+  batch_size: ${floor_div:${platform.batch_size},4}
+  eval_mode: 0.05
+  num_workers: ${platform.num_workers}
+  pin_memory: ${platform.pin_memory}
+  prefetch_factor: ${platform.prefetch_factor}
+  preprocess:
+    root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_pointclouds
+    backend: pakt_hdf5
+    t00_no_op:
+      _target_: transforms.noop.NoOpTransform
+      _partial_: true
+    overwrite: true
+  action_seq_len: 20
+  obs_seq_len: 1
+  dataset:
+    _target_: environments.datasets.robocasa_dataset_v3.RoboCasaDataset
+    load_subset: null
+    subfolders: CloseSingleDoor
+    root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_doors
+  env:
+    env:
+      _target_: environments.robocasa.build_env.make
+      _recursive_: false
+      env_name: CloseSingleDoor
+      img_height: 1080
+      img_width: 1440
+      camera_names:
+      - robot0_agentview_left
+      - robot0_agentview_right
+      absolute_actions: true
+      wrappers:
+        gym_wrapper:
+          _target_: environments.robocasa.wrappers.GymWrapper
+          _partial_: true
+          render_width: 768
+          render_height: 512
+        render_wrapper:
+          _target_: environments.robocasa.wrappers.RenderWrapper
+          _partial_: true
+          render_width: ${...img_width}
+          render_height: ${...img_height}
+        segmentation_wrapper:
+          _target_: environments.robocasa.wrappers.SegmentationWrapper
+          _partial_: true
+        record_video:
+          _target_: environments.wrappers.RecordMultiEpisodeVideo
+          _partial_: true
+          video_folder: ${paths.recording_dir}
+          name_prefix: rollout
+          episode_trigger:
+            _target_: environments.simulation.utils.triggers.episode_trigger
+            episode_interval: 1000
+          num_episodes: 5
+          fps: 30
+          disable_logger: true
+        robocasa_preprocess:
+          _target_: environments.robocasa.wrappers.RoboCasaPreProcess
+          _partial_: true
+          obs_seq_len: ${data.obs_seq_len}
+          max_steps_per_episode: 400
+    num_envs: 1
+    num_episodes: 20
+    action_horizon: null
+    fps: null
+  preprepreprocess:
+    t00_apply_robocasa_segmentations:
+      _target_: transforms.robocasa_segmentations.ApplyRobocasaSegmentations
+      _partial_: true
+      camera_keys: ${camera_keys}
+      segmentation_keys:
+      - door_fxtr
+      mask_out_keys:
+      - tool_segmentation
+    t01_remove_inhand:
+      _target_: transforms.cleanup.CleanupTransform
+      _partial_: true
+      keep_stream_types: null
+      drop_stream_types: null
+      keep_stream_names: null
+      drop_stream_names: null
+      drop_keys:
+      - gripper_cam
+      drop_streams: null
+    t03_dinov3:
+      _target_: transforms.dinov3.Dinov3FeatureExtractorTransform
+      _partial_: true
+      camera_keys: ${camera_keys}
+      feature_out_key: dinov3_features
+      tracking_points_key: dinov3_tracking_points
+      generate_tracking_points: true
+      rgb_key: ${rgb_key}
+    t04_cotracker:
+      _target_: transforms.cotracker_tracking.CotrackerPointTrackingTransform
+      _partial_: true
+      track_mode: masked_grid
+      camera_keys: ${camera_keys}
+      grid_spacing: 16
+      points_key: dinov3_tracking_points
+      mask_keys: tool_segmentation
+      track_out_keys: tool_cotracker_tracks
+      visibility_out_keys: tool_cotracker_visibility
+      rgb_key: ${rgb_key}
+    t05_target_to_featured_pointcloud:
+      _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
+      _partial_: true
+      color: true
+      max_depth: 5.0
+      features: true
+      camera_keys: ${camera_keys}
+      mask_key: target_segmentation
+      features_key: dinov3_features
+      out_key: target_points
+      rgb_key: ${rgb_key}
+      mode: mask
+    t06_tool_to_featured_pointcloud:
+      _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
+      _partial_: true
+      color: true
+      max_depth: 5.0
+      features: true
+      camera_keys: ${camera_keys}
+      track_key: tool_cotracker_tracks
+      visibility_key: tool_cotracker_visibility
+      features_key: dinov3_features
+      out_key: tool_points
+      rgb_key: ${rgb_key}
+      mode: track
+    t99_cleanup:
+      _target_: transforms.cleanup.CleanupTransform
+      _partial_: true
+      keep_stream_types: []
+      drop_stream_types: null
+      keep_stream_names: null
+      drop_stream_names: null
+      drop_keys:
+      - left_cam
+      - right_cam
+      - gripper_cam
+      drop_streams: null
+    backend: hdf5
+    root_dir: ${paths.preprepreprocessed_dir}/robocasa/${data.name}_pointclouds
+    overwrite: true
+  name: robocasa_doors_close_single
+  prepreprocess:
+    t01_robocasa_use_abs_actions:
+      _target_: transforms.action_switch_type.SwitchRobocasaActionType
+      _partial_: true
+      control_type: absolute
+    t02_ee_pose_to_five_points:
+      _target_: transforms.action_ee_to_five_points.AbsoluteEEPoseToFivePointsTransform
+      _partial_: true
+      ee_pose_key: ee_pose
+    t03_to_sliding_window_action:
+      _target_: transforms.to_pakt_action_obs.ToActionSlidingWindowTransform
+      _partial_: true
+    t99_cleanup:
+      _target_: transforms.cleanup.CleanupTransform
+      _partial_: true
+      keep_stream_types: []
+      drop_stream_types: null
+      keep_stream_names: null
+      drop_stream_names: null
+      drop_keys:
+      - left_cam_pose
+      - right_cam_pose
+      - gripper_cam_pose
+      - left_cam
+      - right_cam
+      - gripper_cam
+      drop_streams: null
+    backend: hdf5
+    root_dir: ${paths.prepreprocessed_dir}/robocasa/${data.name}_pointclouds
+    overwrite: true
+  gpu_batch_transforms:
+    t01_fps_prep:
+      _target_: transforms.nested_pointcloud_downsample_fps.FpsSamplePointCloud
+      _partial_: true
+      n_points: 20
+      random_start: true
+      pcd_keys:
+      - target_points
+      - tool_points
+    t02_to_pakt_action_obs:
+      _target_: transforms.to_pakt_action_obs.ToPaktActionObsTransform
+      _partial_: true
+      tracked_points_keys: tool_points
+      untracked_points_keys: target_points
+      gripper_points_key: gripper_points
+      include_tracked_in_action: true
+    t03_pakt_localizer:
+      _target_: transforms.pakt_localizer.LocalizePAKT
+      _partial_: true
+      localization_target: target_points
+    t04_random_rotation:
+      _target_: transforms.pakt_data_augmentation.RandomRotation
+      _partial_: true
+      rotation_axes: z
+agent:
+  _target_: agents.pakt_beso_agent.BesoAgent
+  precondition_type: edm
+  obs_encoder:
+    embed_dim: 256
+  num_sampling_steps: 10
+  sigma_data: 0.5
+  sigma_min: 0.01
+  sigma_max: 80
+  ema_decay: 0.995
+  noise_model:
+    decoder:
+      _target_: models.transformer.TransformerEncoder
+      _partial_: true
+      n_layers: 6
+      norm:
+        _target_: torch.nn.RMSNorm
+        _partial_: true
+        eps: 1.0e-06
+      attention:
+        _target_: models.attention.MultiHeadSelfAttention
+        _partial_: true
+        n_heads: 4
+        dropout: 0.1
+        is_causal: false
+        bias: false
+        qk_norm:
+          _target_: torch.nn.RMSNorm
+          _partial_: true
+          eps: 1.0e-06
+      residual_dropout: 0.1
+      mlp1:
+        _target_: torch.nn.Linear
+        _partial_: true
+      activation: ReLU
+      mlp_dropout: 0.1
+      mlp2:
+        _target_: torch.nn.Linear
+        _partial_: true
+        bias: false
+      norm_first: true
+    seq_position_encoder:
+      name: none
+      _target_: builtins.eval
+      _args_:
+      - None
+    sigma_encoder:
+      name: ddpm
+      _target_: models.sigma_encoders.DDPMSigmaEncoder
+      _partial_: true
+    action_head:
+      name: linear
+      _target_: torch.nn.Linear
+      _partial_: true
+    action_obs_tokenizer:
+      name: pointpatch_tokenizer
+      _target_: transforms.pakt_tokenizer.PaktTokenizer
+      _partial_: true
+      pos_encoder:
+        name: point_mae_position_encoder
+        _target_: models.pos_encoder.PointMAECartesianPosEncoder
+        _partial_: true
+        hidden_dim: 128
+        cartesian_dim: ${..cartesian_dim}
+        embed_dim: ${..embed_dim}
+      feature_encoder:
+        name: pointpatch_feature_encoder
+        _target_: models.mlp.MlpModel
+        _partial_: true
+        in_features: 768
+        out_features: ${..embed_dim}
+        hidden_sizes:
+        - 512
+        activation: GELU
+        norm: LayerNorm
+        dropout: 0.0
+      color_encoder: null
+      timestep_encoder:
+        name: DDPMSigmaEncoder
+        _target_: models.sigma_encoders.DDPMSigmaEncoder
+        _partial_: true
+        embed_dim: ${..embed_dim}
+      embed_dim: 512
+      num_timesteps: ${data.action_seq_len}
+      cartesian_dim: 3
+      num_gripper_points: 5
+      separate_obs_action_norms: true
+    name: pakt_decoder_only
+    _target_: agents.backbones.decoder_only.DecoderOnlyNoise
+    _partial_: true
+    dropout_prob: 0
+    time_encode_obs: false
+  noise_distribution:
+    name: loglogistic
+    _target_: agents.edm_diffusion.noise_distributions.rand_log_logistic
+    _partial_: true
+    loc: ${..sigma_data}
+    min_value: ${..sigma_min}
+    max_value: ${..sigma_max}
+    scale: 0.5
+  noise_schedule:
+    name: exponential
+    _target_: agents.edm_diffusion.gc_sampling.get_sigmas_exponential
+    _partial_: true
+    sigma_min: ${..sigma_min}
+    sigma_max: ${..sigma_max}
+  sampler:
+    name: ddim
+    _target_: agents.edm_diffusion.gc_sampling.sample_ddim
+    _partial_: true
+  optimizer:
+    name: adamw
+    _target_: torch.optim.AdamW
+    _partial_: true
+    lr: 0.0001
+    betas:
+    - 0.9
+    - 0.95
+    weight_decay: 0.05
+  lr_scheduler:
+    name: warmup_cosine
+    _target_: lr_schedulers.warmup_cosine_lr_scheduler.WarmupCosineLRScheduler
+    _partial_: true
+    peak_lr: ${agent.optimizer.lr}
+    init_lr: ${div:${agent.optimizer.lr}, 100}
+    warmup_ratio: 0.03
+callbacks:
+  model_checkpoint:
+    _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    dirpath: ${paths.output_dir}/checkpoints
+    verbose: true
+    save_weights_only: true
+    every_n_epochs: 10
+    save_on_train_epoch_end: true
+    save_top_k: -1
+  model_summary:
+    _target_: lightning.pytorch.callbacks.RichModelSummary
+    max_depth: 2
+  batch_size_finder: null
+logger:
+  wandb:
+    _target_: loggers.wandb.WandbLogger
+    log_model: all
+    exclude_override_keys:
+    - data
+    - preprocessing
+    - obs_modality
+    - obs_encoder
+    - platform
+    - debug
+    project: PAKT_Robocasa
+    entity: nicolasschreiber
+    job_type: ${job_type}
+    notes: null
+    tags: []
+    reinit: finish_previous
+    save_code: true
+python_logging:
+  always_log_debug_to_file: true
+  always_suppress_debug_from:
+  - git
+  - wandb
+  - urllib3
+  - h5py
+  - fsspec
+  - matplotlib
+  - PIL
+  - numba
+paths:
+  root_dir: ${oc.env:PROJECT_ROOT}
+  data_dir: /mnt/LargeSandwich/PAKT/demonstrations/
+  calibration_data_dir: ${paths.root_dir}/calibration_data
+  preprocessed_dir: /mnt/SmallSandwich/pakt_preprocessed/
+  debug_preprocessed_dir: /mnt/SmallSandwich/pakt_preprocessed/.cache/debug_preprocessed_data
+  zipped_preprocessed_dir: ${paths.root_dir}/zipped_preprocessed_datasets
+  log_dir: ${paths.root_dir}/logs
+  output_dir: ${hydra:runtime.output_dir}
+  recording_dir: ${paths.root_dir}/recordings
+  fs_engines_dir: $PROJECT_ROOT/foundation_stereo_models
+  prepreprocessed_dir: /mnt/SmallSandwich/pakt_prepreprocessed/
+  preprepreprocessed_dir: /mnt/SmallSandwich/pakt_preprepreprocessed/
+job_type: train
+seed: null
+platform:
+  pin_memory: true
+  name: workstation
+  num_workers: 8
+  batch_size: 256
+  prefetch_factor: 1
+  preprocess_backend: memmap
+  fs_preprocess_batch_size: 192
+trainer:
+  default_root_dir: ${paths.output_dir}
+  deterministic: false
+  max_epochs: 100
+  log_every_n_steps: 50
+  check_val_every_n_epoch: 10
+  enable_model_summary: false
+  accelerator: gpu
+  devices: 1
+  precision: 32
+camera_keys:
+- left_cam
+- right_cam
+rgb_key: rgb
+modality: pointcloud
+encoder: PointPatch+ConvNeXtV2
+has_fourier: true
+torch:
+  set_float32_matmul_precision: medium
+  print_options:
+    linewidth: 120
