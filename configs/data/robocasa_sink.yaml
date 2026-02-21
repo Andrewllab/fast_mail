@@ -1,0 +1,6 @@
+defaults:
+  - robocasa
+  - /segmentations: robocasa_sink
+
+dataset:
+  root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_sink

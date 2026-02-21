@@ -1,11 +1,12 @@
 defaults:
-  - robocasa
+  - robocasa_coffee
+  - /segmentations: robocasa_coffee_setup_mug
+  - _self_
 
 task: coffee_setup_mug
-name: coffee_setup_mug_20250920
+name: coffee_setup_mug
 
 dataset:
-  root_dir: ${paths.data_dir}/robocasa/single_stage
   subfolders: CoffeeSetupMug
 
 env:

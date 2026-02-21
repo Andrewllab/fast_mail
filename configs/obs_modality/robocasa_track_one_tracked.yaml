@@ -1,0 +1,20 @@
+# @package _global_
+
+defaults:
+  - robocasa_track
+  # Replace the "target masked pointcloud" step with a tracked pointcloud step
+  - override /transforms@data.prepreprocess.t05_target_to_featured_pointcloud: to_tracked_featured_pointcloud
+  # Remove the second tracked object step (we only want one tracked object)
+  - override /transforms@data.prepreprocess.t06_tool_to_featured_pointcloud: null
+  - _self_
+
+data:
+  gpu_batch_transforms:
+    t01_fps_prep:
+      pcd_keys:
+      - tool_points
+    t02_to_pakt_action_obs:
+      tracked_points_keys: tool_points
+      untracked_points_keys: []
+    t03_pakt_localizer:
+      localization_target: tool_points

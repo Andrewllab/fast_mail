@@ -1,0 +1,13 @@
+defaults:
+  - robocasa_doors
+  - _self_
+
+task: robocasa_doors_open_double
+name: robocasa_doors_open_double
+
+dataset:
+  subfolders: OpenDoubleDoor
+
+env:
+  env:
+    env_name: OpenDoubleDoor

@@ -1,0 +1,7 @@
+defaults:
+  - robocasa
+  - /segmentations: robocasa_pnp_obj_container
+
+dataset:
+  root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_pnp
+  # env_names: TurnOffMicrowave,TurnOnMicrowave

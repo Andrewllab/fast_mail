@@ -1,8 +1,6 @@
 defaults:
   - robocasa
-
-task: kitchen_microwave
-name: kitchen_microwave_20250920
+  - /segmentations: robocasa_microwave
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_microwave

@@ -1,11 +1,12 @@
 defaults:
-  - robocasa
+  - robocasa_coffee
+  - /segmentations: robocasa_coffee_press_button
+  - _self_
 
 task: coffee_press_button
-name: coffee_press_button_20250920
+name: coffee_press_button
 
 dataset:
-  root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_coffee
   subfolders: CoffeePressButton
 
 env:

@@ -1,0 +1,14 @@
+defaults:
+  - robocasa_sink
+  - _self_
+
+task: kitchen_sink_turn_on_faucet
+name: kitchen_sink_turn_on_faucet
+
+dataset:
+  subfolders: TurnOnSinkFaucet
+  # load_subset: 4
+
+env:
+  env:
+    env_name: TurnOnSinkFaucet

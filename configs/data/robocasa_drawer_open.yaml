@@ -1,0 +1,13 @@
+defaults:
+  - robocasa_drawer
+  - _self_
+
+task: robocasa_drawer_open
+name: robocasa_drawer_open
+
+dataset:
+  subfolders: OpenDrawer
+
+env:
+  env:
+    env_name: OpenDrawer

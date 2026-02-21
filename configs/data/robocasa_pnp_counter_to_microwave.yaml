@@ -1,0 +1,14 @@
+defaults:
+  - robocasa_pnp
+  - _self_
+
+task: kitchen_pnp_counter_to_microwave
+name: kitchen_pnp_counter_to_microwave
+
+dataset:
+  subfolders: PnPCounterToMicrowave
+  # load_subset: 4
+
+env:
+  env:
+    env_name: PnPCounterToMicrowave

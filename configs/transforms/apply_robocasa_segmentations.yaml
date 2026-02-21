@@ -2,5 +2,5 @@ _target_: transforms.robocasa_segmentations.ApplyRobocasaSegmentations
 _partial_: True
 
 camera_keys: ${camera_keys}
-segmentation_keys: [obj, container]
-mask_out_keys: [tool_segmentation, target_segmentation]
+# segmentation_keys: [obj, container]
+# mask_out_keys: [tool_segmentation, target_segmentation]

@@ -1,9 +1,6 @@
 defaults:
   - robocasa
-
-task: kitchen_stove
-name: kitchen_stove_20250920
+  - /segmentations: robocasa_stove
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_stove
-  # Twisting knobs: TurnOnStove,TurnOffStove

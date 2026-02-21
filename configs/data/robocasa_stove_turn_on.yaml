@@ -1,0 +1,14 @@
+defaults:
+  - robocasa_stove
+  - _self_
+
+task: kitchen_stove_turn_on
+name: kitchen_stove_turn_on
+
+dataset:
+  subfolders: TurnOnStove
+  # load_subset: 4
+
+env:
+  env:
+    env_name: TurnOnStove

@@ -1,0 +1,14 @@
+defaults:
+  - rrobocasa_pnpa
+  - _self_
+
+task: kitchen_pnp_microwave_to_counter
+name: kitchen_pnp_microwave_to_counter
+
+dataset:
+  subfolders: PnPMicrowaveToCounter
+  # load_subset: 4
+
+env:
+  env:
+    env_name: PnPMicrowaveToCounter

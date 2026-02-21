@@ -1,9 +1,0 @@
-defaults:
-  - robocasa
-
-task: kitchen_drawer
-name: kitchen_drawer_20250920
-
-dataset:
-  root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_drawer
-  # Opening and closing drawers: OpenDrawer,CloseDrawer

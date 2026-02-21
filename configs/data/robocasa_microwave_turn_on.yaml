@@ -1,0 +1,13 @@
+defaults:
+  - robocasa_microwave
+  - _self_
+
+task: robocasa_microwave_turn_on
+name: robocasa_microwave_turn_on
+
+dataset:
+  subfolders: TurnOnMicrowave
+
+env:
+  env:
+    env_name: TurnOnMicrowave

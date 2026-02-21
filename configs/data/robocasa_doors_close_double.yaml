@@ -1,0 +1,13 @@
+defaults:
+  - robocasa_doors
+  - _self_
+
+task: robocasa_doors_close_double
+name: robocasa_doors_close_double
+
+dataset:
+  subfolders: CloseDoubleDoor
+
+env:
+  env:
+    env_name: CloseDoubleDoor

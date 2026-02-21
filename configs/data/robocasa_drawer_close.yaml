@@ -1,0 +1,13 @@
+defaults:
+  - robocasa_drawer
+  - _self_
+
+task: robocasa_drawer_close
+name: robocasa_drawer_close
+
+dataset:
+  subfolders: CloseDrawer
+
+env:
+  env:
+    env_name: CloseDrawer

@@ -1,0 +1,15 @@
+defaults:
+  - robocasa_pnp
+  - /segmentations: robocasa_pnp_counter_to_cab
+  - _self_
+
+task: kitchen_pnp_counter_to_cab
+name: kitchen_pnp_counter_to_cab
+
+dataset:
+  subfolders: PnPCounterToCab
+  # load_subset: 4
+
+env:
+  env:
+    env_name: PnPCounterToCab

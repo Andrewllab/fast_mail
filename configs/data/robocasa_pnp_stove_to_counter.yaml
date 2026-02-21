@@ -1,0 +1,14 @@
+defaults:
+  - robocasa_pnp
+  - _self_
+
+task: kitchen_pnp_stove_to_counter
+name: kitchen_pnp_stove_to_counter
+
+dataset:
+  subfolders: PnPStoveToCounter
+  # load_subset: 4
+
+env:
+  env:
+    env_name: PnPStoveToCounter
