@@ -9,5 +9,5 @@ data:
       _partial_: True
 
       camera_keys: ${camera_keys}
-      segmentation_keys: [obj]
-      mask_out_keys: [tool_segmentation]
+      segmentation_keys: [obj, counter]
+      mask_out_keys: [tool_segmentation, target_segmentation]
