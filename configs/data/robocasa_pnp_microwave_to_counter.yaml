@@ -1,5 +1,5 @@
 defaults:
-  - rrobocasa_pnpa
+  - robocasa_pnp
   - _self_
 
 task: kitchen_pnp_microwave_to_counter
