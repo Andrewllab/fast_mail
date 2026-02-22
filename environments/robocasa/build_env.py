@@ -44,7 +44,6 @@ def create_env(
     - always render depth when rendering cameras
     - disable use_camera_obs so we can control when to render cameras ourselves
     """
-    import robocasa
     import robosuite
     from robosuite.controllers import load_composite_controller_config
 
