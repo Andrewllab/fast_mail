@@ -523,6 +523,7 @@ class SparseToPointCloudMaskOnly(SparseToPointCloudMerged):
         max_depth: float | None = None,
         out_key: str = "pcd",
         mode: Literal["mask", "track"] = "mask",
+        **kwargs
     ) -> None:
         super().__init__(
             specs,
@@ -535,6 +536,7 @@ class SparseToPointCloudMaskOnly(SparseToPointCloudMerged):
             features_key=features_key,
             max_depth=max_depth,
             out_key=out_key,
+            **kwargs,
         )
 
 
@@ -558,6 +560,7 @@ class SparseToPointCloudTrackOnly(SparseToPointCloudMerged):
         max_depth: float | None = None,
         out_key: str = "pcd",
         mode: Literal["mask", "track"] = "track",
+        **kwargs,
     ) -> None:
         super().__init__(
             specs,
@@ -571,6 +574,7 @@ class SparseToPointCloudTrackOnly(SparseToPointCloudMerged):
             features_key=features_key,
             max_depth=max_depth,
             out_key=out_key,
+            **kwargs,
         )
 
 
