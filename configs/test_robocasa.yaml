@@ -57,7 +57,7 @@ data:
       mode: mask
       mask_key: target_segmentation
       # _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
-    t06_to_tracked_featured_pointcloud:
+    t06_tool_to_featured_pointcloud:
       mode: mask
       mask_key: tool_segmentation
       # _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
