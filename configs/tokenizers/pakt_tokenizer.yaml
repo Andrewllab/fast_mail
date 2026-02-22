@@ -39,7 +39,7 @@ timestep_encoder:
   _partial_: true
   embed_dim: ${..embed_dim}
 
-embed_dim: 256
+embed_dim: 512
 num_timesteps: ${data.action_seq_len}
 cartesian_dim: 3
 num_gripper_points: 5

@@ -13,10 +13,9 @@ obs_seq_len: 1
 
 dataset:
   _target_: environments.datasets.real_dataset_v3.RealRobotDataset
-  root_dir: ${paths.data_dir}/stack/${..name}
+  root_dir: ${paths.data_dir}/real/stack/${..name}
   subfolders: null
   # load_subset: 4
-
 
 env:
   env:

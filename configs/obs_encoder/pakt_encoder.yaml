@@ -13,7 +13,7 @@ data:
 
 logger:
   wandb:
-    tags: ["pointcloud+rgb", "pointpatchrl+convnextv2"]
+    tags: []
 
 # metadata
 encoder: PointPatch+ConvNeXtV2

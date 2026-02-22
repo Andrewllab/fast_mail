@@ -4,7 +4,7 @@ wandb:
   exclude_override_keys: [data, preprocessing, obs_modality, obs_encoder, platform, debug]
 
   # passed to wandb.init()
-  project: 3d-sim2real
+  project: PAKT_${data.name}
   entity: nicolasschreiber
   job_type: ${oc.select:job_type,null}
   notes: null

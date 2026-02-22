@@ -11,7 +11,6 @@ defaults:
   - /transforms@data.prepreprocess.t04_cotracker: cotracker_single
   - /transforms@data.prepreprocess.t05_target_to_featured_pointcloud: to_masked_featured_pointcloud
   - /transforms@data.prepreprocess.t06_tool_to_featured_pointcloud: to_tracked_featured_pointcloud
-  # - /transforms@data.prepreprocess.t07_to_masked_tool_pointcloud: to_masked_featured_pointcloud
   - /transforms@data.prepreprocess.t99_cleanup: cleanup
 
   # Last little part that connects everyting
@@ -33,10 +32,6 @@ camera_keys: ["left_cam", "right_cam"]
 rgb_key: rgb
 
 data:
-  preprepreprocess:
-    backend: hdf5
-    root_dir: ${paths.preprepreprocessed_dir}/robocasa/${data.name}
-
   # Below is just the default configuration copied here for convenience. Change as needed.
   prepreprocess:
     backend: hdf5
