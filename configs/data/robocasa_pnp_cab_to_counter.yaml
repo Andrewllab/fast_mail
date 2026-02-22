@@ -1,5 +1,5 @@
 defaults:
-  - robocasa_pnp.
+  - robocasa_pnp
   - /segmentations: robocasa_pnp_cab_to_counter
   - _self_
 
