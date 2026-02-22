@@ -1,4 +1,4 @@
-_target_: transforms.sparse_to_pointcloud.SparseToPointCloudMaskOnly
+_target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
 _partial_: True
 color: True
 max_depth: 5.0
@@ -8,3 +8,4 @@ mask_key: target_segmentation
 features_key: dinov3_features
 out_key: target_points
 rgb_key: ${rgb_key}
+mode: mask

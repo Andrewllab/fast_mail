@@ -522,10 +522,11 @@ class SparseToPointCloudMaskOnly(SparseToPointCloudMerged):
         features_key: str | Sequence[str] | None = None,
         max_depth: float | None = None,
         out_key: str = "pcd",
+        mode: Literal["mask", "track"] = "mask",
     ) -> None:
         super().__init__(
             specs,
-            mode="mask",
+            mode=mode,
             color=color,
             features=features,
             camera_keys=camera_keys,
@@ -556,10 +557,11 @@ class SparseToPointCloudTrackOnly(SparseToPointCloudMerged):
         features_key: str | Sequence[str] | None = None,
         max_depth: float | None = None,
         out_key: str = "pcd",
+        mode: Literal["mask", "track"] = "track",
     ) -> None:
         super().__init__(
             specs,
-            mode="track",
+            mode=mode,
             color=color,
             features=features,
             camera_keys=camera_keys,

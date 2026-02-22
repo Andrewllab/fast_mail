@@ -1,4 +1,4 @@
-_target_: transforms.sparse_to_pointcloud.SparseToPointCloudTrackOnly
+_target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
 _partial_: True
 color: True
 max_depth: 5.0
@@ -9,3 +9,4 @@ visibility_key: tool_cotracker_visibility
 features_key: dinov3_features
 out_key: tool_points
 rgb_key: ${rgb_key}
+mode: track

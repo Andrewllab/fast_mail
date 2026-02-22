@@ -53,10 +53,14 @@ data:
     t99_cleanup: null  # disable cleanup transform added by default
   prepreprocess:  
     t04_cotracker: null  # disable cotracker transform added by default
+    t05_target_to_featured_pointcloud:
+      mode: mask
+      mask_key: target_segmentation
+      # _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
     t06_to_tracked_featured_pointcloud:
       mode: mask
       mask_key: tool_segmentation
-      _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
+      # _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
     t99_cleanup: null  # disable cleanup transform added by default
   preprepreprocess:
     t99_cleanup: null  # disable cleanup transform added by default
@@ -71,6 +75,7 @@ logger:
     job_type: test_sim  # group with other simulation test runs in WandB
     # use the notes and tags from the training run
     # don't use the overrides passed to the test.py script
+    project: ${checkpoint.wandb_project}
     notes_from_overrides: False
     tags_from_overrides: False
 
