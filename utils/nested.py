@@ -1,7 +1,8 @@
 import math
-from typing import Any, Dict, MutableMapping, Optional, Sequence
+from typing import Any, Dict, Mapping, MutableMapping, Optional, Sequence
 
 import h5py
+import numpy as np
 import torch
 from tensordict import NonTensorData, TensorDict
 from torch import Tensor
@@ -592,3 +593,33 @@ def nested_index_fast(index_nt: torch.Tensor, src_nt: torch.Tensor) -> torch.Ten
 
     # Rewrap using *index_nt's offsets* (because output has index_nt's ragged lengths)
     return torch.nested.nested_tensor_from_jagged(values=out_vals, offsets=idx_off)
+
+
+def nested_index_reduced_batch(
+    batch: Mapping[str, Tensor], idx: int | slice
+) -> np.ndarray:
+    # all other items should be actual data, e.g. position or color
+    offs = batch["offsets"]
+    values = batch["values"]
+
+    if isinstance(idx, slice):
+        if not (
+            idx.start is not None
+            and idx.stop is not None
+            and idx.step is None
+            and idx.stop - idx.start == 1
+        ):
+            raise NotImplementedError("Only slicing a single element is supported.")
+        i = idx.start
+    else:
+        i = idx
+
+    start = offs[i]
+    end = offs[i + 1]
+
+    values_slice = torch.from_numpy(values[start:end])  # remove batch dimension
+    values_nested = torch.nested.nested_tensor_from_jagged(
+        values_slice, offsets=torch.tensor([0, end - start])
+    )
+
+    return values_nested

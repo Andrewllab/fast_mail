@@ -3,12 +3,12 @@
 defaults:
   - robocasa_track
   # Make the "target" step tracked (instead of masked)
-  - override /transforms@data.prepreprocess.t04_cotracker: cotracker_both
-  - override /transforms@data.prepreprocess.t05_target_to_featured_pointcloud: to_tracked_featured_pointcloud
+  - override /transforms@data.preprepreprocess.t04_cotracker: cotracker_both
+  - override /transforms@data.preprepreprocess.t05_target_to_featured_pointcloud: to_tracked_featured_pointcloud
   - _self_
 
 data:
-  prepreprocess:
+  preprepreprocess:
     t05_target_to_featured_pointcloud:
       track_key: target_cotracker_tracks
       visibility_key: target_cotracker_visibility

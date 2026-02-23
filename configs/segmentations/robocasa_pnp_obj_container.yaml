@@ -3,7 +3,7 @@
 # Used by most robocasa pnp environments, exceptions are counter_to_sink, counter_to_cab, cab_to_counter
 # Done
 data:
-  prepreprocess:
+  preprepreprocess:
     # convert absolute joint actions to delta joint action
     t00_apply_robocasa_segmentations:
       _target_: transforms.robocasa_segmentations.ApplyRobocasaSegmentations

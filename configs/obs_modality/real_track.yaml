@@ -2,19 +2,21 @@
 
 defaults:
   # Larger vision tasks
-  - /transforms@data.prepreprocess.t00_remove_unused_cams: cleanup
-  - /goals@data.prepreprocess.t01_target_tool_from_foldername: add_target_tool_from_foldername_real
-  - /transforms@data.prepreprocess.t02_samv3: grounding_samv3_segmenter
-  - /transforms@data.prepreprocess.t03_dinov3: dinov3
-  - /transforms@data.prepreprocess.t04_cotracker: cotracker_single
-  - /transforms@data.prepreprocess.t05_target_to_featured_pointcloud: to_masked_featured_pointcloud
-  - /transforms@data.prepreprocess.t06_tool_to_featured_pointcloud: to_tracked_featured_pointcloud
-  - /transforms@data.prepreprocess.t99_cleanup: cleanup
+  - /transforms@data.preprepreprocess.t00_remove_unused_cams: cleanup
+  - /goals@data.preprepreprocess.t01_target_tool_from_foldername: add_target_tool_from_foldername_real
+  - /transforms@data.preprepreprocess.t02_samv3: grounding_samv3_segmenter
+  - /transforms@data.preprepreprocess.t03_dinov3: dinov3
+  - /transforms@data.preprepreprocess.t04_cotracker: cotracker_single
+  - /transforms@data.preprepreprocess.t05_target_to_featured_pointcloud: to_masked_featured_pointcloud
+  - /transforms@data.preprepreprocess.t06_tool_to_featured_pointcloud: to_tracked_featured_pointcloud
+  - /transforms@data.preprepreprocess.t99_cleanup: cleanup
 
   # Last little part that connects everyting
-  - /transforms@data.preprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
-  - /transforms@data.preprocess.t03_to_sliding_window_action: to_sliding_window_action
-  - /transforms@data.preprocess.t99_cleanup: cleanup
+  - /transforms@data.prepreprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
+  - /transforms@data.prepreprocess.t03_to_sliding_window_action: to_sliding_window_action
+  - /transforms@data.prepreprocess.t99_cleanup: cleanup
+
+  - /transforms@data.preprocess.t00_no_op: noop
 
   - /transforms@data.gpu_batch_transforms.t01_fps_prep: nested_pointcloud_prep_downsample_fps
   - /transforms@data.gpu_batch_transforms.t02_to_pakt_action_obs: to_pakt_action_obs
@@ -29,7 +31,7 @@ rgb_key: left
 
 data:
   # Below is just the default configuration copied here for convenience. Change as needed.
-  prepreprocess:
+  preprepreprocess:
     backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.prepreprocessed_dir}/real/${data.name}_pointclouds
@@ -43,8 +45,8 @@ data:
       keep_stream_types: []  # keep no stream types, i.e. remove all
       drop_keys: [left_cam, right_cam, gripper_cam]
 
-  preprocess:
-    backend: pakt_hdf5
+  prepreprocess:
+    backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.preprocessed_dir}/real/${data.name}_pointclouds
     overwrite: True
@@ -67,6 +69,12 @@ data:
     t99_cleanup:
       keep_stream_types: []  # keep no stream types, i.e. remove all
       drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose, front_left_cam, front_right_cam, gripper_cam]
+  
+  preprocess:
+    backend: pakt_hdf5
+    # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
+    root_dir: ${paths.preprocessed_dir}/real/${data.name}_pointclouds
+    overwrite: True
 
 # disable the batch size finder for point clouds, because the data points 
 # don't have a consistent memory size

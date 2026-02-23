@@ -3,7 +3,7 @@
 defaults:
   - real_track
   # Remove the second tracked object step (we only want one tracked object)
-  - override /transforms@data.prepreprocess.t05_target_to_featured_pointcloud: null
+  - override /transforms@data.preprepreprocess.t05_target_to_featured_pointcloud: null
   # Replace the "target masked pointcloud" step with a tracked pointcloud step
   # - override /transforms@data.prepreprocess.t06_tool_to_featured_pointcloud: to_tracked_featured_pointcloud
   - _self_
