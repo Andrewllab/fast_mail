@@ -48,21 +48,22 @@ class LocalizePAKT(ReversibleTransform):
             mean_point = traj["obs"][self.localization_target]["points"].mean(
                 dim=1, keepdim=True
             )
+
         if (
             torch.isnan(mean_point).any()
             and self.backup_localization_target is not None
         ):
             backup_local_points = traj["obs", self.backup_localization_target, "points"]
+
             if backup_local_points.ndim == 4:
-                backup_mean_point = backup_local_points.mean(axis=1)[:, 0]
+                backup_mean_point = backup_local_points.mean(dim=1)[:, 0:1, :]
             else:
-                backup_mean_point = traj["obs"][self.backup_localization_target][
-                    "points"
+                backup_mean_point = traj[
+                    "obs", self.backup_localization_target, "points"
                 ].mean(dim=1, keepdim=True)
 
-            mean_point[torch.isnan(mean_point)] = backup_mean_point[
-                torch.isnan(mean_point)
-            ]
+            mask = torch.isnan(mean_point)
+            mean_point = torch.where(mask, backup_mean_point, mean_point)
 
         return mean_point
 
