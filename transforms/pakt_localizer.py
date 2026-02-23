@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Sequence
 
-import open3d as o3d
-import open3d.core as o3c
 import torch
 from tensordict import NonTensorData, TensorDict
 from torch_geometric.data import Data
@@ -17,12 +15,21 @@ class LocalizePAKT(ReversibleTransform):
         self,
         specs: DataSpecs,
         localization_target: str,
+        backup_localization_target: str | None = None,
     ) -> None:
 
         self.localization_target = localization_target
+        self.backup_localization_target = backup_localization_target
         if localization_target not in specs.obs:
             raise ValueError(
                 f"Localization target {localization_target} not found in specs.obs"
+            )
+        if (
+            backup_localization_target is not None
+            and backup_localization_target not in specs.obs
+        ):
+            raise ValueError(
+                f"Backup localization target {backup_localization_target} not found in specs.obs"
             )
 
         obs_specs = dict(specs.obs)
@@ -41,6 +48,22 @@ class LocalizePAKT(ReversibleTransform):
             mean_point = traj["obs"][self.localization_target]["points"].mean(
                 dim=1, keepdim=True
             )
+        if (
+            torch.isnan(mean_point).any()
+            and self.backup_localization_target is not None
+        ):
+            backup_local_points = traj["obs", self.backup_localization_target, "points"]
+            if backup_local_points.ndim == 4:
+                backup_mean_point = backup_local_points.mean(axis=1)[:, 0]
+            else:
+                backup_mean_point = traj["obs"][self.backup_localization_target][
+                    "points"
+                ].mean(dim=1, keepdim=True)
+
+            mean_point[torch.isnan(mean_point)] = backup_mean_point[
+                torch.isnan(mean_point)
+            ]
+
         return mean_point
 
     def call_trajectory(self, traj: TensorDict) -> Data:

@@ -18,3 +18,4 @@ data:
       untracked_points_keys: []
     t03_pakt_localizer:
       localization_target: tool_points
+      backup_localization_target: gripper_points
