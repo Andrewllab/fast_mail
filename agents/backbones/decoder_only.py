@@ -116,9 +116,9 @@ class DecoderOnlyNoise(nn.Module):
 
         # === GOAL TOKENS ===
         goal = batch.get(("goal", "embed"), None)
-        if goal.dtype != self.goal_encoder.weight.dtype:
-            goal = goal.to(self.goal_encoder.weight.dtype)
         if goal is not None:
+            if goal.dtype != self.goal_encoder.weight.dtype:
+                goal = goal.to(self.goal_encoder.weight.dtype)
             goal_embed = self.goal_encoder(goal)
             if self.goal_pos_encoder is not None:
                 indices = torch.arange(
