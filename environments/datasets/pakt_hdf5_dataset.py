@@ -13,7 +13,7 @@ from environments.specs import NestedTensorSpec, PointCloudSpec
 from transforms.base_transform import TransformPartialsDict, init_transforms
 from tree.array_dict import ArrayDict
 from utils.hdf5_utils import recursive_hdf5_to_dict
-from utils.nested import unpack_nested_from_storage
+from utils.nested import nested_index_reduced_batch, unpack_nested_from_storage
 from utils.paths import iglob_follow_symlinks, resolve_path
 from utils.pyg import index_reduced_batch
 
@@ -39,10 +39,10 @@ class PaktHDF5Dataset(Hdf5Dataset):
         self.files = get_subset(files, load_subset)
 
         self.trajs = [h5py.File(str(file), "r") for file in self.files]
-        self.trajs = [recursive_hdf5_to_dict(traj) for traj in self.trajs]
-        self.trajs = [TensorDict(traj) for traj in self.trajs]
+        # self.trajs = [recursive_hdf5_to_dict(traj) for traj in self.trajs]
+        # self.trajs = [TensorDict(traj) for traj in self.trajs]
 
-        self.trajs = [unpack_nested_from_storage(traj) for traj in self.trajs]
+        # self.trajs = [unpack_nested_from_storage(traj) for traj in self.trajs]
 
         traj_lengths = [len(traj["action"]) for traj in self.trajs]
 
@@ -78,8 +78,13 @@ class PaktHDF5Dataset(Hdf5Dataset):
         traj_idx, obs_slice, action_slice = self.slices[idx]
         traj = self.trajs[traj_idx]
 
-        obs = {k: v for k, v in traj["obs"].items() if k not in self.pcd_keys}
-        obs = ArrayDict(obs)[obs_slice.start].to_dict()
+        obs = {
+            k: v
+            for k, v in traj["obs"].items()
+            if k not in self.pcd_keys and k not in self.nested_keys
+        }
+        # obs = ArrayDict(obs)[obs_slice.start].to_dict()
+        obs = ArrayDict(obs)[obs_slice.start].apply(torch.from_numpy).to_dict()
 
         pcds = {k: v for k, v in traj["obs"].items() if k in self.pcd_keys}
         # index_reduced_batch operates on any array-like object
@@ -96,20 +101,20 @@ class PaktHDF5Dataset(Hdf5Dataset):
 
         for key in self.nested_keys:
             # if the entire nested tensor is stored as a single object
-            if not isinstance(obs[key], Mapping):
-                obs[key] = torch.nested.as_nested_tensor(
-                    [obs[key]], layout=torch.jagged
-                )
+            if "__nested_jagged__" in traj["obs"][key].keys():
+                obs[key] = nested_index_reduced_batch(traj["obs"][key], obs_slice.start)
                 continue
+
             # else, we have to handle the sub nested tensors
-            sub_keys = obs[key].keys()
+            sub_keys = traj["obs"][key].keys()
+            obs[key] = {}
             for sub_key in sub_keys:
-                obs[key][sub_key] = torch.nested.as_nested_tensor(
-                    [obs[key][sub_key]], layout=torch.jagged
+                obs[key][sub_key] = nested_index_reduced_batch(
+                    traj["obs"][key][sub_key], obs_slice.start
                 )
 
-        action = traj["action"][action_slice.start]
-        ref_action = traj["ref_action"][action_slice.start]
+        action = torch.from_numpy(traj["action"][action_slice.start])
+        ref_action = torch.from_numpy(traj["ref_action"][action_slice.start])
         phantom_action = action.clone()
 
         td = TensorDict(
@@ -125,16 +130,9 @@ class PaktHDF5Dataset(Hdf5Dataset):
         td["obs"].auto_batch_size_(batch_dims=1)
 
         if "goal" in traj.keys():
-            if isinstance(traj["goal"], Mapping):
-                goal = ArrayDict(traj["goal"]).to_dict()
-            else:
-                goal = ArrayDict(traj["goal"])[...].to_dict()
+            goal = ArrayDict(traj["goal"])[...].to_dict()
             for key, value in goal.items():
-                if (
-                    isinstance(value, np.ndarray)
-                    and value.dtype == np.object_
-                    and value.ndim == 0
-                ):
+                if isinstance(value, np.ndarray) and value.ndim == 0:
                     # convert numpy bytes array to python bytes object, and
                     # then to python (utf-8) string
                     goal[key] = value.item().decode("utf-8")
