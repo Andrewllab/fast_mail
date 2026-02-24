@@ -5,7 +5,7 @@ import multiprocessing as mp
 
 import torch
 from tensordict import NonTensorData, TensorDict
-from torch_geometric.data import Data
+from torch_geometric.data import Batch, Data
 
 from environments.specs import CameraSpec, DataSpecs, PointCloudSpec
 from transforms.base_transform import Transform
@@ -29,8 +29,6 @@ class RenderPointCloud(Transform):
         log_pointcloud_size: bool = False,
         pcd_key: str = "pcd",
     ) -> None:
-
-        super().__init__(daemon=True)
 
         self._input_key = pcd_key
         try:
@@ -65,7 +63,7 @@ class RenderPointCloud(Transform):
             # Coordinate frames for moving cameras are rendered in each loop
             # iteration, so skip them here.
 
-            for key, spec in self._specs.obs.items():
+            for key, spec in specs.obs.items():
                 if (
                     not isinstance(spec, CameraSpec)
                     or spec.extrinsics is None
@@ -96,6 +94,9 @@ class RenderPointCloud(Transform):
         nt_data: NonTensorData = tensordict["obs"].get(self._input_key)
 
         data: Data = nt_data.data  # unpack NonTensorData wrapper around pyg Data object
+
+        if isinstance(data, Batch):
+            data = data.get_example(0)  # just render the first point cloud in the batch
 
         pos, color = data.pos, data.x
         assert pos is not None
@@ -128,7 +129,7 @@ class RenderPointCloud(Transform):
                 # BackCompat
                 dynamic_extrinsics = dynamic_extrinsics.to(dtype=torch.float32)
                 # remove the batch dimension and index the last element in the sequence
-                dynamic_extrinsics = dynamic_extrinsics[0, -1].cpu()
+                dynamic_extrinsics = dynamic_extrinsics[0, -1]
 
                 # chain the dynamic extrinsics with the static extrinsics
                 assert spec.extrinsics is not None
