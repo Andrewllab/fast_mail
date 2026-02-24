@@ -26,7 +26,7 @@ mlp1:
   _target_: torch.nn.Linear
   _partial_: True
 activation: ReLU
-mlp_dropout: ${residual_dropout}
+mlp_dropout: ${.residual_dropout}
 mlp2:
   _target_: torch.nn.Linear
   _partial_: True
