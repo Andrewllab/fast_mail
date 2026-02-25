@@ -13,7 +13,7 @@ _partial_: True
 # Arguments passed at runtime:
 # dataset: ???
 
-dropout_prob: 0
+dropout_prob: 0.05
 
 # all tokenizers are responsible for their own token position encoding now
 time_encode_obs: False
