@@ -1,16 +1,17 @@
 import logging
-from enum import Enum, auto
-from typing import  Literal
 from dataclasses import dataclass
+from enum import Enum, auto
 
 import torch
-from polymetis import RobotInterface, GripperInterface
+from polymetis import GripperInterface, RobotInterface
 
 logger = logging.getLogger(__name__)
+
 
 class TeleoperationType(Enum):
     JOINT_SPACE = auto()
     TASK_SPACE = auto()
+
 
 @dataclass
 class RobotState:
@@ -30,7 +31,9 @@ class Robot:
         logger.info(f"Connected to {name}'s robot arm at {ip_address}:{arm_port}")
 
         self.robot_gripper = GripperInterface(ip_address, gripper_port)
-        logger.info(f"Connected to {name}'s robot gripper at {ip_address}:{gripper_port}")
+        logger.info(
+            f"Connected to {name}'s robot gripper at {ip_address}:{gripper_port}"
+        )
 
     def close(self):
         raise NotImplementedError

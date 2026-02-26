@@ -32,7 +32,7 @@ from utils.torch_conf import configure_torch
 log = logging.getLogger(__name__)
 
 
-@hydra.main(version_base=None, config_path="configs")
+@hydra.main(version_base=None, config_path="configs", config_name="test_real_pair")
 @log_exception_and_finish_wandb
 def test(cfg: DictConfig) -> None:
     # resolve the entire config to catch any errors early

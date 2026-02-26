@@ -70,3 +70,4 @@ trainer:
   default_root_dir: ${paths.output_dir}
   enable_progress_bar: False
   log_every_n_steps: 10
+  inference_mode: False

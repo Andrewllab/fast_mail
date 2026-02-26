@@ -36,6 +36,15 @@ env:
         2.159746,
         -0.908100,
       ]
+      reset_duration: 5.0
+    wrappers:
+      record_video:
+        _target_: environments.real_robot.wrappers.RecordRobotEnvVideo
+        _partial_: True  # requires 'env' argument
+        video_folder: ${paths.recording_dir}
+        name_prefix: rollout
+        fps: 10
+        disable_logger: True
 
   num_episodes: null  # run infinitely, although the real env has no timeout anyway
   action_horizon: null  # use all predicted actions

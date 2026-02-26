@@ -7,7 +7,5 @@ follower_ip_address: "141.3.53.154"
 follower_ports:
   - 50053
   - 50054
-teleoperation_type:
-  _target_: environments.real_robot.teleop.teleoperation_base.TeleoperationType
-  _args_: 
-    - 1
+control_type: hybrid_joint
+home_pose: [0.117641, -0.137225, -0.176371, -1.864860, -0.035162,  1.752164,  0.742877]

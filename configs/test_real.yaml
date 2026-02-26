@@ -43,7 +43,7 @@ data:
     t99_cleanup: null
 
     # on rollout, we need to specify the goal text ourselves
-    t8_add_goal:
+    t40_add_goal:
       current_task:  # REPLACE with current goal command
 
   gpu_batch_transforms:
