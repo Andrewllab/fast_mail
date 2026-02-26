@@ -225,15 +225,24 @@ def resolve_checkpoint(
                 raise RuntimeError(f"No artifacts found for wandb run {run_id}")
 
             try:
-                # sort the artifacts by epoch, which can be extracted from the original filename
-                artifacts_by_epoch = {
-                    int(
-                        CKPT_PATTERN.match(
-                            artifact.metadata["original_filename"]
-                        ).group(1)
-                    ): artifact
+                if all(
+                    CKPT_PATTERN.search(artifact.metadata.get("original_filename"))
                     for artifact in artifacts
-                }
+                ):
+                    # sort the artifacts by epoch, which can be extracted from the original filename
+                    artifacts_by_epoch = {
+                        int(
+                            CKPT_PATTERN.match(
+                                artifact.metadata["original_filename"]
+                            ).group(1)
+                        ): artifact
+                        for artifact in artifacts
+                    }
+                else:
+                    artifacts_by_epoch = {
+                        int(artifact.history_step): artifact for artifact in artifacts
+                    }
+
             except AttributeError:
                 raise ValueError(
                     f"Could not parse artifact original filenames from run {run_id}. "
@@ -281,7 +290,7 @@ def resolve_checkpoint(
             elif match := re.fullmatch(r"spread_(\d+)", epochs):
                 spread = int(match.group(1))
                 indices = [
-                    round((i+1) * (len(artifacts_by_epoch) - 1) / (spread))
+                    round((i + 1) * (len(artifacts_by_epoch) - 1) / (spread))
                     for i in range(spread)
                 ]
                 artifacts_by_epoch = [artifacts_by_epoch[i] for i in indices]
