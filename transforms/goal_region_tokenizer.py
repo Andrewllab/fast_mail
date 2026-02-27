@@ -59,7 +59,7 @@ class GoalRegionEncoder(Transform, nn.Module):
         obs_specs["embed"] = new_spec
         self._output_specs = specs.replace(obs=obs_specs)
 
-        self._obs_key = "goal_pos"
+        self._obs_key = obs_key
 
     @property
     def specs(self) -> DataSpecs:
