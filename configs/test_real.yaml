@@ -34,9 +34,8 @@ agent:
 data:
   eval_mode: env
   env:
-    env:
-      action_horizon: 20
-      fps: 10
+    action_horizon: 20
+    fps: 10
 
   preprocess:
     t1_drop: null
