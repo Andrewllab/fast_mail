@@ -138,7 +138,7 @@ class ManiSkillGoalPosWrapper(VectorObservationWrapper):
 
 
 class ManiSkillGoalPosWrapper(VectorObservationWrapper):
-    def observations(self, observations: ObsType) -> ObsType:
+    def observations(self, observations: dict[str, Tensor]) -> dict[str, Tensor]:
         env_state = self.unwrapped.get_state_dict()
         if "goal_region" in env_state["actors"]:
             goal_region = env_state["actors"]["goal_region"]
