@@ -1,0 +1,84 @@
+# @package _global_
+
+defaults:
+
+  # Remove unused defaults and get the actual segmentations from robocasa
+  - /goals@data.preprepreprocess.t00-0_segmentation_targets_from_foldername: add_target_tool_from_foldername_robocasa
+  - /transforms@data.preprepreprocess.t00-1_apply_robocasa_segmentations: apply_robocasa_segmentations
+  - /transforms@data.preprepreprocess.t00_apply_robocasa_segmentations: null
+  - /transforms@data.preprepreprocess.t01_remove_inhand: cleanup
+  
+  # Larger vision tasks
+  - /transforms@data.preprepreprocess.t03_dinov3: dinov3
+  - /transforms@data.preprepreprocess.t04_cotracker: cotracker_single
+  - /transforms@data.preprepreprocess.t05_target_to_featured_pointcloud: to_masked_featured_pointcloud
+  - /transforms@data.preprepreprocess.t06_tool_to_featured_pointcloud: to_tracked_featured_pointcloud
+  - /transforms@data.preprepreprocess.t99_cleanup: cleanup
+
+  # Last little part that connects everyting
+  - /transforms@data.prepreprocess.t01_robocasa_use_abs_actions: robocasa_use_abs_actions
+  - /transforms@data.prepreprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
+  - /transforms@data.prepreprocess.t03_to_sliding_window_action: to_sliding_window_action
+  - /transforms@data.prepreprocess.t99_cleanup: cleanup
+
+  - /transforms@data.preprocess.t00_no_op: noop
+
+  - /transforms@data.gpu_batch_transforms.t01_fps_prep: nested_pointcloud_prep_downsample_fps
+  - /transforms@data.gpu_batch_transforms.t02_to_pakt_action_obs: to_pakt_action_obs
+  - /transforms@data.gpu_batch_transforms.t03_pakt_localizer: pakt_localizer
+  - /transforms@data.gpu_batch_transforms.t04_random_rotation: pakt_random_rotation
+
+  # - /transforms@data.gpu_batch_transforms.t99_render_pcd: pakt_render_pointcloud
+
+
+
+camera_keys: ["left_cam", "right_cam"]
+rgb_key: rgb
+
+data:
+
+  # Below is just the default configuration copied here for convenience. Change as needed.
+  preprepreprocess:
+    backend: hdf5
+    # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
+    root_dir: ${paths.preprepreprocessed_dir}/robocasa/${data.name}_pointclouds
+    overwrite: True
+    t01_remove_inhand:
+      drop_keys: [gripper_cam]
+    
+    t00-1_apply_robocasa_segmentations:
+      _target_: transforms.robocasa_segmentations.ApplyRobocasaSegmentations
+      _partial_: True
+
+      camera_keys: ${camera_keys}
+      segmentation_keys: null  # get segmentation keys from the data
+      mask_out_keys: [tool_segmentation, target_segmentation]
+      segmentation_goal_keys: [tool, target]
+
+    t99_cleanup:
+      keep_stream_types: []  # keep no stream types, i.e. remove all
+      drop_keys: [left_cam, right_cam, gripper_cam]
+
+  prepreprocess:
+    backend: hdf5
+    # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
+    root_dir: ${paths.prepreprocessed_dir}/robocasa/${data.name}_pointclouds
+    overwrite: True
+
+    t99_cleanup:
+      keep_stream_types: []  # keep no stream types, i.e. remove all
+      drop_keys: [left_cam_pose, right_cam_pose, gripper_cam_pose, left_cam, right_cam, gripper_cam]
+
+  preprocess:
+    backend: pakt_hdf5
+    # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
+    root_dir: ${paths.preprocessed_dir}/robocasa/${data.name}_pointclouds
+    overwrite: True
+
+# disable the batch size finder for point clouds, because the data points 
+# don't have a consistent memory size
+callbacks:
+  batch_size_finder: null
+
+# metadata
+modality: pointcloud

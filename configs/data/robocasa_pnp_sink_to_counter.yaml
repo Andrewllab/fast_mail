@@ -1,5 +1,6 @@
 defaults:
   - robocasa_pnp
+  - /segmentations: robocasa_pnp_obj_container
   - _self_
 
 task: kitchen_pnp_sink_to_counter

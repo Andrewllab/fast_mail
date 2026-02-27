@@ -1,6 +1,6 @@
 defaults:
   - robocasa_pnp
-  - override /segmentations: robocasa_pnp_counter_to_sink
+  - /segmentations: robocasa_pnp_counter_to_sink
   - _self_
 
 task: kitchen_pnp_counter_to_sink

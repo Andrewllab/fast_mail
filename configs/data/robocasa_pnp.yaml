@@ -1,6 +1,8 @@
 defaults:
   - robocasa
-  - /segmentations: robocasa_pnp_obj_container
+
+task: kitchen_pnp_full
+name: kitchen_pnp_full
 
 dataset:
   root_dir: ${paths.data_dir}/robocasa/single_stage/kitchen_pnp

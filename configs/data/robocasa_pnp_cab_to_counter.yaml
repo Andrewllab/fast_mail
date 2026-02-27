@@ -1,6 +1,6 @@
 defaults:
   - robocasa_pnp
-  - override /segmentations: robocasa_pnp_cab_to_counter
+  - /segmentations: robocasa_pnp_cab_to_counter
   - _self_
 
 task: kitchen_pnp_cab_to_counter

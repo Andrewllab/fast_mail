@@ -1,0 +1,62 @@
+_target_: transforms.goal_from_foldername.GoalObjectsFromFolderName
+_partial_: True
+current_task: null
+goal_mapping:
+  TurnOnMicrowave:
+    tool: microwave
+  TurnOffMicrowave:
+    tool: microwave
+  CoffeePressButton:
+    tool: coffee_machine
+  CoffeeServeMug:
+    tool: obj
+    target: counter
+  CoffeeSetupMug:
+    tool: obj
+    target: coffee_machine
+  TurnSinkSpout:
+    tool: sink
+  TurnOnSinkFaucet:
+    tool: sink
+  TurnOffSinkFaucet:
+    tool: sink
+  CloseSingleDoor:
+    tool: door_fxtr
+  CloseDoubleDoor:
+    tool: door_fxtr
+  OpenDoubleDoor:
+    tool: door_fxtr
+  OpenSingleDoor:
+    tool: door_fxtr
+  CloseDrawer:
+    tool: drawer
+  OpenDrawer:
+    tool: drawer
+  TurnOffStove:
+    tool: stove
+  TurnOnStove:
+    tool: stove
+  PnPCounterToSink:
+    tool: obj
+    target: sink
+  PnPCabToCounter:
+    tool: obj
+    target: counter
+  PnPSinkToCounter:
+    tool: obj
+    target: container
+  PnPMicrowaveToCounter:
+    tool: obj
+    target: container
+  PnPCounterToStove:
+    tool: obj
+    target: container
+  PnPCounterToCab:
+    tool: obj
+    target: cab
+  PnPCounterToMicrowave:
+    tool: obj
+    target: container
+  PnPStoveToCounter:
+    tool: obj
+    target: container
