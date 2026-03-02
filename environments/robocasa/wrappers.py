@@ -411,9 +411,7 @@ class SegmentationWrapper(gym.Wrapper):
         )
         obs_spaces["segmentation_ids"] = spaces.Dict(
             {
-                key: spaces.Sequence(
-                    spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.int64)
-                )
+                key: spaces.Box(low=-np.inf, high=np.inf, shape=(100,), dtype=np.int64)
                 for key in segmentation_ids
                 if key in self.local_goal_keys
             }
@@ -474,6 +472,13 @@ class SegmentationWrapper(gym.Wrapper):
             segmentation_ids[fixture_key] += get_subtree_geom_ids_by_group(
                 env.sim.model, fixture_body_id, group=1
             )
+
+        for key in segmentation_ids.keys():
+            seg_padded = np.full((100,), fill_value=-1, dtype=np.int64)
+            seg_padded[: len(segmentation_ids[key])] = np.array(
+                segmentation_ids[key], dtype=np.int64
+            )
+            segmentation_ids[key] = seg_padded
 
         return segmentation_ids
 

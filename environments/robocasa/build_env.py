@@ -253,7 +253,7 @@ def make(
     if parallel:
         VecEnvCls = functools.partial(
             AsyncVectorEnv,
-            shared_memory=False,
+            shared_memory=True,
             # avoid rendering issues in subprocesses by using spawn instead of fork
             context="spawn",
         )
