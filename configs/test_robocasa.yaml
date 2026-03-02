@@ -9,6 +9,7 @@ defaults:
   - hydra: checkpoint_dir_naming
   # - transforms@data.gpu_batch_transforms.t90_render: render_cameras
   # - transforms@data.gpu_batch_transforms.t90_render_pcd: render_pointcloud
+  # - /transforms@data.gpu_batch_transforms.t99_render_pcd: pakt_render_pointcloud
   - _self_
   - platform: default
   - optional local: default
@@ -21,16 +22,16 @@ checkpoint:
   # either specify a complete checkpoint path...
   log_dir:
   # ...or specify the wandb run name
-  wandb_run_id:  # REPLACE with desired wandb run id
+  wandb_run_id: ??? # REPLACE with desired wandb run id
   # project and entity are only needed if they differ from the settings in the wandb logger config
-  wandb_project: PAKT_Robocasa
+  wandb_project: PAKT_debug
   wandb_entity: nicolasschreiber
   epochs: last  # options: last, all, last_n (default: last)
   artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
   use_artifact: False  # sets the current run to be a consumer of the artifact (doesn't make sense for resumed runs)
 
 agent:
-  num_sampling_steps: 50  # modify if desired
+  num_sampling_steps: 20  # modify if desired
 
 data:
   eval_mode: env
@@ -41,7 +42,11 @@ data:
     num_envs: 4
     parallel: null  # automatically use parallel if num_envs > 1
     action_horizon: 20  # modify if desired
-    top_level_keys: segmentation_ids
+    # top_level_keys: segmentation_ids
+
+    camera_names:  # specify the camera names to use for observations
+      - robot0_agentview_left
+      - robot0_agentview_right
 
     record_video:
       video_folder: ${hydra:run.dir}/videos
@@ -52,14 +57,20 @@ data:
   prepreprocess:
     t99_cleanup: null  # disable cleanup transform added by default
   preprepreprocess:  
-    t04_cotracker: null  # disable cotracker transform added by default
+    t00_apply_robocasa_segmentations:
+      camera_keys: [robot0_agentview_left, robot0_agentview_right]
+    t03_dinov3:
+      camera_keys: [robot0_agentview_left, robot0_agentview_right]
+    t04_cotracker: null
     t05_target_to_featured_pointcloud:
       mode: mask
       mask_key: target_segmentation
+      camera_keys: [robot0_agentview_left, robot0_agentview_right]
       # _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
     t06_tool_to_featured_pointcloud:
       mode: mask
       mask_key: tool_segmentation
+      camera_keys: [robot0_agentview_left, robot0_agentview_right]
       # _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
     t99_cleanup: null  # disable cleanup transform added by default
   

@@ -88,6 +88,9 @@ class RenderPointCloud(ctx.Process, Transform):
         Collects pointcloud tensors from the provided keys and streams them to the
         render process.
         """
+
+        render_idx = 2
+
         for i, key_parts in enumerate(self._input_keys):
             name = "/".join(key_parts)
 
@@ -100,7 +103,7 @@ class RenderPointCloud(ctx.Process, Transform):
             # Pointcloud creation semantics (matches pakt_render_pointcloud.py):
             # - take the first element in batch dimension
             # - convert to CPU numpy for Open3D
-            pts_np = pts[0].detach().cpu().numpy()
+            pts_np = pts[render_idx].detach().cpu().numpy()
 
             if pts_np.ndim != 2 or pts_np.shape[-1] != 3:
                 log.warning(

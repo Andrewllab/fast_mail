@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import torch
 from gymnasium.vector import VectorWrapper
+from torch.nn.utils.rnn import pad_sequence
 
 from utils.trees import tree_call_method, tree_map
 
@@ -37,11 +39,11 @@ class NumpyToTorch(VectorWrapper):
         obs, reward, terminated, truncated, info = self.env.step(actions)
 
         return (
-            tree_map(torch.from_numpy, obs),
-            tree_map(torch.from_numpy, reward),
-            tree_map(torch.from_numpy, terminated),
-            tree_map(torch.from_numpy, truncated),
-            tree_map(torch.from_numpy, info),
+            tree_map(convert_to_torch, obs),
+            tree_map(convert_to_torch, reward),
+            tree_map(convert_to_torch, terminated),
+            tree_map(convert_to_torch, truncated),
+            tree_map(convert_to_torch, info),
         )
 
     def reset(
@@ -64,4 +66,17 @@ class NumpyToTorch(VectorWrapper):
             options = tree_call_method(options, "numpy")
 
         obs, info = self.env.reset(seed=seed, options=options)
-        return tree_map(torch.from_numpy, obs), tree_map(torch.from_numpy, info)
+        return tree_map(convert_to_torch, obs), tree_map(convert_to_torch, info)
+
+
+def convert_to_torch(obj: Any) -> Any:
+    if isinstance(obj, torch.Tensor):
+        return obj
+    elif isinstance(obj, tuple):
+        max_len = max(map(len, obj))
+        result = np.full((len(obj), max_len), -1)
+        for i, a in enumerate(obj):
+            result[i, : len(a)] = a
+        return torch.from_numpy(result)
+    elif isinstance(obj, np.ndarray):
+        return torch.from_numpy(obj)

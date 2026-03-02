@@ -93,7 +93,7 @@ class ActionChunkWrapper(VectorWrapper, gym.utils.RecordConstructorArgs):
         #     obs.update(rendered_obs)
 
         # unsqueeze time dimension (works for both torch and numpy)
-        obs = tree_get_item(obs, (slice(None), None))
+        # obs = tree_get_item(obs, (slice(None), None))
 
         return obs, info
 
@@ -145,7 +145,7 @@ class ActionChunkWrapper(VectorWrapper, gym.utils.RecordConstructorArgs):
             info.update(reset_info)
 
         # unsqueeze time dimension (works for both torch and numpy)
-        obs = tree_get_item(obs, (slice(None), None))
+        # obs = tree_get_item(obs, (slice(None), None))
 
         # if self.use_render_obs:
         #     rendered_obs = self.env.render()

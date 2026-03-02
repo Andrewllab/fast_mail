@@ -75,9 +75,16 @@ class Dinov3FeatureExtractorTransform(Transform):
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
         for camera_key in self.camera_keys:
             traj_len = tensordict["obs"][camera_key][self.rgb_key].shape[0]
+            cam_spec = self.input_specs[camera_key]
+            cam_width = cam_spec.streams[self.rgb_key].width
+            cam_height = cam_spec.streams[self.rgb_key].height
+            B = tensordict["obs"][camera_key][self.rgb_key].shape[0]
 
             video = (
-                tensordict["obs"][camera_key][self.rgb_key].float().permute(0, 3, 1, 2)
+                tensordict["obs"][camera_key][self.rgb_key]
+                .float()
+                .view(B, cam_height, cam_width, 3)
+                .permute(0, 3, 1, 2)
                 / 255.0
             )
 

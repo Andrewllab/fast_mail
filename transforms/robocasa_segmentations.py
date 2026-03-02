@@ -77,14 +77,17 @@ class ApplyRobocasaSegmentations(Transform):
         return tensordict
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
-        segmentation_ids = tensordict["segmentation_ids"]
+        if "segmentation_ids" not in tensordict:
+            segmentation_ids = tensordict["obs"]["segmentation_ids"]
+        else:
+            segmentation_ids = tensordict["segmentation_ids"]
 
         segmentation_keys = self.segmentation_keys
         if segmentation_keys is None:
             segmentation_keys = tensordict["goal"][self.segmentation_goal_keys]
 
         for cam_key in self.camera_keys:
-            segmentation = tensordict[("obs", cam_key, "segmentation")]
+            segmentation = tensordict[("obs", cam_key, "segmentation_element")]
 
             for seg_key, mask_out_key in zip(
                 self.segmentation_keys, self.mask_out_keys
@@ -92,7 +95,12 @@ class ApplyRobocasaSegmentations(Transform):
                 local_seg_ids = torch.tensor(
                     segmentation_ids[seg_key], device=segmentation.device
                 )
-                mask = torch.isin(segmentation, local_seg_ids)
+                mask = (
+                    segmentation.unsqueeze(-1)
+                    == local_seg_ids.unsqueeze(1).unsqueeze(1)
+                ).any(
+                    dim=-1
+                )  # torch.isin(segmentation, local_seg_ids)
                 tensordict[("obs", cam_key, mask_out_key)] = mask
 
         return tensordict

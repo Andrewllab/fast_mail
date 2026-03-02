@@ -43,7 +43,7 @@ class ToPaktActionObsTransform(ReversibleTransform):
         self.des_gripper_points_key = des_gripper_points_key
 
         self.include_tracked_in_action = include_tracked_in_action
-        self.window_len = specs.action_seq_len
+        self.window_len = 20
         self.num_action_points = 5
         self._specs = specs
 

@@ -154,7 +154,7 @@ def merge_data_configs(cfg: DictConfig, other: DictConfig) -> DictConfig:
             # explicitly overwritten
             cfg[key] = OmegaConf.merge(cfg[key], subcfg)
 
-    cfg["env"]["env"]["env_name"] = env_name
+    cfg["env"]["env_name"] = env_name
 
     transform_keys = [
         "cpu_transforms",

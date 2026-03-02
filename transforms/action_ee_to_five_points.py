@@ -165,62 +165,75 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         return tensordict
 
     def call_trajectory_rollout(self, tensordict: TensorDict) -> TensorDict:
-        ee_pos = tensordict["obs"]["ee_pose"][:, :3].to(torch.float32)  # (T, 3)
-        ee_quat = tensordict["obs"]["ee_pose"][:, 3:].to(torch.float32)  # (T, 4)
-
-        if "_action" not in tensordict["obs"].keys():
-            gripper_state = -torch.ones(
-                ee_pos.shape[0], device=ee_pos.device, dtype=ee_pos.dtype
-            )  # (T,)
-
-            des_pos = ee_pos.clone()
-            des_quat = ee_quat.clone()
-            des_gripper_state = gripper_state.clone()
-
-            des_points = self.ee_pose_to_3D_points(
-                ee_pos=des_pos,
-                ee_quat=des_quat,
-                gripper=des_gripper_state,
-            )
+        if "ee_pose" in tensordict["obs"]:
+            ee_pos = tensordict["obs"]["ee_pose"][:, :3].to(torch.float32)  # (T, 3)
+            ee_quat = tensordict["obs"]["ee_pose"][:, 3:].to(torch.float32)  # (T, 4)
         else:
+            ee_pos = tensordict["obs"]["robot0_eef_pos"]
+            ee_quat = tensordict["obs"]["robot0_eef_quat_site"]
 
-            gripper_state = tensordict["obs"]["_action"][:, -1].to(ee_pos.dtype)  # (T,)
+        # Creating new dummy "previous desired" state for new runs where the old action is not known
+        new_gripper_state = -torch.ones(
+            ee_pos.shape[0], device=ee_pos.device, dtype=ee_pos.dtype
+        )  # (T,)
 
-            if self.quat_action:
-                des_pos = tensordict["obs"]["_action"][:, :3].to(
-                    torch.float32
-                )  # (T, 3)
-                des_quat = tensordict["obs"]["_action"][:, 3:7].to(
-                    torch.float32
-                )  # (T, 4)
-                des_rot = axis_angle_from_quat(des_quat)
-            else:
-                des_pos = tensordict["obs"]["_action"][:, :3].to(
-                    torch.float32
-                )  # (T, 3)
-                des_rot = tensordict["obs"]["_action"][:, 3:6].to(
-                    torch.float32
-                )  # (T, 3)
+        new_des_pos = ee_pos.clone()
+        new_des_quat = ee_quat.clone()
+        new_des_gripper_state = new_gripper_state.clone()
 
-            des_points = self.ee_pose_to_3D_points(
-                ee_pos=des_pos,
-                ee_rot=des_rot,
-                gripper=gripper_state,
-            )  # (T, 5, 3)
+        new_des_points = self.ee_pose_to_3D_points(
+            ee_pos=new_des_pos,
+            ee_quat=new_des_quat,
+            gripper=new_des_gripper_state,
+        )
 
-            if self.apply_base_pose:
-                base_pose = tensordict["obs"][self.base_pose_obs_key]  # (T, 7)
-                base_pos = base_pose[..., :3]  # (T, 3)
-                base_quat = base_pose[..., 3:]  # (T, 4)
-                des_points = transform_points(des_points, base_pos, base_quat)
+        # Use actual previous action as "desired" for conditioning
+        prev_des_gripper_state = tensordict["obs"]["_action"][:, -1].to(
+            ee_pos.dtype
+        )  # (T,)
+
+        if self.quat_action:
+            prev_des_pos = tensordict["obs"]["_action"][:, :3].to(
+                torch.float32
+            )  # (T, 3)
+            prev_des_quat = tensordict["obs"]["_action"][:, 3:7].to(
+                torch.float32
+            )  # (T, 4)
+            prev_des_rot = axis_angle_from_quat(prev_des_quat)
+        else:
+            prev_des_pos = tensordict["obs"]["_action"][:, :3].to(
+                torch.float32
+            )  # (T, 3)
+            prev_des_rot = tensordict["obs"]["_action"][:, 3:6].to(
+                torch.float32
+            )  # (T, 3)
+
+        prev_des_points = self.ee_pose_to_3D_points(
+            ee_pos=prev_des_pos,
+            ee_rot=prev_des_rot,
+            gripper=prev_des_gripper_state,
+        )  # (T, 5, 3)
+
+        if self.apply_base_pose:
+            base_pose = tensordict["obs"][self.base_pose_obs_key]  # (T, 7)
+            base_pos = base_pose[..., :3]  # (T, 3)
+            base_quat = base_pose[..., 3:]  # (T, 4)
+            prev_des_points = transform_points(prev_des_points, base_pos, base_quat)
+
+        des_gripper_points = prev_des_points
+        des_gripper_state = prev_des_gripper_state
+        nan_mask = torch.isnan(des_gripper_points).any(axis=1).any(axis=1)
+        # (B,) True where any dim of any point is NaN
+        des_gripper_points[nan_mask] = new_des_points[nan_mask]
+        des_gripper_state[nan_mask] = new_des_gripper_state[nan_mask]
 
         points = self.ee_pose_to_3D_points(
-            ee_pos=ee_pos, ee_quat=ee_quat, gripper=gripper_state
+            ee_pos=ee_pos, ee_quat=ee_quat, gripper=des_gripper_state
         )  # (T, 5, 3)
 
         tensordict["obs"]["gripper_points"] = {"points": points.to(torch.float32)}
         tensordict["obs"]["des_gripper_points"] = {
-            "points": des_points.to(torch.float32)
+            "points": des_gripper_points.to(torch.float32)
         }
 
         return tensordict
@@ -449,6 +462,16 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
         pts_local = POINTS_LOCAL.to(device=ee_pos.device, dtype=ee_pos.dtype)
         axis = self._gripper_axis_local.to(device=ee_pos.device, dtype=ee_pos.dtype)
         center = self._gripper_center_local.to(device=ee_pos.device, dtype=ee_pos.dtype)
+
+        if (
+            torch.isnan(gripper).any()
+            or torch.isinf(gripper).any()
+            or torch.isnan(ee_quat).any()
+            or torch.isinf(ee_quat).any()
+            or torch.isnan(ee_pos).any()
+            or torch.isinf(ee_pos).any()
+        ):
+            log.warning("NaNs detected in gripper action or EE pose tensors.")
 
         # Map gripper action -> width
         width = self._gripper_width_from_action(gripper).to(

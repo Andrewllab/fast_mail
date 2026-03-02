@@ -523,7 +523,7 @@ class SparseToPointCloudMaskOnly(SparseToPointCloudMerged):
         max_depth: float | None = None,
         out_key: str = "pcd",
         mode: Literal["mask", "track"] = "mask",
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(
             specs,

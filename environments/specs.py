@@ -620,4 +620,5 @@ def space_to_spec(
             time=space.shape[n_batch_dims] if time_dim else None,
         )
     else:
-        raise ValueError(f"Unknown space type: {type(space).__name__}")
+        pass
+        # raise ValueError(f"Unknown space type: {type(space).__name__}")

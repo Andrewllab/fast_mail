@@ -72,17 +72,26 @@ class BesoAgent(BaseBesoAgent):
         self.num_timesteps = specs.action_seq_len
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        # values logged here get averaged over an epoch
+        # values logged here get averaged over an epoch instead of over a step
 
-        if "episode_info" in batch:
+        # Log info from completed episodes, if validating on environment
+        # rollouts.
+        # Do this before predicting the next action, just in case.
+
+        if "done" in batch and torch.any(batch["done"]) and "episode_info" in batch:
+            done = batch["done"]
             episode_info = batch["episode_info"]
+            completed_episodes = episode_info[done]
+            # lightning expects scalar values that have already been reduced
+            metrics = completed_episodes.float().mean().to_dict()
+
             assert self.checkpoint_metadata and "epoch" in self.checkpoint_metadata
             self.log_dict(
-                {
-                    "ckpt_epoch": self.checkpoint_metadata["epoch"],
-                    **episode_info.to_dict(),
-                },
-                batch_size=episode_info.shape[0],
+                {"ckpt_epoch": self.checkpoint_metadata["epoch"], **metrics},
+                # since the number of completed episodes can vary between steps,
+                # we need to provide lightning with the size of this "batch" of
+                # completed episodes for correct averaging
+                batch_size=done.sum().item(),
             )
 
         prediction = self.predict_step(batch, batch_idx)
@@ -122,3 +131,6 @@ class BesoAgent(BaseBesoAgent):
 
         # return the prediction in case we want to write it back to the environment
         return prediction
+
+    # validation and testing are identical
+    test_step = validation_step

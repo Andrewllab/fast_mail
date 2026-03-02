@@ -23,6 +23,7 @@ from environments.specs import (
     TextSpec,
 )
 from transforms.base_transform import TransformPartialsDict, init_transforms
+from utils.math import convert_quat
 from utils.paths import iglob_follow_symlinks, resolve_path
 
 log = logging.getLogger(__name__)
@@ -113,9 +114,41 @@ class RoboCasaDataset(CustomHdf5Dataset):
         # shape: (T, 3), float32
         ee_pos = traj["obs"]["robot0_eef_pos"][...].astype(np.float32)
         # shape: (T, 4), float32
-        ee_quat = traj["obs"]["robot0_eef_quat"][...].astype(np.float32)
+        ee_quat = traj["obs"]["robot0_eef_quat_site"][...].astype(np.float32)
+        ee_quat = convert_quat(ee_quat, "wxyz")
+
+        base_to_ee_pos = traj["obs"]["robot0_base_to_eef_pos"][...].astype(np.float32)
+        base_to_ee_quat = traj["obs"]["robot0_base_to_eef_quat_site"][...].astype(
+            np.float32
+        )
+        base_to_ee_quat = convert_quat(base_to_ee_quat, "wxyz")
+
+        base_to_ee_pose = torch.cat(
+            (
+                torch.from_numpy(base_to_ee_pos),
+                torch.from_numpy(base_to_ee_quat),
+            ),
+            dim=-1,
+        )
+
+        base_pos = traj["obs"]["robot0_base_pos"][...].astype(np.float32)
+        base_quat = traj["obs"]["robot0_base_quat"][...].astype(np.float32)
+        base_quat = convert_quat(base_quat, "wxyz")
+        base_pose = torch.cat(
+            (
+                torch.from_numpy(base_pos),
+                torch.from_numpy(base_quat),
+            ),
+            dim=-1,
+        )
+
         # remove action dims related to static mobile platform
         action = traj["actions"][:, :7].astype(np.float32)
+
+        action_dict = traj["action_dict"]
+        obs_next_actions = {
+            f"next_{k}": action_dict[k][...] for k in action_dict.keys()
+        }
 
         # # ensure we are not ignoring any relevant actions
         # assert np.allclose(traj["actions"][:, 7:], np.array([0, 0, 0, 0, -1]))
@@ -188,6 +221,35 @@ class RoboCasaDataset(CustomHdf5Dataset):
             },  # type: ignore
         )
 
+        cam_names = ["left_cam", "right_cam", "gripper_cam"]
+        raw_keys = [
+            "robot0_agentview_left",
+            "robot0_agentview_right",
+            "robot0_eye_in_hand",
+        ]
+        for key, cam_name in zip(raw_keys, cam_names):
+            if not f"{key}_image" in traj["obs"]:
+                continue
+            td_dict["obs"][cam_name] = {
+                "rgb": traj["obs"][f"{key}_image"][...],
+                "depth": traj["obs"][f"{key}_depth"][..., 0],
+            }
+
+            td_dict["obs"][f"{cam_name}_pose"] = camera_poses[key]["extrinsics"][...]
+
+            # We assume that if we have the segmentation ids we also have the segmentation masks
+            if "segmentation_ids" in traj:
+                td_dict["obs"][cam_name]["segmentation"] = traj["obs"][
+                    f"{key}_segmentation_element"
+                ][...].squeeze(-1)
+
+        if "segmentation_ids" in traj:
+            td_dict["segmentation_ids"] = {
+                key: traj["segmentation_ids"][key][...].astype(np.int32)
+                for key in traj["segmentation_ids"].keys()
+            }
+
+        td = TensorDict(td_dict)
         # add a batch dimension so we can index
         td["obs"].auto_batch_size_(batch_dims=1)
 
@@ -207,6 +269,8 @@ class RoboCasaDataset(CustomHdf5Dataset):
 
         for key, cam_name in zip(raw_keys, cam_names):
             # !!! IMPORTANT: "static" cameras are attached to the robot platform which sometimes moves caused by the robot-arm movements, so they move as well !!!
+            if not f"{key}_image" in traj["obs"]:
+                continue
 
             rgb = traj["obs"][f"{key}_image"]
             match rgb.shape:
@@ -268,7 +332,7 @@ class RoboCasaDataset(CustomHdf5Dataset):
         # end-effector pose
         ee_pos = traj["obs"]["robot0_eef_pos"]
         assert ee_pos.shape == (T, 3)
-        ee_quat = traj["obs"]["robot0_eef_quat"]
+        ee_quat = traj["obs"]["robot0_eef_quat_site"]
         assert ee_quat.shape == (T, 4)
         # we concatenate ee_pos and ee_quat to get a shape of (T, 7)
         obs_specs["ee_pose"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
