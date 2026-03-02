@@ -4,6 +4,7 @@ from typing import Any, List, Mapping
 
 from gymnasium.vector import AsyncVectorEnv, AutoresetMode, SyncVectorEnv
 from gymnasium.wrappers import TimeLimit
+from omegaconf import ListConfig
 
 from environments.wrappers import (
     ActionChunkWrapper,
@@ -29,7 +30,7 @@ def create_env(
     camera_widths=128,
     camera_heights=128,
     camera_depths=False,
-    camera_segmentations=None,
+    camera_segmentations="element",
     seed=None,
     render_onscreen=False,
     # robocasa-related configs
@@ -65,14 +66,14 @@ def create_env(
         camera_names=camera_names,
         camera_widths=camera_widths,
         camera_heights=camera_heights,
-        camera_depths=camera_depths,
-        camera_segmentations=camera_segmentations,
+        camera_depths=True,
+        camera_segmentations="element",
         has_renderer=False,  # whether to render onscreen
         has_offscreen_renderer=True,  # whether to render headless
         renderer="mujoco",
         ignore_done=True,  # no timeout
         use_object_obs=True,  # add proprioception to observation
-        use_camera_obs=False,  # whether to add rendering to obs
+        use_camera_obs=True,  # whether to add rendering to obs
         seed=seed,
         obj_instance_split=obj_instance_split,
         generative_textures=generative_textures,
@@ -91,11 +92,16 @@ def make_one(
     env_name: str,
     img_height: int,
     img_width: int,
-    camera_names: list[str] | None = None,
+    camera_names: list[str] | None = [
+        "robot0_agentview_left",
+        "robot0_agentview_right",
+        "robot0_eye_in_hand",
+    ],
     seed: int | None = None,
     max_episode_steps: int | float | None | Mapping[str, int] = None,
     render_cam_name: str | None = "robot0_agentview_left",
     render_size: tuple[int, int] | None = (256, 256),
+    absolute_actions: bool = False,
 ):
     """
     Creates a RoboCasa environment and applies specified wrappers using Hydra.
@@ -117,7 +123,7 @@ def make_one(
     from robocasa.utils.dataset_registry import SINGLE_STAGE_TASK_DATASETS
     from robosuite.wrappers import GymWrapper
 
-    from environments.robocasa.wrappers import RoboCasaAdapter
+    from environments.robocasa.wrappers import RoboCasaAdapter, SegmentationWrapper
 
     log.info(f"Building RoboCasa environment: '{env_name}'")
 
@@ -138,13 +144,25 @@ def make_one(
     )
 
     camera_names = env.camera_names
-    proprio_keys = ["joint_pos", "gripper_qpos", "eef_pos", "eef_quat"]
+    proprio_keys = [
+        "joint_pos",
+        "gripper_qpos",
+        "eef_pos",
+        "eef_quat",
+        "eef_quat_site",
+        "base_to_eef_pos",
+        "base_to_eef_quat",
+        "base_to_eef_quat_site",
+        "base_pos",
+        "base_quat",
+    ]
 
     # TODO: don't hardcode the streams here
     obs_keys = (
         [f"robot0_{key}" for key in proprio_keys]
         + [f"{cam}_image" for cam in camera_names]
         + [f"{cam}_depth" for cam in camera_names]
+        + [f"{cam}_segmentation_element" for cam in camera_names]
     )
 
     # Create Gymnasium observation space and action space, and filter a subset
@@ -177,6 +195,8 @@ def make_one(
     if max_episode_steps > 0 and max_episode_steps != float("inf"):
         env = TimeLimit(env, max_episode_steps=max_episode_steps)
 
+    env = SegmentationWrapper(env, env_name=env_name)
+
     # Flip camera images vertically, convert depth to real depth, add camera
     # extrinsics to the observation, and remove unused dimensions from the
     # actions.
@@ -204,6 +224,12 @@ def make(
     record_video: Mapping[str, Any] | None = None,
     render_cam_name: str | None = "robot0_agentview_left",
     render_size: tuple[int, int] | None = (256, 256),
+    camera_names: list[str] | None = [
+        "robot0_agentview_left",
+        "robot0_agentview_right",
+        "robot0_eye_in_hand",
+    ],
+    absolute_actions: bool = False,
 ):
 
     from environments.robocasa.wrappers import RoboCasaSpecs
@@ -217,6 +243,8 @@ def make(
         max_episode_steps=max_episode_steps,
         render_cam_name=render_cam_name,
         render_size=render_size,
+        camera_names=camera_names,
+        absolute_actions=absolute_actions,
     )
 
     if parallel is None:
@@ -225,7 +253,7 @@ def make(
     if parallel:
         VecEnvCls = functools.partial(
             AsyncVectorEnv,
-            shared_memory=True,
+            shared_memory=False,
             # avoid rendering issues in subprocesses by using spawn instead of fork
             context="spawn",
         )
