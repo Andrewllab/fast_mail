@@ -120,7 +120,7 @@ class ManiSkillDataset(CustomHdf5Dataset):
                     "robot_state": traj["obs"]["agent"]["qpos"][:-1],
                     "ee_pose": traj["obs"]["extra"]["tcp_pose"][:-1],
                     "base_cam_transform": extrinsics,
-                    "goal_region": goal_region[:-1, :3],
+                    "goal_pos": goal_region[:-1, :3],
                 },
                 "action": action,
                 "ref_action": action.copy(),
@@ -185,9 +185,9 @@ class ManiSkillDataset(CustomHdf5Dataset):
         obs_specs["robot_state"] = ObsSpec(elem_shape=(9,), time=self.obs_seq_len)
 
         # goal region
-        goal_region = traj["env_states"]["actors"]["goal_region"]
-        assert goal_region.shape == (T + 1, 13)
-        obs_specs["goal_region"] = ObsSpec(elem_shape=(3,), time=self.obs_seq_len)
+        goal_pos = traj["env_states"]["actors"]["goal_region"]
+        assert goal_pos.shape == (T + 1, 13)
+        obs_specs["goal_pos"] = ObsSpec(elem_shape=(3,), time=self.obs_seq_len)
 
         # end-effector pose
         ee_pose = traj["obs"]["extra"]["tcp_pose"]

@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import dataclasses
 import logging
 import time
 from typing import Literal, Mapping
 
 import gymnasium as gym
+import numpy as np
 import pygame
 import torch
 from omegaconf import DictConfig
@@ -14,11 +17,11 @@ from torchcontrol.policies import (
     JointImpedanceControl,
 )
 
+from environments.gym_env_dataset import DoneEvalSignal
 from environments.real_robot.hardware.base_camera import BaseCamera
 from environments.real_robot.hardware.franka_control import HumanControl
-from environments.signals import DoneEvalSignal
 from environments.specs import ActionSpec, DataSpecs, ObsSpec, specs_to_spaces
-from utils.math import make_pose, normalize, quaternion_to_matrix
+from utils.math import make_pose, quaternion_to_matrix
 
 ObsType = dict[str, torch.Tensor | dict[str, torch.Tensor]]
 InfoType = dict[str, torch.Tensor]
@@ -26,7 +29,7 @@ InfoType = dict[str, torch.Tensor]
 log = logging.getLogger(__name__)
 
 
-class RealRobotEnv(gym.Env):
+class RealRobotEnv(gym.Env[ObsType, np.ndarray]):
     # we don't implement a render method, but the obs contains camera images
     render_mode = "rgb_array"
 
@@ -37,6 +40,7 @@ class RealRobotEnv(gym.Env):
         action_type: Literal["joint", "cartesian"] = "joint",
         impedance_type: Literal["joint", "cartesian", "hybrid_joint"] = "hybrid_joint",
         human_control: bool = False,
+        fps: float | None = None,
     ):
         if action_type not in ("joint", "cartesian"):
             raise ValueError('action_type must be either "joint" or "cartesian"')
@@ -78,7 +82,7 @@ class RealRobotEnv(gym.Env):
 
         if (home_pose := robot.get("home_pose", None)) is not None:
             log.info(f"Setting home pose: {home_pose}")
-            self.arm.set_home_pose(torch.tensor(home_pose))
+            self.arm.set_home_pose(torch.as_tensor(home_pose))
 
         # default (None) uses _adaptive_time_to_go
         self.reset_duration = robot.get("reset_duration", 1.0)
@@ -87,12 +91,14 @@ class RealRobotEnv(gym.Env):
 
         obs_specs = {
             # joint pos (7,) + gripper_width (1,)
-            "robot_state": (ObsSpec(elem_shape=(8,))),
+            "joint_pos": ObsSpec(elem_shape=(7,)),
+            "gripper_width": ObsSpec(elem_shape=(1,)),
+            "robot_state": ObsSpec(elem_shape=(8,)),
             # xyz + wxyz quaternion
             "ee_pose": ObsSpec(elem_shape=(7,)),
             # homogeneous transform of ee_pose
             "ee_transform": ObsSpec(elem_shape=(4, 4)),
-            "target_gripper_pos": ObsSpec(elem_shape=(1,)),
+            "target_gripper_width": ObsSpec(elem_shape=(1,)),
         }
 
         # TODO: Add both specs in either case.
@@ -132,21 +138,23 @@ class RealRobotEnv(gym.Env):
         pygame.event.set_allowed([pygame.QUIT, pygame.KEYDOWN])
         log.warning("Press Esc/q for failure, Enter for success, Space to pause")
 
+        self.fps = fps
+        if self.fps is not None:
+            self.clock = pygame.time.Clock()
+
     @property
     def specs(self) -> DataSpecs:
         return self._specs
 
-    def step(self, action: torch.Tensor) -> tuple[ObsType, float, bool, bool, InfoType]:
-        action = action.cpu()
+    def step(self, action: np.ndarray) -> tuple[ObsType, float, bool, bool, InfoType]:
+        if self.fps is not None:
+            self.clock.tick(self.fps)
 
+        action = torch.from_numpy(action)
         if self.action_type == "cartesian":
             target_ee_pose = action[:7]  # xyz + wxyz quaternion
             target_ee_pos = target_ee_pose[:3]
             target_ee_wxyz = target_ee_pose[3:7]
-            # normalize quaternions coming from outside to ensure they are valid
-            # BackCompat: this can be probably be removed because it is done
-            # in the QuaternionRotations transform
-            target_ee_wxyz = normalize(target_ee_wxyz)
             target_ee_xyzw = torch.cat(
                 (target_ee_wxyz[-3:], target_ee_wxyz[:-3]), dim=-1
             )
@@ -178,10 +186,10 @@ class RealRobotEnv(gym.Env):
 
         obs = self._get_obs()
         if self.action_type == "joint":
-            obs["target_joint_pos"] = target_joint_pos
+            obs["target_joint_pos"] = target_joint_pos.numpy()
         elif self.action_type == "cartesian":
-            obs["target_ee_pose"] = target_ee_pose
-        obs["target_gripper_pos"] = target_gripper_state.unsqueeze(dim=0)
+            obs["target_ee_pose"] = target_ee_pose.numpy()
+        obs["target_gripper_width"] = target_gripper_state.unsqueeze(dim=0).numpy()
 
         info = self._get_info()
         result = self._get_user_input()
@@ -195,17 +203,19 @@ class RealRobotEnv(gym.Env):
 
         return obs, reward, terminated, truncated, info
 
-    def reset(self, *, seed=None, options=None) -> tuple[ObsType, InfoType]:
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, np.ndarray] | None = None
+    ) -> tuple[ObsType, dict[str, np.ndarray]]:
         # open gripper and go home simultaneously
         self.gripper.goto(self.gripper_max_width, speed=self.gripper_speed)
 
         options = options or {}
         if "home_pose" in options:
-            self.arm.set_home_pose(options["home_pose"])
+            self.arm.set_home_pose(torch.as_tensor(options["home_pose"]))
         elif "home_position" in options and "home_orientation" in options:
             self.arm.set_home_ee_pose(
-                home_position=options["home_position"],
-                home_orientation=options["home_orientation"],
+                home_position=torch.as_tensor(options["home_position"]),
+                home_orientation=torch.as_tensor(options["home_orientation"]),
             )
 
         # wait for the arm to go home
@@ -254,10 +264,10 @@ class RealRobotEnv(gym.Env):
 
         obs = self._get_obs()
         if self.action_type == "joint":
-            obs["target_joint_pos"] = obs["robot_state"][:7]
+            obs["target_joint_pos"] = obs["joint_pos"]
         elif self.action_type == "cartesian":
             obs["target_ee_pose"] = obs["ee_pose"]
-        obs["target_gripper_pos"] = obs["robot_state"][-1:]
+        obs["target_gripper_width"] = obs["gripper_width"]
 
         info = self._get_info()
 
@@ -276,11 +286,11 @@ class RealRobotEnv(gym.Env):
         pygame.quit()
 
     def _get_obs(self) -> ObsType:
-        gripper_width = torch.tensor([self.gripper.get_state().width])
+        gripper_width = np.asarray([self.gripper.get_state().width])
 
         state = self.arm.get_state_dict()
-
-        robot_state = torch.cat([state["joint_pos"], gripper_width], dim=-1)
+        joint_pos = state["joint_pos"].numpy()
+        robot_state = np.concatenate([joint_pos, gripper_width], axis=-1)
 
         ee_pose = state["ee_pose"]  # pos: (x,y,z) + quat: (x,y,z,w)
 
@@ -298,12 +308,13 @@ class RealRobotEnv(gym.Env):
 
         # target values are added in step/reset methods
         obs_dict |= {
-            "robot_state": robot_state,
-            "ee_pose": ee_pose,
+            "joint_pos": joint_pos,
+            "gripper_width": gripper_width,
+            "robot_state": robot_state,  # BackCompat
+            "ee_pose": ee_pose.numpy(),
             "ee_transform": ee_transform,
         }
 
-        # TODO: convert to TensorDict once SyncVectorEnv has been removed
         return obs_dict
 
     def _get_info(self) -> InfoType:

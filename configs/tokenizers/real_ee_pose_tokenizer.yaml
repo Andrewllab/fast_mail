@@ -1,6 +1,7 @@
-name: 2 layer MLP
+name: ee pose tokenizer
 _target_: transforms.robot_state_tokenizer.RobotStateEncoder
 _partial_: True
+obs_key: [ee_pose, gripper_width]
 model:
   _target_: models.mlp.MlpModel
   _partial_: True  # requires in_features

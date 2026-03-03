@@ -8,17 +8,16 @@ action_seq_len: 10
 obs_seq_len: 1
 
 dataset:
-  _target_: environments.maniskill.maniskill_cam1_joint_goal_region.ManiSkillDataset
+  _target_: environments.maniskill.jans_dataset.ManiSkillDataset
   root_dir: ${paths.data_dir}/maniskill
   subfolders: [PokeCube-v1_joint_delta_pos,PushCube-v1_joint_delta_pos,PullCube-v1_joint_delta_pos,RollBall-v1_joint_delta_pos]
   load_subset: 500  # load only 500 trajectories from each task
 
 env:
-  env:
-    env_id: PokeCube-v1  # PokeCube-v1,PushCube-v1,PullCube-v1,RollBall-v1
-    sim_backend: physx_cuda
-    control_mode: pd_joint_delta_pos
-    sensor_configs:
-      base_camera:
-        width: 256
-        height: 256
+  env_id: ???  # PokeCube-v1,PushCube-v1,PullCube-v1,RollBall-v1
+  sim_backend: physx_cuda  # this backend was used for generating the demonstration data
+  control_mode: pd_joint_delta_pos
+  sensor_configs:
+    base_camera:
+      width: 256
+      height: 256

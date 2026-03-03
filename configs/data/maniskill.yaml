@@ -1,25 +1,25 @@
 defaults:
   - default
+  - env: record_video
 
 task_suite: maniskill
 
 obs_seq_len: 1
 
 env:
-  env:
-    _target_: environments.maniskill.build_env.make
-    _recursive_: False  # don't try to import any targets for wrappers, in case IsaacLab is not installed
-    env_id: null  # placeholder
-    num_envs: 1
-    obs_mode: rgbd  # 'state', 'pointcloud'
-    render_mode: all
-    wrappers:
-      preprocess:
-        _target_: environments.maniskill.wrappers.ManiSkillPreProcess
-        _partial_: True  # requires 'env' argument
-        obs_seq_len: ${data.obs_seq_len}
-
-  num_envs: ${.env.num_envs}
-  num_episodes: 20  # evaluate on 20 episodes
+  # maniskill-specific settings
+  _target_: environments.maniskill.build_env.make
+  env_id: ???
+  sim_backend: physx_cuda  # may be overwritten by data config, must match the backend used for generating demonstration data
+  obs_mode: state_dict+rgb+depth  # `state_dict` ensures that obs/extra also contains goal_pos if it exists
+  control_mode: ???  # 'pd_joint_pos', 'pd_joint_delta_pos', 'pd_joint_vel', 'pd_torque'
+  reconfigure_on_reset: False  # whether to reconfigure the env on each reset
+  render_mode: rgb_array  # "rgb_array" for human view perspective, "sensors" for agent perspective, "all" for both
+  
+  # common settings
+  num_envs: 1
   action_horizon: null  # use all predicted actions
-  fps: null  # run as fast as the simulation can manage
+  obs_seq_len: ${data.obs_seq_len}
+  max_episode_steps: null  # use the default max episode steps for each environment
+  
+  num_episodes: 50  # evaluate on 50 episodes

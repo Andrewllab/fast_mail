@@ -1,6 +1,5 @@
 defaults:
   - data: real_robot
-  - data/wrappers@data.env.env.wrappers: record_video_real_robot
   - callbacks:
   - logger:
   - python_logging: default

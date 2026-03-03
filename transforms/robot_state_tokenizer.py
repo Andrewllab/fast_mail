@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from typing import Callable, Sequence
 
 import torch
 import torch.nn as nn
@@ -21,29 +21,46 @@ class RobotStateEncoder(Transform, nn.Module):
         specs: DataSpecs,
         model: Callable[[int, int], Module],
         embed_dim: int,
-        obs_key: str = "robot_state",
+        obs_key: str | Sequence[str] = "robot_state",
         token_pos_encoder: Callable[[int, int], nn.Module] | None = None,
     ):
         super().__init__()
 
-        robot_state_shape = specs.obs[obs_key].shape
-        if len(robot_state_shape) != 2:
-            raise ValueError(f"Robot state at key {obs_key} must be of shape [T,M]")
+        obs_keys = [obs_key] if isinstance(obs_key, str) else list(obs_key)
 
-        T, M = robot_state_shape
+        input_specs = []
+        for key in obs_keys:
+            if key not in specs.obs:
+                raise KeyError(f"Observation spec at specs.obs[{key}] not found.")
+
+            input_specs.append(specs.obs[key])
+            if len(specs.obs[key].shape) != 2:
+                raise ValueError(
+                    f"Observation spec at specs.obs[{key}] must be of shape [T,M]"
+                )
+
+        times = [spec.shape[0] for spec in input_specs]
+        if not all(t == times[0] for t in times):
+            raise ValueError(
+                f"All observation specs must have the same time dimension, "
+                f"but got {[spec.shape[0] for spec in input_specs]}"
+            )
+        time = times[0]
+
+        state_dim = sum(spec.shape[1] for spec in input_specs)
 
         # instantiate the model
-        self.model = model(M, embed_dim)
+        self.model = model(state_dim, embed_dim)
 
         # create encoder for token position
         if token_pos_encoder is None:
             log.warning("No token position encoder provided. Using nn.Embedding.")
             token_pos_encoder = nn.Embedding
-        self.token_pos_encoder = token_pos_encoder(T, embed_dim)
+        self.token_pos_encoder = token_pos_encoder(time, embed_dim)
 
         # create a modified specs object for the output
         # each time step produces a single token
-        new_spec = EmbedSpec(embed_dim=embed_dim, n_tokens=T)
+        new_spec = EmbedSpec(embed_dim=embed_dim, n_tokens=time)
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         if "embed" in obs_specs:
             # if embedding sequence has fixed length, increase length to account for state tokens
@@ -53,7 +70,7 @@ class RobotStateEncoder(Transform, nn.Module):
         obs_specs["embed"] = new_spec
         self._output_specs = specs.replace(obs=obs_specs)
 
-        self._obs_key = obs_key
+        self._obs_keys = obs_keys
 
     @property
     def specs(self) -> DataSpecs:
@@ -63,13 +80,18 @@ class RobotStateEncoder(Transform, nn.Module):
     def key_mappings(self) -> list[KeyMapping]:
         return [
             KeyMapping(
-                in_keys=[("obs", self._obs_key), ("obs", "embed")],
+                in_keys=[("obs", "embed")] + [("obs", key) for key in self._obs_keys],
                 out_keys=[("obs", "embed")],
             )
         ]
 
-    def _call_one(self, robot_state: Tensor, obs_embed: Tensor | None) -> Tensor:
-        # (B, T, M) -> (B, N, D)
+    def _call_one(self, obs_embed: Tensor | None, *robot_state: Tensor) -> Tensor:
+        if len(robot_state) > 1:
+            robot_state = torch.cat(robot_state, dim=-1)
+        else:
+            robot_state = robot_state[0]
+
+        # (B, T, M) -> (B, T, D)
         features = self.model(robot_state)
 
         # add encoding of the token position to each token

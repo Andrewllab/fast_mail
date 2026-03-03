@@ -8,9 +8,6 @@ defaults:
 task: fold
 name: fold_20251126
 
-action_seq_len: 30
-obs_seq_len: 1
-
 dataset:
   _target_: environments.datasets.real_dataset_v3.RealRobotDataset
   root_dir: ${paths.data_dir}/fold/fold_20251126

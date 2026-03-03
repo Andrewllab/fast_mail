@@ -1620,8 +1620,8 @@ def convert_camera_frame_matrix_convention(
     # -- unify input type by converting to opengl convention
     if origin == "ros":
         # convert from ros to opengl convention
-        rotm[:, :, 2] = -rotm[:, :, 2]
-        rotm[:, :, 1] = -rotm[:, :, 1]
+        rotm[..., :, 2] = -rotm[..., :, 2]
+        rotm[..., :, 1] = -rotm[..., :, 1]
     elif origin == "world":
         # convert from world (x forward and z up) to opengl convention
         rotm = torch.matmul(
@@ -1635,8 +1635,8 @@ def convert_camera_frame_matrix_convention(
     # -- convert to target convention
     if target == "ros":
         # convert from opengl to ros convention
-        rotm[:, :, 2] = -rotm[:, :, 2]
-        rotm[:, :, 1] = -rotm[:, :, 1]
+        rotm[..., :, 2] = -rotm[..., :, 2]
+        rotm[..., :, 1] = -rotm[..., :, 1]
     elif target == "world":
         # convert from opengl to world (x forward and z up) convention
         rotm = torch.matmul(

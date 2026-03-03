@@ -9,6 +9,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 from omegaconf import DictConfig, OmegaConf, open_dict
+from packaging.version import Version
 
 log = logging.getLogger(__name__)
 
@@ -102,6 +103,8 @@ def delete_keys_recursively(
 def patch_load_from_checkpoint(
     cfg: DictConfig, checkpoint_path: os.PathLike | Path
 ) -> DictConfig:
+    import lightning
+
     # instead of calling the class, call its `load_from_checkpoint()` method
     target = cfg["_target_"]
     target += ".load_from_checkpoint"
@@ -113,6 +116,11 @@ def patch_load_from_checkpoint(
     if "_args_" in cfg:
         args = args + cfg["_args_"]
     cfg["_args_"] = args
+
+    if Version(lightning.__version__) >= Version("2.6"):
+        # lightning 2.6+ sets weights_only to True by default, which disallows
+        # loading any of the custom types we pickled
+        cfg["weights_only"] = False
 
     return cfg
 

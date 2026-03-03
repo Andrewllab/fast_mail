@@ -1,2 +1,0 @@
-class DoneEvalSignal(BaseException):
-    pass

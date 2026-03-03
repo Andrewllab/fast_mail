@@ -22,12 +22,15 @@ class GoalRegionEncoder(Transform, nn.Module):
         model: Callable[[int, int], Module],
         embed_dim: int,
         spatial_encoder: Callable[[int], nn.Linear] | None = None,
-        obs_key: str = "goal_region",
+        obs_key: str = "goal_pos",
     ):
         super().__init__()
 
-        goal_region = specs.obs[obs_key]
-        match goal_region.shape:
+        if obs_key not in specs.obs:
+            raise KeyError(f"Observation spec at key {obs_key} not found in specs.")
+
+        goal_pos = specs.obs[obs_key]
+        match goal_pos.shape:
             case T, goal_dim if goal_dim == 3:
                 pass
             case _:
@@ -71,16 +74,16 @@ class GoalRegionEncoder(Transform, nn.Module):
             )
         ]
 
-    def _call_one(self, goal_region_state: Tensor, obs_embed: Tensor | None) -> Tensor:
+    def _call_one(self, goal_pos: Tensor, obs_embed: Tensor | None) -> Tensor:
 
-        features = goal_region_state
+        # goal_pos: (B, T, 3)
 
         if self.spatial_encoder is not None:
-            # features: (B*N, D)
-            features = self.spatial_encoder(features)
+            # goal_pos -> (B, T, D)
+            goal_pos = self.spatial_encoder(goal_pos)
 
-        # (B, T, M) -> (B, N, D)
-        goal_emb = self.model(features)
+        # (B, T, D) -> (B, T, D)
+        goal_emb = self.model(goal_pos)
 
         if obs_embed is None:
             return goal_emb

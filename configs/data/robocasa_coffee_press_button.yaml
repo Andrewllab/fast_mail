@@ -9,5 +9,4 @@ dataset:
   subfolders: CoffeePressButton
 
 env:
-  env:
-    env_name: CoffeePressButton
+  env_name: CoffeePressButton

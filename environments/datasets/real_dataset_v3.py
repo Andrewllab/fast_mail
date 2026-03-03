@@ -99,7 +99,7 @@ class RealRobotDataset(CustomHdf5Dataset):
         # shape: (T, 7), float32
         joint_pos = traj["obs"]["proprioception"]["joint_pos"][...]
         # shape: (T, 1), float32
-        gripper_pos = traj["obs"]["proprioception"]["gripper_pos"][...][:, None]
+        gripper_width = traj["obs"]["proprioception"]["gripper_pos"][...][:, None]
         # shape: (T, 3), float32
         ee_pos = traj["obs"]["proprioception"]["eef_pos"][...]
         # shape: (T, 4), float32
@@ -107,14 +107,14 @@ class RealRobotDataset(CustomHdf5Dataset):
         # shape: (T, 7), float32
         next_target_joint_pos = traj["action"]["joint_pos"][...]
         # shape: (T, 1), float32
-        next_target_gripper_pos = traj["action"]["gripper_pos"][...][:, None]
+        next_target_gripper_width = traj["action"]["gripper_pos"][...][:, None]
         # shape: (T, 4), float32
         next_target_ee_pos = traj["action"]["eef_pos"][...]
         # shape: (T, 3), float32
         next_target_ee_quat = traj["action"]["eef_quat"][...]
 
         robot_state = torch.cat(
-            (torch.from_numpy(joint_pos), torch.from_numpy(gripper_pos)),
+            (torch.from_numpy(joint_pos), torch.from_numpy(gripper_width)),
             dim=-1,
         )
 
@@ -152,7 +152,7 @@ class RealRobotDataset(CustomHdf5Dataset):
         action = torch.cat(
             (
                 torch.from_numpy(next_target_joint_pos),
-                torch.from_numpy(next_target_gripper_pos),
+                torch.from_numpy(next_target_gripper_width),
             ),
             dim=-1,
         )
@@ -177,13 +177,14 @@ class RealRobotDataset(CustomHdf5Dataset):
                         "right": traj["obs"]["gripper_cam"]["frames"]["right"][...],
                     },
                     "joint_pos": joint_pos,
+                    "gripper_width": gripper_width,
                     "robot_state": robot_state,
                     "ee_pose": ee_pose,
                     "ee_transform": ee_transform,
                     "target_joint_pos": target_joint_pos,
                     "target_ee_pose": target_ee_pose,
                     "next_target_joint_pos": next_target_joint_pos,
-                    "next_target_gripper_pos": next_target_gripper_pos,
+                    "next_target_gripper_width": next_target_gripper_width,
                     "next_target_ee_pose": next_target_ee_pose,
                 },
                 "action": action,
@@ -317,10 +318,11 @@ class RealRobotDataset(CustomHdf5Dataset):
         # robot_state
         joint_pos = traj["obs"]["proprioception"]["joint_pos"]
         assert joint_pos.shape == (T, 7)
-        gripper_pos = traj["obs"]["proprioception"]["gripper_pos"]
-        assert gripper_pos.shape == (T,)
-        # we concatenate joint_pos and gripper_pos to get a shape of (T, 8)
+        gripper_width = traj["obs"]["proprioception"]["gripper_pos"]
+        assert gripper_width.shape == (T,)
         obs_specs["joint_pos"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
+        obs_specs["gripper_width"] = ObsSpec(elem_shape=(1,), time=self.obs_seq_len)
+        # we concatenate joint_pos and gripper_width to get a shape of (T, 8)
         obs_specs["robot_state"] = ObsSpec(elem_shape=(8,), time=self.obs_seq_len)
 
         # ee_pose
@@ -342,10 +344,10 @@ class RealRobotDataset(CustomHdf5Dataset):
         obs_specs["target_joint_pos"] = ObsSpec(elem_shape=(7,), time=self.obs_seq_len)
         obs_specs["next_target_joint_pos"] = obs_specs["target_joint_pos"]
 
-        # target_gripper_pos
-        target_gripper_pos = traj["action"]["gripper_pos"]
-        assert target_gripper_pos.shape == (T,)
-        obs_specs["target_gripper_pos"] = ObsSpec(
+        # target_gripper_width
+        target_gripper_width = traj["action"]["gripper_pos"]
+        assert target_gripper_width.shape == (T,)
+        obs_specs["target_gripper_width"] = ObsSpec(
             elem_shape=(1,), time=self.obs_seq_len
         )
 
@@ -358,7 +360,7 @@ class RealRobotDataset(CustomHdf5Dataset):
         obs_specs["next_target_ee_pose"] = obs_specs["target_ee_pose"]
 
         # actions
-        # concatenate target_joint_pos and target_gripper_pos to get action
+        # concatenate target_joint_pos and target_gripper_width to get action
         action = ActionSpec(action_dim=8, time=self.action_seq_len)
 
         self._specs = DataSpecs(

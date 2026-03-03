@@ -1,0 +1,6 @@
+record_video:
+  video_folder: ???  # overwrite in test config to save videos in the test run directory
+  num_episodes: null  # record all episodes
+  mode: tile  # tile | concat | first
+  fps: null  # speed up the videos by using a higher fps
+  disabled: True  # set to False to enable video recording

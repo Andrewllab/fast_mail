@@ -4,6 +4,7 @@ import logging
 from typing import Any, Callable, Iterable
 
 import lightning as L
+import torch
 import torch.nn.functional as F
 from lightning.pytorch.core.optimizer import LightningOptimizer
 from torch import Tensor
@@ -179,15 +180,20 @@ class BaseAgent(L.LightningModule):
         # Log info from completed episodes, if validating on environment
         # rollouts.
         # Do this before predicting the next action, just in case.
-        if "episode_info" in batch:
+        if "done" in batch and torch.any(batch["done"]) and "episode_info" in batch:
+            done = batch["done"]
             episode_info = batch["episode_info"]
+            completed_episodes = episode_info[done]
+            # lightning expects scalar values that have already been reduced
+            metrics = completed_episodes.float().mean().to_dict()
+
             assert self.checkpoint_metadata and "epoch" in self.checkpoint_metadata
             self.log_dict(
-                {
-                    "ckpt_epoch": self.checkpoint_metadata["epoch"],
-                    **episode_info.to_dict(),
-                },
-                batch_size=episode_info.shape[0],
+                {"ckpt_epoch": self.checkpoint_metadata["epoch"], **metrics},
+                # since the number of completed episodes can vary between steps,
+                # we need to provide lightning with the size of this "batch" of
+                # completed episodes for correct averaging
+                batch_size=done.sum().item(),
             )
 
         # predict the next action

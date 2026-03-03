@@ -21,12 +21,10 @@ job_type: visualize_real_robot
 data:
   eval_mode: env
   batch_size: 1  # required for visualization
-  action_seq_len: 1  # no action chunks, because only the first frame is rendered
-  obs_seq_len: 1  # no frame stacking
 
   env:
-    env:
-      human_control: True  # allow the robot to move freely
+    human_control: True  # allow the robot to move freely
+    action_horizon: 1  # required
   
   preprocess:
     t15_to_pcd:

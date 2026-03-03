@@ -20,6 +20,7 @@ from environments.specs import (
     ObsSpec,
     PinholeCameraIntrinsic,
     RGBStream,
+    TextSpec,
 )
 from transforms.base_transform import TransformPartialsDict, init_transforms
 from utils.paths import iglob_follow_symlinks, resolve_path
@@ -178,7 +179,7 @@ class RoboCasaDataset(CustomHdf5Dataset):
                 "ref_action": action.copy(),
                 "goal": {
                     # language description of the current task
-                    "text": json.loads(traj.attrs["ep_meta"])["lang"]
+                    "description": json.loads(traj.attrs["ep_meta"])["lang"]
                 },
                 "path": str(path),
                 "name": name,
@@ -274,6 +275,6 @@ class RoboCasaDataset(CustomHdf5Dataset):
         # ignore action dims related to static mobile platform
         action = ActionSpec(action_dim=7, time=self.action_seq_len)
 
-        goal_specs = {"text": ObsSpec(elem_shape=(), time=None)}
+        goal_specs = {"description": TextSpec()}
 
         self._specs = DataSpecs(obs=obs_specs, action=action, goal=goal_specs)

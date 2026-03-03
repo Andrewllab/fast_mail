@@ -102,8 +102,8 @@ def predict(cfg: DictConfig) -> None:
             reverse_transform=datamodule.reverse_transform,
         )
     else:
-        # hparams are loaded from checkpoint
-        datamodule_hparams = {}
+        # normalizer and reverse_transform are loaded from checkpoint
+        datamodule_hparams = dict(specs=datamodule.specs)
 
     # instantiate agent
     log.debug("Instantiating agent...")

@@ -1,13 +1,13 @@
 # usage: python test.py -cn test_maniskill
 
 defaults:
-  - data: maniskill_cam1_joint_delta_pos_w_goal  # BackCompat
+  - data: maniskill_single_cam_joint_delta  # BackCompat
   # log test results to new wandb run, since test parameters affect results
   - logger: wandb
   - python_logging: default
   - paths: default
   - hydra: checkpoint_dir_naming
-  # - transforms@data.gpu_batch_transforms.t90_render: render_cameras
+  # - transforms@data.preprocess.t00_render: render_cameras
   # - transforms@data.gpu_batch_transforms.t90_render_pcd: render_pointcloud
   - _self_
   - platform: default
@@ -15,7 +15,7 @@ defaults:
   - debug: verbose
 
 # task name, determines output directory path
-job_type: test_sim
+job_type: test_maniskill
 
 checkpoint:
   # either specify a complete checkpoint path...
@@ -35,15 +35,17 @@ agent:
 data:
   eval_mode: env
   env:
-    num_episodes: 50  # 150 episodes in total across 3 checkpoints
+    num_episodes: 100  # 300 episodes in total across 3 checkpoints
+
+    env_id: ??? # REPLACE with desired environment name
+    num_envs: 16
     action_horizon: 10  # modify if desired
 
-    env:
-      env_id:  # REPLACE with desired environment name
-      wrappers:
-        record_video:
-          num_episodes: ${data.env.num_episodes}  # number of episodes to record
-          fps: 60  # increase if the videos are too long
+    record_video:
+      video_folder: ${hydra:run.dir}/videos
+      num_episodes: 20  # record videos for the first 20 episodes
+      fps: 30  # speed up the videos by using a higher fps
+      disabled: True
 
   preprocess:
     t99_cleanup: null  # disable cleanup transform added by default
@@ -58,6 +60,7 @@ data:
 
 logger:
   wandb:
+    job_type: test_sim  # group with other simulation test runs in WandB
     # use the notes and tags from the training run
     # don't use the overrides passed to the test.py script
     notes_from_overrides: False

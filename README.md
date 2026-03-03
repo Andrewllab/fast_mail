@@ -18,10 +18,11 @@ mamba activate ./.env
 
 ## Torch
 
-Install [pytorch](https://pytorch.org/get-started/locally/)>=2.7, torchvision and [torch geometric](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html):
+Install [pytorch](https://pytorch.org/get-started/locally/)>=2.7, torchvision and [torch geometric](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html).
+We use torch 2.8.0 simply because torch_cluster and torch_scatter often do not have pre-built binaries for the newest torch versions.
 
 ```bash
-pip3 install torch torchvision torch_geometric
+pip3 install torch==2.8 torchvision torch_geometric
 ```
 
 Install the additional libraries for torch geometric for your specific torch and cuda version according to [the instructions](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html#additional-libraries):
@@ -165,7 +166,9 @@ Therefore it is not recommended to install ManiSkill in the same conda environme
 
 Install ManiSkill with:
 ```bash
-pip install mani_skill
+# sapien requires the deprecated pkg_resources module, which requires setuptools<81
+pip install -U "setuptools<81" mani_skill
+pip install -U gymnasium  # reinstall modern Gymnasium
 ```
 
 Optionally, define a directory for maniskill downloads

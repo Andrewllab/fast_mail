@@ -40,4 +40,3 @@ def assert_dict_equal(ref, test, /, name=""):
             assert_dict_equal(ref_value, test_value, name + "." + key)
     else:
         assert np.array_equal(ref, test), name
-        assert np.array_equal(ref, test), name

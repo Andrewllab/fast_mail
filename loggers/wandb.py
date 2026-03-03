@@ -87,7 +87,7 @@ def update_wandb_config(
     default_notes: str | None = None,
 ) -> None:
     if wandb.run is not None:
-        wandb_cfg = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
+        wandb_cfg = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=False)
 
         # remove notes from config before logging it to wandb, as it is not useful for sorting/filtering
         wandb_cfg.get("logger", {}).get("wandb", {}).pop("notes", None)  # type: ignore

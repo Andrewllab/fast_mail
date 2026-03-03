@@ -4,16 +4,21 @@ import numpy as np
 from tensordict import TensorDict
 
 from agents.encoders.clip_lang_encoder import LangClip
-from environments.specs import DataSpecs, EmbedSpec
+from environments.specs import DataSpecs, EmbedSpec, TextSpec
 from transforms.base_transform import Transform
 
 
 class ClipGoalEmbedding(Transform):
-    def __init__(self, specs: DataSpecs):
+    def __init__(self, specs: DataSpecs, goal_key: str = "description"):
+        self.goal_key = goal_key
         self.make_model()
 
-        goal_specs = specs.goal or {}
-        goal_specs = dict(goal_specs)  # copy goal specs for local modification
+        if goal_key not in specs.goal or not isinstance(specs.goal[goal_key], TextSpec):
+            raise KeyError(
+                f"Goal spec at specs.goal[{goal_key}] not found or not a TextSpec."
+            )
+
+        goal_specs = dict(specs.goal)  # copy goal specs for local modification
         goal_specs["embed"] = EmbedSpec(embed_dim=1024, n_tokens=1)
         self._output_specs = specs.replace(goal=goal_specs)
 
@@ -45,7 +50,7 @@ class ClipGoalEmbedding(Transform):
         self.make_model()
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
-        goal_texts = tensordict["goal", "text"]
+        goal_texts = tensordict["goal", self.goal_key]
 
         # goal_texts need to be a list of strings wrapped in a numpy array
         # because without the wrapper it would be converted into a

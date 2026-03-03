@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from tensordict import TensorDict
 
-from environments.specs import DataSpecs, EmbedSpec
+from environments.specs import DataSpecs, EmbedSpec, TextSpec
 from transforms.base_transform import NormalizingTransform
 
 log = logging.getLogger(__name__)
@@ -17,15 +17,21 @@ class RandomGoalEmbedding(NormalizingTransform, nn.Module):
     # preprocessing, it collects all unique goal texts and creates a random
     # embedding for each.
 
-    def __init__(self, specs: DataSpecs, embed_dim: int = 1024, text_key: str = "text"):
+    def __init__(
+        self, specs: DataSpecs, embed_dim: int = 1024, goal_key: str = "description"
+    ):
         super().__init__()
 
-        goal_specs = specs.goal or {}
-        goal_specs = dict(goal_specs)  # copy goal specs for local modification
+        if goal_key not in specs.goal or not isinstance(specs.goal[goal_key], TextSpec):
+            raise KeyError(
+                f"Goal spec at specs.goal[{goal_key}] not found or not a TextSpec."
+            )
+
+        goal_specs = dict(specs.goal)  # copy goal specs for local modification
         goal_specs["embed"] = EmbedSpec(embed_dim=embed_dim, n_tokens=1)
         self._output_specs = specs.replace(goal=goal_specs)
 
-        self.text_key = text_key
+        self.goal_key = goal_key
         self.goal_texts = {}
         self.model = None
 
@@ -50,6 +56,10 @@ class RandomGoalEmbedding(NormalizingTransform, nn.Module):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
+        # BackCompat
+        if "goal_key" not in state:
+            self.goal_key = "description"
+
         if self.model is None:
             # Create the embedding model once we have seen all goals.
             # Here we rely on the fact that the transform will always be
@@ -60,7 +70,7 @@ class RandomGoalEmbedding(NormalizingTransform, nn.Module):
 
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
         # a trajectory should only have a single goal
-        goal_text = tensordict["goal", self.text_key]
+        goal_text = tensordict["goal", self.goal_key]
 
         # we use the dictionary like a set just to store unique texts
         self.goal_texts[goal_text] = 0
@@ -68,7 +78,7 @@ class RandomGoalEmbedding(NormalizingTransform, nn.Module):
         return tensordict
 
     def forward(self, tensordict: TensorDict) -> TensorDict:
-        goal_texts = tensordict["goal", "text"]
+        goal_texts = tensordict["goal", self.goal_key]
         assert isinstance(goal_texts, np.ndarray)
 
         if isinstance(goal_texts[0], np.str_):

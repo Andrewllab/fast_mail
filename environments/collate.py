@@ -20,6 +20,9 @@ def collate_tensor_dict(
     # which assumes that iter(elem) yields keys. In a TensorDict, iter(elem)
     # causes a StopIteration error.
     # For reference see: https://github.com/pytorch/pytorch/blob/main/torch/utils/data/_utils/collate.py#L165
+    # Note: we cannot use tensordict.stack here because it does not treat
+    # non-tensor values such as pyg Data and strings correctly. The
+    # collate_fn_map does this for us.
 
     elem = batch[0]
 
@@ -85,6 +88,3 @@ def update_collate_fn_map():
 
     except ImportError:
         pass
-
-
-update_collate_fn_map()

@@ -35,39 +35,34 @@ def find_tiling(n_images: int) -> tuple[int, int]:
 
 def tile_images(
     images: Sequence[np.ndarray],
-    tiled_height: int,
-    tiled_width: int,
+    n_rows: int,
+    n_columns: int,
     vertical: bool = False,
 ) -> np.ndarray:
+    # TODO: add fast path if n_images == n_rows * n_columns
+
     height, width, n_channels = images[0].shape
 
     tiled_frame_HhWwN = np.zeros(
-        (tiled_height * height, tiled_width * width, n_channels), dtype=np.uint8
+        (n_rows * height, n_columns * width, n_channels), dtype=images[0].dtype
     )
 
     # this array shares memory with the original array, but is more intuitive
     # for writing to
     tiled_frame_HWhwN = tiled_frame_HhWwN.reshape(
-        (tiled_height, height, tiled_width, width, n_channels)
+        (n_rows, height, n_columns, width, n_channels)
     ).transpose(0, 2, 1, 3, 4)
 
-    images_it = iter(images)
-    if vertical:
-        # tile images top to bottom, left to right
-        for j in range(tiled_width):
-            for i in range(tiled_height):
-                try:
-                    tiled_frame_HWhwN[i, j] = next(images_it)
-                except StopIteration:
-                    return tiled_frame_HhWwN
-    else:
-        # tile images left to right, top to bottom
-        for i in range(tiled_height):
-            for j in range(tiled_width):
-                try:
-                    tiled_frame_HWhwN[i, j] = next(images_it)
-                except StopIteration:
-                    return tiled_frame_HhWwN
+    for idx, image in enumerate(images):
+        if vertical:
+            # tile images top to bottom, left to right
+            col = idx // n_rows
+            row = idx % n_rows
+        else:
+            # tile images left to right, top to bottom
+            row = idx // n_columns
+            col = idx % n_columns
+        tiled_frame_HWhwN[row, col] = image
 
     return tiled_frame_HhWwN
 

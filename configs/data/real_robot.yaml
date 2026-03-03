@@ -5,47 +5,41 @@ defaults:
   - /robot@env.env.robot: panda4
   - _self_
 
-# These are defaults for visualizing the real robot environment.
-# They should be overwritten by dataset configs.
 task_suite: real
 name: real_robot
 
+# defaults
+action_seq_len: 30
+obs_seq_len: 1
+
 env:
-  _target_: environments.gym_env_dataset.GymEnvDataset
-  env:
-    _target_: environments.real_robot.build_env.make
-    action_type: joint
-    impedance_type: hybrid_joint
-    cameras:
-      front_left_cam:
-        name: front_left_cam
-        extrinsics: ${oc.select:data.dataset.extrinsics.front_left_cam.extrinsics,null}
-      front_right_cam:
-        name: front_right_cam
-        extrinsics: ${oc.select:data.dataset.extrinsics.front_right_cam.extrinsics,null}
-      gripper_cam:
-        name: gripper_cam
-        extrinsics: ${oc.select:data.dataset.extrinsics.gripper_cam.extrinsics,null}
-    robot:
-      home_pose: [  # joint positions
-        0.005649,
-        -0.099542,
-        -0.118758,
-        -2.201725,
-        -0.009681,
-        2.159746,
-        -0.908100,
-      ]
-      reset_duration: 5.0
-    wrappers:
-      record_video:
-        _target_: environments.real_robot.wrappers.RecordRobotEnvVideo
-        _partial_: True  # requires 'env' argument
-        video_folder: ${paths.recording_dir}
-        name_prefix: rollout
-        fps: 10
-        disable_logger: True
+  _target_: environments.real_robot.build_env.make
+  action_type: joint
+  impedance_type: hybrid_joint
+  cameras:
+    front_left_cam:
+      name: front_left_cam
+      extrinsics: ${oc.select:data.dataset.extrinsics.front_left_cam.extrinsics,null}
+    front_right_cam:
+      name: front_right_cam
+      extrinsics: ${oc.select:data.dataset.extrinsics.front_right_cam.extrinsics,null}
+    gripper_cam:
+      name: gripper_cam
+      extrinsics: ${oc.select:data.dataset.extrinsics.gripper_cam.extrinsics,null}
+  robot:
+    home_pose: [  # joint positions
+      0.005649,
+      -0.099542,
+      -0.118758,
+      -2.201725,
+      -0.009681,
+      2.159746,
+      -0.908100,
+    ]
+    reset_duration: 5.0
+  fps: 10  # inference should probably be around 10fps on the real robot
+  
+  action_horizon: null  # use all predicted actions
+  obs_seq_len: ${data.obs_seq_len}
 
   num_episodes: null  # run infinitely, although the real env has no timeout anyway
-  action_horizon: null  # use all predicted actions
-  fps: 10  # inference should probably be around 10fps on the real robot

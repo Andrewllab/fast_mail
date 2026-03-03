@@ -14,12 +14,12 @@ class GoalTextFromFolderName(Transform):
         specs: DataSpecs,
         goal_mapping: Mapping[str, str],
         current_task: str | None = None,
-        goal_text_key: str = "text",
+        output_key: str = "description",
     ):
         self._specs = specs
         self.goal_mapping = dict(goal_mapping)
         self.current_task = current_task
-        self.key = goal_text_key
+        self.output_key = output_key
 
     @property
     def specs(self) -> DataSpecs:
@@ -36,7 +36,7 @@ class GoalTextFromFolderName(Transform):
                 key = "_".join(path.parts)
 
                 if key in self.goal_mapping:
-                    goal_text = self.goal_mapping[key]
+                    goal_desc = self.goal_mapping[key]
                     break
 
                 path = path.parent
@@ -48,18 +48,18 @@ class GoalTextFromFolderName(Transform):
 
         elif self.current_task is not None:
             # during rollout on an environment, we set the goal explicitly
-            goal_text = self.goal_mapping[self.current_task]
+            goal_desc = self.goal_mapping[self.current_task]
 
             # TODO: temporary fix
             # During training, data items are collated, which turns string goal
             # texts into a numpy array of strings. During rollout, collation
             # is disabled, so we need to wrap the goal text into a numpy array here
-            goal_text = np.array([goal_text])
+            goal_desc = np.array([goal_desc])
 
         else:
             raise RuntimeError(
                 "Tensordict does not contain `path` and current_task is unset."
             )
 
-        tensordict["goal", self.key] = goal_text
+        tensordict["goal", self.output_key] = goal_desc
         return tensordict

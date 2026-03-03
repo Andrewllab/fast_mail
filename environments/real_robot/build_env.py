@@ -2,65 +2,68 @@ import functools
 import logging
 
 import gymnasium as gym
-import hydra
 from gymnasium.vector import AutoresetMode, SyncVectorEnv
-from omegaconf import DictConfig
 
 from environments.specs import DataSpecs
+from environments.wrappers import ActionChunkWrapper, NumpyToTorch, RemoveInfoMasks
 
 log = logging.getLogger(__name__)
 
 
-def make(*args, wrappers: DictConfig | None = None, **kwargs) -> gym.Env:
-    """
-    Creates a RoboCasa environment and applies specified wrappers using Hydra.
-
-    Args:
-        env_name: The environment name of the RoboCasa environment to create.
-        img_size: Width and height of the observations.
-        camera_names: List of camera names used for observations.
-        wrappers: A DictConfig from Hydra containing wrapper configurations.
-                  Each wrapper must have '_target_' and '_partial_: True'.
-    """
-
-    from environments.wrappers import VectorToTorchWrapper
+def make_one(**kwargs) -> gym.Env:
 
     from .real_robot_env import RealRobotEnv
 
-    wrappers_partials = hydra.utils.instantiate(wrappers)
-    if wrappers_partials is not None:
-        # filter out any values that are not partials
-        wrappers_partials = [
-            wrapper
-            for wrapper in wrappers_partials.values()
-            if isinstance(wrapper, functools.partial)
-        ]
+    env = RealRobotEnv(**kwargs)
 
-    def make_one() -> gym.Env:
+    return env
 
-        env = RealRobotEnv(*args, **kwargs)
 
-        if wrappers_partials is not None:
-            log.info("Instantiating wrappers...")
-            for wrapper in wrappers_partials:
-                env = wrapper(env)
+def make(
+    action_horizon: int | None = None,
+    obs_seq_len: int = 1,
+    **kwargs,
+) -> gym.Env:
+    env_fn = functools.partial(make_one, **kwargs)
 
-            log.info("Finished applying all wrappers.")
+    # create a vectorized wrapper around a single environment
+    env = SyncVectorEnv(
+        [env_fn],
+        # do not copy observations since we don't modify them in-place anywhere
+        copy=False,
+        # all environments are the same, so they have the same observation space
+        observation_mode="same",
+        # we will handle auto-resetting ourselves in the ActionChunkWrapper
+        autoreset_mode=AutoresetMode.DISABLED,
+    )
 
-        return env
+    # Gymnasium's VectorEnv adds a mask for each field of the info dict to
+    # indicate which envs' info dicts contains that field. Since all environments
+    # are the same and always contain all fields, we can remove these.
+    env = RemoveInfoMasks(env)
 
-    # we need to disable automatic resets, since the agent predicts action
-    # sequences
-    env = SyncVectorEnv([make_one], copy=False, autoreset_mode=AutoresetMode.DISABLED)
+    # Convert numpy arrays to torch tensors, because all vectorized wrappers
+    # expect torch tensors.
+    env = NumpyToTorch(env)
 
-    # gymnasium's VectorEnv converts Tensors to numpy arrays, so we need to
-    # convert them back to Tensors
-    env = VectorToTorchWrapper(env)
+    # We don't record episode statistics because the real environment doesn't
+    # define a success condition
 
-    # VecEnvs return a tuple of results whenever an attribute is accessed
-    one_step_specs: DataSpecs = env.unwrapped.get_attr("specs")[0]
+    # Handle action chunking and auto-resetting when any env is done.
+    env = ActionChunkWrapper(
+        env,
+        action_horizon=action_horizon,
+        obs_seq_len=obs_seq_len,
+        auto_reset=True,  # reset env when done
+    )
+
+    # Get DataSpecs from underlying RealRobotEnv environment
+    specs: DataSpecs = env.unwrapped.get_attr("specs")[0]
+
+    # Adjust time properties of all specs according to obs and action sequence lengths
+    specs = specs.set_obs_seq_len(obs_seq_len).set_action_seq_len(action_horizon)
 
     # assign as new attribute so that GymEnvDataset can access it
-    env.specs = one_step_specs
+    env.specs = specs
 
     return env

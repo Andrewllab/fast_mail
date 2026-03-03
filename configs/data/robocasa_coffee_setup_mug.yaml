@@ -9,5 +9,4 @@ dataset:
   subfolders: CoffeeSetupMug
 
 env:
-  env:
-    env_name: CoffeeSetupMug
+  env_name: CoffeeSetupMug

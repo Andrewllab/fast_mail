@@ -359,6 +359,13 @@ class EmbedSpec(Spec):
 
 
 @dataclass(frozen=True)
+class TextSpec(Spec):
+    @property
+    def shape(self) -> tuple[int, ...]:
+        raise ValueError("A text spec does not have a fixed shape.")
+
+
+@dataclass(frozen=True)
 class ActionSpec(Spec):
     action_dim: int
     time: int | None = None
@@ -584,3 +591,24 @@ def spec_to_space(spec: Spec) -> "gym.Space":
         return spaces.Box(low=-np.inf, high=np.inf, shape=spec.shape, dtype=np.float32)
     else:
         raise ValueError(f"Unknown spec type: {type(spec).__name__}")
+
+
+def space_to_spec(
+    space: "gym.Space", n_batch_dims: int = 1, time_dim: bool = True
+) -> Spec:
+    """Convert a gym space to a spec."""
+    import gymnasium.spaces as spaces
+
+    if isinstance(space, spaces.Dict):
+        subspecs = {
+            name: space_to_spec(subspace, n_batch_dims, time_dim)
+            for name, subspace in space.spaces.items()
+        }
+        return subspecs  # type: ignore
+    elif isinstance(space, spaces.Box):
+        return ObsSpec(
+            elem_shape=space.shape[n_batch_dims + int(time_dim) :],
+            time=space.shape[n_batch_dims] if time_dim else None,
+        )
+    else:
+        raise ValueError(f"Unknown space type: {type(space).__name__}")

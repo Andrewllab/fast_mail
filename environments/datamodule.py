@@ -11,10 +11,8 @@ import hydra
 import lightning as L
 import torch
 import torch.nn as nn
-from gymnasium.vector import SyncVectorEnv
-from gymnasium.wrappers import RecordVideo
 from hydra.errors import InstantiationException
-from omegaconf import DictConfig
+from omegaconf import DictConfig, open_dict
 from tensordict import NonTensorData, TensorDict, is_leaf_nontensor
 from torch.utils.data import DataLoader, Subset, random_split
 
@@ -104,6 +102,10 @@ class TrajectoryDataModule(L.LightningDataModule):
         self._specs: DataSpecs | None = None
 
         self.env: GymEnvDataset | None = None
+
+        # add support for collating TensorDicts and torch geometric data in
+        # torch DataLoader
+        update_collate_fn_map()
 
     @staticmethod
     def preprocess_keyfunc(key: str) -> int:
@@ -451,23 +453,17 @@ class TrajectoryDataModule(L.LightningDataModule):
         )
         self._specs = specs
 
-        # add support for collating TensorDicts and torch geometric data in
-        # torch DataLoader
-        # we don't need this for the environment because we do not collate
-        # TensorDicts from envs
-        update_collate_fn_map()
-
     def _instantiate_env_dataset(self) -> None:
         if self.env_cfg is None:
             raise ValueError(
                 "Evaluation environment is not specified. Please provide an environment dataset."
             )
         log.info("Instantiating environment...")
-        self.env = hydra.utils.instantiate(
-            self.env_cfg,
-            _target_=GymEnvDataset,
-            _partial_=False,
-        )
+        with open_dict(self.env_cfg):
+            num_episodes = self.env_cfg.pop("num_episodes", None)
+
+        env = hydra.utils.instantiate(self.env_cfg, _partial_=False)
+        self.env = GymEnvDataset(env, num_episodes=num_episodes)
         specs = self.env.specs
 
         # Filter out transforms that should not be applied in the environment.
@@ -627,22 +623,11 @@ class TrajectoryDataModule(L.LightningDataModule):
             log.debug("Adding ActionWriter callback for env dataset.")
             callbacks.append(ActionWriter(self.env))
 
-            wrappers = []
-            env = self.env.env
-            while hasattr(env, "env"):
-                wrappers.append(env)
-                env = env.env  # go one level deeper
-
-                if isinstance(env, SyncVectorEnv):
-                    env = env.envs[0]
-
-            video_recorders = [w for w in wrappers if isinstance(w, RecordVideo)]
-            if video_recorders:
-                assert len(video_recorders) == 1
+            if self.env.video_recorder is not None:
                 log.debug(
                     "Adding VideoMetadataWriter callback for RecordVideo wrapper."
                 )
-                callbacks.append(VideoMetadataWriter(video_recorders[0]))
+                callbacks.append(VideoMetadataWriter(self.env.video_recorder))
 
         return callbacks
 
@@ -659,6 +644,40 @@ class TrajectoryDataModule(L.LightningDataModule):
             prefetch_factor=self.prefetch_factor if self.num_workers > 0 else None,
             persistent_workers=self.num_workers > 0,
         )
+
+    def _evaluation_dataloader(self, stage: str):
+        if self.eval_mode == "env":
+            if self.env is None:
+                raise ValueError(
+                    "Environment dataloader requested, but no environment provided."
+                )
+            # we do not use multiprocessing for the environment dataloader, since
+            # each worker would need to create its own set of environments
+            return DataLoader(
+                self.env,
+                # disables automatic batching. we batch either inside a gymnasium
+                # vecenv or inside the environment itself (e.g. isaacsim)
+                batch_size=None,
+                collate_fn=lambda x: x,  # we don't need to collate or convert individual tensordicts
+                num_workers=0,  # this is the default, but we set it explicitly
+            )
+        elif self.eval_mode == "dataset" or isinstance(self.eval_mode, float):
+            assert self.eval_dataset is not None
+            return DataLoader(
+                self.eval_dataset,
+                batch_size=self.batch_size,
+                num_workers=self.num_workers,
+                pin_memory=self.pin_memory,
+                shuffle=False,
+                drop_last=False,
+            )
+        elif self.eval_mode is None:
+            log.warning(
+                f"Datamodule was asked to generate dataloaders for {stage}, but evaluation mode is None! Returning empty list..."
+            )
+            return DataLoader([])  # type: ignore
+        else:
+            raise ValueError(f"Invalid evaluation mode: {self.eval_mode}")
 
     def val_dataloader(self) -> Any:
         return self._evaluation_dataloader("val")
@@ -727,37 +746,3 @@ class TrajectoryDataModule(L.LightningDataModule):
         elif self.eval_mode == "env":
             assert self.env_gpu_batch_transform.training is False
             return self.env_gpu_batch_transform(batch)
-
-    def _evaluation_dataloader(self, stage: str):
-        if self.eval_mode == "env":
-            if self.env is None:
-                raise ValueError(
-                    "Environment dataloader requested, but no environment provided."
-                )
-            # we do not use multiprocessing for the environment dataloader, since
-            # each worker would need to create its own set of environments
-            return DataLoader(
-                self.env,
-                # disables automatic batching. we batch either inside a gymnasium
-                # vecenv or inside the environment itself (e.g. isaacsim)
-                batch_size=None,
-                collate_fn=lambda x: x,  # we don't need to collate or convert individual tensordicts
-                num_workers=0,  # this is the default, but we set it explicitly
-            )
-        elif self.eval_mode == "dataset" or isinstance(self.eval_mode, float):
-            assert self.eval_dataset is not None
-            return DataLoader(
-                self.eval_dataset,
-                batch_size=self.batch_size,
-                num_workers=self.num_workers,
-                pin_memory=self.pin_memory,
-                shuffle=False,
-                drop_last=False,
-            )
-        elif self.eval_mode is None:
-            log.warning(
-                f"Datamodule was asked to generate dataloaders for {stage}, but evaluation mode is None! Returning empty list..."
-            )
-            return DataLoader([])  # type: ignore
-        else:
-            raise ValueError(f"Invalid evaluation mode: {self.eval_mode}")
