@@ -132,7 +132,10 @@ def merge_data_configs(cfg: DictConfig, other: DictConfig) -> DictConfig:
 
     obj_keys = ["dataset", "env"]
 
-    env_name = cfg["env"]["env"]["env_name"]
+    if "env" in cfg["env"].keys():
+        env_name = cfg["env"]["env"]["env_name"]
+    else:
+        env_name = cfg["env"]["env_name"]
 
     for key in obj_keys:
         if key not in other:

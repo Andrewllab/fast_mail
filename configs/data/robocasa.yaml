@@ -15,11 +15,14 @@ dataset:
 env:
   _target_: environments.robocasa.build_env.make 
   env_name: ???
-  img_height: 224  # observation image height
-  img_width: 224  # observation image width
+  img_height: 1080  # observation image height
+  img_width: 1440  # observation image width
+  
   render_cam_name: robot0_agentview_left  # camera to use for rendering videos
   render_size: [256, 256]  # resolution to use for rendering videos, if different from observation resolution
 
+  absolute_actions: True  # whether to use absolute or relative actions (relative actions are recommended for better sim2real transfer)
+  
   num_envs: 1
   parallel: null  # if null, parallelization is determined based on num_envs > 1
   action_horizon: null  # use all predicted actions
