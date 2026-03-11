@@ -1,0 +1,51 @@
+# usage: python train.py
+
+defaults:
+  - data: ???
+  - agent: pakt_beso_agent
+
+  - callbacks:
+    - model_checkpoint
+    - model_summary
+    - batch_size_finder
+    # - pushover_notifier
+  - logger:
+    - wandb
+  - python_logging: default
+  - paths: default
+  - hydra: default
+  - _self_
+  - preprocessing: null
+  - actions: null
+  - goals: null
+  - obs_modality: null
+  - obs_encoder: ???
+  - experiment: null
+  - platform: default
+  - optional local: default
+  - debug: verbose
+  - override tokenizers@agent.noise_model.action_obs_tokenizer: kat_tokenizer
+
+
+# task name, determines output directory path
+job_type: train
+
+logger:
+  wandb:
+    job_type: ${job_type}
+
+seed: null
+
+data:
+  eval_mode: 0.05  # "env" to validate in simulation or a float to validate on subset of data
+
+platform:
+  pin_memory: False
+
+trainer:
+  default_root_dir: ${paths.output_dir}
+  deterministic: False
+  max_steps: 30000
+  log_every_n_steps: 50
+  check_val_every_n_epoch: 10
+  enable_model_summary: False  # we print model summary manually with a callback

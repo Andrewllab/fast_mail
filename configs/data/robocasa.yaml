@@ -27,9 +27,9 @@ env:
   parallel: null  # if null, parallelization is determined based on num_envs > 1
   action_horizon: null  # use all predicted actions
   obs_seq_len: ${data.obs_seq_len}
-  max_episode_steps:
-    OpenDoubleDoor: 800
-    CloseDoubleDoor: 800
-    default: 400
+  max_episode_steps: null
+    # OpenDoubleDoor: 800
+    # CloseDoubleDoor: 800
+    # default: 400
 
   num_episodes: 20  # evaluate on 20 episodes

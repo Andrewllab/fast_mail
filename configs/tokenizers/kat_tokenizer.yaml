@@ -1,0 +1,47 @@
+name: pointpatch_tokenizer
+_target_: transforms.kat_tokenizer.KatTokenizer
+_partial_: true
+
+
+pos_encoder:
+  name: point_mae_position_encoder
+  _target_: models.pos_encoder.PointMAECartesianPosEncoder
+  _partial_: true
+  hidden_dim: 128
+  cartesian_dim: ${..cartesian_dim}
+  embed_dim: ${..embed_dim}
+
+feature_encoder:
+  name: pointpatch_feature_encoder
+  _target_: models.mlp.MlpModel
+  _partial_: true
+  in_features: 768
+  out_features: ${..embed_dim}
+  hidden_sizes: [512]
+  activation: GELU
+  norm: LayerNorm
+  dropout: 0.0
+
+color_encoder: Null
+  # name: pointpatch_color_encoder
+  # _target_: models.mlp.MlpModel
+  # _partial_: true
+  # in_features: 3
+  # out_features: ${..embed_dim}
+  # hidden_sizes: [128, 256]
+  # activation: GELU
+  # norm: LayerNorm
+  # dropout: 0.1
+
+timestep_encoder:
+  name: DDPMSigmaEncoder
+  _target_: models.sigma_encoders.DDPMSigmaEncoder
+  _partial_: true
+  embed_dim: ${..embed_dim}
+
+embed_dim: 512
+num_timesteps: ${data.action_seq_len}
+cartesian_dim: 3
+num_gripper_points: 5
+
+separate_obs_action_norms: True

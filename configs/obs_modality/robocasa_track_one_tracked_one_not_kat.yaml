@@ -1,0 +1,21 @@
+# @package _global_
+
+defaults:
+  - robocasa_track
+  - /transforms@data.preprocess.t01_kat_extractor: kat_extractor
+  - /transforms@data.preprocess.t02_to_kat_action_obs: to_kat_action_obs
+  - _self_
+
+  - override /transforms@data.gpu_batch_transforms.t01_fps_prep: null
+  - override /transforms@data.gpu_batch_transforms.t02_to_pakt_action_obs: null
+  # - /transforms@data.gpu_batch_transforms.t03_pakt_localizer: pakt_localizer
+  # - /transforms@data.gpu_batch_transforms.t04_random_rotation: pakt_random_rotation
+
+data:
+  gpu_batch_transforms:
+    t03_pakt_localizer:
+      localization_target: target_points
+      backup_localization_target: tool_points
+    t04_random_rotation:
+      obs_keys: [tool_points, target_points]
+      action_keys: ["action"]

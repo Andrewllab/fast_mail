@@ -174,52 +174,25 @@ class RoboCasaDataset(CustomHdf5Dataset):
         ep_meta = json.loads(traj.attrs["ep_meta"])
 
         # TODO: does it use less memory if we explicitly convert to torch tensors first?
-        td = TensorDict(
-            {
-                "obs": {
-                    # cameras
-                    "left_cam": {
-                        # shape: (T, H, W, 3), uint8
-                        "rgb": traj["obs"]["robot0_agentview_left_image"][...],
-                        # shape: (T, H, W), float32
-                        "depth": traj["obs"]["robot0_agentview_left_depth"][..., 0],
-                    },
-                    "right_cam": {
-                        # shape: (T, H, W, 3), uint8
-                        "rgb": traj["obs"]["robot0_agentview_right_image"][...],
-                        # shape: (T, H, W), float32
-                        "depth": traj["obs"]["robot0_agentview_right_depth"][..., 0],
-                    },
-                    "gripper_cam": {
-                        # shape: (T, H, W, 3), uint8
-                        "rgb": traj["obs"]["robot0_eye_in_hand_image"][...],
-                        # shape: (T, H, W), float32
-                        "depth": traj["obs"]["robot0_eye_in_hand_depth"][..., 0],
-                    },
-                    # camera poses (shape: (T, 4, 4))
-                    "left_cam_pose": camera_poses["robot0_agentview_left"][
-                        "extrinsics"
-                    ][...],
-                    "right_cam_pose": camera_poses["robot0_agentview_right"][
-                        "extrinsics"
-                    ][...],
-                    "gripper_cam_pose": camera_poses["robot0_eye_in_hand"][
-                        "extrinsics"
-                    ][...],
-                    "joint_pos": joint_pos,  # shape: (T, 7), float32
-                    "robot_state": robot_state,  # shape: (T, 9), float32
-                    "ee_pose": ee_pose,  # shape: (T, 7), float32
-                },
-                "action": action,
-                "ref_action": action.copy(),
-                "goal": {
-                    # language description of the current task
-                    "description": json.loads(traj.attrs["ep_meta"])["lang"]
-                },
-                "path": str(path),
-                "name": name,
-            },  # type: ignore
-        )
+        td_dict = {
+            "obs": {
+                # camera poses (shape: (T, 4, 4))
+                "joint_pos": joint_pos,  # shape: (T, 7), float32
+                "robot_state": robot_state,  # shape: (T, 9), float32
+                "ee_pose": ee_pose,  # shape: (T, 7), float32
+                "base_to_ee_pose": base_to_ee_pose,  # shape: (T, 7), float32
+                "base_pose": base_pose,  # shape: (T, 7), float32
+                **obs_next_actions,  # next actions for all action components
+            },
+            "action": action,
+            "ref_action": action.copy(),
+            "goal": {
+                # language description of the current task
+                "text": ep_meta["lang"],
+            },
+            "path": str(path),
+            "name": name,
+        }  # type: ignore
 
         cam_names = ["left_cam", "right_cam", "gripper_cam"]
         raw_keys = [
@@ -260,7 +233,7 @@ class RoboCasaDataset(CustomHdf5Dataset):
 
         obs_specs = {}
 
-        cam_names = ["left_cam", "right_cam", "gripper_cam"]
+        cam_names = ["left_cam", "right_cam"]
         raw_keys = [
             "robot0_agentview_left",
             "robot0_agentview_right",

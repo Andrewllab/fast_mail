@@ -16,6 +16,8 @@ class LocalizePAKT(ReversibleTransform):
         specs: DataSpecs,
         localization_target: str,
         backup_localization_target: str | None = None,
+        obs_keys: list[str] = ["current_points", "gripper_points", "tool_points", "target_points", "des_gripper_points"],
+        action_keys: list[str] = ["action"],
     ) -> None:
 
         self.localization_target = localization_target
@@ -31,6 +33,13 @@ class LocalizePAKT(ReversibleTransform):
             raise ValueError(
                 f"Backup localization target {backup_localization_target} not found in specs.obs"
             )
+
+        self.obs_keys = obs_keys
+        if isinstance(self.obs_keys, str):
+            self.obs_keys = [self.obs_keys]
+        self.action_keys = action_keys
+        if isinstance(self.action_keys, str):
+            self.action_keys = [self.action_keys]
 
         obs_specs = dict(specs.obs)
         obs_specs["localization_mean"] = ObsSpec((1, 3))
@@ -72,9 +81,7 @@ class LocalizePAKT(ReversibleTransform):
 
         mean_point = self.calculate_mean_point(traj)
 
-        for key in [
-            "current_points",
-        ]:
+        for key in self.obs_keys:
             if key not in traj["obs"]:
                 continue
             if traj["obs", key, "points"].ndim == 4:
@@ -82,11 +89,13 @@ class LocalizePAKT(ReversibleTransform):
             elif traj["obs", key, "points"].ndim == 3:
                 traj["obs", key, "points"] -= mean_point.view(B, 1, 3)
 
-        if "action" in traj:
-            if traj["action"].ndim == 3 and traj["action"].shape[2] == 3:
-                traj["action"] -= mean_point.view(B, 1, 3)
-            elif traj["action"].ndim == 4 and traj["action"].shape[3] == 3:
-                traj["action"] -= mean_point.view(B, 1, 1, 3)
+        for key in self.action_keys:
+            if key not in traj:
+                continue
+            if traj[key].ndim == 3 and traj[key].shape[2] == 3:
+                traj[key] -= mean_point.view(B, 1, 3)
+            elif traj[key].ndim == 4 and traj[key].shape[3] == 3:
+                traj[key] -= mean_point.view(B, 1, 1, 3)
 
         traj["obs"]["localization_mean"] = mean_point
 
@@ -98,12 +107,7 @@ class LocalizePAKT(ReversibleTransform):
     def reverse(self, tensordict: TensorDict) -> TensorDict:
         mean_point = tensordict["obs"]["localization_mean"]
         B = tensordict.batch_size[0]
-        for key in [
-            "gripper_points",
-            "tool_points",
-            "target_points",
-            "des_gripper_points",
-        ]:
+        for key in self.obs_keys:
             if key not in tensordict["obs"]:
                 continue
             if tensordict["obs", key, "points"].ndim == 4:
@@ -111,10 +115,12 @@ class LocalizePAKT(ReversibleTransform):
             elif tensordict["obs", key, "points"].ndim == 3:
                 tensordict["obs", key, "points"] += mean_point.view(B, 1, 3)
 
-        if "action" in tensordict:
-            if tensordict["action"].ndim == 3 and tensordict["action"].shape[2] == 3:
-                tensordict["action"] += mean_point.view(B, 1, 3)
-            elif tensordict["action"].ndim == 4 and tensordict["action"].shape[3] == 3:
-                tensordict["action"] += mean_point.view(B, 1, 1, 3)
+        for key in self.action_keys:
+            if key not in tensordict:
+                continue
+            if tensordict[key].ndim == 3 and tensordict[key].shape[2] == 3:
+                tensordict[key] += mean_point.view(B, 1, 3)
+            elif tensordict[key].ndim == 4 and tensordict[key].shape[3] == 3:
+                tensordict[key] += mean_point.view(B, 1, 1, 3)
 
         return tensordict

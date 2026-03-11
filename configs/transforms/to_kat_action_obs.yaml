@@ -1,0 +1,7 @@
+_target_: transforms.to_kat_action_obs.ToKatActionObsTransform
+_partial_: True
+
+pcd_keys: 
+  - tool_points
+  - target_points
+gripper_points_key: gripper_points
