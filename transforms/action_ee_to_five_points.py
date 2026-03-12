@@ -103,7 +103,7 @@ class AbsoluteEEPoseToFivePointsTransform(ReversibleTransform):
 
         # Update action spec to 5*3
         action_spec = specs.action
-        new_action_spec = dataclasses.replace(action_spec, action_dim=5 * 3)
+        new_action_spec = dataclasses.replace(action_spec, action_dim=3)
 
         obs_spec = dict(specs.obs)
         obs_spec["gripper_points"] = ObsSpec(elem_shape=(5, 3))

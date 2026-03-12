@@ -13,7 +13,11 @@ from environments.specs import (
     ObsSpec,
     PointCloudSpec,
 )
-from transforms.base_transform import NormalizingTransform, Transform
+from transforms.base_transform import (
+    NormalizingTransform,
+    ReversibleTransform,
+    Transform,
+)
 from utils.nested import cat_nested
 
 log = logging.getLogger(__name__)
@@ -50,7 +54,7 @@ class ToKatActionObsTransform(NormalizingTransform):
         # obs_specs["action_points"] = NestedTensorSpec(time=False)
 
         # ignore action dims related to static mobile platform
-        action = ActionSpec(action_dim=3, time=self.window_len * self.num_action_points)
+        action = ActionSpec(action_dim=3, time=self.window_len)
 
         goal_specs = {"text": ObsSpec(elem_shape=(), time=None)}
 
@@ -70,7 +74,9 @@ class ToKatActionObsTransform(NormalizingTransform):
     def call_trajectory(self, tensordict: TensorDict) -> TensorDict:
         return tensordict
 
-    def __call_trajectory(self, tensordict: TensorDict, rollout_mode=False) -> TensorDict:
+    def __call_trajectory(
+        self, tensordict: TensorDict, rollout_mode=False
+    ) -> TensorDict:
         pcds = [tensordict["obs"][k] for k in self.pcd_keys]
         gripper_pcd = tensordict["obs"][self.gripper_points_key]
         des_gripper_pcd = tensordict["obs"][self.des_gripper_points_key]
@@ -122,18 +128,10 @@ class ToKatActionObsTransform(NormalizingTransform):
             action_pcds, reference_pcd=current_pcds, start_id=start_id
         )
 
-        future_pcds = [action_pcds]
-        tmp_future_pcd = {}
-        for key in future_pcds[0].keys():
-            tmp_future_pcd[key] = torch.concat(
-                [future_pcd[key] for future_pcd in future_pcds], dim=1
-            )
-        future_pcds = tmp_future_pcd
-
-        action = future_pcds.pop("points")  # (B, N_action*window_len, 3)
+        action = action_pcds.pop("points")  # (B, N_action*window_len, 3)
         obs = {
             "current_points": current_pcds,
-            "action_points": future_pcds,
+            "action_points": action_pcds,
         }
 
         tensordict["obs"] = tensordict["obs"].update(obs)
@@ -172,9 +170,11 @@ class ToKatActionObsTransform(NormalizingTransform):
         device = gripper_points.device
 
         # Assign a unique object ID to all gripper points (different from any environment object)
-        gripper_pcd["object_ids"] = torch.arange(
-            start_id, start_id + N, device=device, dtype=torch.long
-        ).unsqueeze(0).expand(B, -1)
+        gripper_pcd["object_ids"] = (
+            torch.arange(start_id, start_id + N, device=device, dtype=torch.long)
+            .unsqueeze(0)
+            .expand(B, -1)
+        )
         gripper_pcd["timesteps"] = torch.zeros_like(gripper_pcd["object_ids"])
 
         for key in reference_pcd.keys():
@@ -197,9 +197,11 @@ class ToKatActionObsTransform(NormalizingTransform):
         T = action_points.shape[2]
         device = action_points.device
 
-        action_pcd["object_ids"] = torch.arange(
-            start_id, start_id + N, device=device, dtype=torch.long
-        ).reshape(1, -1, 1).expand(B, N, T)
+        action_pcd["object_ids"] = (
+            torch.arange(start_id, start_id + N, device=device, dtype=torch.long)
+            .reshape(1, -1, 1)
+            .expand(B, N, T)
+        )
 
         action_pcd["timesteps"] = (
             torch.arange(T, device=device).reshape(1, 1, -1).expand(B, N, T) + 1
@@ -227,7 +229,11 @@ class ToKatActionObsTransform(NormalizingTransform):
         n_points = pcd["points"].shape[1]
 
         if "object_ids" not in pcd:
-            pcd["object_ids"] = torch.arange(start_id, start_id + n_points, device=device).unsqueeze(0).expand(pcd["points"].shape[0], -1)
+            pcd["object_ids"] = (
+                torch.arange(start_id, start_id + n_points, device=device)
+                .unsqueeze(0)
+                .expand(pcd["points"].shape[0], -1)
+            )
 
         if "timesteps" not in pcd:
             pcd["timesteps"] = torch.zeros_like(pcd["object_ids"])
@@ -548,3 +554,69 @@ def sliding_windows_pad_last(
     out = x.unfold(dimension=time_dim, size=window, step=1)
     out = out.movedim(-1, time_dim + 1)
     return out
+
+
+class ToKatActionObsTransformReverseOnly(ReversibleTransform):
+
+    def __init__(
+        self,
+        specs: DataSpecs,
+        pcd_keys: list[str] = ["tool_points"],
+        gripper_points_key: str = "gripper_points",
+        des_gripper_points_key: str = "des_gripper_points",
+    ):
+        # Environment point clouds
+        self.pcd_keys = pcd_keys
+        if isinstance(self.pcd_keys, str):
+            self.pcd_keys = [self.pcd_keys]
+
+        # Gripper point clouds for obs only, not action
+        self.gripper_points_key = gripper_points_key
+        self.des_gripper_points_key = des_gripper_points_key
+
+        self.window_len = 20
+        self.num_action_points = 5
+        self._specs = specs
+
+        self._load_specs()
+
+    def _load_specs(self) -> None:
+        obs_specs = dict(self._specs.obs)  # copy obs specs for local modification
+
+        # obs_specs["current_points"] = NestedTensorSpec(time=False)
+        # obs_specs["action_points"] = NestedTensorSpec(time=False)
+
+        # ignore action dims related to static mobile platform
+        action = ActionSpec(action_dim=3, time=self.window_len)
+
+        goal_specs = {"text": ObsSpec(elem_shape=(), time=None)}
+
+        self._specs = self._specs.replace(obs=obs_specs, action=action, goal=goal_specs)
+
+    @property
+    def specs(self) -> DataSpecs:
+        return self._specs
+
+    def __call__(self, tensordict: TensorDict) -> TensorDict:
+        return tensordict
+
+    def forward(self, tensordict: TensorDict) -> TensorDict:
+        return tensordict
+
+    def reverse(self, tensordict: TensorDict) -> TensorDict:
+        """
+        Inverse of call_trajectory() w.r.t. tensordict["action"]:
+
+        Extracts the original per-timestep robot_action_points (T, N_action, 3)
+        from the packed/flattened tensordict["action"] and stores it back into
+        tensordict["action"].
+        """
+        action = tensordict["action"]
+        action = torch.stack(
+            [a[: self.num_action_points * self.window_len] for a in action.unbind()]
+        )
+
+        tensordict["action"] = action.view(
+            -1, self.num_action_points, self.window_len, 3
+        )  # (T, N_action, window_len, 3)
+        return tensordict

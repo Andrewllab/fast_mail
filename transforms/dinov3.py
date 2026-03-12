@@ -52,7 +52,6 @@ class Dinov3FeatureExtractorTransform(Transform):
         self.device = device
 
         # General settings
-        self.action_seq_len = specs.action_seq_len
         self.camera_keys = camera_keys
         if isinstance(self.camera_keys, str):
             self.camera_keys = [self.camera_keys]

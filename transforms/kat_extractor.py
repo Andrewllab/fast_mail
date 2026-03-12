@@ -31,11 +31,11 @@ class KATExtractorTransform(NormalizingTransform, nn.Module):
         self.num_ref_features = num_ref_features
         self._specs = specs
 
-        self.per_demonstration_features = {
-            key: [] for key in self.pcd_keys
-        }
+        self.per_demonstration_features = {key: [] for key in self.pcd_keys}
 
-        self.ref_features = torch.empty((len(self.pcd_keys), self.num_ref_features, feature_dim))
+        self.ref_features = torch.empty(
+            (len(self.pcd_keys), self.num_ref_features, feature_dim)
+        )
 
     @property
     def specs(self) -> DataSpecs:
@@ -142,7 +142,7 @@ class KATExtractorTransform(NormalizingTransform, nn.Module):
 
         candidates.sort(key=lambda x: x["score"], reverse=True)
 
-        selected_desc = [cand["desc"] for cand in candidates[:self.num_ref_features]]
+        selected_desc = [cand["desc"] for cand in candidates[: self.num_ref_features]]
 
         ref_desc = torch.stack(selected_desc, dim=0)
         return ref_desc
@@ -174,36 +174,66 @@ class KATExtractorTransform(NormalizingTransform, nn.Module):
     def match_reference_features_to_pointcloud(self, ref_desc: torch.Tensor, pcd: dict):
         points = pcd["points"]
         if points.ndim == 4:
-            points = points[..., 0, :]  # (B, N, 3)
+            points = points[..., 0, :]
+
+        B = points.shape[0]
+        device = points.device
+
         feats = pcd["features"]
+        device = feats.device
+        ref_desc = ref_desc.to(device)
 
-        # cosine similarity
-        sim = torch.nested.nested_tensor_from_jagged(
-            feats.values() @ ref_desc.to("cuda").T,
-            offsets=feats.offsets(),
-        )
+        point_offsets = points.offsets()
+        feat_offsets = feats.offsets()
 
+        batch_sizes = feat_offsets[1:] - feat_offsets[:-1]
+        if torch.any(batch_sizes == 0):
+            pass
+            # raise RuntimeError(
+            #     f"Encountered empty point cloud(s): batch_sizes={batch_sizes}"
+            # )
+
+        sim_values = feats.values() @ ref_desc.T
+        sim = torch.nested.nested_tensor_from_jagged(sim_values, offsets=feat_offsets)
+
+        # for each batch item and each reference feature, choose best point
         indices = sim.argmax(dim=1)
-        cum_indices = indices + feats.offsets()[:-1].unsqueeze(-1)
 
-        matched_points = points.values()[cum_indices]
-        matched_features = feats.values()[cum_indices]
+        cum_indices = indices + feat_offsets[:-1].unsqueeze(-1)
+
+        # Setting empty batch items to zero index (which will be ignored later) to avoid out-of-bounds indexing
+        cum_indices[batch_sizes == 0, :] = 0
+        if torch.any(indices == -1) or torch.any(
+            cum_indices >= feats.values().shape[0]
+        ):
+            raise RuntimeError(
+                f"Invalid indices found: indices={indices}, cum_indices={cum_indices}, feat_offsets={feat_offsets}, feats_values_shape={feats.values().shape}"
+            )
 
         return_dict = {
-            "points": matched_points,
-            "features": matched_features,
+            "points": points.values()[
+                cum_indices
+            ],  # torch.zeros((B, self.num_ref_features, 3), device=device),
+            "features": feats.values()[
+                cum_indices
+            ],  # torch.zeros((B, self.num_ref_features, feats.shape[-1]), device=device),
         }
+
+        return_dict["points"][batch_sizes == 0, :] = 0.0
+        return_dict["features"][batch_sizes == 0, :] = 0.0
 
         if "colors" in pcd:
             colors = pcd["colors"]
-            matched_colors = colors.values()[cum_indices]
-            return_dict["colors"] = matched_colors
+            return_dict["colors"] = colors.values()[cum_indices]
+            return_dict["colors"][batch_sizes == 0, :] = 0.0
 
         return return_dict
 
     def forward(self, tensordict):
         for i, key in enumerate(self.pcd_keys):
-            tensordict["obs", key] = self.match_reference_features_to_pointcloud(self.ref_features[i], tensordict["obs", key])
+            tensordict["obs", key] = self.match_reference_features_to_pointcloud(
+                self.ref_features[i], tensordict["obs", key]
+            )
 
         return tensordict
 

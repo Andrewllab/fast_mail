@@ -96,6 +96,8 @@ class DecoderOnlyNoise(nn.Module):
             self.drop = nn.Identity()
 
         self.action_seq_len = specs.action_seq_len
+        self.action_dim = specs.action_dim
+        self.n_points = 5
 
         self.apply(self._init_weights)
 
@@ -161,7 +163,8 @@ class DecoderOnlyNoise(nn.Module):
         # retrieve the decoded action tokens from the sequence
         if output.is_nested:
             if not action_embed.is_nested:
-                action_tokens = [out[-self.action_seq_len :] for out in output.unbind()]
+                window_size = self.action_seq_len * self.n_points
+                action_tokens = [out[-window_size:] for out in output.unbind()]
             else:
                 num_elements = torch.diff(action_embed.offsets())
                 action_tokens = [
@@ -171,7 +174,8 @@ class DecoderOnlyNoise(nn.Module):
                     action_tokens, layout=torch.jagged
                 )
         else:
-            action_tokens = output[:, -self.action_seq_len :]
+            window_size = self.action_seq_len * self.n_points
+            action_tokens = output[:, -window_size:]
 
         pred_actions = self.action_head(action_tokens)
 

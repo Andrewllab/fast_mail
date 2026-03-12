@@ -3,7 +3,8 @@
 defaults:
   - robocasa_track
   - /transforms@data.preprocess.t01_kat_extractor: kat_extractor
-  - /transforms@data.preprocess.t02_to_kat_action_obs: to_kat_action_obs
+  - /transforms@data.preprocess.t02_to_kat_action_obs_reverse_only: to_kat_action_obs_reverse_only
+  - /transforms@data.preprocess.t03_to_kat_action_obs: to_kat_action_obs
   - _self_
 
   - override /transforms@data.gpu_batch_transforms.t01_fps_prep: null

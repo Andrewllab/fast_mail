@@ -1,0 +1,4 @@
+defaults:
+  - to_kat_action_obs
+  - _self_
+_target_: transforms.to_kat_action_obs.ToKatActionObsTransformReverseOnly
