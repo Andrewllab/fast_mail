@@ -24,6 +24,9 @@ data:
     t03_to_kat_action_obs:
       pcd_keys: 
         - tool_points
+    t01_kat_extractor:
+      pcd_keys: 
+        - tool_points
 
   gpu_batch_transforms:
     t03_pakt_localizer:
