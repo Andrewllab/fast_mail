@@ -196,6 +196,20 @@ class KATExtractorTransform(NormalizingTransform, nn.Module):
         sim_values = feats.values() @ ref_desc.T
         sim = torch.nested.nested_tensor_from_jagged(sim_values, offsets=feat_offsets)
 
+        if sim.values().numel() == 0:
+            # No features in this point cloud, return zeros
+            return_dict = {
+                "points": torch.zeros((B, self.num_ref_features, 3), device=device),
+                "features": torch.zeros(
+                    (B, self.num_ref_features, feats.shape[-1]), device=device
+                ),
+            }
+            if "colors" in pcd:
+                return_dict["colors"] = torch.zeros(
+                    (B, self.num_ref_features, 3), device=device
+                )
+            return return_dict
+
         # for each batch item and each reference feature, choose best point
         indices = sim.argmax(dim=1)
 
