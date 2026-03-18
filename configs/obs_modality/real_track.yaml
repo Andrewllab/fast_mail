@@ -3,8 +3,9 @@
 defaults:
   # Larger vision tasks
   - /transforms@data.preprepreprocess.t00_remove_unused_cams: cleanup
-  - /goals@data.preprepreprocess.t01_target_tool_from_foldername: add_target_tool_from_foldername_real
-  - /transforms@data.preprepreprocess.t02_samv3: grounding_samv3_segmenter
+  # - /goals@data.preprepreprocess.t01_target_tool_from_foldername: add_target_tool_from_foldername_real
+  - /transforms@data.preprepreprocess.t02_samv3: pointed_samv3
+  # - /transforms@data.preprepreprocess.t02_samv3: grounding_samv3_segmenter
   - /transforms@data.preprepreprocess.t03_dinov3: dinov3
   - /transforms@data.preprepreprocess.t04_cotracker: cotracker_single
   - /transforms@data.preprepreprocess.t05_target_to_featured_pointcloud: to_masked_featured_pointcloud
@@ -34,7 +35,7 @@ data:
   preprepreprocess:
     backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.prepreprocessed_dir}/real/${data.name}_pointclouds
+    root_dir: ${paths.preprepreprocessed_dir}/real/${data.name}_pointclouds
     overwrite: True
     
     t00_remove_unused_cams:
@@ -50,12 +51,6 @@ data:
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.preprocessed_dir}/real/${data.name}_pointclouds
     overwrite: True
-
-    t0_gripper_actions:
-      _target_: transforms.action_binarize_gripper.BinarizeGripperActions
-      _partial_: True
-      threshold: null  # use half the max gripper width as threshold
-      hysteris_steps: 30  # issue a warning if state changes happen more frequently than this 
 
     t01_action_type:
       _target_: transforms.action_switch_type.SwitchActionType

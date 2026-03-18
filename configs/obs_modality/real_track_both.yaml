@@ -3,8 +3,8 @@
 defaults:
 
   # Larger vision tasks 
-  - /goals@data.prepreprocess.t01_target_tool_from_foldername: add_target_tool_from_foldername_real
-  - /transforms@data.prepreprocess.t02_samv3: grounding_samv3_segmenter
+  # - /goals@data.prepreprocess.t01_target_tool_from_foldername: add_target_tool_from_foldername_real
+  - /transforms@data.prepreprocess.t02_samv3: pointed_samv3
   - /transforms@data.prepreprocess.t03_dinov3: dinov3
   - /transforms@data.prepreprocess.t04_cotracker: cotracker_both
   - /transforms@data.prepreprocess.t05_tool_to_tracked_featured_pointcloud: to_tracked_featured_pointcloud
@@ -34,7 +34,7 @@ data:
   prepreprocess:
     backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.prepreprocessed_dir}/real/${data.name}_pointclouds
+    root_dir: ${paths.preprepreprocessed_dir}/real/${data.name}_pointclouds
     overwrite: True
     
     t05_tool_to_tracked_featured_pointcloud:

@@ -1,0 +1,10 @@
+_target_: transforms.pointed_samv3.SamV3VideoSegmenterTransform
+_partial_: True
+
+camera_keys: ${camera_keys}
+segmenter_out_keys: [tool_segmentation, target_segmentation]
+segmentation_click_keys: [tool_object_clicks, target_object_clicks]
+rgb_key: ${rgb_key}
+# max_frames_per_batch: 2
+out_device: cpu
+add_backward_tracking: False

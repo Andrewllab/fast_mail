@@ -183,6 +183,8 @@ class CleanupTransform(Transform):
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         for key in self.pop_keys:
             keys = ("obs", key)
+            if "/" in key:
+                keys = ("obs", *key.split("/"))
             # use pop with default to avoid key errors
             tensordict.pop(keys, None)
 

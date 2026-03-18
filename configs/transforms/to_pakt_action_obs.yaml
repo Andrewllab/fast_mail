@@ -5,3 +5,4 @@ tracked_points_keys: tool_points
 untracked_points_keys: target_points
 gripper_points_key: gripper_points
 include_tracked_in_action: True
+window_len: ${data.action_seq_len}

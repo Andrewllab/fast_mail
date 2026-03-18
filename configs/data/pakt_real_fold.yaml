@@ -16,6 +16,7 @@ dataset:
   root_dir: ${paths.data_dir}/real/arrange/${..name}
   subfolders: null
   # load_subset: 4
+  clicks_file: "clicks.yaml"
 
 env:
   env:

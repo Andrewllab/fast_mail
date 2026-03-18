@@ -2,7 +2,7 @@
 
 defaults:
   - default
-  - /cameras/calibration@dataset.extrinsics: 2025-09-16
+  # - /cameras/calibration@dataset.extrinsics: 2025-09-16
   - real_robot
 
 task: stack
@@ -16,6 +16,7 @@ dataset:
   root_dir: ${paths.data_dir}/real/stack/${..name}
   subfolders: null
   # load_subset: 4
+  clicks_file: "clicks.yaml"
 
 env:
   env:

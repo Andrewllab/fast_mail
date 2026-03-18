@@ -5,6 +5,7 @@ from typing import Mapping, Sequence
 
 import h5py
 import torch
+import yaml
 from h5py import Group
 from tensordict import TensorDict
 
@@ -41,11 +42,13 @@ class RealRobotDataset(CustomHdf5Dataset):
         load_subset: int | float | Sequence[int] | None = None,
         subfolders: Sequence[str] | None = None,
         extrinsics: Mapping[str, Mapping[str, list[list[float]]]] | None = None,
+        clicks_file: os.PathLike | None = None,
     ):
         self._root_dir = resolve_path(root_dir)
         self.action_seq_len = action_seq_len
         self.obs_seq_len = obs_seq_len
         self._extrinsics = extrinsics
+        self._clicks_file = os.path.join(root_dir, clicks_file) if clicks_file else None
 
         # Recursively search for h5 files
         # Data collector saves files with datetime pattern: YYYY_MM_DD-HH_MM_SS.h5
@@ -194,6 +197,16 @@ class RealRobotDataset(CustomHdf5Dataset):
                 "name": name,
             }  # type: ignore
         )
+
+        if self._clicks_file is not None:
+            clicks_data = yaml.safe_load(open(self._clicks_file, "r"))
+            clicks_data = clicks_data["files"][str(path)]
+
+            for cam in ["left_cam", "right_cam"]:
+                for obj_key in clicks_data[cam]:
+                    td["obs"][f"front_{cam}"][f"{obj_key}_clicks"] = clicks_data[cam][
+                        obj_key
+                    ]
 
         # add a batch dimension so we can index
         td["obs"].auto_batch_size_(batch_dims=1)
