@@ -43,13 +43,21 @@ data:
       drop_streams: [front_left_cam/right, front_right_cam/right]
 
     t99_cleanup:
-      keep_stream_types: []  # keep no stream types, i.e. remove all
-      drop_keys: [left_cam, right_cam, gripper_cam]
+      # keep_stream_types: []  # keep no stream types, i.e. remove all
+      drop_keys: [front_left_cam, front_right_cam, gripper_cam]
+      # drop_keys: 
+      #   - front_left_cam/target_object_clicks
+      #   - front_right_cam/target_object_clicks
+      #   - front_left_cam/tool_object_clicks
+      #   - front_right_cam/tool_object_clicks
+      #   - front_left_cam/depth
+      #   - front_right_cam/depth
+
 
   prepreprocess:
     backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.preprocessed_dir}/real/${data.name}_pointclouds
+    root_dir: ${paths.prepreprocessed_dir}/real/${data.name}_pointclouds
     overwrite: True
 
     t01_action_type:
