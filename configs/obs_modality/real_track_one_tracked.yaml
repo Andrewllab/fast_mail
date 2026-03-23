@@ -9,6 +9,10 @@ defaults:
   - _self_
 
 data:
+  preprepreprocess:
+    t02_samv3:
+      segmentation_click_keys: [tool_object_clicks]
+      segmenter_out_keys: [tool_segmentation]
   gpu_batch_transforms:
     t01_fps_prep:
       pcd_keys:
