@@ -66,8 +66,10 @@ class SamV3VideoSegmenterTransform(Transform):
             else [segmentation_click_keys]
         )
 
-        if len(self.segmenter_out_keys) != len(self.camera_keys):
-            raise ValueError("segmenter_out_keys length must match camera_keys length")
+        if len(self.segmenter_out_keys) != len(self.segmentation_click_keys):
+            raise ValueError(
+                "segmenter_out_keys length must match segmentation_click_keys length"
+            )
 
         self.rgb_key = rgb_key
         self.add_backward_tracking = add_backward_tracking
