@@ -1,0 +1,39 @@
+# @package _global_
+
+defaults:
+  - real_track
+
+  - /transforms@data.preprocess.t01_kat_extractor: kat_extractor
+  - /transforms@data.preprocess.t02_to_kat_action_obs_reverse_only: to_kat_action_obs_reverse_only
+  - /transforms@data.preprocess.t03_to_kat_action_obs: to_kat_action_obs
+  - _self_
+
+  # Remove the second tracked object step (we only want one tracked object)
+  - override /transforms@data.preprepreprocess.t05_target_to_featured_pointcloud: null
+  # Replace the "target masked pointcloud" step with a tracked pointcloud step
+  - override /transforms@data.preprepreprocess.t06_tool_to_featured_pointcloud: to_tracked_featured_pointcloud
+  - override /transforms@data.gpu_batch_transforms.t01_fps_prep: null
+  - override /transforms@data.gpu_batch_transforms.t02_to_pakt_action_obs: null
+
+data:
+  preprocess:
+    t02_to_kat_action_obs_reverse_only:
+      pcd_keys: 
+        - tool_points
+    t03_to_kat_action_obs:
+      pcd_keys: 
+        - tool_points
+    t01_kat_extractor:
+      pcd_keys: 
+        - tool_points
+
+  preprepreprocess:
+    t02_samv3:
+      segmentation_click_keys: [tool_object_clicks]
+      segmenter_out_keys: [tool_segmentation]
+  gpu_batch_transforms:
+    t03_pakt_localizer:
+      localization_target: tool_points
+    t04_random_rotation:
+      obs_keys: [tool_points]
+      action_keys: ["action"]

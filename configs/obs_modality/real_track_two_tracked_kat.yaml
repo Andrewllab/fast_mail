@@ -1,0 +1,41 @@
+# @package _global_
+
+defaults:
+  - real_track
+  # Kat specific things
+  - /transforms@data.preprocess.t01_kat_extractor: kat_extractor
+  - /transforms@data.preprocess.t02_to_kat_action_obs_reverse_only: to_kat_action_obs_reverse_only
+  - /transforms@data.preprocess.t03_to_kat_action_obs: to_kat_action_obs
+  
+  # Make the "target" step tracked (instead of masked)
+  - override /transforms@data.preprepreprocess.t04_cotracker: cotracker_both
+  - override /transforms@data.preprepreprocess.t05_target_to_featured_pointcloud: to_tracked_featured_pointcloud
+  
+  - override /transforms@data.gpu_batch_transforms.t01_fps_prep: null
+  - override /transforms@data.gpu_batch_transforms.t02_to_pakt_action_obs: null
+  - _self_
+
+data:
+  preprocess:
+    t02_to_kat_action_obs_reverse_only:
+      pcd_keys: 
+        - tool_points, target_points
+    t03_to_kat_action_obs:
+      pcd_keys: 
+        - tool_points, target_points
+    t01_kat_extractor:
+      pcd_keys: 
+        - tool_points, target_points
+
+  preprepreprocess:
+    t05_target_to_featured_pointcloud:
+      track_key: target_cotracker_tracks
+      visibility_key: target_cotracker_visibility
+      out_key: target_points
+
+  gpu_batch_transforms:
+    t02_to_pakt_action_obs:
+      tracked_points_keys: [tool_points, target_points]
+      untracked_points_keys: []
+    t03_pakt_localizer:
+      localization_target: target_points
