@@ -11,13 +11,27 @@ data:
         # drawer
         top: put the red cube in the top drawer
         bottom: put the red cube in the bottom drawer
+        one_cube: put the red cube in the top drawer
         # stack task
         blue_in_purple: stack the blue cup in the purple cup
         orange_in_red: stack the orange cup in the red cup
         red_in_blue: stack the red cup in the blue cup
         yellow_in_orange: stack the yellow cup in the orange cup
+        # stack right to left
+        right_to_left_blue_in_purple: stack the blue cup in the purple cup
+        right_to_left_orange_in_red: stack the orange cup in the red cup
+        right_to_left_red_in_blue: stack the red cup in the blue cup
+        right_to_left_yellow_in_orange: stack the yellow cup in the orange cup
+        # stack left to right
+        left_to_right_blue_in_purple: stack the blue cup in the purple cup
+        left_to_right_orange_in_red: stack the orange cup in the red cup
+        left_to_right_red_in_blue: stack the red cup in the blue cup
+        left_to_right_yellow_in_orange: stack the yellow cup in the orange cup
         # arrange
-        blue_cup: put the blue cup in the coffee machine
-        orange_cup: put the orange cup in the coffee machine
-        pink_bowl: put the pink bowl in the coffee machine
-        red_cup: put the red cup in the coffee machine
+        blue_cup: put the blue cup in the toy mixer
+        orange_cup: put the orange cup in the toy mixer
+        pink_bowl: put the pink bowl in the toy mixer
+        red_cup: put the red cup in the toy mixer
+        # fold
+        left_to_right: fold the towel from left to right
+        right_to_left: fold the towel from right to left
