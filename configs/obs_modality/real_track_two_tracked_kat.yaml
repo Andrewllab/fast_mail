@@ -19,13 +19,16 @@ data:
   preprocess:
     t02_to_kat_action_obs_reverse_only:
       pcd_keys: 
-        - tool_points, target_points
+        - tool_points
+        - target_points
     t03_to_kat_action_obs:
       pcd_keys: 
-        - tool_points, target_points
+        - tool_points
+        - target_points
     t01_kat_extractor:
       pcd_keys: 
-        - tool_points, target_points
+        - tool_points
+        - target_points
 
   preprepreprocess:
     t05_target_to_featured_pointcloud:
