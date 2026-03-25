@@ -31,6 +31,7 @@ class ToKatActionObsTransform(NormalizingTransform):
         pcd_keys: list[str] = ["tool_points"],
         gripper_points_key: str = "gripper_points",
         des_gripper_points_key: str = "des_gripper_points",
+        window_len: int = 20,
     ):
         # Environment point clouds
         self.pcd_keys = pcd_keys
@@ -41,7 +42,7 @@ class ToKatActionObsTransform(NormalizingTransform):
         self.gripper_points_key = gripper_points_key
         self.des_gripper_points_key = des_gripper_points_key
 
-        self.window_len = 20
+        self.window_len = window_len
         self.num_action_points = 5
         self._specs = specs
 
@@ -564,6 +565,7 @@ class ToKatActionObsTransformReverseOnly(ReversibleTransform):
         pcd_keys: list[str] = ["tool_points"],
         gripper_points_key: str = "gripper_points",
         des_gripper_points_key: str = "des_gripper_points",
+        window_len: int = 20,
     ):
         # Environment point clouds
         self.pcd_keys = pcd_keys
@@ -574,7 +576,7 @@ class ToKatActionObsTransformReverseOnly(ReversibleTransform):
         self.gripper_points_key = gripper_points_key
         self.des_gripper_points_key = des_gripper_points_key
 
-        self.window_len = 20
+        self.window_len = window_len
         self.num_action_points = 5
         self._specs = specs
 
