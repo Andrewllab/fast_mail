@@ -51,8 +51,9 @@ Then run the following commands according to [the instructions from torch geomet
 export PATH=/usr/local/cuda/bin:$PATH
 export CPATH=/usr/local/cuda/include:$CPATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+export DYLD_LIBRARY_PATH=/usr/local/cuda/lib:$DYLD_LIBRARY_PATH
 
-pip install --no-build-isolation --verbose torch_cluster torch_scatter
+pip install --no-binary :all: --no-cache-dir --no-build-isolation --verbose torch_cluster torch_scatter
 ```
 
 The `--no-build-isolation` flag was necessary for me, but may not be necessary for you depending on your platform.
@@ -64,7 +65,7 @@ Therefore, we need to install nvcc inside the conda environment instead.
 
 ```bash
 mamba install -c nvidia cuda-nvcc=12.8 cuda-toolkit=12.8
-pip install --no-binary=:all: --verbose torch-scatter torch-cluster
+pip install --no-binary :all: --no-cache-dir --verbose torch-scatter torch-cluster
 ```
 
 These commands worked for me, even though I did not set any of the required paths from the documentation.

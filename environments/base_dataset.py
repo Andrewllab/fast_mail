@@ -26,9 +26,9 @@ from environments.specs import (
     PointMapStream,
 )
 from transforms.base_transform import Compose, TransformPartialsDict, init_transforms
-from tree import ArrayDict
 from utils.paths import iglob_follow_symlinks, resolve_path
 from utils.pyg import index_reduced_batch, reduce_batch, unreduce_batch
+from utils.trees import tree_call_method, tree_get_item, tree_map
 
 log = logging.getLogger(__name__)
 
@@ -119,11 +119,63 @@ class TrajectoryDataset(Dataset, ABC):
 
     @staticmethod
     def filename_keyfunc(path: Path) -> list[str | int]:
-        """Key function for natural sorting of Path objects by filename."""
+        """Key function for natural sorting of Path objects by filename. Strips
+        the suffix and splits the filename into chunks of digits and non-digits.
+        """
         return [
-            int(part) if part.isdigit() else part.lower()
-            for part in re.split(r"(\d+)", path.stem)
+            int(chunk) if chunk.isdigit() else chunk.lower()
+            for part in path.with_suffix("").parts
+            for chunk in re.split(r"(\d+)", part)
         ]
+
+    @staticmethod
+    def compress_rgb_images(obs: MutableMapping, specs: DataSpecs) -> MutableMapping:
+        """Convert any RGB images in the obs from float32 to uint8 to reduce memory
+        footprint.
+        """
+        for key, spec in specs.obs.items():
+            if not isinstance(spec, CameraSpec):
+                continue
+
+            for name, stream in spec.streams.items():
+                if not isinstance(stream, (DepthStream, PointMapStream)):
+                    # TODO: change this to isinstance(stream, (RGBStream, IntensityStream))
+                    # once intensity streams are used everywhere
+
+                    image = obs[key, name]
+
+                    # if the stream is RGB or intensity, we need to convert it to uint8
+                    if image.dtype != torch.uint8:
+                        image = image.mul(255).clamp(0, 255).to(torch.uint8)
+                        obs[key, name] = image
+
+        return obs
+
+    @staticmethod
+    def reduce_pyg_data(obs: MutableMapping, specs: DataSpecs) -> MutableMapping:
+        pcd_keys = [
+            key for key, spec in specs.obs.items() if isinstance(spec, PointCloudSpec)
+        ]
+
+        for key in pcd_keys:
+            batch = obs[key]
+            obs[key] = reduce_batch(batch)
+        return obs
+
+    @staticmethod
+    def unreduce_pyg_data(obs: MutableMapping, specs: DataSpecs) -> MutableMapping:
+        pcd_keys = [
+            key for key, spec in specs.obs.items() if isinstance(spec, PointCloudSpec)
+        ]
+
+        for key in pcd_keys:
+            batch = obs[key]
+            assert (
+                isinstance(batch, MutableMapping) and "pos" in batch and "ptr" in batch
+            )
+            obs[key] = unreduce_batch(batch)
+
+        return obs
 
 
 class Hdf5Dataset(TrajectoryDataset):
@@ -143,10 +195,11 @@ class Hdf5Dataset(TrajectoryDataset):
         self._specs = pre_transforms[-1].specs
 
         files = iglob_follow_symlinks(self._root_dir, "**/*.hdf5")
+        files = [file.relative_to(self._root_dir) for file in files]
         files = list(sorted(files, key=self.filename_keyfunc))
         self.files = get_subset(files, load_subset)
 
-        self.trajs = [h5py.File(str(file), "r") for file in self.files]
+        self.trajs = [h5py.File(str(self._root_dir / file), "r") for file in self.files]
 
         traj_lengths = [len(traj["action"]) for traj in self.trajs]
 
@@ -197,7 +250,7 @@ class Hdf5Dataset(TrajectoryDataset):
         traj = self.trajs[traj_idx]
 
         obs = {k: v for k, v in traj["obs"].items() if k not in self.pcd_keys}
-        obs = ArrayDict(obs)[obs_slice].to_dict()
+        obs = tree_get_item(obs, obs_slice)
 
         pcds = {k: v for k, v in traj["obs"].items() if k in self.pcd_keys}
         # index_reduced_batch operates on any array-like object
@@ -205,15 +258,13 @@ class Hdf5Dataset(TrajectoryDataset):
         # create a copy of the data that we actually use
         # however, the function creates a Data object with numpy arrays as fields
         pcds = {k: index_reduced_batch(pcd, obs_slice) for k, pcd in pcds.items()}
-        # recursively convert all numpy arrays to torch tensors
-        # this works because the Data object also has an `apply` method, so it
-        # duck-types as an ArrayDict
-        pcds = ArrayDict(pcds).apply(torch.from_numpy).to_dict()
+        # convert the numpy arrays in the Data object to torch tensors
+        pcds = tree_call_method(pcds, "apply", torch.from_numpy)
 
         obs.update(pcds)
 
-        action = traj["action"][action_slice]
-        ref_action = traj["ref_action"][action_slice]
+        action = tree_get_item(traj["action"], action_slice)
+        ref_action = tree_get_item(traj["ref_action"], action_slice)
 
         td = TensorDict(
             {
@@ -227,7 +278,7 @@ class Hdf5Dataset(TrajectoryDataset):
         td["obs"].auto_batch_size_(batch_dims=1)
 
         if "goal" in traj.keys():
-            goal = ArrayDict(traj["goal"])[...].to_dict()
+            goal = tree_map(np.asarray, traj["goal"])
             for key, value in goal.items():
                 if (
                     isinstance(value, np.ndarray)
@@ -240,7 +291,7 @@ class Hdf5Dataset(TrajectoryDataset):
 
             td["goal"] = goal
 
-        relative_path = self.files[traj_idx].relative_to(self._root_dir)
+        relative_path = self.files[traj_idx]
         td["path"] = str(relative_path)
 
         td = self._item_transforms(td)
@@ -250,9 +301,9 @@ class Hdf5Dataset(TrajectoryDataset):
         traj = self.trajs[traj_idx]
 
         # recursively convert all h5py datasets to numpy arrays
-        obs = ArrayDict(traj["obs"])[...].to_dict()
-        action = traj["action"][...]
-        ref_action = traj["ref_action"][...]
+        obs = tree_map(np.asarray, traj["obs"])
+        action = tree_map(np.asarray, traj["action"])
+        ref_action = tree_map(np.asarray, traj["ref_action"])
 
         td = TensorDict(
             {
@@ -262,13 +313,13 @@ class Hdf5Dataset(TrajectoryDataset):
             }
         )
 
-        td["obs"] = unreduce_pyg_data(td["obs"], self._specs)
+        td["obs"] = self.unreduce_pyg_data(td["obs"], self._specs)
 
         # add a batch dimension so we can index
         td["obs"].auto_batch_size_(batch_dims=1)
 
         if "goal" in traj.keys():
-            goal = ArrayDict(traj["goal"])[...].to_dict()
+            goal = tree_map(np.asarray, traj["goal"])
             for key, value in goal.items():
                 if (
                     isinstance(value, np.ndarray)
@@ -281,7 +332,7 @@ class Hdf5Dataset(TrajectoryDataset):
 
             td["goal"] = goal
 
-        relative_path = self.files[traj_idx].relative_to(self._root_dir)
+        relative_path = self.files[traj_idx]
         td["path"] = str(relative_path)
 
         return td
@@ -293,8 +344,8 @@ class Hdf5Dataset(TrajectoryDataset):
         # remove batch dimension so we can add tensors with different leading dims
         traj["obs"].auto_batch_size_(batch_dims=0)
 
-        traj["obs"] = compress_rgb_images(traj["obs"], specs)
-        traj["obs"] = reduce_pyg_data(traj["obs"], specs)
+        traj["obs"] = cls.compress_rgb_images(traj["obs"], specs)
+        traj["obs"] = cls.reduce_pyg_data(traj["obs"], specs)
 
         relative_path = Path(traj.pop("path").data)
         if "name" in traj:
@@ -362,12 +413,17 @@ class MemmapDataset(TrajectoryDataset):
 
         # each directory in the root_dir corresponds to a TensorDict, where the
         # directory structure mirrors the TensorDict structure
-        files = [path for path in self._root_dir.iterdir() if path.is_dir()]
+        files = [
+            path.relative_to(self._root_dir)
+            for path in self._root_dir.iterdir()
+            if path.is_dir()
+        ]
         files = list(sorted(files, key=self.filename_keyfunc))
         self.files = get_subset(files, load_subset)
 
         self.trajs = [
-            TensorDict.load_memmap(file, non_blocking=True) for file in self.files
+            TensorDict.load_memmap(self._root_dir / file, non_blocking=True)
+            for file in self.files
         ]
 
         traj_lengths = [len(traj["action"]) for traj in self.trajs]
@@ -446,7 +502,7 @@ class MemmapDataset(TrajectoryDataset):
         if "goal" in traj.keys():
             td["goal"] = traj["goal"]
 
-        relative_path = self.files[traj_idx].relative_to(self._root_dir)
+        relative_path = self.files[traj_idx]
         td["path"] = str(relative_path)
 
         td = self._item_transforms(td)
@@ -467,7 +523,7 @@ class MemmapDataset(TrajectoryDataset):
             }
         )
 
-        td["obs"] = unreduce_pyg_data(td["obs"], self._specs)
+        td["obs"] = self.unreduce_pyg_data(td["obs"], self._specs)
 
         # add a batch dimension so we can index
         td["obs"].auto_batch_size_(batch_dims=1)
@@ -475,7 +531,7 @@ class MemmapDataset(TrajectoryDataset):
         if "goal" in traj.keys():
             td["goal"] = traj["goal"]
 
-        relative_path = self.files[traj_idx].relative_to(self._root_dir)
+        relative_path = self.files[traj_idx]
         td["path"] = str(relative_path)
 
         return td
@@ -487,8 +543,8 @@ class MemmapDataset(TrajectoryDataset):
         # remove batch dimension so we can add tensors with different leading dims
         traj["obs"].auto_batch_size_(batch_dims=0)
 
-        traj["obs"] = compress_rgb_images(traj["obs"], specs)
-        traj["obs"] = reduce_pyg_data(traj["obs"], specs)
+        traj["obs"] = cls.compress_rgb_images(traj["obs"], specs)
+        traj["obs"] = cls.reduce_pyg_data(traj["obs"], specs)
 
         relative_path = Path(traj.pop("path").data)
         if "name" in traj:
@@ -743,10 +799,16 @@ T = TypeVar("T")
 
 
 def get_subset(
-    files: Sequence[T], subset: int | float | Sequence[int] | Sequence[str] | None
+    files: Sequence[T], subset: int | float | Sequence[int] | Sequence[str] | str | None
 ) -> Sequence[T]:
     if subset is None:
         return files
+
+    if isinstance(subset, str) and subset.startswith("slice"):
+        # parse slice notation, e.g. "slice(0, 10, 2)"
+        log.info(f"Loading {subset} out of {len(files)} total trajectories found.")
+        _slice = eval(subset)
+        return files[_slice]
 
     if isinstance(subset, Sequence) and isinstance(subset[0], str):
         log.info(
@@ -763,6 +825,12 @@ def get_subset(
             f"Cannot select subset {subset} for items of type {type(files[0])}."
         )
 
+    if isinstance(subset, Sequence) and isinstance(subset[0], int):
+        log.info(
+            f"Loading the following trajectories out of {len(files)} total trajectories found: {subset}"
+        )
+        return [files[i] for i in subset]
+
     if isinstance(subset, (int, float)):
         if isinstance(subset, float):
             # if subset is a percentage, convert it to an integer
@@ -777,54 +845,6 @@ def get_subset(
         )
         return files[:subset]
 
-    log.info(
-        f"Loading the following trajectories out of {len(files)} total trajectories found: {subset}"
+    raise NotImplementedError(
+        f"Cannot select subset {subset} of type {type(subset)}. Please provide an integer, a float, a sequence of integers, a sequence of strings, or a slice notation string."
     )
-    return [files[i] for i in subset]
-
-
-def compress_rgb_images(obs: MutableMapping, specs: DataSpecs) -> MutableMapping:
-    """Convert any RGB images in the obs from float32 to uint8 to reduce memory
-    footprint.
-    """
-    for key, spec in specs.obs.items():
-        if not isinstance(spec, CameraSpec):
-            continue
-
-        for name, stream in spec.streams.items():
-            if not isinstance(stream, (DepthStream, PointMapStream)):
-                # TODO: change this to isinstance(stream, (RGBStream, IntensityStream))
-                # once intensity streams are used everywhere
-
-                image = obs[key, name]
-
-                # if the stream is RGB or intensity, we need to convert it to uint8
-                if image.dtype != torch.uint8:
-                    image = image.mul(255).clamp(0, 255).to(torch.uint8)
-                    obs[key, name] = image
-
-    return obs
-
-
-def reduce_pyg_data(obs: MutableMapping, specs: DataSpecs) -> MutableMapping:
-    pcd_keys = [
-        key for key, spec in specs.obs.items() if isinstance(spec, PointCloudSpec)
-    ]
-
-    for key in pcd_keys:
-        batch = obs[key]
-        obs[key] = reduce_batch(batch)
-    return obs
-
-
-def unreduce_pyg_data(obs: MutableMapping, specs: DataSpecs) -> MutableMapping:
-    pcd_keys = [
-        key for key, spec in specs.obs.items() if isinstance(spec, PointCloudSpec)
-    ]
-
-    for key in pcd_keys:
-        batch = obs[key]
-        assert isinstance(batch, MutableMapping) and "pos" in batch and "ptr" in batch
-        obs[key] = unreduce_batch(batch)
-
-    return obs
