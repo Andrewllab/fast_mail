@@ -16,7 +16,13 @@ class LocalizePAKT(ReversibleTransform):
         specs: DataSpecs,
         localization_target: str,
         backup_localization_target: str | None = None,
-        obs_keys: list[str] = ["current_points", "gripper_points", "tool_points", "target_points", "des_gripper_points"],
+        obs_keys: list[str] = [
+            "current_points",
+            "gripper_points",
+            "tool_points",
+            "target_points",
+            "des_gripper_points",
+        ],
         action_keys: list[str] = ["action"],
     ) -> None:
 
@@ -107,6 +113,18 @@ class LocalizePAKT(ReversibleTransform):
     def reverse(self, tensordict: TensorDict) -> TensorDict:
         mean_point = tensordict["obs"]["localization_mean"]
         B = tensordict.batch_size[0]
+
+        if not hasattr(self, "obs_keys"):
+            self.obs_keys = [
+                "current_points",
+                "gripper_points",
+                "tool_points",
+                "target_points",
+                "des_gripper_points",
+            ]
+        if not hasattr(self, "action_keys"):
+            self.action_keys = ["action"]
+
         for key in self.obs_keys:
             if key not in tensordict["obs"]:
                 continue
