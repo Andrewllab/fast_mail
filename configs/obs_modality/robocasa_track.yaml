@@ -39,7 +39,7 @@ data:
   preprepreprocess:
     backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.preprepreprocessed_dir}/robocasa/${data.name}_pointclouds
+    root_dir: ${paths.preprepreprocessed_dir}/robocasa/${data.name}
     overwrite: True
     t01_remove_inhand:
       drop_keys: [gripper_cam]
@@ -51,7 +51,7 @@ data:
   prepreprocess:
     backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.prepreprocessed_dir}/robocasa/${data.name}_pointclouds
+    root_dir: ${paths.prepreprocessed_dir}/robocasa/${data.name}
     overwrite: True
 
     t99_cleanup:

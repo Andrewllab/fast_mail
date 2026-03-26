@@ -36,7 +36,7 @@ data:
   preprepreprocess:
     backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.preprepreprocessed_dir}/real/${data.name}_pointclouds
+    root_dir: ${paths.preprepreprocessed_dir}/real/${data.name}
     overwrite: True
     
     t00_remove_unused_cams:
@@ -58,7 +58,7 @@ data:
   prepreprocess:
     backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.prepreprocessed_dir}/real/${data.name}_pointclouds
+    root_dir: ${paths.prepreprocessed_dir}/real/${data.name}
     overwrite: True
 
     t01_action_type:
@@ -77,7 +77,7 @@ data:
   preprocess:
     backend: pakt_hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
-    root_dir: ${paths.preprocessed_dir}/real/${data.name}_pointclouds
+    root_dir: ${paths.preprocessed_dir}/real/${data.name}
     overwrite: True
 
 # disable the batch size finder for point clouds, because the data points 
