@@ -155,7 +155,6 @@ class CotrackerPointTrackingTransform(Transform):
             traj_len = tensordict["action"].shape[0]
             video = (
                 tensordict["obs"][camera_key][self.rgb_key].permute(0, 3, 1, 2).float()
-                / 255.0
             )
 
             img_height, img_width = video.shape[-2], video.shape[-1]
