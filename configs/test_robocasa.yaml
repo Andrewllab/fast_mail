@@ -38,7 +38,7 @@ data:
     num_episodes: 50  # 150 episodes in total across 3 checkpoints
 
     env_name: ??? # REPLACE with desired environment name
-    num_envs: 4
+    num_envs: ${min:4, ${platform.num_workers}}
     parallel: null  # automatically use parallel if num_envs > 1
     action_horizon: 20  # modify if desired
 

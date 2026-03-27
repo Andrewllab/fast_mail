@@ -34,6 +34,12 @@ def setup_resolvers(exclude: list[str] | None = None):
     if "pi" not in exclude:
         OmegaConf.register_new_resolver("pi", lambda: np.pi)
 
+    if "min" not in exclude:
+        OmegaConf.register_new_resolver("min", lambda *numbers: min(numbers))
+
+    if "max" not in exclude:
+        OmegaConf.register_new_resolver("max", lambda *numbers: max(numbers))
+
     if "add" not in exclude:
         OmegaConf.register_new_resolver("add", lambda *numbers: sum(numbers))
 

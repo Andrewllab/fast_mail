@@ -257,7 +257,9 @@ class RoboCasaSpecs(VectorWrapper):
                 dynamic_pose_obs_key=f"{cam_name}_transform",
             )
 
-        action_spec = ActionSpec(action_dim=self.single_action_space.shape[-1])
+        action_spec = ActionSpec(
+            action_dim=env.action_space.shape[-1], time=env.action_space.shape[-2]
+        )
 
         goal_specs = {"description": TextSpec()}
 
