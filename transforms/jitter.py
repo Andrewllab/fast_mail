@@ -39,6 +39,8 @@ class RandomTranslationalJitter(Transform):
             supported types that are present.
         clamp_depth_nonnegative (bool): If `True`, depth maps are clamped from
             below to be non-negative. (default: `False`)
+        enable_in_eval (bool): If `True`, jitter is applied even during evaluation.
+            (default: `False`)
     """
 
     def __init__(
@@ -49,6 +51,7 @@ class RandomTranslationalJitter(Transform):
         random_sigma: bool = True,
         types: Sequence[Literal["depth", "pointmap", "pointcloud"]] | None = None,
         clamp_depth_nonnegative: bool = False,
+        enable_in_eval: bool = False,
     ):
         if distribution not in ("uniform", "normal"):
             raise ValueError(
@@ -62,6 +65,7 @@ class RandomTranslationalJitter(Transform):
             list(types) if types is not None else ["depth", "pointmap", "pointcloud"]
         )
         self.clamp_depth_nonnegative = clamp_depth_nonnegative
+        self.enable_in_eval = enable_in_eval
 
         if "depth" in self.types:
             self.depth_streams = {
@@ -101,7 +105,7 @@ class RandomTranslationalJitter(Transform):
         return self._specs
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
-        if not self.training:
+        if not self.training and not self.enable_in_eval:
             return tensordict
 
         for key, name in self.pointmap_streams.keys():
@@ -168,7 +172,11 @@ class RandomTranslationalJitter(Transform):
             return torch.randn_like(tensor)
 
     def __repr__(self) -> str:
-        args = [f"sigma={self.sigma}", f"random_sigma={self.random_sigma}"]
+        args = [
+            f"sigma={self.sigma}",
+            f"random_sigma={self.random_sigma}",
+            f"enable_in_eval={self.enable_in_eval}",
+        ]
         if self.types is not None:
             args.append(f"types={self.types}")
         if self.clamp_depth_nonnegative:
