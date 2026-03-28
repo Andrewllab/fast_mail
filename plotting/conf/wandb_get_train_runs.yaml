@@ -9,6 +9,8 @@ entity: alr-3d-sim2real
 project: 3d-sim2real
 
 job_type: train
+cfg_filters: null
+
 group_by_config_keys:
   - data.name
   # - agent.obs_encoder.t10_image_tokenizer.encoder.pretrained

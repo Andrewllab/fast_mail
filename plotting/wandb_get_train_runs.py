@@ -39,6 +39,10 @@ def main(cfg: DictConfig) -> None:
         "tags": {"$in": required_tags},
         "jobType": {"$eq": cfg.job_type},
     }
+    cfg_filters = cfg.get("cfg_filters", {}) or {}
+    if cfg_filters:
+        cfg_filters = OmegaConf.to_container(cfg_filters, resolve=True)
+    filters.update({f"config.{key}": value for key, value in cfg_filters.items()})
     runs = list(api.runs(f"{cfg.entity}/{cfg.project}", filters=filters))
     logging.info(
         f"Found {len(runs)} runs with tag '{cfg.tags}' in project {cfg.entity}/{cfg.project}"
