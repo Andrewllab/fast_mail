@@ -1,8 +1,8 @@
 # @package _global_
 
+defaults:
+  - roca
+
 tags: main_roca_pp
 
 group_by_config_keys: agent.obs_encoder.t11_tokenizer.spatial_encoder._partial_
-
-env_name_key: data.env.env_name
-expected_envs: [TurnOnSinkFaucet,TurnOffSinkFaucet,TurnSinkSpout,TurnOnStove,TurnOffStove,CoffeePressButton,TurnOnMicrowave,TurnOffMicrowave,OpenSingleDoor,CloseSingleDoor,OpenDoubleDoor,CloseDoubleDoor,OpenDrawer,CloseDrawer,CoffeeSetupMug,CoffeeServeMug]

@@ -10,14 +10,12 @@ project: 3d-sim2real
 
 job_type: test_sim
 cfg_filters:
-  data.env.num_episodes: 50
   data.env.env_name:
     $in: [TurnOnSinkFaucet, TurnOffSinkFaucet, TurnSinkSpout]
 
 expected_seeds: 3
-verify_n_ckpt_epochs: False
 
-n_iterations: 1000
+n_iterations: 5000
 n_samples: 50
 
 hydra:

@@ -1,10 +1,10 @@
 # @package _global_
 
 defaults:
-  - roca_abl
+  - roca
 
-tags: [abl_jitter, abl_ours]
+tags: [abl_filter]
 
 group_by_config_keys:
   - agent.obs_encoder.t11_tokenizer.spatial_encoder._partial_
-  - data.gpu_batch_transforms.t10_jitter.name
+  - data.gpu_batch_transforms.t10_jitter.sigma

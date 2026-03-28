@@ -53,8 +53,9 @@ def main(cfg: DictConfig) -> None:
     if isinstance(group_by_keys, str):
         group_by_keys = [group_by_keys]
 
-    # Group runs by the key specified in cfg.group_by_config_keys
-    groups = defaultdict(list)
+    # Group runs by the key specified in cfg.group_by_config_keys and
+    # by environment name (cfg.env_name_key)
+    groups = defaultdict(lambda: defaultdict(list))
     for run in runs:
         # Verify that all runs have state finished and the expected number of epochs
         if run.state != "finished":
@@ -72,30 +73,26 @@ def main(cfg: DictConfig) -> None:
             continue
 
         group_value = tuple(_get_nested(run.config, key) for key in group_by_keys)
-        groups[group_value].append(run)
+        env_name = _get_nested(run.config, cfg.env_name_key)
+        groups[group_value][env_name].append(run)
 
     logging.info(
-        f"After filtering, {sum(len(runs) for runs in groups.values())} runs remain."
+        f"After filtering, {sum(len(runs) for envs in groups.values() for runs in envs.values())} runs remain."
     )
 
+    # check if all groups have all expected environments
+    for runs_by_env in groups.values():
+        for expected_env in cfg.get("expected_envs", []):
+            if expected_env not in runs_by_env:
+                group_name = ", ".join(
+                    f"{key}={value}" for key, value in zip(group_by_keys, group_value)
+                )
+                logging.warning(
+                    f"Group {group_name} is missing expected environment {expected_env}."
+                )
+
     results_per_group = {}
-    for group_value, group_runs in groups.items():
-
-        # group by environment
-        runs_by_env = defaultdict(list)
-        for run in group_runs:
-            env_name = _get_nested(run.config, cfg.env_name_key)
-            runs_by_env[env_name].append(run)
-
-        # expected_envs = cfg.get("expected_envs")
-        # for env in expected_envs:
-        #     if env not in runs_by_env:
-        #         logging.warning(
-        #             f"Group value {group_value} is missing expected environment {env}; "
-        #             f"skipping this group."
-        #         )
-        #         # TODO: this does nothing
-        #         continue
+    for group_value, runs_by_env in groups.items():
 
         # mapping from env name to list of dicts (one for each seed) mapping
         # checkpoint epoch to success rate
@@ -161,9 +158,11 @@ def main(cfg: DictConfig) -> None:
         group_lower, group_upper = np.percentile(task_suite_results, [2.5, 97.5])
         group_std = max(group_upper - group_mean, group_mean - group_lower)
 
+        all_eval_runs = [run for env_runs in runs_by_env.values() for run in env_runs]
         training_runs = list(
             set(
-                _get_nested(run.config, "checkpoint.wandb_run_id") for run in group_runs
+                _get_nested(run.config, "checkpoint.wandb_run_id")
+                for run in all_eval_runs
             )
         )
 
@@ -172,7 +171,7 @@ def main(cfg: DictConfig) -> None:
         )
         logging.info(f"Group: {group_name}")
         logging.info(f"  Training run ids ({len(training_runs)} runs): {training_runs}")
-        logging.info(f"  Number of eval runs: {len(group_runs)}")
+        logging.info(f"  Number of eval runs: {len(all_eval_runs)}")
         for env, env_results in results_per_env.items():
             env_mean = env_results.mean()
             env_lower, env_upper = np.percentile(env_results, [2.5, 97.5])

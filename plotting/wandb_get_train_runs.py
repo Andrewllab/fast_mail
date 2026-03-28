@@ -61,13 +61,17 @@ def main(cfg: DictConfig) -> None:
         group_value = tuple(_get_nested(run.config, key) for key in group_by_keys)
         groups[group_value].append(run)
 
+    logging.info(
+        f"After filtering, {sum(len(group_runs) for group_runs in groups.values())} runs remain."
+    )
+
     for group_value, group_runs in groups.items():
+
+        run_ids = ",".join([run.id for run in group_runs])
 
         group_name = ", ".join(
             f"{key}={value}" for key, value in zip(group_by_keys, group_value)
         )
-        run_ids = ",".join([run.id for run in group_runs])
-
         logging.info(f"Group: {group_name}")
         logging.info(f"  run IDs:  {run_ids}")
         logging.info("")
