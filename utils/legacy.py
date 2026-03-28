@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Sequence
+from typing import Any
 
 from omegaconf import DictConfig, open_dict
 
@@ -122,6 +122,38 @@ def add_transform_prefixes(
     return state_dict
 
 
+def rename_robocasa_cameras(state_dict: dict[str, Any]) -> dict[str, Any]:
+    rename_mapping = {
+        "left_cam": "robot0_agentview_left",
+        "right_cam": "robot0_agentview_right",
+        "gripper_cam": "robot0_eye_in_hand",
+    }
+
+    for old_name, new_name in rename_mapping.items():
+        # Regex pattern explanation:
+        # ^(_ema_obs_encoder\..*?\.RGBStream\.)     - Group 1:
+        #                                               - literally "_ema_obs_encoder." at the start of the string
+        #                                               - non-greedy match of any characters
+        #                                               - until ".RGBStream."
+        # old_name                                  - target text
+        # (\..*)                                    - Group 2: The dot and everything after
+        pattern = rf"^(_ema_obs_encoder\..*?\.RGBStream\.){old_name}(\..*)"
+        replacement = rf"\g<1>{new_name}\g<2>"
+
+        for key in list(state_dict.keys()):
+            if re.match(pattern, key):
+                new_key = re.sub(pattern, replacement, key)
+                log.debug(
+                    "Replacing `%s` with `%s` in state dict key %s",
+                    old_name,
+                    new_name,
+                    key,
+                )
+                state_dict[new_key] = state_dict.pop(key)
+
+    return state_dict
+
+
 def patch_legacy_state_dict(
     state_dict: dict[str, Any], transforms: Sequential
 ) -> dict[str, Any]:
@@ -132,4 +164,5 @@ def patch_legacy_state_dict(
     obs_encoder submodules in the state dict.
     """
     state_dict = add_transform_prefixes(state_dict, transforms)
+    state_dict = rename_robocasa_cameras(state_dict)
     return state_dict
