@@ -37,7 +37,7 @@ data:
     backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.preprepreprocessed_dir}/real/${data.name}
-    overwrite: True
+    overwrite: False
     
     t00_remove_unused_cams:
       drop_keys: [gripper_cam]
@@ -59,7 +59,7 @@ data:
     backend: hdf5
     # we save the preprocessed data to a unique path so as not to overwrite other obs modalities
     root_dir: ${paths.prepreprocessed_dir}/real/${data.name}
-    overwrite: True
+    overwrite: False
 
     t01_action_type:
       _target_: transforms.action_switch_type.SwitchActionType
