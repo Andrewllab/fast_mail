@@ -4,7 +4,7 @@ from typing import Mapping
 import numpy as np
 from tensordict import TensorDict
 
-from environments.specs import DataSpecs
+from environments.specs import DataSpecs, TextSpec
 from transforms.base_transform import Transform
 
 
@@ -21,9 +21,13 @@ class GoalTextFromFolderName(Transform):
         self.current_task = current_task
         self.output_key = output_key
 
+        goal_specs = dict(specs.goal)  # copy goal specs for local modification
+        goal_specs[output_key] = TextSpec()
+        self._output_specs = specs.replace(goal=goal_specs)
+
     @property
     def specs(self) -> DataSpecs:
-        return self._specs
+        return self._output_specs
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
 
@@ -37,6 +41,9 @@ class GoalTextFromFolderName(Transform):
 
                 if key in self.goal_mapping:
                     goal_desc = self.goal_mapping[key]
+                    break
+                elif path.stem in self.goal_mapping:
+                    goal_desc = self.goal_mapping[path.stem]
                     break
 
                 path = path.parent

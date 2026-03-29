@@ -1,0 +1,10 @@
+# @package _global_
+
+defaults:
+  - roca_abl
+
+tags: [abl_size]
+
+group_by_config_keys:
+  - agent.obs_encoder.t11_tokenizer.spatial_encoder._partial_
+  - data.gpu_batch_transforms.t2_sample_voxel.size
