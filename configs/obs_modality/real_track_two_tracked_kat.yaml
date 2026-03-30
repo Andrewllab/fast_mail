@@ -42,3 +42,6 @@ data:
       untracked_points_keys: []
     t03_pakt_localizer:
       localization_target: target_points
+    t04_random_rotation:
+      obs_keys: [tool_points, target_points]
+      action_keys: ["action"]
