@@ -1,6 +1,6 @@
 defaults:
-  - series: main_roca_pp
   - _self_
+  - series: main_roca_pp
   # enable color logging
   - override hydra/hydra_logging: colorlog
   - override hydra/job_logging: colorlog
@@ -16,7 +16,8 @@ job_type: test_sim
 expected_seeds: 3
 
 n_iterations: 5000
-n_samples: 50
+n_rollouts: 50
+n_seeds: null
 
 hydra:
   # output directory, generated dynamically on each run

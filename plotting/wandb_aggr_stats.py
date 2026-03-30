@@ -42,13 +42,24 @@ def main(cfg: DictConfig) -> None:
         "tags": {"$in": required_tags},
         "jobType": {"$eq": cfg.job_type},
     }
+    cfg_filters = cfg.get("cfg_filters", {}) or {}
+    if cfg_filters:
+        cfg_filters = OmegaConf.to_container(cfg_filters, resolve=True)
+    filters.update({f"config.{key}": value for key, value in cfg_filters.items()})
     runs = list(api.runs(f"{cfg.entity}/{cfg.project}", filters=filters))
     logging.info(
         f"Found {len(runs)} runs with tag '{cfg.tags}' in project {cfg.entity}/{cfg.project}"
     )
 
-    # Verify that all runs have state finished and the expected number of epochs
+    group_by_keys = cfg.group_by_config_keys
+    if isinstance(group_by_keys, str):
+        group_by_keys = [group_by_keys]
+
+    # Group runs by the key specified in cfg.group_by_config_keys and
+    # by environment name (cfg.env_name_key)
+    groups = defaultdict(lambda: defaultdict(list))
     for run in runs:
+        # Verify that all runs have state finished and the expected number of epochs
         if run.state != "finished":
             logging.warning(
                 f"Run {run.id} (name={run.name}) is not finished (state={run.state}); "
@@ -74,33 +85,27 @@ def main(cfg: DictConfig) -> None:
                 )
                 continue
 
-    group_by_keys = cfg.group_by_config_keys
-    if isinstance(group_by_keys, str):
-        group_by_keys = [group_by_keys]
-
-    # Group runs by the key specified in cfg.group_by_config_keys
-    groups = defaultdict(list)
-    for run in runs:
         group_value = tuple(_get_nested(run.config, key) for key in group_by_keys)
-        groups[group_value].append(run)
+        env_name = _get_nested(run.config, cfg.env_name_key)
+        groups[group_value][env_name].append(run)
+
+    logging.info(
+        f"After filtering, {sum(len(runs) for envs in groups.values() for runs in envs.values())} runs remain."
+    )
+
+    # check if all groups have all expected environments
+    for runs_by_env in groups.values():
+        for expected_env in cfg.get("expected_envs", []):
+            if expected_env not in runs_by_env:
+                group_name = ", ".join(
+                    f"{key}={value}" for key, value in zip(group_by_keys, group_value)
+                )
+                logging.warning(
+                    f"Group {group_name} is missing expected environment {expected_env}."
+                )
 
     group_stats = {}
-    for group_value, group_runs in groups.items():
-
-        # group by environment
-        runs_by_env = defaultdict(list)
-        for run in group_runs:
-            env_name = _get_nested(run.config, cfg.env_name_key)
-            runs_by_env[env_name].append(run)
-
-        expected_envs = cfg.get("expected_envs")
-        for env in expected_envs:
-            if env not in runs_by_env:
-                logging.warning(
-                    f"Group value {group_value} is missing expected environment {env}; "
-                    f"skipping this group."
-                )
-                continue
+    for group_value, runs_by_env in groups.items():
 
         env_stats = {}
         for env, env_runs in runs_by_env.items():
@@ -131,9 +136,11 @@ def main(cfg: DictConfig) -> None:
         group_stds = np.array([v["std"] for v in env_stats.values()])
         group_std = np.sqrt((group_stds**2).sum()) / n_envs
 
+        all_eval_runs = [run for env_runs in runs_by_env.values() for run in env_runs]
         training_runs = list(
             set(
-                _get_nested(run.config, "checkpoint.wandb_run_id") for run in group_runs
+                _get_nested(run.config, "checkpoint.wandb_run_id")
+                for run in all_eval_runs
             )
         )
 
@@ -141,19 +148,14 @@ def main(cfg: DictConfig) -> None:
             f"{key}={value}" for key, value in zip(group_by_keys, group_value)
         )
         logging.info(f"Group: {group_name}")
-        # logging.info(f"  Number of training runs: {len(training_runs)}")
         logging.info(f"  Training run ids ({len(training_runs)} runs): {training_runs}")
-        logging.info(f"  Number of eval runs: {len(group_runs)}")
-        logging.info(f"  SUCCESS: {group_mean:.3f} ± {group_std:.3f}")
+        logging.info(f"  Number of eval runs: {len(all_eval_runs)}")
+        for env, stats in env_stats.items():
+            logging.info(
+                f"  Success on {env}: {stats['mean']:.3f} ± {stats['std']:.3f}"
+            )
+        logging.info(f"  Overall: {group_mean:.3f} ± {group_std:.3f}")
         logging.info("")
-
-        group_stats[group_value] = {
-            "n_runs": len(group_runs),
-            "n_envs": n_envs,
-            "env_stats": env_stats,
-            "group_mean": group_mean,
-            "group_std": group_std,
-        }
 
 
 if __name__ == "__main__":

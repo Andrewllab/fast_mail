@@ -23,11 +23,31 @@ def _get_nested(d: Mapping[str, Any], key: str, default: Any = None) -> Any:
     return cur
 
 
+def icm_and_ci(
+    data: np.ndarray, percentile: float = 95
+) -> tuple[np.ndarray, np.ndarray]:
+    percentile_lower = (100 - percentile) / 2
+    percentile_upper = (100 + percentile) / 2
+    q1, q3, ci_lower, ci_upper = np.percentile(
+        data, [25, 75, percentile_lower, percentile_upper], axis=0
+    )
+
+    mask = (data >= q1) & (data <= q3)
+    interquartile = data[mask]
+    icm = np.mean(interquartile, axis=0)
+
+    ci = max(ci_upper - icm, icm - ci_lower)
+
+    return icm, ci
+
+
 @hydra.main(version_base=None, config_path="conf", config_name="wandb_bci_stats")
 def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(cfg)
 
     api = wandb.Api(timeout=cfg.get("wandb_timeout", 60))
+    seed = cfg.get("seed")
+    rng = np.random.default_rng(seed=seed)
 
     # Query runs with required tag
     required_tag = cfg.tags
@@ -132,15 +152,25 @@ def main(cfg: DictConfig) -> None:
             for i in range(cfg.n_iterations):
 
                 # simulate a single experiment
-                # 1. sample n_samples rollouts for each checkpoint epoch and seed using a binomial distribution
-                # 2. max across checkpoints
-                # 3. mean across seeds
+                # 1. sample n_seeds seeds (or just take all seeds if n_seeds is None)
+                # 2. sample n_rollouts rollouts for each checkpoint epoch and seed using a binomial distribution
+                # 3. max across checkpoints
+                # 4. mean across seeds
+
+                if cfg.n_seeds is None:
+                    seed_ids = range(len(success_by_checkpoint))
+                else:
+                    seed_ids = rng.choice(
+                        len(success_by_checkpoint), size=cfg.n_seeds, replace=True
+                    )
+
                 results = []
-                for seed in success_by_checkpoint:
+                for seed in seed_ids:
                     result_by_ckpt = {}
-                    for ckpt_epoch, p_success in seed.items():
+                    for ckpt_epoch, p_success in success_by_checkpoint[seed].items():
                         result_by_ckpt[ckpt_epoch] = (
-                            np.random.binomial(cfg.n_samples, p_success) / cfg.n_samples
+                            np.random.binomial(cfg.n_rollouts, p_success)
+                            / cfg.n_rollouts
                         )
                     results.append(result_by_ckpt)
 
@@ -153,10 +183,6 @@ def main(cfg: DictConfig) -> None:
 
         task_suite_results = np.stack(list(results_per_env.values()), axis=-1)
         task_suite_results = task_suite_results.mean(axis=-1)
-
-        group_mean = task_suite_results.mean()
-        group_lower, group_upper = np.percentile(task_suite_results, [2.5, 97.5])
-        group_std = max(group_upper - group_mean, group_mean - group_lower)
 
         all_eval_runs = [run for env_runs in runs_by_env.values() for run in env_runs]
         training_runs = list(
@@ -173,12 +199,11 @@ def main(cfg: DictConfig) -> None:
         logging.info(f"  Training run ids ({len(training_runs)} runs): {training_runs}")
         logging.info(f"  Number of eval runs: {len(all_eval_runs)}")
         for env, env_results in results_per_env.items():
-            env_mean = env_results.mean()
-            env_lower, env_upper = np.percentile(env_results, [2.5, 97.5])
-            env_std = max(env_upper - env_mean, env_mean - env_lower)
-            logging.info(f"  Success on {env}: {env_mean:.3f} ± {env_std:.3f}")
+            env_mean, env_bci = icm_and_ci(env_results)
+            logging.info(f"  Success on {env}: {env_mean:.3f} ± {env_bci:.3f}")
 
-        logging.info(f"  Overall: {group_mean:.3f} ± {group_std:.3f}")
+        group_mean, group_bci = icm_and_ci(task_suite_results)
+        logging.info(f"  Overall: {group_mean:.3f} ± {group_bci:.3f}")
         logging.info("")
 
         results_per_group[group_value] = results_per_env
