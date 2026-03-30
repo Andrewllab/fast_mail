@@ -38,7 +38,7 @@ def icm_and_ci(
 
     ci = max(ci_upper - icm, icm - ci_lower)
 
-    return icm, ci
+    return icm.item(), ci.item()
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="wandb_bci_stats")
@@ -183,6 +183,7 @@ def main(cfg: DictConfig) -> None:
 
         task_suite_results = np.stack(list(results_per_env.values()), axis=-1)
         task_suite_results = task_suite_results.mean(axis=-1)
+        results_per_env["overall"] = task_suite_results
 
         all_eval_runs = [run for env_runs in runs_by_env.values() for run in env_runs]
         training_runs = list(
@@ -195,18 +196,29 @@ def main(cfg: DictConfig) -> None:
         group_name = ", ".join(
             f"{key}={value}" for key, value in zip(group_by_keys, group_value)
         )
+        results_per_group[group_name] = {}
+
         logging.info(f"Group: {group_name}")
         logging.info(f"  Training run ids ({len(training_runs)} runs): {training_runs}")
         logging.info(f"  Number of eval runs: {len(all_eval_runs)}")
         for env, env_results in results_per_env.items():
             env_mean, env_bci = icm_and_ci(env_results)
             logging.info(f"  Success on {env}: {env_mean:.3f} ± {env_bci:.3f}")
+            results_per_group[group_name][env] = (env_mean, env_bci)
 
-        group_mean, group_bci = icm_and_ci(task_suite_results)
-        logging.info(f"  Overall: {group_mean:.3f} ± {group_bci:.3f}")
         logging.info("")
 
-        results_per_group[group_value] = results_per_env
+    # save as yaml file
+    yaml_data = {
+        group_name: {
+            env: {"mean": mean, "bci": bci} for env, (mean, bci) in env_results.items()
+        }
+        for group_name, env_results in results_per_group.items()
+    }
+
+    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    with open(f"{output_dir}/results.yaml", "w") as f:
+        OmegaConf.save(config=yaml_data, f=f.name)
 
 
 if __name__ == "__main__":
