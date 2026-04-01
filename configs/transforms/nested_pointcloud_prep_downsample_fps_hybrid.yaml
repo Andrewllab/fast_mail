@@ -1,0 +1,10 @@
+# name: voxel_downsample_pointcloud
+_target_: transforms.nested_pointcloud_downsample_fps.HybridFpsSamplePointCloud
+_partial_: True
+n_points: 20
+random_start: True
+pcd_keys:
+  - target_points
+  - tool_points
+semantic_ratio: 0.5
+feature_key: features

@@ -122,3 +122,137 @@ class FpsSamplePointCloud(Transform):
         else:
             args = f"n_points={self.n_points}"
         return f"{self.__class__.__name__}({args})"
+
+
+def _build_new_td(
+    pcd: TensorDict, idxs: torch.Tensor, batch: torch.Tensor, ptr: torch.Tensor
+) -> TensorDict:
+    """Shared helper: gather all pcd fields by flat index, return new TensorDict with updated offsets."""
+    B = ptr.numel() - 1
+    new_lengths = torch.bincount(batch.index_select(0, idxs), minlength=B)
+    new_offsets = torch.empty(B + 1, device=ptr.device, dtype=ptr.dtype)
+    new_offsets[0] = 0
+    new_offsets[1:] = new_lengths.cumsum(0)
+
+    new_td = TensorDict({}, device=idxs.device)
+    for key, v in pcd.items():
+        gathered = v.values().index_select(0, idxs)
+        new_td[key] = torch.nested.nested_tensor_from_jagged(
+            gathered, offsets=new_offsets
+        )
+    return new_td
+
+
+class HybridFpsSamplePointCloud(Transform):
+    """
+    Hybrid FPS: splits budget between spatial FPS (xyz) and semantic FPS (DINOv2 features).
+
+    Spatial FPS ensures global coverage of the scene geometry.
+    Semantic FPS in feature space over-samples rare semantic regions
+    (e.g. door handles) that are underrepresented by point count alone.
+
+    Args:
+        semantic_ratio: fraction of n_points drawn by feature-space FPS.
+                        e.g. 0.5 => half spatial, half semantic.
+    """
+
+    def __init__(
+        self,
+        specs: DataSpecs,
+        n_points: int,
+        semantic_ratio: float = 0.5,
+        random_start: bool = True,
+        pcd_keys: str | Sequence[str] = "pcd",
+        feature_key: str = "features",
+    ) -> None:
+        self.n_points = n_points
+        self.semantic_ratio = semantic_ratio
+        self.random_start = random_start
+        self.feature_key = feature_key
+        self._pcd_keys = [pcd_keys] if isinstance(pcd_keys, str) else list(pcd_keys)
+        self._specs = specs
+
+    @property
+    def key_mappings(self) -> list[KeyMapping]:
+        return [
+            KeyMapping(in_keys=[("obs", key)], out_keys=[("obs", key)])
+            for key in self._pcd_keys
+        ]
+
+    @property
+    def specs(self) -> DataSpecs:
+        return self._specs
+
+    def _call_one(self, pcd: TensorDict) -> TensorDict:
+        points = pcd["points"]
+        features = pcd[self.feature_key]
+
+        if points.ndim == 4:
+            points = torch.nested.nested_tensor(
+                [x[:, 0] for x in points.unbind(0)], layout=torch.jagged
+            )
+
+        pyg_points, ptr, batch = nested_tensor_to_pyg(points, return_batch=True)
+        if pyg_points.numel() == 0:
+            return pcd
+
+        n_semantic = int(self.n_points * self.semantic_ratio)
+        n_spatial = self.n_points - n_semantic
+
+        if n_spatial > 0:
+            # --- Spatial branch: FPS on xyz ---
+            spatial_idxs = fps(
+                pyg_points,
+                ptr=ptr,
+                n_points=n_spatial,
+                random_start=self.random_start,
+            ).long()
+
+            # --- Semantic branch: FPS on DINOv2 features over remaining points ---
+            # Mask out already-selected points so branches don't overlap
+            N_total = pyg_points.shape[0]
+            selected_mask = torch.zeros(
+                N_total, dtype=torch.bool, device=pyg_points.device
+            )
+            selected_mask[spatial_idxs] = True
+
+            # Build a ptr for the remaining points per batch element
+            remaining_mask = ~selected_mask
+            remaining_flat_idxs = remaining_mask.nonzero(as_tuple=True)[0]
+        else:
+            spatial_idxs = torch.tensor([], dtype=torch.long, device=pyg_points.device)
+            remaining_flat_idxs = torch.arange(
+                pyg_points.shape[0], device=pyg_points.device
+            )
+
+        if n_semantic > 0:
+            pyg_features = features.values()  # (N_total, F)
+            remaining_features = pyg_features[remaining_flat_idxs]
+            remaining_batch = batch[remaining_flat_idxs]
+
+            B = ptr.numel() - 1
+            remaining_lengths = torch.bincount(remaining_batch, minlength=B)
+            remaining_ptr = torch.zeros(B + 1, device=ptr.device, dtype=ptr.dtype)
+            remaining_ptr[1:] = remaining_lengths.cumsum(0)
+
+            semantic_local_idxs = fps(
+                remaining_features,
+                ptr=remaining_ptr,
+                n_points=n_semantic,
+                random_start=self.random_start,
+            ).long()
+
+            # Map local remaining indices back to global flat indices
+            semantic_idxs = remaining_flat_idxs[semantic_local_idxs]
+        else:
+            semantic_idxs = torch.tensor([], dtype=torch.long, device=pyg_points.device)
+
+        combined_idxs, _ = torch.sort(torch.cat([spatial_idxs, semantic_idxs]))
+        return _build_new_td(pcd, combined_idxs, batch, ptr)
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"n_points={self.n_points}, "
+            f"semantic_ratio={self.semantic_ratio})"
+        )
