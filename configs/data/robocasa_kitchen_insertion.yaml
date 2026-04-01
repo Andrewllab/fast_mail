@@ -1,0 +1,10 @@
+defaults:
+  - robocasa
+
+task: kitchen_insertion
+name: kitchen_insertion_20250920
+
+dataset:
+  root_dir: ${paths.data_dir}/robocasa/single_stage
+  # Insertion: CoffeeSetupMug,CoffeeServeMug
+  subfolders: [CoffeeSetupMug,CoffeeServeMug]
