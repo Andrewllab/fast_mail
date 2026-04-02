@@ -33,11 +33,11 @@ color_encoder: Null
   # norm: LayerNorm
   # dropout: 0.1
 
-timestep_encoder:
-  name: DDPMSigmaEncoder
-  _target_: models.sigma_encoders.DDPMSigmaEncoder
-  _partial_: true
-  embed_dim: ${..embed_dim}
+# timestep_encoder:
+#   name: DDPMSigmaEncoder
+#   _target_: models.sigma_encoders.DDPMSigmaEncoder
+#   _partial_: true
+#   embed_dim: ${..embed_dim}
 
 embed_dim: 512
 num_timesteps: ${data.action_seq_len}

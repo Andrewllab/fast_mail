@@ -19,7 +19,7 @@ defaults:
 
   - /transforms@data.preprocess.t00_no_op: noop
 
-  - /transforms@data.gpu_batch_transforms.t01_fps_prep: nested_pointcloud_prep_downsample_fps
+  - /transforms@data.gpu_batch_transforms.t01_fps_prep: nested_pointcloud_prep_downsample_fps_hybrid
   - /transforms@data.gpu_batch_transforms.t02_to_pakt_action_obs: to_pakt_action_obs
   - /transforms@data.gpu_batch_transforms.t03_pakt_localizer: pakt_localizer
   - /transforms@data.gpu_batch_transforms.t04_random_rotation: pakt_random_rotation
