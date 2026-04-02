@@ -8,7 +8,7 @@ defaults:
 platform:
   num_workers: 4  # our dataset is memory-mapped onto job-local storage, so we don't need many workers
   prefetch_factor: 1  # reduce memory usage for on-disk datasets (especially important during batch size finding)
-  batch_size: 256  # increase the nominal batch size, since we have more memory
+  batch_size: 128  # increase the nominal batch size, since we have more memory
 
 paths:
   # absolute path to our project inside the LSDF, should work for all users
