@@ -46,6 +46,8 @@ class DecoderOnlyNoise(nn.Module):
                 "`time_encode_obs` is set to True, so the decoder will add positional encodings to the observation embeddings. Make sure that the observation embeddings do not already contain positional encodings."
             )
 
+        # FIX: instantiate tokenizer first so its weights are set up before
+        # self.apply(_init_weights) runs on the other modules below.
         self.action_obs_tokenizer = action_obs_tokenizer(specs=specs)
         specs = self.action_obs_tokenizer.specs
         token_dim = specs.obs_embed_dim
@@ -83,8 +85,11 @@ class DecoderOnlyNoise(nn.Module):
             self.action_pos_encoder = None
             self.goal_pos_encoder = None
 
-        # linear embedding for the action
-        self.action_encoder = nn.Linear(specs.action_dim, token_dim)
+        # FIX: action_encoder and action_pos_encoder are dead parameters when
+        # action_obs_tokenizer is used — the tokenizer handles action embedding.
+        # Keeping them instantiates unused parameters that receive no gradient
+        # signal but are still decayed by AdamW weight decay.
+        # self.action_encoder = nn.Linear(specs.action_dim, token_dim)
 
         # linear embedding for the goal
         if specs.goal_embed_dim is not None:
@@ -97,7 +102,13 @@ class DecoderOnlyNoise(nn.Module):
 
         self.action_seq_len = specs.action_seq_len
 
-        self.apply(self._init_weights)
+        # FIX: apply weight init only to non-tokenizer modules so that the
+        # tokenizer's embedding tables (gripper IDs, token types, timesteps)
+        # and LayerNorms keep their own initialization from PaktTokenizer.__init__,
+        # rather than being overwritten by normal_(std=0.02) here.
+        for name, module in self.named_children():
+            if name != "action_obs_tokenizer":
+                module.apply(self._init_weights)
 
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
@@ -150,7 +161,14 @@ class DecoderOnlyNoise(nn.Module):
         # retrieve the decoded action tokens from the sequence
         if output.is_nested:
             if not action_embed.is_nested:
-                action_tokens = [out[-self.action_seq_len :] for out in output.unbind()]
+                # FIX: use action_embed.shape[1] instead of self.action_seq_len.
+                # self.action_seq_len = specs.action_seq_len = window_len = 30, but
+                # the actual number of action tokens from the tokenizer is
+                # N_action * window_len + N_tracked_future, which is much larger.
+                # Slicing by self.action_seq_len would silently discard most tokens.
+                action_tokens = [
+                    out[-action_embed.shape[1] :] for out in output.unbind()
+                ]
             else:
                 num_elements = torch.diff(action_embed.offsets())
                 action_tokens = [
@@ -160,7 +178,10 @@ class DecoderOnlyNoise(nn.Module):
                     action_tokens, layout=torch.jagged
                 )
         else:
-            action_tokens = output[:, -self.action_seq_len :]
+            # FIX: same as above — use actual action token count rather than
+            # self.action_seq_len which only reflects window_len, not the full
+            # flattened action token sequence length.
+            action_tokens = output[:, -action_embed.shape[1] :]
 
         pred_actions = self.action_head(action_tokens)
 
