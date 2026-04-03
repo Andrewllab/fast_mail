@@ -87,41 +87,35 @@ class RandomRotation(ReversibleTransform):
 
     @torch.no_grad()
     def _rotate_batched_rowvec(self, x: torch.Tensor, R: torch.Tensor) -> torch.Tensor:
-        """Rotate row-vectors x using per-batch rotation matrices.
-
-        Supports:
-        - Dense tensors: x shape (B, ..., 3)
-        - Nested jagged tensors: x is torch.nested (layout=jagged), with batch dim first.
-            Each element x[b] must be a dense tensor shaped (..., 3).
-
-        Convention:
-        row-vectors: x' = x @ R^T
-        """
         if R.ndim != 3 or R.shape[-2:] != (3, 3):
             raise ValueError(f"Expected R of shape (B,3,3), got {tuple(R.shape)}")
         B = R.shape[0]
-        Rt = R.transpose(-1, -2)
+        Rt = R.transpose(-1, -2)  # (B,3,3)
 
-        # Nested jagged: rotate each batch element with its own matrix
         if getattr(x, "is_nested", False):
             if x.size(0) != B:
                 raise ValueError(f"Batch mismatch: x has B={x.size(0)} but R has B={B}")
 
-            out = []
-            for b in range(B):
-                xb = x[b]  # dense (..., 3)
-                if xb.numel() == 0:
-                    out.append(xb)
-                    continue
-                if xb.shape[-1] != 3:
-                    raise ValueError(
-                        f"Expected last dim 3 for nested element {b}, got {xb.shape[-1]}"
-                    )
-                out.append(torch.einsum("...j,ij->...i", xb, Rt[b]))
+            vals = x.values()  # (total_points, 3)  — flat view, no copy
+            offs = x.offsets()  # (B+1,)
 
-            return torch.nested.as_nested_tensor(out, layout=torch.jagged)
+            # Build a (total_points, 3, 3) matrix by repeating each batch's Rt
+            # for exactly as many points as it owns
+            counts = offs[1:] - offs[:-1]  # (B,)
+            Rt_per_point = Rt.repeat_interleave(counts, dim=0)  # (total_points, 3, 3)
 
-        # Dense
+            rotated_vals = torch.bmm(
+                vals.unsqueeze(1),  # (total_points, 1, 3)
+                Rt_per_point,  # (total_points, 3, 3)
+            ).squeeze(
+                1
+            )  # (total_points, 3)
+
+            return torch.nested.nested_tensor_from_jagged(
+                rotated_vals, offs
+            )  # reconstruct nested tensor
+
+        # Dense path (unchanged)
         if x.ndim < 2:
             raise ValueError(
                 f"Expected x to have at least 2 dims (B,...,3), got {x.ndim}"

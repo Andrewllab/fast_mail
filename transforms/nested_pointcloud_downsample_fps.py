@@ -61,8 +61,8 @@ class FpsSamplePointCloud(Transform):
 
         if points.ndim == 4:
             # Only use the first timestep if there are multiple timesteps
-            points = torch.nested.nested_tensor(
-                [x[:, 0] for x in points.unbind(0)], layout=torch.jagged
+            points = torch.nested.nested_tensor_from_jagged(
+                points.values()[:, 0, :], points.offsets()
             )
 
         pyg_points, ptr, batch = nested_tensor_to_pyg(points, return_batch=True)
@@ -188,8 +188,8 @@ class HybridFpsSamplePointCloud(Transform):
         features = pcd[self.feature_key]
 
         if points.ndim == 4:
-            points = torch.nested.nested_tensor(
-                [x[:, 0] for x in points.unbind(0)], layout=torch.jagged
+            points = torch.nested.nested_tensor_from_jagged(
+                points.values()[:, 0, :], points.offsets()
             )
 
         pyg_points, ptr, batch = nested_tensor_to_pyg(points, return_batch=True)
@@ -198,6 +198,7 @@ class HybridFpsSamplePointCloud(Transform):
 
         n_semantic = int(self.n_points * self.semantic_ratio)
         n_spatial = self.n_points - n_semantic
+        N_total = pyg_points.shape[0]
 
         if n_spatial > 0:
             # --- Spatial branch: FPS on xyz ---
@@ -208,29 +209,19 @@ class HybridFpsSamplePointCloud(Transform):
                 random_start=self.random_start,
             ).long()
 
-            # --- Semantic branch: FPS on DINOv2 features over remaining points ---
-            # Mask out already-selected points so branches don't overlap
-            N_total = pyg_points.shape[0]
-            selected_mask = torch.zeros(
-                N_total, dtype=torch.bool, device=pyg_points.device
-            )
-            selected_mask[spatial_idxs] = True
-
-            # Build a ptr for the remaining points per batch element
-            remaining_mask = ~selected_mask
-            remaining_flat_idxs = remaining_mask.nonzero(as_tuple=True)[0]
+            all_idxs = torch.arange(N_total, device=pyg_points.device)
+            remaining_flat_idxs = all_idxs[~torch.isin(all_idxs, spatial_idxs)]
         else:
             spatial_idxs = torch.tensor([], dtype=torch.long, device=pyg_points.device)
-            remaining_flat_idxs = torch.arange(
-                pyg_points.shape[0], device=pyg_points.device
-            )
+            remaining_flat_idxs = torch.arange(N_total, device=pyg_points.device)
 
         if n_semantic > 0:
+            # --- Semantic branch: FPS on features, but only among points not already chosen by spatial FPS ---
+            B = ptr.numel() - 1
             pyg_features = features.values()  # (N_total, F)
             remaining_features = pyg_features[remaining_flat_idxs]
             remaining_batch = batch[remaining_flat_idxs]
 
-            B = ptr.numel() - 1
             remaining_lengths = torch.bincount(remaining_batch, minlength=B)
             remaining_ptr = torch.zeros(B + 1, device=ptr.device, dtype=ptr.dtype)
             remaining_ptr[1:] = remaining_lengths.cumsum(0)

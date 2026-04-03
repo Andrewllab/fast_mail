@@ -57,30 +57,53 @@ class LocalizePAKT(ReversibleTransform):
 
     def calculate_mean_point(self, traj: TensorDict) -> torch.Tensor:
         local_points = traj["obs", self.localization_target, "points"]
-        if local_points.ndim == 4:
-            mean_point = local_points.mean(axis=1)[:, 0]
+
+        if getattr(local_points, "is_nested", False):
+            offs = local_points.offsets()
+            vals = local_points.values()
+            if vals.ndim == 3:
+                local_points = torch.nested.nested_tensor_from_jagged(
+                    vals[:, 0, :], offs
+                )
+            elif vals.ndim != 4:
+                raise ValueError(
+                    f"Expected local_points to have values of shape (total_points, T, 3) or (total_points, 3), got {vals.shape}"
+                )
+            mean_point = local_points.mean(dim=1, keepdim=True)
+            mean_point = mean_point.unsqueeze(1)  # (B, 1, 3)
+        elif local_points.ndim == 4:
+            mean_point = local_points[:, :, 0, :].mean(dim=1, keepdim=True)  # (B, 1, 3)
         else:
-            mean_point = traj["obs"][self.localization_target]["points"].mean(
-                dim=1, keepdim=True
-            )
+            mean_point = local_points.mean(dim=1, keepdim=True)  # (B, 1, 3)
 
         if (
             torch.isnan(mean_point).any()
             and self.backup_localization_target is not None
         ):
             backup_local_points = traj["obs", self.backup_localization_target, "points"]
-
-            if backup_local_points.ndim == 4:
-                backup_mean_point = backup_local_points.mean(dim=1)[:, 0:1, :]
+            if getattr(backup_local_points, "is_nested", False):
+                offs = backup_local_points.offsets()
+                vals = backup_local_points.values()
+                if vals.ndim == 3:
+                    backup_local_points = torch.nested.nested_tensor_from_jagged(
+                        vals[:, 0, :], offs
+                    )
+                elif vals.ndim != 4:
+                    raise ValueError(
+                        f"Expected backup_local_points to have values of shape (total_points, T, 3) or (total_points, 3), got {vals.shape}"
+                    )
+                backup_mean_point = backup_local_points.mean(dim=1, keepdim=True)
+            elif backup_local_points.ndim == 4:
+                backup_mean_point = backup_local_points[:, :, 0, :].mean(
+                    dim=1, keepdim=True
+                )
             else:
-                backup_mean_point = traj[
-                    "obs", self.backup_localization_target, "points"
-                ].mean(dim=1, keepdim=True)
+                backup_mean_point = backup_local_points.mean(dim=1, keepdim=True)
+            mean_point = torch.where(
+                torch.isnan(mean_point), backup_mean_point, mean_point
+            )
 
-            mask = torch.isnan(mean_point)
-            mean_point = torch.where(mask, backup_mean_point, mean_point)
-
-        return mean_point
+        return mean_point  # (B, 1, 3)
 
     def call_trajectory(self, traj: TensorDict) -> Data:
         B = traj.batch_size[0]

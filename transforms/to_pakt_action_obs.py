@@ -499,7 +499,7 @@ class ToPaktActionObsTransform(ReversibleTransform):
         # Create for each tool point (flattened), repeated timesteps 0..T-1
         timesteps = torch.arange(
             start=1, end=self.window_len + 1, device=device, dtype=torch.long
-        ).repeat(int(points_val.size(0)))
+        ).repeat(points_val.size(0))
 
         future_timesteps = torch.nested.nested_tensor_from_jagged(
             values=timesteps, offsets=action_off

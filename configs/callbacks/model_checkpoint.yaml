@@ -12,4 +12,4 @@ model_checkpoint:
   # However, in reality this is not always the case, maybe due to a bug.
   save_on_train_epoch_end: True  # don't wait until validation, in case there is none
   save_top_k: -1  # keep all checkpoints on disk, not just the last one
-  save_last: True  # always save a checkpoint at the end of training, even if it's not on a validation epoch
+  # save_last: False  # always save a checkpoint at the end of training, even if it's not on a validation epoch
