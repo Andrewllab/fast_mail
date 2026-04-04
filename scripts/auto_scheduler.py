@@ -77,19 +77,19 @@ while True:
             f" --multirun"
         )
         print(f"Launching test for {len(new_ids)} new run(s): {ids_string}")
-        print(cmd)
-        # proc = subprocess.Popen(cmd, shell=True)
+        # print(cmd)
+        proc = subprocess.Popen(cmd, shell=True)
 
-        # try:
-        #     proc.wait(timeout=SUBMIT_TIMEOUT)
-        #     print("Process exited on its own.")
-        # except subprocess.TimeoutExpired:
-        #     print(f"Killing process after {SUBMIT_TIMEOUT}s (submitit should have scheduled by now).")
-        #     proc.kill()
-        #     proc.wait()
+        try:
+            proc.wait(timeout=SUBMIT_TIMEOUT)
+            print("Process exited on its own.")
+        except subprocess.TimeoutExpired:
+            print(f"Killing process after {SUBMIT_TIMEOUT}s (submitit should have scheduled by now).")
+            proc.kill()
+            proc.wait()
 
-        # scheduled_ids.update(new_ids)
-        # save_scheduled_ids(scheduled_ids)
+        scheduled_ids.update(new_ids)
+        save_scheduled_ids(scheduled_ids)
     else:
         print("No new finished runs. Sleeping...")
 
