@@ -65,7 +65,7 @@ class LocalizePAKT(ReversibleTransform):
                 local_points = torch.nested.nested_tensor_from_jagged(
                     vals[:, 0, :], offs
                 )
-            elif vals.ndim != 4:
+            elif vals.ndim != 2:
                 raise ValueError(
                     f"Expected local_points to have values of shape (total_points, T, 3) or (total_points, 3), got {vals.shape}"
                 )
@@ -88,7 +88,7 @@ class LocalizePAKT(ReversibleTransform):
                     backup_local_points = torch.nested.nested_tensor_from_jagged(
                         vals[:, 0, :], offs
                     )
-                elif vals.ndim != 4:
+                elif vals.ndim != 2:
                     raise ValueError(
                         f"Expected backup_local_points to have values of shape (total_points, T, 3) or (total_points, 3), got {vals.shape}"
                     )
