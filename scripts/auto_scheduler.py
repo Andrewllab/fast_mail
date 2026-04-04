@@ -22,9 +22,10 @@ def save_scheduled_ids(ids: set):
     STATE_FILE.write_text(yaml.dump({"scheduled_run_ids": sorted(ids)}, default_flow_style=False))
 
 
-api = wandb.Api()
 
 while True:
+    api = wandb.Api()
+    
     scheduled_ids = load_scheduled_ids()
 
     runs = api.runs(
@@ -59,6 +60,7 @@ while True:
         except Exception as e:
             pass
 
+    del api
 
     if new_ids:
         ids_string = ",".join(new_ids)
@@ -92,5 +94,6 @@ while True:
         save_scheduled_ids(scheduled_ids)
     else:
         print("No new finished runs. Sleeping...")
+
 
     time.sleep(POLL_INTERVAL)
