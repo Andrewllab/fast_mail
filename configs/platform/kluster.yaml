@@ -8,6 +8,13 @@ defaults:
 platform:
   name: kluster
   num_workers: 2  # each node has 20 cores = 5 cores per GPU
+  batch_size: 128  # reduce nominal batch size by 1/2
+
+paths:
+  data_dir: $HOME/datasets
+  # $TMPDIR, not ${oc.env:TMPDIR}, so it gets resolved inside the job, not on the login node
+  preprocessed_dir: $TMPDIR/preprocessed_data
+  debug_preprocessed_dir: $TMPDIR/debug_preprocessed_data
 
 hydra:
   launcher:
@@ -19,6 +26,10 @@ hydra:
     cpus_per_task: 2  # according to slurm there are only 8 cpus per node
     mem_per_cpu: 15000  # in MB (* 8 cpus = 120GB)
     setup:
+      - export TMPDIR=/tmp/$USER/$SLURM_ARRAY_JOB_ID/$SLURM_ARRAY_TASK_ID  # use a subfolder of /tmp to avoid conflicts with other users
+      - echo "Using TMPDIR=$TMPDIR"
+      - mkdir -pv $TMPDIR
+
       # ensure wandb isn't disabled by accident
       - wandb enabled
 
