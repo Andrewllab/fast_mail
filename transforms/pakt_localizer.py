@@ -69,8 +69,8 @@ class LocalizePAKT(ReversibleTransform):
                 raise ValueError(
                     f"Expected local_points to have values of shape (total_points, T, 3) or (total_points, 3), got {vals.shape}"
                 )
-            mean_point = local_points.mean(dim=1, keepdim=True)
-            mean_point = mean_point.unsqueeze(1)  # (B, 1, 3)
+            mean_point = local_points.mean(dim=1, keepdim=True)  # (B, 1, 3)
+
         elif local_points.ndim == 4:
             mean_point = local_points[:, :, 0, :].mean(dim=1, keepdim=True)  # (B, 1, 3)
         else:
