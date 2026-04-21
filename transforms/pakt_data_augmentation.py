@@ -96,16 +96,19 @@ class RandomRotation(ReversibleTransform):
             if x.size(0) != B:
                 raise ValueError(f"Batch mismatch: x has B={x.size(0)} but R has B={B}")
 
-            vals = x.values()              # (total_points, 3)
+            vals = x.values()  # (total_points, 3)
             offs = x.offsets()
             counts = offs[1:] - offs[:-1]
 
             Rt_per_point = Rt.repeat_interleave(counts, dim=0)
 
-            rotated_vals = torch.einsum("n k j, n j i -> n k i", vals, Rt_per_point)
+            orig_shape = vals.shape  # (N,) or (N, K) before the last dim
+            vals_3d = vals.reshape(vals.shape[0], -1, 3)
+            # (N, K, 3) — works for both (N,3) and (N,K,3)
+            rotated = torch.einsum("n k j, n j i -> n k i", vals_3d, Rt_per_point)
+            rotated_vals = rotated.reshape(orig_shape)
 
             return torch.nested.nested_tensor_from_jagged(rotated_vals, offs)
-
 
         # Dense path (unchanged)
         if x.ndim < 2:
