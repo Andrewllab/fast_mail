@@ -8,6 +8,7 @@ import yaml
 POLL_INTERVAL = 600  # seconds
 SUBMIT_TIMEOUT = 120  # seconds to wait for submitit to schedule the jobs
 STATE_FILE = Path("scheduled_test_runs.yaml")
+PROJECT="PAKT_all_envs"
 
 
 def load_scheduled_ids() -> set:
@@ -29,22 +30,22 @@ while True:
     scheduled_ids = load_scheduled_ids()
 
     runs = api.runs(
-        "nicolasschreiber/PAKT_grid_search",
+        f"nicolasschreiber/{PROJECT}",
         filters={
             "$and": [
                 {"state": "finished"},
                 {"jobType": "train"},
-                {"tags": {"$in": ["grid_search_06"]}},
+                {"tags": {"$in": ["test_02"]}},
             ]
         },
     )
     test_runs = api.runs(
-        "nicolasschreiber/PAKT_grid_search",
+        f"nicolasschreiber/{PROJECT}",
         filters={
             "$and": [
                 {"$or": [{"state": "finished"}, {"state": "running"}]},
                 {"jobType": "test_sim"},
-                {"tags": {"$in": ["grid_search_06"]}},
+                {"tags": {"$in": ["test_02"]}},
             ]
         },
     )
@@ -68,12 +69,12 @@ while True:
             f"MUJOCO_GL=egl HYDRA_FULL_ERROR=1 python test.py -cn test_robocasa"
             f" checkpoint.wandb_run_id={ids_string}"
             f" checkpoint.epochs=last"
-            f" logger.wandb.project=PAKT_grid_search"
-            f" checkpoint.wandb_project=PAKT_grid_search"
+            f" logger.wandb.project={PROJECT}"
+            f" checkpoint.wandb_project={PROJECT}"
             f" platform=kluster"
             f" +agent.weights_only=False"
             f" agent.num_sampling_steps=10"
-            f" data.env.num_episodes=50"
+            f" data.env.num_episodes=100"
             f" data.env.record_video.disabled=False"
             f' +data.gpu_batch_transforms.t45_goal_embedding.goal_key="description"'
             f" --multirun"
