@@ -1,0 +1,20 @@
+# @package _global_
+
+defaults:
+  - kit_hpc
+  - _self_
+
+platform:
+  name: horeka
+  num_workers: 16  # accelerated node has 152 cores = 38 cores per GPU
+
+hydra:
+  launcher:
+    account: hk-project-p0024023
+    timeout_min: 90  # 90 minutes
+    partition: accelerated
+    exclude: null # add any broken nodes here
+    constraint: LSDF  # needed for the LSDF to be mounted on compute nodes
+    gres: gpu:1
+    cpus_per_task: 38
+    array_parallelism: 10  # only 10 jobs at a time to be polite
