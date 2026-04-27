@@ -47,3 +47,4 @@ trainer:
   log_every_n_steps: 50
   check_val_every_n_epoch: 10
   enable_model_summary: False  # we print model summary manually with a callback
+  gradient_clip_val: 1.0 # clip gradients to prevent exploding gradients, which can cause NaNs and instability
