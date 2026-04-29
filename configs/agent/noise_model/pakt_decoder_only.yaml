@@ -1,7 +1,7 @@
 defaults:
   - backbone@decoder: transformer
   - time_encoder@seq_position_encoder: none
-  - sigma_encoder: ddpm
+  - sigma_encoder: edm
   - action_head: linear
   - /tokenizers@action_obs_tokenizer: pakt_tokenizer
   - _self_

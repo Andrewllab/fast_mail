@@ -1,0 +1,3 @@
+name: edm
+_target_: models.sigma_encoders.EDMSigmaEncoder
+_partial_: True
