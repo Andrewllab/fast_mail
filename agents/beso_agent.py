@@ -48,6 +48,9 @@ class BesoAgent(BaseAgent):
         normalizer: Sequential | None = None,
         reverse_transform: Compose | None = None,
         precondition_type: str = "edm",
+        # weight decays
+        qk_norm_weight_decay: float | None = None,  # <-- new
+        exclude_norms_from_weight_decay: bool = True,  # <-- new
     ):
         super().__init__(
             model=noise_model,
@@ -59,6 +62,8 @@ class BesoAgent(BaseAgent):
             goal_encoder=goal_encoder,
             normalizer=normalizer,
             reverse_transform=reverse_transform,
+            qk_norm_weight_decay=qk_norm_weight_decay,
+            exclude_norms_from_weight_decay=exclude_norms_from_weight_decay,
         )
 
         self.noise_distribution = noise_distribution

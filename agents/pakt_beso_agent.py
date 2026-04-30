@@ -49,6 +49,9 @@ class BesoAgent(BaseBesoAgent):
         normalizer: Sequential | None = None,
         reverse_transform: Compose | None = None,
         precondition_type: str = "edm",
+        # weight decays
+        qk_norm_weight_decay: float | None = None,  # <-- new
+        exclude_norms_from_weight_decay: bool = True,  # <-- new
     ):
         super().__init__(
             noise_model=noise_model,
@@ -68,6 +71,8 @@ class BesoAgent(BaseBesoAgent):
             normalizer=normalizer,
             reverse_transform=reverse_transform,
             precondition_type=precondition_type,
+            qk_norm_weight_decay=qk_norm_weight_decay,
+            exclude_norms_from_weight_decay=exclude_norms_from_weight_decay,
         )
         self.num_timesteps = specs.action_seq_len
 

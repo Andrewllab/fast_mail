@@ -37,6 +37,9 @@ class BaseAgent(L.LightningModule):
         goal_encoder: TransformPartialsDict | None = None,
         normalizer: Sequential | None = None,
         reverse_transform: Compose | None = None,
+        # weight decays
+        qk_norm_weight_decay: float | None = None,  # <-- new
+        exclude_norms_from_weight_decay: bool = True,  # <-- new
     ):
         super().__init__()
 
@@ -71,6 +74,10 @@ class BaseAgent(L.LightningModule):
         # for logging videos to WandB
         self._checkpoint_metadata = {}
 
+        # weight decays
+        self.qk_norm_weight_decay = qk_norm_weight_decay
+        self.exclude_norms_from_weight_decay = exclude_norms_from_weight_decay
+
     @property
     def model(self) -> Module:
         if self.ema_decay > 0 and not self.training:
@@ -97,7 +104,7 @@ class BaseAgent(L.LightningModule):
         self._checkpoint_metadata = metadata
 
     def configure_optimizers(self):
-        optimizer = self._optimizer_func(self.parameters())
+        optimizer = self._optimizer_func(self._build_param_groups())
 
         if self.ema_decay > 0:
             # https://pytorch.org/docs/stable/optim.html#putting-it-all-together-ema
@@ -137,6 +144,66 @@ class BaseAgent(L.LightningModule):
             }
         else:
             return optimizer
+
+    def _build_param_groups(self):
+        """Split parameters into groups with different weight decay.
+
+        qk_norm scales get their own decay to prevent runaway growth.
+        Other norms, biases, and embeddings get no decay (standard practice).
+        Everything else uses the optimizer's default decay from Hydra config.
+        """
+        qk_norm_decay = getattr(self, "qk_norm_weight_decay", None)
+        no_decay_for_norms = getattr(self, "exclude_norms_from_weight_decay", True)
+
+        if qk_norm_decay is None and not no_decay_for_norms:
+            # Nothing to split — preserve original behaviour exactly
+            return self.parameters()
+
+        qk_norm_params, no_decay_params, decay_params = [], [], []
+
+        for name, param in self.named_parameters():
+            if not param.requires_grad:
+                continue
+
+            if qk_norm_decay is not None and (
+                "self_attn.q_norm.weight" in name or "self_attn.k_norm.weight" in name
+            ):
+                qk_norm_params.append(param)
+            elif no_decay_for_norms and (
+                name.endswith(".bias")
+                or "norm" in name.lower()
+                or "_ln." in name
+                or name.endswith("_ln.weight")
+                or "embedding" in name.lower()
+                or name.endswith(".missing_feature_token")
+            ):
+                no_decay_params.append(param)
+            else:
+                decay_params.append(param)
+
+        groups = [{"params": decay_params, "name": "decay"}]
+        if no_decay_params:
+            groups.append(
+                {"params": no_decay_params, "weight_decay": 0.0, "name": "no_decay"}
+            )
+        if qk_norm_params:
+            groups.append(
+                {
+                    "params": qk_norm_params,
+                    "weight_decay": qk_norm_decay,
+                    "name": "qk_norm_decay",
+                }
+            )
+
+        log.info(
+            "Optimizer param groups: "
+            + ", ".join(
+                f"{g['name']}={len(g['params'])}"
+                f"(wd={g.get('weight_decay', 'default')})"
+                for g in groups
+            )
+        )
+        return groups
 
     def optimizer_step(
         self,

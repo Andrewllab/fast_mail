@@ -16,6 +16,10 @@ precondition_type: edm
 obs_encoder:
   embed_dim: 512
 
+qk_norm_weight_decay: 0.01           # <-- new; null disables the qk-norm group
+exclude_norms_from_weight_decay: true # <-- new
+
+
 # diffusion params
 num_sampling_steps: 10
 sigma_data: 0.5
