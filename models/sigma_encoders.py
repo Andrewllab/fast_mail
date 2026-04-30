@@ -3,7 +3,10 @@ from __future__ import annotations
 import torch.nn as nn
 from torch import Tensor
 
-from models.pos_encoder import SinusoidalSequencePosEncoder
+from models.pos_encoder import (
+    GaussianRandomFourierFeatures,
+    SinusoidalSequencePosEncoder,
+)
 
 
 class DDPMSigmaEncoder(nn.Module):
@@ -18,3 +21,19 @@ class DDPMSigmaEncoder(nn.Module):
 
     def forward(self, sigma: Tensor) -> Tensor:
         return self.sigma_emb(sigma)
+
+
+class EDMSigmaEncoder(nn.Module):
+    def __init__(self, embed_dim: int):
+        super().__init__()
+        self.sigma_emb = nn.Sequential(
+            GaussianRandomFourierFeatures(
+                input_dim=1, n_wavelengths=embed_dim // 2, rff_sigma=16.0
+            ),
+            nn.Linear(embed_dim, embed_dim * 2),
+            nn.Mish(),
+            nn.Linear(embed_dim * 2, embed_dim),
+        )
+
+    def forward(self, sigma: Tensor) -> Tensor:
+        return self.sigma_emb(sigma.unsqueeze(-1))
