@@ -12,6 +12,7 @@ from torch.nn import Module
 from torch.optim.lr_scheduler import LRScheduler
 from torch.optim.optimizer import Optimizer
 from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
+import re
 
 from environments.specs import DataSpecs
 from transforms.base_transform import (
@@ -23,6 +24,12 @@ from transforms.base_transform import (
 from utils.legacy import patch_legacy_state_dict
 
 log = logging.getLogger(__name__)
+
+
+QK_NORM_RE = re.compile(r"(^|\.)(q|k)_(norm|layernorm|ln)\.weight$")
+
+def _is_qk_norm(name: str) -> bool:
+    return QK_NORM_RE.search(name) is not None
 
 
 class BaseAgent(L.LightningModule):
@@ -165,9 +172,7 @@ class BaseAgent(L.LightningModule):
             if not param.requires_grad:
                 continue
 
-            if qk_norm_decay is not None and (
-                "self_attn.q_norm.weight" in name or "self_attn.k_norm.weight" in name
-            ):
+            if qk_norm_decay is not None and _is_qk_norm(name):
                 qk_norm_params.append(param)
             elif no_decay_for_norms and (
                 name.endswith(".bias")

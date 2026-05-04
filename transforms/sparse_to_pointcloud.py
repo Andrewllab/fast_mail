@@ -396,7 +396,7 @@ class SparseToPointCloudMerged(Transform):
                     pts_valid = _sparse_unproject(
                         u_flat, v_flat, d_flat, K, is_ortho=is_ortho
                     )
-                    points_cam.reshape(-1, 3)[flat_valid] = pts_valid
+                    points_cam.view(-1, 3)[flat_valid] = pts_valid
 
                 if dynamic_T is not None:
                     L_eff = int(points_cam.shape[1])
@@ -435,11 +435,15 @@ class SparseToPointCloudMerged(Transform):
                         device=points_world.device,
                         dtype=torch.float32,
                     )
+                    pad_pts[:] = points_world[:, -1:, :].expand(
+                        J, self.track_len - L_eff, 3
+                    )
                     pad_vis = torch.zeros(
                         (J, self.track_len - L_eff),
                         device=vis.device,
                         dtype=torch.bool,
                     )
+                    pad_vis[:] = vis[:, -1:].expand(J, self.track_len - L_eff)
                     points_world = torch.cat([points_world, pad_pts], dim=1)
                     vis = torch.cat([vis, pad_vis], dim=1)
 

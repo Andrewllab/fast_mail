@@ -333,15 +333,15 @@ class ToPaktActionObsTransform(ReversibleTransform):
                 "tool_pcd['visibility'] ragged structure must match tool_pcd['points']."
             )
 
-        # Exclude obs timestep (0) from action extraction ONCE (avoid per-batch clone)
-        # If visibility is reused elsewhere and must remain unchanged, clone once here.
+        # Existing line:
         vis_work = vis_val.clone()
         vis_work[:, 0] = False
 
-        # Find all selected (flat_point, t) pairs at once
-        sel = vis_work.nonzero(
-            as_tuple=False
-        )  # (K, 2) columns: [flat_point_idx, timestep]
+        # Add: also exclude any (point, timestep) where the 3D position is NaN/Inf
+        finite_mask = torch.isfinite(points_val).all(dim=-1)  # (sum_N, num_timesteps)
+        vis_work = vis_work & finite_mask
+
+        sel = vis_work.nonzero(as_tuple=False)
 
         # If no points selected, return empty jagged tensors
         if sel.numel() == 0 or not self.include_tracked_in_action:

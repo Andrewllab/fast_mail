@@ -101,7 +101,8 @@ class PaktTokenizer(Transform, nn.Module):
 
         # Learned token for gripper points that have no DINOv2 feature vector
         # Initialized to zero; will diverge from real feature embeddings during training
-        self.missing_feature_token = nn.Parameter(torch.zeros(embed_dim))
+        self.missing_feature_token = nn.Parameter(torch.empty(embed_dim))
+        nn.init.normal_(self.missing_feature_token, std=0.02)
 
         # -------- Branch-wise LayerNorms (applied before concat) --------
         self.pos_ln = nn.LayerNorm(embed_dim)
@@ -217,6 +218,7 @@ class PaktTokenizer(Transform, nn.Module):
             missing = self.feature_ln(
                 self.missing_feature_token.unsqueeze(0).expand(gripper_mask.sum(), -1)
             )
+            missing = self.feature_dropout(missing)   # add this
             feat_embed[gripper_mask] = missing
 
         # ---- Color branch (optional) ----
