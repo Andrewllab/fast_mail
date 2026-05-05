@@ -22,8 +22,8 @@ exclude_norms_from_weight_decay: true # <-- new
 
 # diffusion params
 num_sampling_steps: 10
-sigma_data: 0.5
+sigma_data: 0.15
 sigma_min: 0.01
-sigma_max: 80
+sigma_max: 20
 
 ema_decay: 0.995
