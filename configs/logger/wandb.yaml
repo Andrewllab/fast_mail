@@ -11,3 +11,4 @@ wandb:
   tags: null
   reinit: finish_previous  # required for hydra sweeps with default launcher
   save_code: True  # save script used to start training, git commit, and patch
+  dir: wandb/$SLURM_ARRAY_TASK_ID

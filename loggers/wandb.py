@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Sequence
@@ -21,6 +22,7 @@ class WandbLogger(LightningWandbLogger):
         tags_from_overrides: bool = True,
         notes_from_overrides: bool = True,
         exclude_override_keys: Sequence[str] | None = None,
+        save_dir: str | Path | None = None,
         **kwargs,
     ):
         exclude_override_keys = exclude_override_keys or []
@@ -64,6 +66,9 @@ class WandbLogger(LightningWandbLogger):
                 tags.append(overrides["experiment"])
             tags = tags or None  # avoid passing empty list to wandb
             kwargs["tags"] = tags
+
+        if save_dir is not None:
+            kwargs["dir"] = os.path.expandvars(save_dir)
 
         super().__init__(*args, **kwargs)
 

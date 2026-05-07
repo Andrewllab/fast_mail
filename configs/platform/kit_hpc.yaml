@@ -14,8 +14,8 @@ paths:
   # absolute path to our project inside the LSDF, should work for all users
   # data_dir: $LSDF/kit/iar/projects/alr_3d-sim2real/demonstrations
   # $TMPDIR, not ${oc.env:TMPDIR}, so it gets resolved inside the job, not on the login node
-  preprocessed_dir: $TMPDIR/preprocessed_data
-  debug_preprocessed_dir: $TMPDIR/debug_preprocessed_data
+  preprocessed_dir: $TMPDIR/$SLURM_ARRAY_TASK_ID/preprocessed_data
+  debug_preprocessed_dir: $TMPDIR/$SLURM_ARRAY_TASK_ID/debug_preprocessed_data
 
 # data:
 #   preprocess:
