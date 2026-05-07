@@ -1,6 +1,6 @@
 _target_: models.transformer.TransformerEncoder
 _partial_: True  # requires embed_dim argument
-n_layers: 6
+n_layers: 8
 norm:
   _target_: torch.nn.RMSNorm
   _partial_: True
