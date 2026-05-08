@@ -23,6 +23,7 @@ class WandbLogger(LightningWandbLogger):
         notes_from_overrides: bool = True,
         exclude_override_keys: Sequence[str] | None = None,
         save_dir: str | Path | None = None,
+        slurm_specific_wandb_dirs: bool = True,
         **kwargs,
     ):
         exclude_override_keys = exclude_override_keys or []
@@ -69,6 +70,23 @@ class WandbLogger(LightningWandbLogger):
 
         if save_dir is not None:
             kwargs["dir"] = os.path.expandvars(save_dir)
+
+        if slurm_specific_wandb_dirs:
+            # create a unique wandb directory for each slurm task
+            slurm_job_id = os.getenv("SLURM_ARRAY_JOB_ID")
+            slurm_task_id = os.getenv("SLURM_ARRAY_TASK_ID")
+            tmpdir = os.getenv("TMPDIR")
+            if slurm_job_id is not None and slurm_task_id is not None:
+                save_dir = os.path.join(
+                    tmpdir or "wandb", f"{slurm_job_id}", f"{slurm_task_id}"
+                )
+                cache_dir = os.path.join(save_dir, "cache")
+                os.environ["WANDB_DIR"] = save_dir
+                os.environ["WANDB_CACHE_DIR"] = cache_dir
+                log.info(
+                    f"Using SLURM-specific wandb directory {save_dir} with cache dir {cache_dir}..."
+                )
+                kwargs["dir"] = save_dir
 
         super().__init__(*args, **kwargs)
 

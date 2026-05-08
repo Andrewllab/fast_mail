@@ -11,4 +11,5 @@ wandb:
   tags: null
   reinit: finish_previous  # required for hydra sweeps with default launcher
   save_code: True  # save script used to start training, git commit, and patch
-  dir: wandb/$SLURM_ARRAY_TASK_ID
+  #dir: wandb/$SLURM_ARRAY_JOB_ID/$SLURM_ARRAY_TASK_ID
+  slurm_specific_wandb_dirs: True  # if True, the "dir" field above will be ignored and wandb logs will be saved to a unique directory for each slurm job, using SLURM_ARRAY_JOB_ID and SLURM_ARRAY_TASK_ID. This is necessary to avoid conflicts when multiple slurm jobs are running simultaneously and logging to wandb. If False, all slurm jobs will log to the same directory, which can cause conflicts and data loss.
