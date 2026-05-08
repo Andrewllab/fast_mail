@@ -93,7 +93,13 @@ class WandbLogger(LightningWandbLogger):
         # Trigger lazy creation of wandb run by accessing experiment
         # We want to initialize the run as early as possible to log all the
         # messages from instantiating the dataset and model
-        _ = self.experiment
+        experiment = self.experiment
+        if experiment is None:
+            log.warning("Wandb run is not initialized, somehow...")
+        else:
+            log.info(
+                f"Initialized wandb run with id {self.run_id} and name {self.experiment.name}..."
+            )
 
         # Any test metrics logged with the "eval_metrics/" prefix will be associated
         # with the epoch of the checkpoint used for testing, not the wandb step
