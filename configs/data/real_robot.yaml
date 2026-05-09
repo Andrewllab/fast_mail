@@ -10,7 +10,7 @@ task_suite: real
 name: real_robot
 
 # defaults
-action_seq_len: 30
+action_seq_len: 20
 obs_seq_len: 1
 
 env:

@@ -8,7 +8,7 @@ defaults:
 task: arrange
 name: arrange_20260115
 
-action_seq_len: 30
+action_seq_len: 20
 obs_seq_len: 1
 
 dataset:
