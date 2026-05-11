@@ -16,6 +16,8 @@ precondition_type: edm
 obs_encoder:
   embed_dim: 512
 
+keypoint_loss_dropout: 0.0 # 0.0 means no dropout; 1.0 means drop all keypoints (i.e. only use the MLP loss on the gripper pose)
+
 qk_norm_weight_decay: 0.01           # <-- new; null disables the qk-norm group
 exclude_norms_from_weight_decay: true # <-- new
 

@@ -22,7 +22,6 @@ from transforms.base_transform import (
     TransformPartialsDict,
 )
 from utils.math import quat_from_axis_angle, quat_rotation_distance
-from utils.nested import unflatten_nested_tensor
 from utils.tensors import unsqueeze_to
 
 log = logging.getLogger(__name__)
@@ -52,6 +51,8 @@ class BesoAgent(BaseBesoAgent):
         # weight decays
         qk_norm_weight_decay: float | None = None,  # <-- new
         exclude_norms_from_weight_decay: bool = True,  # <-- new
+        # keypoint loss dropout
+        keypoint_loss_dropout: float = 0.0,  # <-- new
     ):
         super().__init__(
             noise_model=noise_model,
@@ -75,6 +76,128 @@ class BesoAgent(BaseBesoAgent):
             exclude_norms_from_weight_decay=exclude_norms_from_weight_decay,
         )
         self.num_timesteps = specs.action_seq_len
+        self.keypoint_loss_dropout = keypoint_loss_dropout
+
+    def training_step(self, batch: TensorDict, batch_idx: int) -> Tensor:
+        """
+        Computes the score matching loss given the perceptual embedding, latent goal, and desired actions.
+        """
+        batch = self.normalizer(batch)
+        batch = self.goal_encoder(batch)
+        batch = self.obs_encoder(batch)
+
+        action = batch["action"]
+
+        sigma = self.noise_distribution(shape=(len(action),), device=self.device)
+        noise = torch.randn_like(action)
+        noised_input = action + noise * unsqueeze_to(sigma, action)
+
+        # We implement the loss with respect to the raw network output as in
+        # Equation 8 of https://arxiv.org/pdf/2206.00364. Note that lambda(sigma)
+        # is set by the authors to 1/c_out**2, such that each term has an equal
+        # weight in the MSE loss.
+        c_skip, c_out, c_in, c_noise = self.get_preconditioning_factors(sigma, action)
+        model_output = self.model(batch, noised_input * c_in, c_noise)
+        target = (action - c_skip * noised_input) / c_out
+        if model_output.is_nested:
+            loss = self.dropout_keypoint_loss_nested(model_output, target, batch)
+        else:
+            loss = self.dropout_keypoint_loss(model_output, target, batch)
+
+        # log these values per step and per epoch
+        log_dict = {
+            "loss": loss,
+        }
+        if self._lr_scheduler_func is not None:
+            log_dict["lr"] = self.trainer.optimizers[0].param_groups[0]["lr"]
+        self.log_dict(
+            log_dict,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=batch.shape[0],
+        )
+
+        return loss
+
+    def dropout_keypoint_loss_nested(
+        self, model_output: Tensor, target: Tensor, batch: TensorDict
+    ) -> Tensor:
+        if self.keypoint_loss_dropout <= 0.0:
+            return F.mse_loss(model_output.values(), target.values())
+
+        action_mask = (
+            batch["obs"]["action_points"]["gripper_ids"] != 0
+        )  # nested (B, N_i)
+
+        B = action_mask.size(0)
+        offsets = action_mask.offsets()  # (B+1,)
+        lengths = offsets[1:] - offsets[:-1]  # (B,)
+
+        keep_keypoints = (
+            torch.rand(B, device=action_mask.device) > self.keypoint_loss_dropout
+        )  # (B,)
+
+        # Broadcast keep_keypoints to per-point via repeat_interleave on the flat values
+        keep_per_point = keep_keypoints.repeat_interleave(lengths)  # (sum N_i,)
+        action_mask_flat = action_mask.values()  # (sum N_i,)
+        point_mask_flat = (action_mask_flat | keep_per_point).float()  # (sum N_i,)
+
+        # Per-element squared error on the flat values tensor — avoids nested ops in autograd
+        sq_err_flat = (model_output.values() - target.values()).pow(
+            2
+        )  # (sum N_i, D...)
+        while sq_err_flat.dim() > 1:
+            sq_err_flat = sq_err_flat.mean(dim=-1)
+        # sq_err_flat is now (sum N_i,)
+
+        masked = sq_err_flat * point_mask_flat  # (sum N_i,)
+
+        # Per-sample sums via index_add — well-supported backward
+        row_ids = torch.repeat_interleave(
+            torch.arange(B, device=offsets.device), lengths
+        )  # (sum N_i,)
+        per_sample_sum = torch.zeros(B, device=masked.device, dtype=masked.dtype)
+        per_sample_sum = per_sample_sum.index_add(0, row_ids, masked)  # (B,)
+
+        counts = point_mask_flat.new_zeros(B).index_add(0, row_ids, point_mask_flat)
+        counts = counts.clamp(min=1.0)
+
+        per_sample_loss = per_sample_sum / counts  # (B,)
+        return per_sample_loss.mean()
+
+    def dropout_keypoint_loss(
+        self, model_output: Tensor, target: Tensor, batch: TensorDict
+    ) -> Tensor:
+        if self.keypoint_loss_dropout <= 0.0:
+            return F.mse_loss(model_output, target)
+
+        # True for action points, False for keypoints
+        action_mask = batch["obs"]["action_points"]["gripper_ids"] != 0  # (B, N)
+
+        # Per-sample: True with prob (1 - p_drop) = "keep keypoints this step"
+        keep_keypoints = (
+            torch.rand(action_mask.shape[0], device=model_output.device)
+            > self.keypoint_loss_dropout
+        )  # (B,)
+
+        # Final mask: action points always in, keypoints in only when kept
+        point_mask = action_mask | keep_keypoints[:, None]  # (B, N)
+
+        # Per-element squared error, then mean per sample over included points
+        sq_err = (model_output - target).pow(2)  # (B, N, D) or (B, N, ...)
+        # reduce over feature dims if any
+        while sq_err.dim() > 2:
+            sq_err = sq_err.mean(dim=-1)
+        # now sq_err is (B, N)
+
+        point_mask_f = point_mask.float()
+        counts = point_mask_f.sum(dim=1)  # (B,)
+
+        # avoid div-by-zero (shouldn't happen since action points are always kept)
+        counts = counts.clamp(min=1.0)
+        per_sample_loss = (sq_err * point_mask_f).sum(dim=1) / counts  # (B,)
+
+        return per_sample_loss.mean()
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         # values logged here get averaged over an epoch instead of over a step
