@@ -1,9 +1,9 @@
 defaults:
-  - /cameras@env.env.cameras.front_left_cam: zed_mini_17008863
-  - /cameras@env.env.cameras.front_right_cam: zed_mini_16055244
+  - /cameras@env.cameras.front_left_cam: zed_mini_17008863
+  - /cameras@env.cameras.front_right_cam: zed_mini_16055244
   # - /cameras@env.env.cameras.gripper_cam: realsense_d405_218622270040
   - /cameras/calibration@dataset.extrinsics: 2025-09-16
-  - /robot@env.env.robot: panda4
+  - /robot@env.robot: panda4
   - _self_
 
 task_suite: real
@@ -24,9 +24,9 @@ env:
     front_right_cam:
       name: front_right_cam
       extrinsics: ${oc.select:data.dataset.extrinsics.front_right_cam.extrinsics,null}
-    gripper_cam:
-      name: gripper_cam
-      extrinsics: ${oc.select:data.dataset.extrinsics.gripper_cam.extrinsics,null}
+    # gripper_cam:
+    #   name: gripper_cam
+    #   extrinsics: ${oc.select:data.dataset.extrinsics.gripper_cam.extrinsics,null}
   robot:
     home_pose: [  # joint positions
       0.005649,

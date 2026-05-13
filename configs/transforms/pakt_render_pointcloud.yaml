@@ -3,4 +3,7 @@ _partial_: True
 
 pcd_keys:
   - obs/current_points/points
+  - obs/gripper_points/points
+  - obs/tool_points/points
+  - obs/target_points/points
   - action

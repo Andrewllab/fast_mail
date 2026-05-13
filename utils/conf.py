@@ -132,10 +132,6 @@ def merge_data_configs(cfg: DictConfig, other: DictConfig) -> DictConfig:
 
     obj_keys = ["dataset", "env"]
 
-    if "env" in cfg["env"].keys():
-        env_name = cfg["env"]["env"]["env_name"]
-    else:
-        env_name = cfg["env"]["env_name"]
 
     for key in obj_keys:
         if key not in other:
@@ -156,8 +152,6 @@ def merge_data_configs(cfg: DictConfig, other: DictConfig) -> DictConfig:
             # standard merge algorithm. This keeps anything in cfg that isn't
             # explicitly overwritten
             cfg[key] = OmegaConf.merge(cfg[key], subcfg)
-
-    cfg["env"]["env_name"] = env_name
 
     transform_keys = [
         "cpu_transforms",

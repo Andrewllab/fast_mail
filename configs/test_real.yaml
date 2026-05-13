@@ -8,11 +8,22 @@ defaults:
   # Render cameras after preprocessing but before normalization
   # - transforms@data.gpu_batch_transforms.t9_render_cameras: render_cameras
   # - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
-  # - /transforms@data.gpu_batch_transforms.t99_render_pcd: pakt_render_pointcloud
+  - /transforms@data.gpu_batch_transforms.t99_render_pcd: pakt_render_pointcloud
+  - /goals@data.preprepreprocess.t01_target_tool_from_foldername: add_target_tool_from_foldername_real
+  - /transforms@data.preprepreprocess.t02_grounding_samv3: grounding_samv3_segmenter
+#  - /transforms@data.preprepreprocess.t02_samv3: null
+  #- /transforms@data.preprepreprocess.t05_target_to_featured_pointcloud: to_masked_featured_pointcloud
+  #- /transforms@data.preprepreprocess.t06_tool_to_featured_pointcloud: to_tracked_featured_pointcloud
+#  - /robot@data.env.robot: panda4
+  - /goals: [clip_embed, add_from_foldername_real]
+
   - _self_
   - platform: default
   - optional local: default
   - debug: verbose
+
+camera_keys: ["front_left_cam", "front_right_cam"]
+rgb_key: left
 
 # task name, determines output directory path
 job_type: test_real
@@ -21,9 +32,9 @@ checkpoint:
   # either specify a complete checkpoint path...
   log_dir:
   # ...or specify the wandb run name
-  wandb_run_id: 1gjavb94
+  wandb_run_id: 3y2nfxv9
   # project and entity are only needed if they differ from the settings in the wandb logger config
-  wandb_project: pakt_real_stack
+  wandb_project: PAKT_real
   wandb_entity: nicolasschreiber
   epochs: last  # options: last, all, last_n (default: last)
   artifact_version:  # e.g. latest, v0, v1, v2, ... (overrides epochs if set)
@@ -37,10 +48,28 @@ agent:
 data:
   eval_mode: env
   env:
-    action_horizon: 30
-    fps: 10
+    action_type: cartesian
+    impedance_type: hybrid_joint
+    action_horizon: 20
+    fps: 2
+    robot:
+      name: panda4
+      home_pose: [  # joint positions
+        0.137471,
+        -0.161579,
+        -0.189513,
+        -1.89714,
+        -0.0501972,
+        1.78359,
+        0.742035,
+      ]
 
-  # preprocess:
+
+  preprocess:
+      # on rollout, we need to specify the goal text ourselves
+    t40_add_goal:
+      current_task: one_cube  # REPLACE with current goal command
+
   #   t1_drop: null
   #   t99_cleanup: null
 
@@ -48,24 +77,25 @@ data:
   #   t8_add_goal:
   #     current_task:  # REPLACE with current goal command
 
-  prepreprocess:
-    t02_samv3:
+  preprepreprocess:
+    t01_target_tool_from_foldername: 
+      current_task: "one_cube"
+    t02_grounding_samv3:
       _target_: transforms.grounding_samv3.PersistentSamV3VideoSegmenterTransform
-    t06_to_tracked_featured_pointcloud:
+    t02_samv3: null
+    t05_target_to_featured_pointcloud:
+      mode: mask
+      mask_key: tool_segmentation
+      _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
+    t06_tool_to_featured_pointcloud:
       mode: mask
       mask_key: tool_segmentation
       _target_: transforms.sparse_to_pointcloud.SparseToPointCloudMerged
 
-  preprepreprocess:
-    t03_target_tool_from_foldername: 
-      current_task: "orange_in_red"
-
-    # on rollout, we need to specify the goal text ourselves
-    t40_add_goal:
-      current_task:  # REPLACE with current goal command
 
   gpu_batch_transforms:
     t04_random_rotation: null
+
 
 trainer:
   default_root_dir: ${paths.output_dir}

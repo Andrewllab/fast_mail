@@ -41,6 +41,7 @@ class RealRobotEnv(gym.Env[ObsType, np.ndarray]):
         impedance_type: Literal["joint", "cartesian", "hybrid_joint"] = "hybrid_joint",
         human_control: bool = False,
         fps: float | None = None,
+        **kwargs
     ):
         if action_type not in ("joint", "cartesian"):
             raise ValueError('action_type must be either "joint" or "cartesian"')
@@ -99,6 +100,8 @@ class RealRobotEnv(gym.Env[ObsType, np.ndarray]):
             # homogeneous transform of ee_pose
             "ee_transform": ObsSpec(elem_shape=(4, 4)),
             "target_gripper_width": ObsSpec(elem_shape=(1,)),
+            # Previous action
+            "_action": ObsSpec(elem_shape=(8,))
         }
 
         # TODO: Add both specs in either case.
@@ -150,6 +153,8 @@ class RealRobotEnv(gym.Env[ObsType, np.ndarray]):
         if self.fps is not None:
             self.clock.tick(self.fps)
 
+        raw_action = action
+
         action = torch.from_numpy(action)
         if self.action_type == "cartesian":
             target_ee_pose = action[:7]  # xyz + wxyz quaternion
@@ -200,6 +205,8 @@ class RealRobotEnv(gym.Env[ObsType, np.ndarray]):
             reward, terminated, truncated = 0.0, False, True
         else:
             reward, terminated, truncated = 0.0, False, False
+
+        obs["_action"] = raw_action
 
         return obs, reward, terminated, truncated, info
 
@@ -268,6 +275,10 @@ class RealRobotEnv(gym.Env[ObsType, np.ndarray]):
         elif self.action_type == "cartesian":
             obs["target_ee_pose"] = obs["ee_pose"]
         obs["target_gripper_width"] = obs["gripper_width"]
+
+        # Simulate past action
+        obs["_action"] = np.full(self.action_space.shape, np.nan, dtype=np.float32)
+
 
         info = self._get_info()
 

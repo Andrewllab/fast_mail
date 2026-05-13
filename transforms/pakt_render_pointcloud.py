@@ -89,7 +89,7 @@ class RenderPointCloud(ctx.Process, Transform):
         render process.
         """
 
-        render_idx = 2
+        render_idx = 0
 
         for i, key_parts in enumerate(self._input_keys):
             name = "/".join(key_parts)
@@ -146,7 +146,7 @@ class RenderPointCloud(ctx.Process, Transform):
         geometries: Dict[str, o3d.geometry.Geometry] = {}
 
         # add an extra large coordinate frame at the origin
-        origin = o3d.geometry.TriangleMesh.create_coordinate_frame(origin=[0, 0, 0])
+        origin = o3d.geometry.TriangleMesh.create_coordinate_frame(origin=[0, 0, 0], size=0.1)
         vis.add_geometry(origin)
         geometries["origin"] = origin
 
