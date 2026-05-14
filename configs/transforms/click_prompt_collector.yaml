@@ -1,0 +1,9 @@
+_target_: transforms.grounding_samv3_clicking.ClickPromptCollectorTransform
+_partial_: True
+
+camera_keys: ${camera_keys}
+rgb_key: ${rgb_key}
+class_names: ['target object', 'tool object']
+click_keys: ['target_clicks', 'tool_clicks']
+
+max_remove_distance_px: 20.0

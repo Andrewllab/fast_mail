@@ -1,0 +1,10 @@
+_target_: transforms.grounding_samv3_clicking.ClickPromptSamV3VideoSegmenterTransform
+_partial_: True
+
+camera_keys: ${camera_keys}
+rgb_key: ${rgb_key}
+# class_names: ['target object', 'tool object']
+click_keys: ['target_clicks', 'tool_clicks']
+segmenter_out_keys: [target_segmentation, tool_segmentation]
+
+

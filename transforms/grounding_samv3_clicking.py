@@ -23,6 +23,7 @@ The two transforms communicate via:
 
 Object id `k+1` corresponds to segmenter_out_keys[k] downstream.
 """
+
 from __future__ import annotations
 
 import math
@@ -42,29 +43,34 @@ from transformers import Sam3TrackerVideoModel, Sam3TrackerVideoProcessor
 from environments.specs import DataSpecs
 from transforms.base_transform import Transform
 
-
 # -----------------------------------------------------------------------------
 # Class definitions (display config only — segmenter cares about obj_ids, not names)
 # -----------------------------------------------------------------------------
 
 CLASS_CONFIG = {
-    "target object": {"color": "tab:red",  "key": "1"},
-    "tool object":   {"color": "tab:cyan", "key": "2"},
+    "target object": {"color": "tab:red", "key": "1"},
+    "tool object": {"color": "tab:cyan", "key": "2"},
 }
 DEFAULT_CLASS_ORDER = list(CLASS_CONFIG.keys())
+
+DEFAULT_CLASS_COLORS = {
+    "target object": "tab:red",
+    "tool object": "tab:cyan",
+}
 
 
 # =============================================================================
 # Stage 1 — Click collection
 # =============================================================================
 
+
 @dataclass
 class _ClickAnnotations:
     """
-    points[camera_key][class_name] = list of (x, y, label) tuples.
-    label = 1 (positive / foreground) or 0 (negative / background).
+    points[camera_key][class_name] = list of (x, y) tuples (all positive).
     """
-    points: Dict[str, Dict[str, List[Tuple[int, int, int]]]] = field(default_factory=dict)
+
+    points: Dict[str, Dict[str, List[Tuple[int, int]]]] = field(default_factory=dict)
 
     def ensure(self, camera_keys: List[str], class_names: List[str]):
         for cam in camera_keys:
@@ -73,45 +79,34 @@ class _ClickAnnotations:
                 self.points[cam].setdefault(cls, [])
 
     def is_empty(self) -> bool:
-        return not any(pts for by_cls in self.points.values() for pts in by_cls.values())
+        return not any(
+            pts for by_cls in self.points.values() for pts in by_cls.values()
+        )
 
-    def get(self, camera_key: str, class_name: str) -> List[Tuple[int, int, int]]:
+    def get(self, camera_key: str, class_name: str) -> List[Tuple[int, int]]:
         return self.points.setdefault(camera_key, {}).setdefault(class_name, [])
 
     def to_yaml_dict(self) -> Dict[str, Any]:
         return {
             "cameras": {
                 cam: {
-                    cls: [{"x": int(x), "y": int(y), "label": int(lbl)}
-                          for (x, y, lbl) in pts]
+                    cls: [{"x": int(x), "y": int(y)} for (x, y) in pts]
                     for cls, pts in by_cls.items()
                 }
                 for cam, by_cls in self.points.items()
             }
         }
 
-    @classmethod
-    def from_yaml_dict(cls, d: Dict[str, Any]) -> "_ClickAnnotations":
-        out = cls()
-        for cam, by_cls in (d.get("cameras") or {}).items():
-            out.points[cam] = {}
-            for cls_name, pts in (by_cls or {}).items():
-                out.points[cam][cls_name] = [
-                    (int(p["x"]), int(p["y"]), int(p.get("label", 1)))
-                    for p in (pts or [])
-                ]
-        return out
-
 
 class _ClickCollectorGUI:
     """
-    Modal matplotlib window for collecting clicks on one frame per camera.
+    Modal matplotlib window for collecting positive point clicks on one
+    frame per camera.
 
     Controls
     --------
-    left click   : add positive point of current class to clicked image
-    shift+left   : add negative point of current class
-    right click  : remove nearest point on clicked image
+    left click   : add a point of the current class to the clicked image
+    right click  : remove nearest point on the clicked image
     1 / 2 / ...  : switch class
     u            : undo last click on last-touched camera
     d            : delete nearest point under mouse
@@ -125,6 +120,7 @@ class _ClickCollectorGUI:
         camera_frames: Dict[str, np.ndarray],
         camera_keys: List[str],
         class_names: List[str],
+        class_colors: Dict[str, str],
         existing: Optional[_ClickAnnotations] = None,
         max_remove_distance: float = 20.0,
         title_suffix: str = "",
@@ -134,15 +130,11 @@ class _ClickCollectorGUI:
         for cam in camera_keys:
             if cam not in camera_frames:
                 raise ValueError(f"missing frame for camera '{cam}'")
-        for c in class_names:
-            if c not in CLASS_CONFIG:
-                raise ValueError(
-                    f"Unknown class '{c}'. Known: {list(CLASS_CONFIG)}"
-                )
 
         self.camera_frames = {k: self._to_uint8(v) for k, v in camera_frames.items()}
         self.camera_keys = list(camera_keys)
         self.class_names = list(class_names)
+        self.class_colors = dict(class_colors)
         self.max_remove_distance = max_remove_distance
         self.title_suffix = title_suffix
 
@@ -154,7 +146,6 @@ class _ClickCollectorGUI:
         self.confirmed = False
         self._warned_missing = False
 
-        # matplotlib handles, set on launch
         self.fig = None
         self.axes: Dict[str, plt.Axes] = {}
         self.status_text = None
@@ -183,19 +174,20 @@ class _ClickCollectorGUI:
             ax.set_axis_off()
             self.axes[cam] = ax
 
-        # Radio buttons for class selection
         ax_radio = self.fig.add_axes([0.87, 0.55, 0.11, 0.20])
         self.radio = RadioButtons(ax_radio, self.class_names, active=0)
         self.radio.on_clicked(self._on_radio_change)
         ax_radio.set_title("Class")
 
-        # Action buttons
-        Button(self.fig.add_axes([0.10, 0.07, 0.10, 0.06]), "Undo"
-               ).on_clicked(lambda e: self._undo())
-        Button(self.fig.add_axes([0.21, 0.07, 0.10, 0.06]), "Clear"
-               ).on_clicked(lambda e: self._clear())
-        Button(self.fig.add_axes([0.78, 0.07, 0.18, 0.06]), "Confirm & Close"
-               ).on_clicked(lambda e: self._confirm())
+        Button(self.fig.add_axes([0.10, 0.07, 0.10, 0.06]), "Undo").on_clicked(
+            lambda e: self._undo()
+        )
+        Button(self.fig.add_axes([0.21, 0.07, 0.10, 0.06]), "Clear").on_clicked(
+            lambda e: self._clear()
+        )
+        Button(
+            self.fig.add_axes([0.78, 0.07, 0.18, 0.06]), "Confirm & Close"
+        ).on_clicked(lambda e: self._confirm())
 
         self.status_text = self.fig.text(0.04, 0.01, "", fontsize=10)
 
@@ -209,7 +201,6 @@ class _ClickCollectorGUI:
 
         self._redraw()
         plt.show()  # blocks until window closes
-
         return self.annotations
 
     # ---- internal helpers ----
@@ -236,14 +227,11 @@ class _ClickCollectorGUI:
             return
         self.last_touched_camera = camera
         x, y = int(round(event.xdata)), int(round(event.ydata))
-        is_shift = (getattr(event, "key", None) or "").lower().startswith("shift")
 
         if event.button == 1:
-            label = 0 if is_shift else 1
-            self.annotations.get(camera, self.current_class).append((x, y, label))
-            sign = "negative" if label == 0 else "positive"
+            self.annotations.get(camera, self.current_class).append((x, y))
             self._set_status(
-                f"Added {sign} {self.current_class} click on {camera} at ({x}, {y})"
+                f"Added {self.current_class} click on {camera} at ({x}, {y})"
             )
             self._redraw()
         elif event.button == 3:
@@ -253,7 +241,6 @@ class _ClickCollectorGUI:
         if event.key is None:
             return
         k = event.key.lower()
-        # numeric class switching: '1' .. 'N'
         if k.isdigit():
             idx = int(k) - 1
             if 0 <= idx < len(self.class_names):
@@ -285,7 +272,7 @@ class _ClickCollectorGUI:
         for cls in order:
             pts = self.annotations.get(cam, cls)
             if pts:
-                x, y, _ = pts.pop()
+                x, y = pts.pop()
                 self._set_status(f"Undid {cls} click on {cam} at ({x}, {y})")
                 self._redraw()
                 return
@@ -301,7 +288,7 @@ class _ClickCollectorGUI:
     def _remove_nearest(self, camera: str, x: float, y: float):
         best = None
         for cls in self.class_names:
-            for idx, (px, py, _) in enumerate(self.annotations.get(camera, cls)):
+            for idx, (px, py) in enumerate(self.annotations.get(camera, cls)):
                 d = math.hypot(px - x, py - y)
                 if best is None or d < best[0]:
                     best = (d, cls, idx)
@@ -321,15 +308,14 @@ class _ClickCollectorGUI:
         missing = []
         for cam in self.camera_keys:
             for cls in self.class_names:
-                pts = self.annotations.get(cam, cls)
-                if not any(lbl == 1 for (_, _, lbl) in pts):
+                if not self.annotations.get(cam, cls):
                     missing.append((cam, cls))
         return missing
 
     def _confirm(self):
         missing = self._missing_classes()
         if missing and not self._warned_missing:
-            msg = "Missing positive clicks for: " + ", ".join(
+            msg = "Missing clicks for: " + ", ".join(
                 f"{cam}/{cls}" for cam, cls in missing
             )
             self._set_status(msg + "  (press Confirm again to close anyway)")
@@ -355,8 +341,9 @@ class _ClickCollectorGUI:
             handles, labels = ax.get_legend_handles_labels()
             if handles:
                 by_label = dict(zip(labels, handles))
-                ax.legend(by_label.values(), by_label.keys(),
-                          loc="upper right", fontsize=8)
+                ax.legend(
+                    by_label.values(), by_label.keys(), loc="upper right", fontsize=8
+                )
         self._refresh_title()
         self.fig.canvas.draw_idle()
 
@@ -365,17 +352,18 @@ class _ClickCollectorGUI:
             pts = self.annotations.get(camera, cls)
             if not pts:
                 continue
-            color = CLASS_CONFIG[cls]["color"]
-            pos = [(x, y) for (x, y, lbl) in pts if lbl == 1]
-            neg = [(x, y) for (x, y, lbl) in pts if lbl == 0]
-            if pos:
-                xs, ys = zip(*pos)
-                ax.scatter(xs, ys, s=80, c=color, edgecolors="white",
-                           linewidths=1.4, marker="o", label=f"{cls} (+)")
-            if neg:
-                xs, ys = zip(*neg)
-                ax.scatter(xs, ys, s=90, c=color, edgecolors="white",
-                           linewidths=1.4, marker="X", label=f"{cls} (-)")
+            color = self.class_colors.get(cls, "tab:orange")
+            xs, ys = zip(*pts)
+            ax.scatter(
+                xs,
+                ys,
+                s=80,
+                c=color,
+                edgecolors="white",
+                linewidths=1.4,
+                marker="o",
+                label=cls,
+            )
 
 
 class ClickPromptCollectorTransform(Transform):
@@ -397,20 +385,17 @@ class ClickPromptCollectorTransform(Transform):
                           Default ["target object", "tool object"].
     camera_keys         : cameras to collect clicks on.
     rgb_key             : key under obs[camera] holding the RGB frame.
-    cache_yaml          : optional YAML file to persist clicks across runs.
-    reuse_cached_clicks : if True and cache_yaml exists, skip the GUI on init.
-                          A reset=True call always re-prompts regardless.
     """
 
     def __init__(
         self,
         specs: DataSpecs,
-        class_names: Optional[str | List[str]] = None,
+        class_names: Optional[str | List[str]],
+        click_keys: Optional[str | List[str]],
         camera_keys: str | List[str] = "left_cam",
         rgb_key: str = "rgb",
-        cache_yaml: Optional[str | Path] = None,
-        reuse_cached_clicks: bool = True,
         max_remove_distance_px: float = 20.0,
+        class_colors: Optional[Dict[str, str]] = None,
     ):
         super().__init__()
         self._specs = specs
@@ -420,23 +405,32 @@ class ClickPromptCollectorTransform(Transform):
             if isinstance(camera_keys, (list, ListConfig))
             else [camera_keys]
         )
-        if class_names is None:
-            self.class_names = list(DEFAULT_CLASS_ORDER)
-        else:
-            self.class_names = (
-                list(class_names)
-                if isinstance(class_names, (list, ListConfig))
-                else [class_names]
+        self.class_names = (
+            list(class_names)
+            if isinstance(class_names, (list, ListConfig))
+            else [class_names]
+        )
+        self.click_keys = (
+            list(click_keys)
+            if isinstance(click_keys, (list, ListConfig))
+            else [click_keys]
+        )
+        if len(self.click_keys) != len(self.class_names):
+            raise ValueError(
+                "click_keys length must match class_names length "
+                f"({len(self.click_keys)} vs {len(self.class_names)})"
             )
-
         self.rgb_key = rgb_key
-        self.cache_yaml = Path(cache_yaml) if cache_yaml is not None else None
-        self.reuse_cached_clicks = reuse_cached_clicks
         self.max_remove_distance_px = max_remove_distance_px
 
         # Cached clicks (kept in memory so we can re-write them every call
         # without reopening the GUI).
         self._cached: Optional[_ClickAnnotations] = None
+
+        merged_colors = dict(DEFAULT_CLASS_COLORS)
+        if class_colors:
+            merged_colors.update(class_colors)
+        self.class_colors = merged_colors
 
     @property
     def specs(self) -> DataSpecs:
@@ -454,95 +448,50 @@ class ClickPromptCollectorTransform(Transform):
             frame = frame.detach().cpu().numpy()
         return frame
 
-    def _load_cached_clicks(self) -> Optional[_ClickAnnotations]:
-        if self.cache_yaml is None or not self.cache_yaml.exists():
-            return None
-        try:
-            with self.cache_yaml.open("r", encoding="utf-8") as f:
-                d = yaml.safe_load(f) or {}
-            return _ClickAnnotations.from_yaml_dict(d)
-        except Exception as e:
-            print(f"[ClickCollector] failed to load cache {self.cache_yaml}: {e}")
-            return None
-
-    def _save_clicks(self, ann: _ClickAnnotations):
-        if self.cache_yaml is None:
-            return
-        self.cache_yaml.parent.mkdir(parents=True, exist_ok=True)
-        with self.cache_yaml.open("w", encoding="utf-8") as f:
-            yaml.safe_dump(ann.to_yaml_dict(), f, sort_keys=False)
-
     def _collect_clicks_via_gui(self, tensordict: TensorDict) -> _ClickAnnotations:
         frames = {
-            cam: self._extract_first_frame(tensordict, cam)
-            for cam in self.camera_keys
+            cam: self._extract_first_frame(tensordict, cam) for cam in self.camera_keys
         }
         gui = _ClickCollectorGUI(
             camera_frames=frames,
             camera_keys=self.camera_keys,
             class_names=self.class_names,
+            class_colors=self.class_colors,
             existing=None,
             max_remove_distance=self.max_remove_distance_px,
             title_suffix="left=add  shift+left=negative  right=remove  enter=confirm",
         )
         return gui.collect()
 
-    def _write_clicks_to_td(
-        self, tensordict: TensorDict, ann: _ClickAnnotations
-    ):
+    def _write_clicks_to_td(self, tensordict: TensorDict, ann: _ClickAnnotations):
         """
-        Flatten the per-class click structure into per-point tensors keyed by
-        ('clicks', camera_key, ...). Empty cameras get empty tensors.
+        Write one tensor per (camera, click_key) under obs.
+        Shape: [N, 2] LongTensor of (x, y), positives only. Empty class →
+        zero-length tensor of shape [0, 2].
         """
         for cam in self.camera_keys:
-            points: List[Tuple[int, int]] = []
-            labels: List[int] = []
-            obj_ids: List[int] = []
-            for cls_idx, cls in enumerate(self.class_names):
-                obj_id = cls_idx + 1
-                for (x, y, lbl) in ann.get(cam, cls):
-                    points.append((x, y))
-                    labels.append(lbl)
-                    obj_ids.append(obj_id)
-
-            if points:
-                pts_t = torch.tensor(points, dtype=torch.long)
-                lab_t = torch.tensor(labels, dtype=torch.long)
-                obj_t = torch.tensor(obj_ids, dtype=torch.long)
-            else:
-                pts_t = torch.zeros((0, 2), dtype=torch.long)
-                lab_t = torch.zeros((0,), dtype=torch.long)
-                obj_t = torch.zeros((0,), dtype=torch.long)
-
-            tensordict["clicks", cam, "points"] = pts_t
-            tensordict["clicks", cam, "labels"] = lab_t
-            tensordict["clicks", cam, "obj_ids"] = obj_t
+            for cls, click_key in zip(self.class_names, self.click_keys):
+                pts = ann.get(cam, cls)
+                if pts:
+                    pts_t = torch.tensor(pts, dtype=torch.long)
+                else:
+                    pts_t = torch.zeros((0, 2), dtype=torch.long)
+                tensordict["obs", cam, click_key] = pts_t.unsqueeze(
+                    0
+                )  # add batch dim for convenience
 
     # ---- main entry ----
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
-        if tensordict.shape[0] != 1:
-            raise ValueError(
-                "ClickPromptCollectorTransform expects batch_size=1"
-            )
-        reset = bool(tensordict.get("reset", False))
+        reset = bool(tensordict["obs"].get("reset", False))
         need_collect = reset or self._cached is None
 
         if need_collect:
             ann: Optional[_ClickAnnotations] = None
-            if not reset and self.reuse_cached_clicks:
-                ann = self._load_cached_clicks()
-                if ann is not None and not ann.is_empty():
-                    print(
-                        f"[ClickCollector] reusing cached clicks from {self.cache_yaml}"
-                    )
             if ann is None or ann.is_empty():
                 ann = self._collect_clicks_via_gui(tensordict)
                 if ann.is_empty():
-                    raise RuntimeError(
-                        "No clicks were collected; refusing to proceed."
-                    )
-                self._save_clicks(ann)
+                    raise RuntimeError("No clicks were collected; refusing to proceed.")
             self._cached = ann
 
         self._write_clicks_to_td(tensordict, self._cached)
@@ -553,19 +502,20 @@ class ClickPromptCollectorTransform(Transform):
 # Stage 2 — SAM3 segmenter that consumes clicks from the tensordict
 # =============================================================================
 
+
 class ClickPromptSamV3VideoSegmenterTransform(Transform):
     """
     Persistent SAM3 video tracker driven by point clicks read from the
-    tensordict. Modeled directly on PersistentSamV3VideoSegmenterTransform,
-    but with two changes:
+    tensordict. Modeled on PersistentSamV3VideoSegmenterTransform, with
+    GroundingDINO replaced by user-provided clicks.
 
-      1. No GroundingDINO — prompts come from
-         tensordict["clicks", camera_key, {"points","labels","obj_ids"}]
-         which a preceding ClickPromptCollectorTransform is expected to
-         populate.
-      2. Multiple objects per camera are registered explicitly via obj_ids;
-         each unique obj_id maps to one entry in segmenter_out_keys
-         (obj_id k+1 → segmenter_out_keys[k]).
+    Tensordict input (per camera, per click_key):
+        tensordict["obs", camera_key, click_key] → LongTensor [N, 2]  (x, y)
+
+    `click_keys[k]` provides the clicks for `segmenter_out_keys[k]`. Each
+    click_key is registered as one SAM object with obj_id k+1. If a
+    click_key has zero clicks for a camera, that class is skipped on that
+    camera and its output mask is all zeros.
 
     Lifecycle is identical to PersistentSamV3VideoSegmenterTransform:
         first call (or reset=True) → init session per camera
@@ -575,6 +525,7 @@ class ClickPromptSamV3VideoSegmenterTransform(Transform):
     def __init__(
         self,
         specs: DataSpecs,
+        click_keys: str | List[str],
         segmenter_out_keys: str | List[str],
         camera_keys: str | List[str] = "left_cam",
         rgb_key: str = "rgb",
@@ -587,8 +538,9 @@ class ClickPromptSamV3VideoSegmenterTransform(Transform):
         super().__init__()
         self._specs = specs
         self.device = torch.device(device) if isinstance(device, str) else device
-        self.out_device = (torch.device(out_device)
-                           if isinstance(out_device, str) else out_device)
+        self.out_device = (
+            torch.device(out_device) if isinstance(out_device, str) else out_device
+        )
 
         self.sam_model = Sam3TrackerVideoModel.from_pretrained(sam_model_id).to(
             self.device, dtype=sam_dtype
@@ -602,166 +554,142 @@ class ClickPromptSamV3VideoSegmenterTransform(Transform):
             if isinstance(camera_keys, (list, ListConfig))
             else [camera_keys]
         )
+        self.click_keys = (
+            list(click_keys)
+            if isinstance(click_keys, (list, ListConfig))
+            else [click_keys]
+        )
         self.segmenter_out_keys = (
             list(segmenter_out_keys)
             if isinstance(segmenter_out_keys, (list, ListConfig))
             else [segmenter_out_keys]
         )
+        if len(self.click_keys) != len(self.segmenter_out_keys):
+            raise ValueError(
+                "click_keys length must match segmenter_out_keys length "
+                f"({len(self.click_keys)} vs {len(self.segmenter_out_keys)})"
+            )
+
+        # Per camera: indices into click_keys for classes that had clicks at
+        # session init time. Used to map model output slots back to the right
+        # segmenter_out_keys when some classes had no clicks.
+        self._present_class_indices: Dict[str, List[int]] = {
+            cam: [] for cam in self.camera_keys
+        }
 
         self.rgb_key = rgb_key
         self.verbose = verbose
 
-        # Per-camera SAM video sessions. None means "needs init on next call".
+        # Per-camera SAM video sessions. None ⇒ needs init on next call.
         self.video_sessions: Dict[str, Any] = {cam: None for cam in self.camera_keys}
-        # Per-camera: list of obj_ids actually registered (in registration
-        # order). Needed to map model outputs back to segmenter_out_keys.
-        self._registered_obj_ids: Dict[str, List[int]] = {
-            cam: [] for cam in self.camera_keys
-        }
 
     @property
     def specs(self) -> DataSpecs:
         return self._specs
 
-    # ---- helpers ----
-
-    def _extract_frame(self, tensordict: TensorDict, camera_key: str):
-        """Return [H,W,C] frame as whatever type the SAM processor accepts."""
-        frame = tensordict["obs"][camera_key][self.rgb_key]
-        if hasattr(frame, "shape") and len(frame.shape) == 4:
-            frame = frame[0]
-        return frame
-
-    def _read_clicks(
-        self, tensordict: TensorDict, camera_key: str
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        try:
-            pts = tensordict["clicks", camera_key, "points"]
-            lab = tensordict["clicks", camera_key, "labels"]
-            obj = tensordict["clicks", camera_key, "obj_ids"]
-        except KeyError as e:
-            raise KeyError(
-                f"No clicks found at ('clicks', '{camera_key}', ...). "
-                "Did you run ClickPromptCollectorTransform first?"
-            ) from e
-        # Tensors are stored at batch_size=1; squeeze the leading batch dim if any.
-        if pts.ndim == 3:
-            pts = pts[0]
-            lab = lab[0]
-            obj = obj[0]
-        return pts, lab, obj
-
-    def _init_session_for_camera(
-        self,
-        camera_key: str,
-        first_frame,
-        points: torch.Tensor,   # [N, 2] long
-        labels: torch.Tensor,   # [N]    long
-        obj_ids: torch.Tensor,  # [N]    long
-    ):
-        """
-        Build a fresh streaming SAM3 video session and register one object per
-        unique obj_id using its point clicks.
-        """
-        inputs = self.sam_processor(
-            images=first_frame, device=self.device, return_tensors="pt"
-        )
-        video_session = self.sam_processor.init_video_session(
-            inference_device=self.device,
-            dtype=self.sam_model.dtype,
-        )
-
-        registered: List[int] = []
-        # Stable order: ascending obj_id, so output ordering is deterministic.
-        unique_ids = sorted({int(x.item()) for x in obj_ids})
-        for oid in unique_ids:
-            mask = (obj_ids == oid)
-            obj_points = points[mask].tolist()    # [[x, y], ...]
-            obj_labels = labels[mask].tolist()    # [1, 0, 1, ...]
-            if not obj_points:
-                continue
-            self.sam_processor.add_inputs_to_inference_session(
-                inference_session=video_session,
-                frame_idx=0,
-                obj_ids=oid,
-                input_points=[[obj_points]],    # [image][object][points]
-                input_labels=[[obj_labels]],    # [image][object][labels]
-                original_size=inputs.original_sizes[0],
-            )
-            registered.append(oid)
-
-        if not registered:
-            raise RuntimeError(
-                f"No clicks were registered for camera '{camera_key}'."
-            )
-
-        self.video_sessions[camera_key] = video_session
-        self._registered_obj_ids[camera_key] = registered
-
-    # ---- main entry ----
+    # ---- main entry: mirrors PersistentSamV3VideoSegmenterTransform.__call__ ----
 
     @torch.no_grad()
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         if tensordict.shape[0] != 1:
             raise ValueError(
-                "ClickPromptSamV3VideoSegmenterTransform expects batch_size=1"
+                "ClickPromptSamV3VideoSegmenterTransform only supports batch_size=1"
             )
 
-        reset = bool(tensordict.get("reset", False))
-        for cam in self.camera_keys:
-            session = self.video_sessions[cam]
-            need_init = reset or session is None
+        for camera_key in self.camera_keys:
+            video_session = self.video_sessions[camera_key]
+            reset = bool(tensordict["obs"].get("reset", False))
 
-            frame = self._extract_frame(tensordict, cam)
+            video_frame = tensordict["obs"][camera_key][self.rgb_key][0]
 
-            if need_init:
-                pts, lab, obj = self._read_clicks(tensordict, cam)
-                self._init_session_for_camera(cam, frame, pts, lab, obj)
-                session = self.video_sessions[cam]
-
+            # SAM Processing — called ONCE per frame, used by both
+            # add_inputs_to_inference_session (init path) and sam_model.
             inputs = self.sam_processor(
-                images=frame, device=self.device, return_tensors="pt"
+                images=video_frame, device=self.device, return_tensors="pt"
             )
-            out = self.sam_model(
-                inference_session=session,
-                frame=inputs.pixel_values[0],
+
+            if video_session is None or reset:
+                # Read clicks for each class from the tensordict. None entries
+                # are kept as a placeholder so the position-to-class mapping
+                # stays aligned with click_keys; they are filtered out before
+                # the SAM call (just like None boxes in the reference impl).
+                init_points: List[Optional[List[List[int]]]] = []
+                for click_key in self.click_keys:
+                    pts = tensordict["obs", camera_key, click_key]
+                    if pts.ndim == 3:
+                        pts = pts[0]
+                    if pts.numel() == 0:
+                        init_points.append(None)
+                    else:
+                        init_points.append(pts.to(torch.long).tolist())
+
+                # Remember which click_key positions had clicks, so we can map
+                # model outputs back to the correct segmenter_out_keys and
+                # write zero masks for any class that had no clicks.
+                self._present_class_indices[camera_key] = [
+                    i for i, p in enumerate(init_points) if p is not None
+                ]
+
+                # Filter out empty classes. Mirrors the reference transform's
+                # `[box.tolist() for box in init_boxes if box is not None]`.
+                valid_points = [p for p in init_points if p is not None]
+                input_points = [valid_points]  # [image][object][points][2]
+                input_labels = [[[1] * len(p) for p in valid_points]]
+
+                if valid_points:
+                    # init samv3 session
+                    video_session = self.sam_processor.init_video_session(
+                        inference_device=self.device,
+                        dtype=self.sam_model.dtype,
+                    )
+                    self.video_sessions[camera_key] = video_session
+
+                    self.sam_processor.add_inputs_to_inference_session(
+                        inference_session=video_session,
+                        frame_idx=0,
+                        obj_ids=list(range(1, len(valid_points) + 1)),
+                        input_points=input_points,
+                        input_labels=input_labels,
+                        original_size=inputs.original_sizes[0],
+                    )
+
+            # If no clicks were ever provided for this camera, emit zero masks
+            # for every output key and move on.
+            if self.video_sessions[camera_key] is None:
+                H, W = video_frame.shape[0], video_frame.shape[1]
+                for segmenter_out_key in self.segmenter_out_keys:
+                    tensordict["obs", camera_key, segmenter_out_key] = torch.zeros(
+                        (H, W), dtype=torch.bool, device=self.out_device
+                    )
+                continue
+
+            sam3_tracker_video_output = self.sam_model(
+                inference_session=video_session, frame=inputs.pixel_values[0]
             )
-            masks_per_obj = self.sam_processor.post_process_masks(
-                [out.pred_masks],
+            video_res_masks_ = self.sam_processor.post_process_masks(
+                [sam3_tracker_video_output.pred_masks],
                 original_sizes=inputs.original_sizes,
                 binarize=True,
-            )[0]  # [num_obj, H, W] or [num_obj, 1, H, W]
-            if masks_per_obj.ndim == 4:
-                masks_per_obj = masks_per_obj[:, 0]
+            )
+            video_res_masks = video_res_masks_[0]
 
-            # Map model output position → segmenter_out_keys
-            # masks_per_obj[i] corresponds to self._registered_obj_ids[cam][i].
-            # obj_id `k+1` → segmenter_out_keys[k]. Missing obj_ids → zero mask.
-            H, W = self._frame_hw(frame)
-            registered = self._registered_obj_ids[cam]
-            id_to_mask = {oid: masks_per_obj[i] for i, oid in enumerate(registered)}
-
-            for k, out_key in enumerate(self.segmenter_out_keys):
-                desired_oid = k + 1
-                if desired_oid in id_to_mask:
-                    m = id_to_mask[desired_oid] > 0
+            # Map model outputs (indexed by position among *present* classes)
+            # back to segmenter_out_keys. Absent classes get a zero mask.
+            present = self._present_class_indices[camera_key]
+            H, W = video_frame.shape[0], video_frame.shape[1]
+            present_to_model_idx = {cls_idx: i for i, cls_idx in enumerate(present)}
+            for k, segmenter_out_key in enumerate(self.segmenter_out_keys):
+                if k in present_to_model_idx:
+                    mask = video_res_masks[present_to_model_idx[k]]
                 else:
-                    m = torch.zeros((H, W), dtype=torch.bool, device=self.device)
-                tensordict["obs", cam, out_key] = m.to(self.out_device)
+                    mask = torch.zeros((H, W), dtype=torch.bool, device=self.device)
+                tensordict["obs", camera_key, segmenter_out_key] = mask.to(
+                    self.out_device
+                )
 
                 if self.verbose:
                     print(
-                        f"[ClickSegmenter] {cam}/{out_key} (obj_id={desired_oid}): "
-                        f"{int(m.sum())} mask pixels"
+                        f"[ClickSegmenter] {camera_key}/{segmenter_out_key}: "
+                        f"{int(mask.sum())} mask pixels"
                     )
-
         return tensordict
-
-    @staticmethod
-    def _frame_hw(frame) -> Tuple[int, int]:
-        if isinstance(frame, torch.Tensor):
-            shape = tuple(frame.shape)
-        else:
-            shape = np.asarray(frame).shape
-        # [H, W, C]
-        return int(shape[0]), int(shape[1])
