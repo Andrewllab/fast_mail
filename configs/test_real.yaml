@@ -8,9 +8,10 @@ defaults:
   # Render cameras after preprocessing but before normalization
   # - transforms@data.gpu_batch_transforms.t9_render_cameras: render_cameras
   # - transforms@data.gpu_batch_transforms.t9_render_pcd: render_pointcloud
-  - /transforms@data.gpu_batch_transforms.t99_render_pcd: pakt_render_pointcloud
-  - /goals@data.preprepreprocess.t01_target_tool_from_foldername: add_target_tool_from_foldername_real
-  - /transforms@data.preprepreprocess.t02_grounding_samv3: grounding_samv3_segmenter
+  # - /transforms@data.gpu_batch_transforms.t99_render_pcd: pakt_render_pointcloud
+  # - /goals@data.preprepreprocess.t01_target_tool_from_foldername: add_target_tool_from_foldername_real
+  - /transforms@data.preprepreprocess.t02-00_click_prompt_collector: click_prompt_collector
+  - /transforms@data.preprepreprocess.t02_01_click_prompt_samv3: clicked_samv3_tracker
 #  - /transforms@data.preprepreprocess.t02_samv3: null
   #- /transforms@data.preprepreprocess.t05_target_to_featured_pointcloud: to_masked_featured_pointcloud
   #- /transforms@data.preprepreprocess.t06_tool_to_featured_pointcloud: to_tracked_featured_pointcloud
