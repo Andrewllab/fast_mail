@@ -4,7 +4,7 @@ from typing import Mapping
 import numpy as np
 from tensordict import TensorDict
 
-from environments.specs import DataSpecs
+from environments.specs import DataSpecs, TextSpec
 from transforms.base_transform import Transform
 
 
@@ -16,7 +16,14 @@ class GoalTextFromFolderName(Transform):
         current_task: str | None = None,
         output_key: str = "description",
     ):
-        self._specs = specs
+
+        goal_specs = (
+            dict(specs.goal) if specs.goal else {}
+        )  # copy obs specs for local modification
+        goal_specs[output_key] = TextSpec()
+
+        self._specs = specs.replace(goal=goal_specs)
+
         self.goal_mapping = dict(goal_mapping)
         self.current_task = current_task
         self.output_key = output_key

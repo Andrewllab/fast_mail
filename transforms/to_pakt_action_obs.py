@@ -59,9 +59,7 @@ class ToPaktActionObsTransform(ReversibleTransform):
         # ignore action dims related to static mobile platform
         action = ActionSpec(action_dim=3, time=self.window_len)
 
-        goal_specs = {"text": ObsSpec(elem_shape=(), time=None)}
-
-        self._specs = self._specs.replace(obs=obs_specs, action=action, goal=goal_specs)
+        self._specs = self._specs.replace(obs=obs_specs, action=action)
 
     @property
     def specs(self) -> DataSpecs:

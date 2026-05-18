@@ -13,9 +13,10 @@ defaults:
   - /transforms@data.preprepreprocess.t99_cleanup: cleanup
 
   # Last little part that connects everyting
+  - /transforms@data.prepreprocess.t01_invert_gripper_actions: invert_gripper_actions
   - /transforms@data.prepreprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
   - /transforms@data.prepreprocess.t03_to_sliding_window_action: to_sliding_window_action
-  - /transforms@data.prepreprocess.t99_cleanup: cleanup
+  # - /transforms@data.prepreprocess.t99_cleanup: cleanup
 
   - /transforms@data.preprocess.t00_no_op: noop
 
@@ -44,7 +45,7 @@ data:
       drop_streams: [front_left_cam/right, front_right_cam/right]
 
     t99_cleanup:
-      # keep_stream_types: []  # keep no stream types, i.e. remove all
+      keep_stream_types: []  # keep no stream types, i.e. remove all
       drop_keys: [front_left_cam, front_right_cam, gripper_cam]
       # drop_keys: 
       #   - front_left_cam/target_object_clicks
