@@ -1,0 +1,12 @@
+defaults:
+  - robocasa
+
+task: ???
+name: ${data.task}_20250920
+
+dataset:
+  root_dir: ${paths.data_dir}/robocasa/single_stage
+  subfolders: ${data.task}
+
+env:
+  env_name: ${data.task}
