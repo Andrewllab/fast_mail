@@ -45,7 +45,7 @@ data:
       drop_streams: [front_left_cam/right, front_right_cam/right]
 
     t99_cleanup:
-      keep_stream_types: []  # keep no stream types, i.e. remove all
+      keep_stream_types: null  # keep no stream types, i.e. remove all
       drop_keys: [front_left_cam, front_right_cam, gripper_cam]
       # drop_keys: 
       #   - front_left_cam/target_object_clicks
