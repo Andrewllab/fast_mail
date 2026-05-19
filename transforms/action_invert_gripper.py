@@ -6,12 +6,12 @@ import torch
 from tensordict import TensorDict
 
 from environments.specs import DataSpecs
-from transforms.base_transform import Transform, TransformConstraint
+from transforms.base_transform import ReversibleTransform, TransformConstraint
 
 log = logging.getLogger(__name__)
 
 
-class InvertGripperActions(Transform):
+class InvertGripperActions(ReversibleTransform):
     """Inverts gripper actions that represent a target width for the gripper.
 
     Args:
