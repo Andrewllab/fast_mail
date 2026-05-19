@@ -1,7 +1,6 @@
 # usage: python test.py -cn test_robocasa
 
 defaults:
-  - data: robocasa  # overwrite env config from training run
   # log test results to new wandb run, since test parameters affect results
   - logger: wandb
   - python_logging: default
@@ -37,7 +36,7 @@ data:
   env:
     num_episodes: 50  # 150 episodes in total across 3 checkpoints
 
-    env_name: ??? # REPLACE with desired environment name
+    env_name: ??? # REPLACE with desired environment name or leave as is to use the same environment as in training
     num_envs: ${min:4, ${platform.num_workers}}
     parallel: null  # automatically use parallel if num_envs > 1
     action_horizon: 20  # modify if desired

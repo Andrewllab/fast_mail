@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import numpy as np
-from omegaconf import DictConfig, OmegaConf, open_dict
+from omegaconf import MISSING, DictConfig, OmegaConf, open_dict
 from packaging.version import Version
 
 log = logging.getLogger(__name__)
@@ -141,10 +141,11 @@ def merge_data_configs(cfg: DictConfig, other: DictConfig) -> DictConfig:
             continue
 
         subcfg = other[key]
-        subkeys = flatten_keys(subcfg)
 
-        if "_target_" in subkeys or key not in cfg:
-            # If the other subcfg contains a key anywhere called "_target_", then
+        if (
+            "_target_" in subcfg and subcfg["_target_"] is not MISSING
+        ) or key not in cfg:
+            # If the other subcfg contains a key called "_target_", then
             # this entire subconfig has been overridden. Replace value cfg with
             # value in other
             cfg[key] = subcfg
@@ -152,7 +153,8 @@ def merge_data_configs(cfg: DictConfig, other: DictConfig) -> DictConfig:
         else:
             # Only specific hyperparameters have been overwritten, so use the
             # standard merge algorithm. This keeps anything in cfg that isn't
-            # explicitly overwritten
+            # explicitly overwritten.
+            # Note: a value of MISSING never overwrites an existing value.
             cfg[key] = OmegaConf.merge(cfg[key], subcfg)
 
     transform_keys = [
@@ -166,7 +168,6 @@ def merge_data_configs(cfg: DictConfig, other: DictConfig) -> DictConfig:
             continue
 
         subcfg = other[key]
-        subkeys = flatten_keys(subcfg)
 
         # # TODO: better algorithm for merging transform configs
         # # TODO: is there any way to detect if transforms should be replaced or merged?
