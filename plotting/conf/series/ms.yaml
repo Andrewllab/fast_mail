@@ -1,0 +1,9 @@
+# @package _global_
+
+cfg_filters:
+  data.env.num_episodes: 100
+
+n_rollouts: 100
+
+env_name_key: data.env.env_id
+expected_envs: [PokeCube-v1,PushCube-v1,PullCube-v1,RollBall-v1]

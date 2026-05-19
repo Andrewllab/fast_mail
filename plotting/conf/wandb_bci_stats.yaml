@@ -1,9 +1,12 @@
 defaults:
+  - paths: default
   - _self_
   - series: main_roca_pp
   # enable color logging
   - override hydra/hydra_logging: colorlog
   - override hydra/job_logging: colorlog
+
+seed: 42
 
 entity: alr-3d-sim2real
 project: 3d-sim2real
@@ -15,16 +18,16 @@ job_type: test_sim
 
 expected_seeds: 3
 
-n_iterations: 5000
+n_iterations: 10000
 n_rollouts: 50
-n_seeds: null
+n_seeds: 3
 
 hydra:
   # output directory, generated dynamically on each run
   run:
-    dir: stats/${now:%Y-%m-%d_%H-%M-%S}
+    dir: ${paths.stats_dir}/${now:%Y-%m-%d_%H-%M-%S}
   sweep:
-    dir: stats/${now:%Y-%m-%d_%H-%M-%S}
+    dir: ${paths.stats_dir}/${now:%Y-%m-%d_%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
   job:
     config:

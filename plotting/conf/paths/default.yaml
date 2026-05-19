@@ -1,0 +1,6 @@
+# this environment variable is set by rootutils.setup_root in every script
+root_dir: ${oc.env:PROJECT_ROOT}
+
+plotting_dir: ${paths.root_dir}/plotting
+stats_dir: ${paths.plotting_dir}/stats
+tables_dir: ${paths.plotting_dir}/tables

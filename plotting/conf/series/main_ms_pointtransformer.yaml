@@ -3,6 +3,6 @@
 defaults:
   - ms
 
-tags: main_ms_dp3
+tags: main_ms_pointtransformer
 
 group_by_config_keys: agent.obs_encoder.t10_tokenizer.spatial_encoder._partial_

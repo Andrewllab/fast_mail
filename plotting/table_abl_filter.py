@@ -92,10 +92,10 @@ def main(cfg: DictConfig) -> None:
 
         table_data.append(
             {
-                "Environment": env,
-                "Baseline Success (%)": base_val * 100,
-                "Rel. Success (w/ Max Jitter)": rel_jitter,
-                "Rel. Success (w/o Fourier)": rel_no_fourier,
+                "": env,
+                r"PointPatch w/ FF (% success)": base_val * 100,
+                "+sigma=0.05 (relative)": rel_jitter,
+                "-FF (relative)": rel_no_fourier,
             }
         )
 
@@ -103,7 +103,7 @@ def main(cfg: DictConfig) -> None:
     df = pd.DataFrame(table_data)
 
     # Sort by the second column (Relative Success Max Jitter)
-    df = df.sort_values(by="Rel. Success (w/ Max Jitter)", ascending=False)
+    df = df.sort_values(by="+sigma=0.05 (relative)", ascending=True)
 
     # Format for clean display
     print(df.to_string(index=False, float_format=lambda x: "{:.3f}".format(x)))
@@ -113,7 +113,7 @@ def main(cfg: DictConfig) -> None:
     df.to_markdown(
         output_dir / "abl_filter.md",
         index=False,
-        floatfmt=(None, ".1f", ".3f", ".3f"),
+        floatfmt=(None, ".1f", ".2f", ".2f"),
     )
 
 
