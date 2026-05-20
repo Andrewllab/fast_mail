@@ -13,7 +13,7 @@ defaults:
   - /transforms@data.preprepreprocess.t99_cleanup: cleanup
 
   # Last little part that connects everyting
-  - /transforms@data.prepreprocess.t01_invert_gripper_actions: invert_gripper_actions
+  - /transforms@data.prepreprocess.t01-2_invert_gripper_actions: invert_gripper_actions
   - /transforms@data.prepreprocess.t02_ee_pose_to_five_points: absolute_ee_pose_to_five_points
   - /transforms@data.prepreprocess.t03_to_sliding_window_action: to_sliding_window_action
   # - /transforms@data.prepreprocess.t99_cleanup: cleanup
@@ -62,7 +62,7 @@ data:
     root_dir: ${paths.prepreprocessed_dir}/real/${data.name}
     overwrite: False
 
-    t01_action_type:
+    t01-1_action_type:
       _target_: transforms.action_switch_type.SwitchActionType
       _partial_: True
       obs_key: next_target_ee_pose

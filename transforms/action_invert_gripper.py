@@ -31,11 +31,12 @@ class InvertGripperActions(ReversibleTransform):
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         gripper_action = tensordict["action"][..., -1]
 
-        tensordict["action"][..., -1] = -gripper_action
+        if "action" in tensordict:
+            tensordict["action"][..., -1] = -gripper_action
 
-        if "_action" in tensordict:
-            prev_action = tensordict["_action"][..., -1]
-            tensordict["_action"][..., -1] = -prev_action
+        if "_action" in tensordict["obs"]:
+            prev_action = tensordict["obs"]["_action"][..., -1]
+            tensordict["obs"]["_action"][..., -1] = -prev_action
 
         return tensordict
 
