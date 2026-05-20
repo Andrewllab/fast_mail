@@ -6,7 +6,8 @@ defaults:
   - _self_
 
 platform:
-  num_workers: 16  # our dataset is memory-mapped onto job-local storage, so we don't need many workers
+  # Note: RAM usage is proportional to number of works times prefetch factor, so we limit both
+  num_workers: 4  # our dataset is memory-mapped onto job-local storage, so we don't need many workers
   prefetch_factor: 1  # reduce memory usage for on-disk datasets (especially important during batch size finding)
   batch_size: 512  # increase the nominal batch size, since we have more memory
 
