@@ -6,7 +6,7 @@ defaults:
   - callbacks:
     - model_checkpoint
     - model_summary
-    - batch_size_finder
+    # - batch_size_finder  # disabled until we sort out unpickling with weights_only=True
     # - pushover_notifier
   - logger:
     - wandb

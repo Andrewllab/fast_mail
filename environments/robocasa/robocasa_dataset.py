@@ -29,6 +29,13 @@ log = logging.getLogger(__name__)
 
 
 class RoboCasaDataset(CustomHdf5Dataset):
+
+    CAM_NAMES = [
+        "robot0_agentview_left",
+        "robot0_agentview_right",
+        "robot0_eye_in_hand",
+    ]
+
     def __init__(
         self,
         root_dir: os.PathLike,
@@ -137,44 +144,32 @@ class RoboCasaDataset(CustomHdf5Dataset):
         )
 
         camera_poses = traj["camera_params"]["dynamic"]
+        obs = {}
+        for cam_name in self.CAM_NAMES:
+            # camera streams
+            obs[cam_name] = {
+                # shape: (T, H, W, 3), uint8
+                "rgb": torch.from_numpy(traj["obs"][f"{cam_name}_image"][...]),
+                # shape: (T, H, W), float32
+                "depth": torch.from_numpy(traj["obs"][f"{cam_name}_depth"][..., 0]),
+            }
+            obs[f"{cam_name}_transform"] = torch.from_numpy(
+                # shape: (T, 4, 4), float32
+                camera_poses[cam_name]["extrinsics"][...]
+            )
+
+        obs.update(
+            {
+                "joint_pos": joint_pos,  # shape: (T, 7), float32
+                "robot_state": robot_state,  # shape: (T, 9), float32
+                "ee_pose": ee_pose,  # shape: (T, 7), float32
+            }
+        )
 
         # TODO: does it use less memory if we explicitly convert to torch tensors first?
         td = TensorDict(
             {
-                "obs": {
-                    # cameras
-                    "left_cam": {
-                        # shape: (T, H, W, 3), uint8
-                        "rgb": traj["obs"]["robot0_agentview_left_image"][...],
-                        # shape: (T, H, W), float32
-                        "depth": traj["obs"]["robot0_agentview_left_depth"][..., 0],
-                    },
-                    "right_cam": {
-                        # shape: (T, H, W, 3), uint8
-                        "rgb": traj["obs"]["robot0_agentview_right_image"][...],
-                        # shape: (T, H, W), float32
-                        "depth": traj["obs"]["robot0_agentview_right_depth"][..., 0],
-                    },
-                    "gripper_cam": {
-                        # shape: (T, H, W, 3), uint8
-                        "rgb": traj["obs"]["robot0_eye_in_hand_image"][...],
-                        # shape: (T, H, W), float32
-                        "depth": traj["obs"]["robot0_eye_in_hand_depth"][..., 0],
-                    },
-                    # camera poses (shape: (T, 4, 4))
-                    "left_cam_pose": camera_poses["robot0_agentview_left"][
-                        "extrinsics"
-                    ][...],
-                    "right_cam_pose": camera_poses["robot0_agentview_right"][
-                        "extrinsics"
-                    ][...],
-                    "gripper_cam_pose": camera_poses["robot0_eye_in_hand"][
-                        "extrinsics"
-                    ][...],
-                    "joint_pos": joint_pos,  # shape: (T, 7), float32
-                    "robot_state": robot_state,  # shape: (T, 9), float32
-                    "ee_pose": ee_pose,  # shape: (T, 7), float32
-                },
+                "obs": obs,
                 "action": action,
                 "ref_action": action.copy(),
                 "goal": {
@@ -194,37 +189,30 @@ class RoboCasaDataset(CustomHdf5Dataset):
     def _load_specs(self) -> None:
         _, _, traj = self.trajs[0]
 
+        camera_poses = traj["camera_params"]["dynamic"]
         obs_specs = {}
-
-        cam_names = ["left_cam", "right_cam", "gripper_cam"]
-        raw_keys = [
-            "robot0_agentview_left",
-            "robot0_agentview_right",
-            "robot0_eye_in_hand",
-        ]
-
-        for key, cam_name in zip(raw_keys, cam_names):
+        for cam_name in self.CAM_NAMES:
             # !!! IMPORTANT: "static" cameras are attached to the robot platform which sometimes moves caused by the robot-arm movements, so they move as well !!!
 
-            rgb = traj["obs"][f"{key}_image"]
+            rgb = traj["obs"][f"{cam_name}_image"]
             match rgb.shape:
                 case (T, height, width, 3):
                     pass
                 case _:
                     raise ValueError(
-                        f"Expected left camera RGB images to have shape (T, H, W, 3), got {rgb.shape}"
+                        f"Expected {cam_name} RGB images to have shape (T, H, W, 3), got {rgb.shape}"
                     )
 
-            depth = traj["obs"][f"{key}_depth"]
+            depth = traj["obs"][f"{cam_name}_depth"]
             match depth.shape:
                 case (t, h, w, 1) if t == T and h == height and w == width:
                     pass
                 case _:
                     raise ValueError(
-                        f"Expected left camera depth images to have shape ({T}, {height}, {width}, 1), got {depth.shape}"
+                        f"Expected {cam_name} depth images to have shape ({T}, {height}, {width}, 1), got {depth.shape}"
                     )
 
-            intrinsics = traj["camera_params"]["dynamic"][key]["intrinsics"]
+            intrinsics = camera_poses[cam_name]["intrinsics"]
             # verify that intrinsics never change over time
             assert intrinsics.shape == (1, 3, 3)
 
@@ -237,20 +225,20 @@ class RoboCasaDataset(CustomHdf5Dataset):
                 intrinsics=PinholeCameraIntrinsic.from_intrinsic_matrix(
                     intrinsics[0], height=height, width=width
                 ),
-                dynamic_pose_obs_key=f"{cam_name}_pose",
+                dynamic_pose_obs_key=f"{cam_name}_transform",
                 extrinsics=torch.eye(4, dtype=torch.float32),
             )
             obs_specs[cam_name] = cam_spec
 
-            cam_pose = traj["camera_params"]["dynamic"][key]["extrinsics"]
+            cam_pose = camera_poses[cam_name]["extrinsics"]
             match cam_pose.shape:
                 case (t, 4, 4) if t == T:
                     pass
                 case _:
                     raise ValueError(
-                        f"Expected {cam_name}_pose to have shape ({T}, 4, 4), got {cam_pose.shape}"
+                        f"Expected {cam_name} extrinsics to have shape ({T}, 4, 4), got {cam_pose.shape}"
                     )
-            obs_specs[f"{cam_name}_pose"] = ObsSpec(
+            obs_specs[f"{cam_name}_transform"] = ObsSpec(
                 elem_shape=(4, 4), time=self.obs_seq_len
             )
 
