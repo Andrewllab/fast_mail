@@ -53,6 +53,9 @@ class BesoAgent(BaseBesoAgent):
         exclude_norms_from_weight_decay: bool = True,  # <-- new
         # keypoint loss dropout
         keypoint_loss_dropout: float = 0.0,  # <-- new
+        # loss scaling (not implemented yet)
+        keypoint_loss_scaling: float = 1.0,  # <-- new
+        action_loss_scaling: float = 1.0,  # <-- new
     ):
         super().__init__(
             noise_model=noise_model,
@@ -77,6 +80,8 @@ class BesoAgent(BaseBesoAgent):
         )
         self.num_timesteps = specs.action_seq_len
         self.keypoint_loss_dropout = keypoint_loss_dropout
+        self.keypoint_loss_scaling = keypoint_loss_scaling
+        self.action_loss_scaling = action_loss_scaling
 
     def training_step(self, batch: TensorDict, batch_idx: int) -> Tensor:
         """
@@ -99,10 +104,22 @@ class BesoAgent(BaseBesoAgent):
         c_skip, c_out, c_in, c_noise = self.get_preconditioning_factors(sigma, action)
         model_output = self.model(batch, noised_input * c_in, c_noise)
         target = (action - c_skip * noised_input) / c_out
-        if model_output.is_nested:
-            loss = self.dropout_keypoint_loss_nested(model_output, target, batch)
+
+        if self.keypoint_loss_dropout > 0.0:
+            if model_output.is_nested:
+                loss = self.dropout_keypoint_loss_nested(model_output, target, batch)
+            else:
+                loss = self.dropout_keypoint_loss(model_output, target, batch)
+        elif self.keypoint_loss_scaling != 1.0 or self.action_loss_scaling != 1.0:
+            if model_output.is_nested:
+                loss = self.scaling_keypoint_loss_nested(model_output, target, batch)
+            else:
+                loss = self.scaling_keypoint_loss(model_output, target, batch)
         else:
-            loss = self.dropout_keypoint_loss(model_output, target, batch)
+            if model_output.is_nested:
+                loss = F.mse_loss(model_output.values(), target.values())
+            else:
+                loss = F.mse_loss(model_output, target)
 
         # log these values per step and per epoch
         log_dict = {
@@ -198,6 +215,50 @@ class BesoAgent(BaseBesoAgent):
         per_sample_loss = (sq_err * point_mask_f).sum(dim=1) / counts  # (B,)
 
         return per_sample_loss.mean()
+
+    def scaling_keypoint_loss(
+        self, model_output: Tensor, target: Tensor, batch: TensorDict
+    ) -> Tensor:
+        if self.keypoint_loss_scaling == 1.0 and self.action_loss_scaling == 1.0:
+            return F.mse_loss(model_output, target)
+
+        action_mask = batch["obs"]["action_points"]["gripper_ids"] != 0  # (B, N)
+        keypoint_mask = ~action_mask  # (B, N)
+
+        action_loss = (
+            F.mse_loss(model_output[action_mask], target[action_mask])
+            * self.action_loss_scaling
+        )
+        keypoint_loss = (
+            F.mse_loss(model_output[keypoint_mask], target[keypoint_mask])
+            * self.keypoint_loss_scaling
+        )
+
+        return action_loss + keypoint_loss
+
+    def scaling_keypoint_loss_nested(
+        self, model_output: Tensor, target: Tensor, batch: TensorDict
+    ) -> Tensor:
+        if self.keypoint_loss_scaling == 1.0 and self.action_loss_scaling == 1.0:
+            return F.mse_loss(model_output.values(), target.values())
+
+        action_mask = (
+            batch["obs"]["action_points"]["gripper_ids"] != 0
+        ).values()  # nested (B, N_i)
+        keypoint_mask = ~action_mask  # nested (B, N_i)
+
+        action_loss = (
+            F.mse_loss(model_output.values()[action_mask], target.values()[action_mask])
+            * self.action_loss_scaling
+        )
+        keypoint_loss = (
+            F.mse_loss(
+                model_output.values()[keypoint_mask], target.values()[keypoint_mask]
+            )
+            * self.keypoint_loss_scaling
+        )
+
+        return action_loss + keypoint_loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         # values logged here get averaged over an epoch instead of over a step
