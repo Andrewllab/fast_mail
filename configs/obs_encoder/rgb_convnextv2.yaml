@@ -16,6 +16,9 @@ agent:
         pretrained: False
       shared_encoder: False
 
+data:
+  batch_size: ${floor_div:${platform.batch_size},4}  # 1/4 of typical batch size
+
 logger:
   wandb:
     tags: ["rgb", "convnextv2"]

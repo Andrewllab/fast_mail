@@ -247,6 +247,7 @@ def make(
         absolute_actions=absolute_actions,
     )
 
+    num_envs = num_envs or 1  # default to 1 if num_envs is None or 0
     if parallel is None:
         parallel = num_envs > 1
 

@@ -71,13 +71,18 @@ class ActionChunkWrapper(VectorWrapper, gym.utils.RecordConstructorArgs):
                 }
             )
 
+        self.single_observation_space = batch_space(
+            env.single_observation_space, n=self.obs_seq_len
+        )
         self.observation_space = batch_space(
-            batch_space(env.single_observation_space, n=self.obs_seq_len),
-            n=self.unwrapped.num_envs,
+            self.single_observation_space, n=self.unwrapped.num_envs
+        )
+
+        self.single_action_space = batch_space(
+            env.single_action_space, n=self.action_horizon or 1
         )
         self.action_space = batch_space(
-            batch_space(env.single_action_space, n=self.action_horizon or 1),
-            n=self.unwrapped.num_envs,
+            self.single_action_space, n=self.unwrapped.num_envs
         )
 
     def reset(

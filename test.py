@@ -147,7 +147,6 @@ def test(cfg: DictConfig) -> None:
         # this is adapted from LightningModule.load_from_checkpoint but we don't
         # want to re-instantiate the model
         checkpoint = torch.load(checkpoint_path, weights_only=False)
-        agent.on_load_checkpoint(checkpoint)
         agent.load_state_dict(checkpoint["state_dict"], strict=agent.strict_loading)
         agent.checkpoint_metadata = {
             "run_name": run_name,

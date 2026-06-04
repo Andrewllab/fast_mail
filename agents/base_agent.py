@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Mapping
 
 import lightning as L
 import torch
@@ -233,9 +233,6 @@ class BaseAgent(L.LightningModule):
                     del state_dict[key]
 
     def on_load_checkpoint(self, checkpoint: dict[str, Any]) -> None:
-        state_dict = checkpoint["state_dict"]
-
-        patch_legacy_state_dict(state_dict, self._obs_encoder)
 
         if self.ema_decay > 0:
             # we have instantiated the model, but we only have weights for the
@@ -247,6 +244,12 @@ class BaseAgent(L.LightningModule):
 
             self.configure_optimizers()  # instantiate ema models
 
+    def load_state_dict(
+        self, state_dict: Mapping[str, Any], strict: bool = True, assign: bool = False
+    ):
+        patch_legacy_state_dict(state_dict, self._obs_encoder)
+
+        if self.ema_decay > 0:
             # duplicate all state dict entries for ema_model and ema_obs_encoder
             # with entries for model and obs_encoder
             for key in list(state_dict.keys()):
@@ -258,6 +261,8 @@ class BaseAgent(L.LightningModule):
                 elif key.startswith("_ema_obs_encoder.module"):
                     new_key = key.replace("_ema_obs_encoder.module.", "_obs_encoder.")
                     state_dict[new_key] = state_dict[key]
+
+        return super().load_state_dict(state_dict, strict, assign)
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         # values logged here get averaged over an epoch instead of over a step

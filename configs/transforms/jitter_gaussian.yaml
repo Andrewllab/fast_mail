@@ -1,0 +1,7 @@
+name: gaussian jitter
+_target_: transforms.jitter.RandomTranslationalJitter
+_partial_: True
+sigma: ???
+distribution: normal
+random_sigma: False
+clamp_depth_nonnegative: False

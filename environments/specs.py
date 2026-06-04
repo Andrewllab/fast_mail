@@ -413,14 +413,14 @@ class DataSpecs:
     ):
         self._obs = frozendict(obs)
         self._action = action
-        self._goal = frozendict(goal) if goal is not None else None
+        self._goal = frozendict(goal if goal is not None else {})
         self._lengths = list(traj_lengths) if traj_lengths is not None else []
 
     def __repr__(self) -> str:
         args = (
             dict(self._obs),
             self._action,
-            dict(self._goal) if self._goal is not None else None,
+            dict(self._goal),
             self._lengths,
         )
         return "DataSpecs(obs={}, action={}, goal={}, traj_lengths={})".format(*args)
@@ -476,7 +476,7 @@ class DataSpecs:
         return self._action
 
     @property
-    def goal(self) -> frozendict[str, Spec] | None:
+    def goal(self) -> frozendict[str, Spec]:
         return self._goal
 
     @property
@@ -530,9 +530,6 @@ class DataSpecs:
 
     @property
     def goal_embed_seq_len(self) -> int | None:
-        if self.goal is None:
-            return None
-
         try:
             return self.goal["embed"].shape[0]
         except KeyError:
@@ -540,9 +537,6 @@ class DataSpecs:
 
     @property
     def goal_embed_dim(self) -> int | None:
-        if self.goal is None:
-            return None
-
         try:
             return self.goal["embed"].shape[-1]
         except KeyError:

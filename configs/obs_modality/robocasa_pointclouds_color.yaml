@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - robocasa_pointclouds
+
+data:
+  preprocess:
+    t15_to_pcd:
+      color: True
+
+# metadata
+modality: color_pointcloud

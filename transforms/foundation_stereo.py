@@ -20,6 +20,8 @@ class FoundationStereo(Transform):
         self,
         specs: DataSpecs,
         engine_path: str,
+        input_stream_names: Sequence[str] = ("left", "right"),
+        output_stream_name: str = "depth",
         cam_keys: str | Sequence[str] | None = None,
         remove_invisible: bool = True,
         preprocess_device: DeviceType = "cuda",
@@ -29,6 +31,8 @@ class FoundationStereo(Transform):
         self.remove_invisible = remove_invisible
         self.preprocess_device = preprocess_device
         self.preprocess_batch_size = preprocess_batch_size
+        self.input_stream_names = left_name, right_name = input_stream_names
+        self.output_stream_name = output_stream_name
 
         # Load tensorRT engine
         self.engine_path = engine_path
@@ -41,8 +45,8 @@ class FoundationStereo(Transform):
             key: spec
             for key, spec in specs.obs.items()
             if isinstance(spec, CameraSpec)
-            and "left" in spec.streams
-            and "right" in spec.streams
+            and left_name in spec.streams
+            and right_name in spec.streams
             and spec.baseline is not None
             and (cam_keys is None or key in cam_keys)
         }
@@ -63,27 +67,14 @@ class FoundationStereo(Transform):
         obs_specs = dict(specs.obs)  # copy obs specs for local modification
         shapes = []
         for key, spec in self._input_specs.items():
-            left = spec.streams["left"]
-            right = spec.streams["right"]
+            left = spec.streams[left_name]
+            right = spec.streams[right_name]
 
             if left.shape != right.shape:
                 raise ValueError(
                     f"Left and right images must have the same shape, but got {left.shape} and {right.shape}"
                 )
             shapes.append(left.height_width)
-
-            depth_names = [
-                name
-                for name, stream in spec.streams.items()
-                if isinstance(stream, DepthStream)
-            ]
-            # we assume one camera can have at most one depth stream
-            if len(depth_names) > 1:
-                raise ValueError("A camera spec cannot have multiple depth streams.")
-            elif len(depth_names) == 1:
-                depth_name = depth_names[0]
-            else:
-                depth_name = "depth"
 
             streams = dict(spec.streams)  # copy streams for local modification
             depth_stream = DepthStream(
@@ -93,7 +84,7 @@ class FoundationStereo(Transform):
                 intrinsics=left.intrinsics,  # intrinsics of the virtual "depth camera" are the same as the left camera
             )
             # update stream with resized shape and modified camera intrinsics
-            streams[depth_name] = depth_stream
+            streams[self.output_stream_name] = depth_stream
 
             obs_specs[key] = dataclasses.replace(spec, streams=streams)
         self._output_specs = specs.replace(obs=obs_specs)
@@ -155,19 +146,27 @@ class FoundationStereo(Transform):
 
     def __setstate__(self, state):
         """Custom unpickle method - restore state without engine."""
+        # BackCompat
+        if "input_stream_names" not in state:
+            state["input_stream_names"] = ("left", "right")
+
+        if "output_stream_name" not in state:
+            state["output_stream_name"] = "depth"
+
         self.__dict__.update(state)
         self._engine, self._context = None, None
 
     def __call__(self, tensordict: TensorDict) -> TensorDict:
         default_dtype = torch.get_default_dtype()
+        left_name, right_name = self.input_stream_names
 
         lefts = []
         rights = []
         for key, spec in self._input_specs.items():
-            left_stream = spec.streams["left"]
+            left_stream = spec.streams[left_name]
 
-            left = tensordict["obs", key, "left"]
-            right = tensordict["obs", key, "right"]
+            left = tensordict["obs", key, left_name]
+            right = tensordict["obs", key, right_name]
 
             assert (
                 left.shape == right.shape
@@ -247,7 +246,7 @@ class FoundationStereo(Transform):
             # depth: (B, H, W) -> (B, T, H, W)
             depth = depth.unflatten(dim=0, sizes=leading_dims)
 
-            tensordict["obs", key, "depth"] = depth
+            tensordict["obs", key, self.output_stream_name] = depth
 
         return tensordict
 

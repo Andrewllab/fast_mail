@@ -1,10 +1,10 @@
 # @package _global_
 
+defaults:
+  - roca_abl
+
 tags: [abl_jitter, abl_ours]
 
 group_by_config_keys:
   - agent.obs_encoder.t11_tokenizer.spatial_encoder._partial_
   - data.gpu_batch_transforms.t10_jitter.name
-
-env_name_key: data.env.env.env_name
-expected_envs: [TurnOnSinkFaucet,TurnOffSinkFaucet,TurnSinkSpout,TurnOnStove,TurnOffStove,CoffeePressButton,TurnOnMicrowave,TurnOffMicrowave]

@@ -11,12 +11,6 @@ import torch.nn as nn
 import torch_levenberg_marquardt as tlm
 from tensordict import TensorDict
 
-try:
-    from scipy.spatial.transform import Rotation
-except ImportError:
-    Rotation = None
-Rotation = None
-
 from utils.math import (
     make_pose,
     matrix_to_quaternion,
@@ -24,6 +18,7 @@ from utils.math import (
     quaternion_to_matrix,
     unmake_pose,
 )
+from utils.trees import flatten_tree, unflatten_tree
 
 
 class CamAcquisitionType(TypedDict):
@@ -122,12 +117,13 @@ def intrinsics_matrix_from_metadata(cam_metadata: CamMetadataType) -> np.ndarray
 
 
 def solve_procrustes_extended_kabsch(
-    other_coords: np.ndarray,
-    world_coords: np.ndarray,
-) -> np.ndarray:
-    """Fits an affine transform using the "extended" Kabsch algorithm, also
+    points_t1: np.ndarray,
+    points_t2: np.ndarray,
+    exclude_outliers: bool = False,
+) -> tuple[np.ndarray, float, np.ndarray]:
+    """Fits a homogeneous transform using the "extended" Kabsch algorithm, also
     called partial Procrustes Superimposition. The returned transform converts
-    points from other_coords to points in world_coords.
+    points from points_t2 to points in points_t1.
 
     References:
     https://en.wikipedia.org/wiki/Kabsch_algorithm
@@ -135,73 +131,57 @@ def solve_procrustes_extended_kabsch(
     """
     # translate both coordinate sets so that their centroids lie at the
     # origins of their respective coordinate systems
-    other_coords_mean = np.mean(other_coords, axis=0)
-    world_mean = np.mean(world_coords, axis=0)
+    centroid_t1 = np.mean(points_t1, axis=0)
+    centroid_t2 = np.mean(points_t2, axis=0)
 
-    other_coords = other_coords - other_coords_mean
-    world_coords = world_coords - world_mean
+    t1_centered = points_t1 - centroid_t1
+    t2_centered = points_t2 - centroid_t2
 
-    # use the Kabsch algorithm to find the best fit rotation
-    if Rotation is not None:
-        rotation, rms = Rotation.align_vectors(world_coords, other_coords)
-        rotation = rotation.as_matrix()
-        print(f"RMS error of fit: {rms}")
-    else:
-        # compute the covariance matrix
-        H = np.matmul(world_coords.T, other_coords)
-        # use singular value decomposition
-        U, s, Vh = np.linalg.svd(H)
-        # decide if rotation needs to be corrected to preserve right-handedness
-        d = np.sign(np.linalg.det(U @ Vh))
-        correction = np.identity(3)
-        correction[-1, -1] = d
-        # compute optimal rotation
-        rotation = U @ correction @ Vh
+    # compute the covariance matrix
+    H = t1_centered.T @ t2_centered
 
-    # the final transform requires a translation to the origin of the other
-    # coordinate system, the best fit rotation, and then a translation to the
-    # mean in the world coordinate system
-    origin_to_world_mean = np.identity(4)
-    origin_to_world_mean[:3, :3] = rotation
-    origin_to_world_mean[:3, 3] = world_mean
+    # singular value decomposition
+    U, s, Vt = np.linalg.svd(H)
 
-    translate_to_other_origin = np.identity(4)
-    translate_to_other_origin[:3, 3] = -other_coords_mean
+    # compute rotation matrix
+    rotation = U @ Vt
 
-    return origin_to_world_mean @ translate_to_other_origin
+    # If det(rotation) < 0, we've found a reflection, not a rotation.
+    # We correct this by flipping the last row of Vt.
+    if np.linalg.det(rotation) < 0:
+        Vt[-1, :] *= -1
+        rotation = U @ Vt
 
-
-def solve_procrustes_least_squares(
-    other_coords: np.ndarray,
-    world_coords: np.ndarray,
-) -> np.ndarray:
-    """Fits an affine transform using least-squares fitting given pairs of
-    matching points. The returned transform converts points from other_coords
-    to points in world_coords. This algorithm requires minimum 4 pairs of
-    points.
-
-    References:
-    https://math.stackexchange.com/questions/613530/understanding-an-affine-transformation/613804
-    https://en.m.wikipedia.org/wiki/Scale-invariant_feature_transform#Model_verification_by_linear_least_squares
-    """
-    if other_coords.shape[0] < 4 or world_coords.shape[0] < 4:
-        raise ValueError("Least squares fit requires at least 4 points.")
+    translation = centroid_t1 - rotation @ centroid_t2
 
     transform = np.identity(4)
+    transform[:3, :3] = rotation
+    transform[:3, 3] = translation
 
-    # construct left side of equation by expressing other_coords in homogenous
-    # coordinates
-    A = np.append(other_coords, np.ones((other_coords.shape[0], 1)), axis=1)
+    # compute RMSE of the fit
+    points_t2_transformed = (rotation @ points_t2.T).T + translation
+    squared_distance = np.sum(
+        (points_t1 - points_t2_transformed) ** 2,
+        axis=1,
+    )
+    error = np.sqrt(squared_distance)
+    rmse = np.sqrt(np.mean(squared_distance))
 
-    # right side of equation is just the matching coordinates in world space
-    b = world_coords
+    if not exclude_outliers:
+        return transform, rmse.item(), np.ones_like(error, dtype=bool)
 
-    # solve for model parameters (affine transform) by inverting A and
-    # multiplying by b
-    solution, residuals, rank, s = np.linalg.lstsq(A, b)
+    mask = error < 2 * rmse
 
-    transform[:3] = solution.T
-    return transform
+    if mask.all():
+        return transform, rmse.item(), mask
+
+    log.info(f"Re-running Procrustes algorithm excluding {np.sum(~mask)} outliers")
+
+    transform, rmse, _ = solve_procrustes_extended_kabsch(
+        points_t1[mask], points_t2[mask], exclude_outliers=False
+    )
+
+    return transform, rmse, mask
 
 
 class SceneExtrinsics(nn.Module):
@@ -836,44 +816,12 @@ def render_scene_extrinsics(
     )
 
 
-def flatten_nested_dict(nested_dict: dict) -> dict:
-    """Flatten a nested dictionary into a single level dictionary."""
-    flat_dict = {}
-
-    def _flatten(d, parent_key=""):
-        for k, v in d.items():
-            new_key = f"{parent_key}.{k}" if parent_key else k
-            if isinstance(v, dict):
-                _flatten(v, new_key)
-            else:
-                flat_dict[new_key] = v
-
-    _flatten(nested_dict)
-    return flat_dict
-
-
-def unflatten_dict(flat_dict: dict) -> dict:
-    """Unflatten a dictionary that was flattened with `flatten_nested_dict`."""
-    unflat_dict = {}
-
-    for key, value in flat_dict.items():
-        parts = key.split(".")
-        d = unflat_dict
-        for part in parts[:-1]:
-            if part not in d:
-                d[part] = {}
-            d = d[part]
-        d[parts[-1]] = value
-
-    return unflat_dict
-
-
 def save_acquisition(
     acquisition: AcquisitionType, folder: Path, acquisition_id: int
 ) -> None:
     """Save a single acquisition to a file. Images are saved as PNG files."""
     filepath = folder / f"acquisition_{acquisition_id:03d}.npz"
-    flat_acquisition = flatten_nested_dict(acquisition)
+    flat_acquisition = flatten_tree(acquisition)
     np.savez_compressed(filepath, **flat_acquisition)
     log.info(f"Saved acquisition #{acquisition_id} to {filepath}")
 
@@ -909,7 +857,7 @@ def load_acquisitions(folder: Path) -> list[AcquisitionType]:
     for file in files:
         with np.load(file) as archive:
             acquisition = {key: archive[key] for key in archive.files}
-            acquisition = unflatten_dict(acquisition)
+            acquisition = unflatten_tree(acquisition)
             data.append(acquisition)
     log.info(f"Loaded {len(data)} calibration acquisitions from {folder}")
     return data
