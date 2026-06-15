@@ -587,14 +587,18 @@ class TrajectoryDataModule(L.LightningDataModule):
             # dataset, this probably means we're doing open-loop replay. In
             # this case, we can't reverse any transforms because we don't know
             # what transforms were applied to the replay dataset.
-            return None
-
-        transforms = itertools.chain(
-            self.preprocess_transforms,
-            self.cpu_transforms,
-            self.cpu_batch_transform,
-            self.gpu_batch_transform,
-        )
+            # return None
+            transforms = itertools.chain(
+                self.env_cpu_batch_transform,
+                self.env_gpu_batch_transform,
+            )
+        else:
+            transforms = itertools.chain(
+                self.preprocess_transforms,
+                self.cpu_transforms,
+                self.cpu_batch_transform,
+                self.gpu_batch_transform,
+            )
 
         # note: this isinstance check also includes any normalizing transforms,
         # which also need to be reversed

@@ -26,7 +26,6 @@ from environments.specs import (
     PointMapStream,
 )
 from transforms.base_transform import Compose, TransformPartialsDict, init_transforms
-from tree import ArrayDict
 from utils.hdf5_utils import recursive_hdf5_to_dict
 from utils.nested import (
     get_packed_jagged_length,

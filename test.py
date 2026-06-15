@@ -110,7 +110,10 @@ def test(cfg: DictConfig) -> None:
         )
     else:
         # normalizer and reverse_transform are loaded from checkpoint
-        datamodule_hparams = dict(specs=datamodule.specs)
+        datamodule_hparams = dict(
+            specs=datamodule.specs,
+            reverse_transform=datamodule.reverse_transform,
+        )
 
     # instantiate agent
     log.debug("Instantiating agent...")

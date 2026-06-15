@@ -75,6 +75,9 @@ data:
   
   gpu_batch_transforms:
     t04_random_rotation: Null
+    # t02-9_pakt_rollout_vis:
+    #   _target_: transforms.pakt_rollout_point_vis.PaktRolloutPointVis
+    #   _partial_: True
 
 logger:
   wandb:
