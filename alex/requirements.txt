@@ -1,0 +1,9 @@
+torch>=2.7
+torchvision
+transformers>=5.0
+huggingface_hub
+numpy
+h5py
+opencv-python
+matplotlib
+einops

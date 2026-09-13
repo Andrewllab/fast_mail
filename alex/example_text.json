@@ -1,0 +1,18 @@
+{
+  "source": {
+    "camera_paths": {
+      "left_cam": "obs/left_cam/frames/left",
+      "right_cam": "obs/right_cam/frames/left"
+    }
+  },
+  "selections": {
+    "left_cam": [
+      {"name": "red_cup", "text": "red cup"},
+      {"name": "orange_cup", "text": "orange cup"}
+    ],
+    "right_cam": [
+      {"name": "red_cup", "text": "red cup"},
+      {"name": "orange_cup", "text": "orange cup"}
+    ]
+  }
+}
