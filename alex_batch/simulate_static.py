@@ -90,11 +90,17 @@ def _write_videos(output_dir, camera_names, frames, results, fps, trail_length):
             for result_index, result in enumerate(camera_results):
                 frame = frames[camera][result.frame_index].copy()
                 if trail_length > 0:
-                    for previous in camera_results[max(0, result_index - trail_length):result_index]:
-                        for point_index, (point, visible) in enumerate(zip(result.xy, result.visible)):
-                            if visible and previous.visible[point_index]:
-                                cv2.line(frame, tuple(np.round(previous.xy[point_index]).astype(int)),
-                                         tuple(np.round(point).astype(int)), (255, 180, 0), 1, cv2.LINE_AA)
+                    first_segment = max(0, result_index - trail_length)
+                    for segment_index in range(first_segment, result_index):
+                        previous = camera_results[segment_index]
+                        following = camera_results[segment_index + 1]
+                        for point_index, (start_visible, end_visible) in enumerate(
+                                zip(previous.visible, following.visible)):
+                            if start_visible and end_visible:
+                                cv2.line(frame,
+                                         tuple(np.round(previous.xy[point_index]).astype(int)),
+                                         tuple(np.round(following.xy[point_index]).astype(int)),
+                                         (255, 180, 0), 1, cv2.LINE_AA)
                 overlay = OnlineKeypointTracker.visualize({camera: frame}, {camera: result})[camera]
                 overlay = cv2.copyMakeBorder(overlay, 0, height % 2, 0, width % 2, cv2.BORDER_CONSTANT)
                 writer.write(cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))

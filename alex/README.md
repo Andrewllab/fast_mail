@@ -83,6 +83,19 @@ Text selection of red and blue cups in both external views:
   --set output_dir=alex/outputs/cups
 ```
 
+RGB-D 3D replay (the example cup file has no metric depth, so this uses a
+clearly non-metric synthetic-depth smoke test):
+
+```bash
+.env/bin/python alex/simulate_static_3d.py \
+  --config alex/example_text.json \
+  --synthetic-depth \
+  --output-dir alex_3d/outputs/cups_replay
+```
+
+For real metric output, replace `--synthetic-depth` with one
+`--depth-path CAMERA=HDF5_DATASET` per camera and provide `--calibration-json`.
+
 Remove `source.stop=40` to read the whole recording. Omit `--config` for interactive
 click selection. Left click adds foreground, right click adds background, and
 Enter accepts each camera/object selection. A GUI display is needed only for

@@ -1,0 +1,20 @@
+{
+  "source": {
+    "camera_paths": {
+      "gripper_cam": "obs/gripper_cam/frames/rgb",
+      "left_cam": "obs/left_cam/frames/left",
+      "right_cam": "obs/right_cam/frames/left"
+    }
+  },
+  "selections": {
+    "gripper_cam": [
+      {"name": "cups", "text": "cup", "instances": "all"}
+    ],
+    "left_cam": [
+      {"name": "cups", "text": "cup", "instances": "all"}
+    ],
+    "right_cam": [
+      {"name": "cups", "text": "cup", "instances": "all"}
+    ]
+  }
+}

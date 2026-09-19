@@ -1,0 +1,23 @@
+{
+  "source": {
+    "camera_paths": {
+      "gripper_cam": "obs/gripper_cam/frames/rgb",
+      "left_cam": "obs/left_cam/frames/left",
+      "right_cam": "obs/right_cam/frames/left"
+    }
+  },
+  "selections": {
+    "gripper_cam": [
+      {"name": "red_cup", "text": "red cup"},
+      {"name": "orange_cup", "text": "orange cup"}
+    ],
+    "left_cam": [
+      {"name": "red_cup", "text": "red cup"},
+      {"name": "orange_cup", "text": "orange cup"}
+    ],
+    "right_cam": [
+      {"name": "red_cup", "text": "red cup"},
+      {"name": "orange_cup", "text": "orange cup"}
+    ]
+  }
+}

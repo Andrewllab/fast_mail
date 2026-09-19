@@ -34,3 +34,15 @@ The diagnostic CoTracker replay (without SAM3 weights) is:
 ```bash
 python -m alex_batch.test_cotracker
 ```
+
+For RGB-D 3D replay with the batched CoTracker pipeline:
+
+```bash
+.env/bin/python alex_batch/simulate_static_3d.py \
+  --config alex_batch/example_text.json \
+  --synthetic-depth \
+  --output-dir alex_batch_3d/outputs/cups_replay
+```
+
+Use `--depth-path CAMERA=HDF5_DATASET` and `--calibration-json` for metric
+RGB-D data instead of `--synthetic-depth`.

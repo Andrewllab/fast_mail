@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import time
+import types
 from collections import deque
 from typing import Mapping, Sequence, Callable
 
@@ -160,6 +161,37 @@ class OnlineKeypointTracker(_OnlineKeypointTracker):
             self.device, dtype=torch.float32
         )
 
+    def _append_support_grid(self, queries, height, width):
+        if not self.support_grid:
+            return queries
+        grid_size = int(getattr(self.predictor, "support_grid_size", 6))
+        y = np.linspace(0, max(height - 1, 0), grid_size, dtype=np.float32)
+        x = np.linspace(0, max(width - 1, 0), grid_size, dtype=np.float32)
+        grid_x, grid_y = np.meshgrid(x, y)
+        grid = np.stack([np.zeros(grid_x.size, dtype=np.float32),
+                         grid_x.ravel(), grid_y.ravel()], axis=-1)
+        tiled = np.broadcast_to(grid[None], (len(self.camera_names), *grid.shape)).copy()
+        return np.concatenate([queries, tiled], axis=1)
+
+    def _fix_batched_model_stride(self):
+        model = getattr(self.predictor, "model", None)
+        if model is None or not hasattr(model, "forward_window"):
+            return
+        original = model.forward_window
+        if getattr(original, "_alex_batch_contiguous", False):
+            return
+
+        def contiguous_forward_window(instance, *args, **kwargs):
+            if "coords" in kwargs:
+                kwargs["coords"] = kwargs["coords"].contiguous()
+            elif len(args) >= 2:
+                args = list(args)
+                args[1] = args[1].contiguous()
+            return original(*args, **kwargs)
+
+        contiguous_forward_window._alex_batch_contiguous = True
+        model.forward_window = types.MethodType(contiguous_forward_window, model)
+
     @torch.inference_mode()
     def initialize(self, images: Mapping[str, np.ndarray], masks: Mapping[str, Mapping[str, np.ndarray]]):
         if self.frame_index >= 0:
@@ -178,14 +210,18 @@ class OnlineKeypointTracker(_OnlineKeypointTracker):
             self.buffers[camera] = deque([images[camera].copy()])
 
         max_points = max(self.point_counts.values())
+        padded_height = max(shape[0] for shape in self.shapes.values())
+        padded_width = max(shape[1] for shape in self.shapes.values())
         queries = np.zeros((len(self.camera_names), max_points, 3), dtype=np.float32)
         for batch_index, camera in enumerate(self.camera_names):
             points = sampled[camera][0]
             queries[batch_index, :len(points), 1:] = points
         self.predictor = self.predictor_factory().to(self.device).eval()
+        self._fix_batched_model_stride()
+        queries = self._append_support_grid(queries, padded_height, padded_width)
         query_tensor = torch.from_numpy(queries).to(self.device)
         self.predictor(self._batch_video(), is_first_step=True, queries=query_tensor,
-                       add_support_grid=self.support_grid)
+                       add_support_grid=False)
         if self.predictor.step != self.step or self.predictor.model.window_len != self.window_size or getattr(self.predictor, "v2", False):
             raise RuntimeError("Expected CoTracker3 online with window_size=16 and step=8")
         self.predictors = {camera: self.predictor for camera in self.camera_names}
@@ -211,7 +247,7 @@ class OnlineKeypointTracker(_OnlineKeypointTracker):
         try:
             started = time.perf_counter()
             tracks, visibility = self.predictor(
-                self._batch_video(), is_first_step=False, add_support_grid=self.support_grid
+                self._batch_video(), is_first_step=False, add_support_grid=False
             )
             elapsed = (time.perf_counter() - started) * 1000
             self.last_inference_ms = {"batch": elapsed}
