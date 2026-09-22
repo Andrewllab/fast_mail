@@ -6,7 +6,9 @@ from .track_online_pipe import (
     OnlineTrackingPipeline,
     SAM3Segmenter,
     TrackFrame,
+    lift_keypoints_3d,
 )
+from .cameras import BaseRGBDCamera, RGBDFrame, RealSenseD405Camera
 
 __all__ = [
     "CameraCalibration",
@@ -14,4 +16,8 @@ __all__ = [
     "OnlineTrackingPipeline",
     "SAM3Segmenter",
     "TrackFrame",
+    "lift_keypoints_3d",
+    "BaseRGBDCamera",
+    "RGBDFrame",
+    "RealSenseD405Camera",
 ]

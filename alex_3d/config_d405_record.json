@@ -1,0 +1,14 @@
+{
+  "camera": {
+    "type": "realsense_d405",
+    "name": "d405",
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "serial": null,
+    "warmup_frames": 15,
+    "camera_to_world": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+  },
+  "output_dir": null,
+  "capture_frequency_hz": 16.0
+}

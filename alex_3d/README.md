@@ -31,6 +31,31 @@ for rgb_images, depth_images in stream:
 pipeline.export("outputs/hand_3d")
 ```
 
+To bypass SAM3 and track exact clicked pixels, use a segmenter adapter and the
+native direct-point initializer:
+
+```python
+from alex_3d.selection import DirectPointSegmenter
+
+pipeline = OnlineTrackingPipeline(
+    DirectPointSegmenter(["left_cam", "right_cam"]), tracker, calibrations
+)
+pipeline.initialize_points(first_rgb_images, {
+    "left_cam": [
+        {"name": "hand", "points": [[120, 80], [135, 92]]},
+        {"name": "block", "points": [[170, 140]]},
+    ],
+    "right_cam": [
+        {"name": "hand", "points": [[95, 84]]},
+        {"name": "block", "points": [[145, 138]]},
+    ],
+})
+```
+
+The replay CLI accepts `--set selection=keypoints --set
+'objects=["hand","block"]'`. Interactive Enter confirmation is read from the
+launching terminal and advances object-by-object, then camera-by-camera.
+
 `depth_images` is a mapping of camera name to a `[H,W]` depth image aligned to
 that camera's RGB image. `get_latest_3d_keypoints()` returns only the most
 recent completed-window point set. `export_3d()` writes one world-track NPZ,

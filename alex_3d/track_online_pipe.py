@@ -67,6 +67,55 @@ class CameraCalibration:
         )
 
 
+def lift_keypoints_3d(
+    calibration: CameraCalibration,
+    xy: np.ndarray,
+    visible: np.ndarray,
+    depth: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Lift one set of 2D pixels with aligned depth into world coordinates."""
+    xy = np.asarray(xy, dtype=np.float64)
+    visible = np.asarray(visible, dtype=bool)
+    depth = np.asarray(depth)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise ValueError(f"xy must be [N,2], got {xy.shape}")
+    if visible.shape != (len(xy),):
+        raise ValueError("visible must have one value per keypoint")
+    if depth.ndim != 2:
+        raise ValueError(f"depth must be [H,W], got {depth.shape}")
+
+    height, width = depth.shape
+    pixels = np.rint(xy).astype(np.int64)
+    valid = visible & np.isfinite(xy).all(axis=1)
+    valid &= (pixels[:, 0] >= 0) & (pixels[:, 0] < width)
+    valid &= (pixels[:, 1] >= 0) & (pixels[:, 1] < height)
+    clipped_x = np.clip(pixels[:, 0], 0, max(width - 1, 0))
+    clipped_y = np.clip(pixels[:, 1], 0, max(height - 1, 0))
+    metric_depth = depth[clipped_y, clipped_x].astype(np.float64) * calibration.depth_scale
+    valid &= np.isfinite(metric_depth) & (metric_depth > 0)
+
+    points_camera = np.full((len(xy), 3), np.nan, dtype=np.float64)
+    if valid.any():
+        fx, fy = calibration.intrinsics[0, 0], calibration.intrinsics[1, 1]
+        cx, cy = calibration.intrinsics[0, 2], calibration.intrinsics[1, 2]
+        u = pixels[valid, 0].astype(np.float64)
+        v = pixels[valid, 1].astype(np.float64)
+        z = metric_depth[valid]
+        x_over_z = (u - cx) / fx
+        y_over_z = (v - cy) / fy
+        if not calibration.orthographic:
+            z = z / np.sqrt(1.0 + x_over_z**2 + y_over_z**2)
+        points_camera[valid] = np.stack([x_over_z * z, y_over_z * z, z], axis=-1)
+
+    rotation = calibration.extrinsics[:3, :3]
+    translation = calibration.extrinsics[:3, 3]
+    finite = np.isfinite(points_camera).all(axis=1)
+    points_world = points_camera.copy()
+    if finite.any():
+        points_world[finite] = points_camera[finite] @ rotation.T + translation
+    return points_world.astype(np.float32), valid
+
+
 class OnlineKeypointTracker(_OnlineKeypointTracker):
     """The original independent-per-camera tracker, re-exported for symmetry."""
 
@@ -120,49 +169,7 @@ class OnlineTrackingPipeline(_OnlineTrackingPipeline):
         """
         if camera not in self.calibrations:
             raise KeyError(camera)
-        xy = np.asarray(xy, dtype=np.float64)
-        visible = np.asarray(visible, dtype=bool)
-        depth = np.asarray(depth)
-        if xy.ndim != 2 or xy.shape[1] != 2:
-            raise ValueError(f"xy must be [N,2], got {xy.shape}")
-        if visible.shape != (len(xy),):
-            raise ValueError("visible must have one value per keypoint")
-        if depth.ndim != 2:
-            raise ValueError(f"depth must be [H,W], got {depth.shape}")
-
-        height, width = depth.shape
-        calibration = self.calibrations[camera]
-        pixels = np.rint(xy).astype(np.int64)
-        valid = visible & np.isfinite(xy).all(axis=1)
-        valid &= (pixels[:, 0] >= 0) & (pixels[:, 0] < width)
-        valid &= (pixels[:, 1] >= 0) & (pixels[:, 1] < height)
-        clipped_x = np.clip(pixels[:, 0], 0, max(width - 1, 0))
-        clipped_y = np.clip(pixels[:, 1], 0, max(height - 1, 0))
-        metric_depth = depth[clipped_y, clipped_x].astype(np.float64) * calibration.depth_scale
-        valid &= np.isfinite(metric_depth) & (metric_depth > 0)
-
-        points_camera = np.full((len(xy), 3), np.nan, dtype=np.float64)
-        if valid.any():
-            fx, fy = calibration.intrinsics[0, 0], calibration.intrinsics[1, 1]
-            cx, cy = calibration.intrinsics[0, 2], calibration.intrinsics[1, 2]
-            u = pixels[valid, 0].astype(np.float64)
-            v = pixels[valid, 1].astype(np.float64)
-            z = metric_depth[valid]
-            x_over_z = (u - cx) / fx
-            y_over_z = (v - cy) / fy
-            if not calibration.orthographic:
-                z = z / np.sqrt(1.0 + x_over_z**2 + y_over_z**2)
-            points_camera[valid] = np.stack(
-                [x_over_z * z, y_over_z * z, z], axis=-1
-            )
-
-        rotation = calibration.extrinsics[:3, :3]
-        translation = calibration.extrinsics[:3, 3]
-        finite = np.isfinite(points_camera).all(axis=1)
-        points_world = points_camera.copy()
-        if finite.any():
-            points_world[finite] = points_camera[finite] @ rotation.T + translation
-        return points_world.astype(np.float32), valid
+        return lift_keypoints_3d(self.calibrations[camera], xy, visible, depth)
 
     def _record_latest_3d(self, results: Mapping[str, TrackFrame], depths):
         if depths is None:
@@ -180,6 +187,16 @@ class OnlineTrackingPipeline(_OnlineTrackingPipeline):
     def initialize(self, images, selections, depth_images=None, release_segmenter: bool = True):
         """Initialize segmentation/tracking; depth is first used at frame 15."""
         return super().initialize(images, selections, release_segmenter=release_segmenter)
+
+    def initialize_points(self, images, selections):
+        """Initialize CoTracker with exact user-selected pixels, skipping SAM3."""
+        from alex_3d.selection import initialize_tracker_from_points
+
+        if self.tracker.frame_index >= 0:
+            raise RuntimeError("Create a new pipeline for a new episode")
+        initialize_tracker_from_points(self.tracker, images, selections)
+        self.direct_point_selections = copy.deepcopy(selections)
+        return self._record(images, None)
 
     def push(self, images, depth_images=None):
         """Push synchronized RGB-D frames and lift only completed-window outputs."""
@@ -315,4 +332,4 @@ class OnlineTrackingPipeline(_OnlineTrackingPipeline):
         return paths
 
 
-__all__ = ["CameraCalibration", "SAM3Segmenter", "OnlineKeypointTracker", "OnlineTrackingPipeline", "TrackFrame"]
+__all__ = ["CameraCalibration", "lift_keypoints_3d", "SAM3Segmenter", "OnlineKeypointTracker", "OnlineTrackingPipeline", "TrackFrame"]

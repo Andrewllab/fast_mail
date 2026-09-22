@@ -7,13 +7,19 @@ import copy
 import csv
 import json
 from pathlib import Path
+import sys
 
 import cv2
 import numpy as np
 import torch
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from alex.simulate_static import HDF5FrameReader
 from alex.track_online_pipe import _safe_name
+from alex_3d.selection import DirectPointSegmenter, collect_direct_points
 if __package__:
     from .track_online_pipe import OnlineKeypointTracker, OnlineTrackingPipeline, SAM3Segmenter
 else:
@@ -25,7 +31,8 @@ DEFAULT_CONFIG = {
     "source": {"path": "/home/david/projects_wr/2026_05_18-12_49_11.h5", "camera_paths": None,
                "start": 0, "stop": None, "stride": 1, "resize_wh": None,
                "color_order": "RGB", "float_range": "0_255"},
-    "device": "auto", "cpu_threads": 4, "objects": ["object"], "selections": None,
+    "device": "auto", "cpu_threads": 4, "objects": ["object"],
+    "selection": "mask_click", "selections": None,
     "segmenter": {"model_id": "facebook/sam3", "cache_dir": str(HERE / ".cache" / "huggingface"),
                    "local_files_only": False, "threshold": 0.5},
     "tracker": {"grid_spacing": 16, "max_points_per_object": 128, "support_grid": True,
@@ -112,6 +119,10 @@ def _write_videos(output_dir, camera_names, frames, results, fps, trail_length):
 
 def main(arguments=None):
     config = read_config(arguments)
+    if config["selection"] not in ("mask_click", "keypoints"):
+        raise ValueError("selection must be 'mask_click' or 'keypoints'")
+    if not config["objects"] or len(set(config["objects"])) != len(config["objects"]):
+        raise ValueError("objects must contain unique names")
     torch.set_num_threads(int(config["cpu_threads"]))
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -122,11 +133,18 @@ def main(arguments=None):
         camera_names = list(first.images)
         selections = config["selections"]
         if selections is None:
-            selections = SAM3Segmenter.collect_clicks(first.images, config["objects"])
+            selections = (
+                collect_direct_points(first.images, config["objects"])
+                if config["selection"] == "keypoints"
+                else SAM3Segmenter.collect_clicks(first.images, config["objects"])
+            )
             config["selections"] = selections
         (output_dir / "config.json").write_text(json.dumps(config, indent=2))
         torch.hub.set_dir(config["hub_dir"])
-        segmenter = SAM3Segmenter(camera_names, device=config["device"], **config["segmenter"])
+        segmenter = (
+            DirectPointSegmenter(camera_names) if config["selection"] == "keypoints"
+            else SAM3Segmenter(camera_names, device=config["device"], **config["segmenter"])
+        )
         tracker = OnlineKeypointTracker(camera_names, device=config["device"], **config["tracker"])
         pipeline = OnlineTrackingPipeline(segmenter, tracker, keep_history=True)
         frames = {camera: [] for camera in camera_names}
@@ -140,8 +158,11 @@ def main(arguments=None):
                 for camera in camera_names:
                     frames[camera].append(bundle.images[camera].copy())
                 if bundle.index == 0:
-                    pipeline.initialize(bundle.images, selections)
-                    segmenter.visualize(output_dir, show=config["show_initial"])
+                    if config["selection"] == "keypoints":
+                        pipeline.initialize_points(bundle.images, selections)
+                    else:
+                        pipeline.initialize(bundle.images, selections)
+                        segmenter.visualize(output_dir, show=config["show_initial"])
                 else:
                     pipeline.push(bundle.images)
                 latest = pipeline.get_latest_keypoints()

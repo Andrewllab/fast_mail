@@ -21,3 +21,9 @@ for rgb_images, depth_images in stream:
     pipeline.push(rgb_images, depth_images)
 pipeline.export("outputs/batched_3d")
 ```
+
+Direct-click initialization is also supported. Configure replay with
+`--set selection=keypoints --set 'objects=["hand","block"]'`, or call
+`pipeline.initialize_points(first_rgb_images, selections)`. Selection entries
+use `{"name": OBJECT_NAME, "points": [[x, y], ...]}` and may contain different
+point counts across cameras.

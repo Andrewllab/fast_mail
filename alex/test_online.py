@@ -176,6 +176,28 @@ class OnlineTrackerTests(unittest.TestCase):
             tracker.push({"wrong": frames["left"]})
         self.assertIsNone(tracker.finish())
 
+    def test_direct_named_points_bypass_segmentation(self):
+        tracker = self.make_tracker()
+        frames = self.frames(0)
+        selections = {
+            "left": [
+                {"name": "hand", "points": [[4, 5], [8, 9]]},
+                {"name": "block", "points": [[12, 13]]},
+            ],
+            "right": [
+                {"name": "hand", "points": [[6, 7]]},
+                {"name": "block", "points": [[10, 11], [14, 15]]},
+            ],
+        }
+        self.assertIsNone(tracker.initialize_points(frames, selections))
+        np.testing.assert_array_equal(
+            tracker.identities["left"][1], ["hand", "hand", "block"]
+        )
+        np.testing.assert_allclose(
+            tracker.predictors["right"].queries[0, :, 1:],
+            [[6, 7], [10, 11], [14, 15]],
+        )
+
     def test_export_contains_inferred_timeline_without_unprocessed_tail(self):
         tracker = self.make_tracker()
         pipeline = OnlineTrackingPipeline(FixedMaskSegmenter(tracker.camera_names, device="cpu"), tracker)

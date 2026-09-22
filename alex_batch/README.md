@@ -5,6 +5,18 @@ original code. `SAM3Segmenter` batches all text jobs into one SAM3 call and all
 click jobs into one SAM3 tracker call. `OnlineKeypointTracker` uses one
 CoTracker3 online predictor with camera views as the batch dimension.
 
+Direct named keypoints use the same native API as `alex`:
+
+```bash
+python -m alex_batch.simulate_static \
+  --set selection=keypoints \
+  --set 'objects=["hand","block"]'
+```
+
+Click each object's points and press Enter in the launching terminal to move
+to the next object. `pipeline.initialize_points(images, selections)` supports
+different point counts per object and camera while retaining object names.
+
 Run text-prompt replay:
 
 ```bash

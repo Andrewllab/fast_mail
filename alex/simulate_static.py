@@ -12,12 +12,19 @@ import csv
 import json
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 from typing import Mapping
 
 import cv2
 import h5py
 import numpy as np
 import torch
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from alex_3d.selection import DirectPointSegmenter, collect_direct_points
 
 if __package__:
     from .track_online_pipe import OnlineKeypointTracker, OnlineTrackingPipeline, SAM3Segmenter, save_rgb, _safe_name
@@ -40,6 +47,7 @@ DEFAULT_CONFIG = {
     "device": "auto",
     "cpu_threads": 4,
     "objects": ["object"],
+    "selection": "mask_click",
     "selections": None,
     "segmenter": {
         "model_id": "facebook/sam3",
@@ -261,6 +269,10 @@ def main(arguments=None):
     config, inspect_only = read_config(arguments)
     if config["fps"] <= 0 or config["cpu_threads"] < 1:
         raise ValueError("fps and cpu_threads must be positive")
+    if config["selection"] not in ("mask_click", "keypoints"):
+        raise ValueError("selection must be 'mask_click' or 'keypoints'")
+    if not config["objects"] or len(set(config["objects"])) != len(config["objects"]):
+        raise ValueError("objects must contain unique names")
     torch.set_num_threads(config["cpu_threads"])
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -280,10 +292,17 @@ def main(arguments=None):
         torch.hub.set_dir(config["hub_dir"])
         selections = config["selections"]
         if selections is None:
-            selections = SAM3Segmenter.collect_clicks(first.images, config["objects"])
+            selections = (
+                collect_direct_points(first.images, config["objects"])
+                if config["selection"] == "keypoints"
+                else SAM3Segmenter.collect_clicks(first.images, config["objects"])
+            )
             config["selections"] = selections
         (output_dir / "config.json").write_text(json.dumps(config, indent=2))
-        segmenter = SAM3Segmenter(camera_names, device=config["device"], **config["segmenter"])
+        segmenter = (
+            DirectPointSegmenter(camera_names) if config["selection"] == "keypoints"
+            else SAM3Segmenter(camera_names, device=config["device"], **config["segmenter"])
+        )
         tracker = OnlineKeypointTracker(camera_names, device=config["device"], **config["tracker"])
         pipeline = OnlineTrackingPipeline(segmenter, tracker, keep_history=True)
         records = []
@@ -299,8 +318,11 @@ def main(arguments=None):
                 for camera in camera_names:
                     all_frames[camera].append(bundle.images[camera].copy())
                 if bundle.index == 0:
-                    pipeline.initialize(bundle.images, selections)
-                    segmenter.visualize(output_dir, show=config["show_initial"])
+                    if config["selection"] == "keypoints":
+                        pipeline.initialize_points(bundle.images, selections)
+                    else:
+                        pipeline.initialize(bundle.images, selections)
+                        segmenter.visualize(output_dir, show=config["show_initial"])
                 else:
                     pipeline.push(bundle.images)
                 result = pipeline.get_latest_keypoints()

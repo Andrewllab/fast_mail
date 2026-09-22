@@ -31,6 +31,32 @@ def validate_images(images: Mapping[str, np.ndarray], camera_names: Sequence[str
             raise ValueError(f"{camera}: image dimensions must be at least two pixels")
 
 
+def direct_point_queries(images, selections, camera_names):
+    """Validate named direct-click selections and return points/names per camera."""
+    validate_images(images, camera_names)
+    if set(selections) != set(camera_names):
+        raise ValueError("Direct selections must contain exactly the configured cameras")
+    result = {}
+    for camera in camera_names:
+        points, names = [], []
+        height, width = images[camera].shape[:2]
+        for selection in selections[camera]:
+            name = str(selection["name"])
+            selected = np.asarray(selection["points"], dtype=np.float32)
+            if selected.ndim != 2 or selected.shape[1] != 2 or not len(selected):
+                raise ValueError(f"Invalid direct points for {camera}/{name}")
+            if not np.isfinite(selected).all() or (selected < 0).any():
+                raise ValueError(f"Invalid direct point for {camera}/{name}")
+            if (selected >= [width, height]).any():
+                raise ValueError(f"Direct point outside image for {camera}/{name}")
+            points.append(selected)
+            names.extend([name] * len(selected))
+        if not points:
+            raise ValueError(f"At least one named direct-point selection is required for {camera}")
+        result[camera] = (np.concatenate(points), np.asarray(names))
+    return result
+
+
 def _camera_names(names: Sequence[str]) -> tuple[str, ...]:
     if (
         isinstance(names, str)
@@ -363,6 +389,34 @@ class OnlineKeypointTracker:
         return None
 
     @torch.inference_mode()
+    def initialize_points(self, images: Mapping[str, np.ndarray], selections):
+        """Initialize directly from named pixel queries without running SAM."""
+        if self.frame_index >= 0:
+            raise RuntimeError("Already initialized; call reset() for a new stream")
+        selected = direct_point_queries(images, selections, self.camera_names)
+        for camera in self.camera_names:
+            points, names = selected[camera]
+            predictor = self.predictor_factory().to(self.device).eval()
+            if any(predictor is other for other in self.predictors.values()):
+                raise ValueError("predictor_factory must return a separate predictor per camera")
+            queries = torch.from_numpy(
+                np.column_stack([np.zeros(len(points), dtype=np.float32), points])
+            ).unsqueeze(0).to(self.device)
+            predictor(
+                self._video([images[camera]]), is_first_step=True,
+                queries=queries, add_support_grid=self.support_grid,
+            )
+            if (predictor.step != self.step or predictor.model.window_len != self.window_size
+                    or getattr(predictor, "v2", False)):
+                raise RuntimeError("Expected CoTracker3 online with window_size=16 and step=8")
+            self.predictors[camera] = predictor
+            self.buffers[camera] = deque([images[camera].copy()])
+            self.identities[camera] = (np.arange(len(points)), names)
+            self.shapes[camera] = images[camera].shape
+        self.frame_index = 0
+        return None
+
+    @torch.inference_mode()
     def push(self, images: Mapping[str, np.ndarray]):
         if self.frame_index < 0 or self.closed:
             raise RuntimeError("Initialize an open stream before push()")
@@ -486,6 +540,14 @@ class OnlineTrackingPipeline:
         if release_segmenter:
             self.segmenter.release_models()
         result = self.tracker.initialize(images, masks)
+        return self._record(images, result)
+
+    def initialize_points(self, images, selections):
+        """Initialize from named direct-click pixels and bypass segmentation."""
+        if self.tracker.frame_index >= 0:
+            raise RuntimeError("Create a new pipeline for a new episode")
+        result = self.tracker.initialize_points(images, selections)
+        self.direct_point_selections = copy.deepcopy(selections)
         return self._record(images, result)
 
     def push(self, images):

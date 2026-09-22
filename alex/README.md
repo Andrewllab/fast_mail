@@ -73,6 +73,20 @@ From the repository root, inspect RGB inputs without loading any model:
 .env/bin/python alex/simulate_static.py --inspect
 ```
 
+Direct-click tracking bypasses SAM3. The object list controls the selection
+order; after clicking points for one object, press Enter in the launching
+terminal to advance to the next object (and then the next camera):
+
+```bash
+.env/bin/python alex/simulate_static.py \
+  --set selection=keypoints \
+  --set 'objects=["hand","block"]'
+```
+
+Programmatically, use the same named selection structure with
+`pipeline.initialize_points(first_rgb_images, selections)`. Each selection is
+`{"name": "hand", "points": [[x, y], ...]}`. This API does not load SAM3.
+
 Text selection of red and blue cups in both external views:
 
 ```bash
@@ -128,6 +142,7 @@ Configuration precedence: `DEFAULT_CONFIG` < optional JSON file < repeated
 
 ```bash
 --set 'objects=["cup","bowl"]'
+--set selection=keypoints
 --set 'source.camera_paths={"left_cam":"obs/left_cam/frames/left"}'
 --set source.resize_wh='[256,256]'
 --set tracker.max_points_per_object=64

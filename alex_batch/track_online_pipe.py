@@ -22,6 +22,7 @@ from alex.track_online_pipe import (
     OnlineTrackingPipeline as _OnlineTrackingPipeline,
     TrackFrame,
     _camera_names,
+    direct_point_queries,
     validate_images,
 )
 
@@ -223,6 +224,41 @@ class OnlineKeypointTracker(_OnlineKeypointTracker):
         self.predictor(self._batch_video(), is_first_step=True, queries=query_tensor,
                        add_support_grid=False)
         if self.predictor.step != self.step or self.predictor.model.window_len != self.window_size or getattr(self.predictor, "v2", False):
+            raise RuntimeError("Expected CoTracker3 online with window_size=16 and step=8")
+        self.predictors = {camera: self.predictor for camera in self.camera_names}
+        self.frame_index = 0
+        return None
+
+    @torch.inference_mode()
+    def initialize_points(self, images: Mapping[str, np.ndarray], selections):
+        """Initialize the batched predictor from per-camera named pixel queries."""
+        if self.frame_index >= 0:
+            raise RuntimeError("Already initialized; call reset() for a new stream")
+        selected = direct_point_queries(images, selections, self.camera_names)
+        for camera in self.camera_names:
+            points, names = selected[camera]
+            self.shapes[camera] = images[camera].shape
+            self.identities[camera] = (np.arange(len(points)), names)
+            self.point_counts[camera] = len(points)
+            self.buffers[camera] = deque([images[camera].copy()])
+
+        max_points = max(self.point_counts.values())
+        height = max(shape[0] for shape in self.shapes.values())
+        width = max(shape[1] for shape in self.shapes.values())
+        queries = np.zeros((len(self.camera_names), max_points, 3), dtype=np.float32)
+        for batch_index, camera in enumerate(self.camera_names):
+            points = selected[camera][0]
+            queries[batch_index, :len(points), 1:] = points
+        self.predictor = self.predictor_factory().to(self.device).eval()
+        self._fix_batched_model_stride()
+        queries = self._append_support_grid(queries, height, width)
+        self.predictor(
+            self._batch_video(), is_first_step=True,
+            queries=torch.from_numpy(queries).to(self.device), add_support_grid=False,
+        )
+        if (self.predictor.step != self.step
+                or self.predictor.model.window_len != self.window_size
+                or getattr(self.predictor, "v2", False)):
             raise RuntimeError("Expected CoTracker3 online with window_size=16 and step=8")
         self.predictors = {camera: self.predictor for camera in self.camera_names}
         self.frame_index = 0

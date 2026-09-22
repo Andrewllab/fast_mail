@@ -101,6 +101,9 @@ The real robot requires some additional hardware drivers and opencv.
 pip install -r requirements_robot.txt
 ```
 
+The interactive RealSense D405 RGB-D recording and online/offline CoTracker3
+workflows are documented in [`alex_3d/STREAMING.md`](alex_3d/STREAMING.md).
+
 Also don't forget to install the pyzed using the following command:
 
 ```bash

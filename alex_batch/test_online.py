@@ -73,6 +73,30 @@ class BatchedTrackerTests(unittest.TestCase):
         self.assertEqual(len(FakeBatchPredictor.instances[0].calls), 2)
         self.assertEqual(FakeBatchPredictor.instances[0].calls[-1][0][0], 2)
 
+    def test_direct_named_points_with_unequal_counts(self):
+        cameras = ("left", "right")
+        images = {
+            "left": np.zeros((32, 40, 3), np.uint8),
+            "right": np.zeros((24, 48, 3), np.uint8),
+        }
+        selections = {
+            "left": [{"name": "hand", "points": [[4, 5], [8, 9]]}],
+            "right": [
+                {"name": "hand", "points": [[6, 7]]},
+                {"name": "block", "points": [[10, 11], [14, 15]]},
+            ],
+        }
+        tracker = OnlineKeypointTracker(
+            cameras, device="cpu", support_grid=False,
+            predictor_factory=FakeBatchPredictor,
+        )
+        tracker.initialize_points(images, selections)
+        self.assertEqual(tracker.point_counts, {"left": 2, "right": 3})
+        np.testing.assert_array_equal(
+            tracker.identities["right"][1], ["hand", "block", "block"]
+        )
+        self.assertEqual(tuple(tracker.predictor.queries.shape), (2, 3, 3))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -26,6 +26,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from alex.simulate_static import HDF5FrameReader, _merge
+from alex_3d.selection import DirectPointSegmenter, collect_direct_points
 from alex_3d.track_online_pipe import CameraCalibration
 
 
@@ -52,6 +53,7 @@ def _config(arguments):
             "resize_wh": None, "color_order": "RGB", "float_range": "0_255",
         },
         "device": "auto", "cpu_threads": 4,
+        "selection": "mask_click",
         "selections": None,
         "segmenter": {"model_id": "facebook/sam3", "cache_dir": str(Path(__file__).parent / ".cache/huggingface"),
                        "local_files_only": False, "threshold": 0.5},
@@ -109,6 +111,10 @@ def run(arguments=None, batched=False):
     args, config, depth_paths = _config(arguments)
     if args.depth_scale <= 0:
         raise ValueError("--depth-scale must be positive")
+    if config["selection"] not in ("mask_click", "keypoints"):
+        raise ValueError("selection must be 'mask_click' or 'keypoints'")
+    if not config["objects"] or len(set(config["objects"])) != len(config["objects"]):
+        raise ValueError("objects must contain unique names")
     torch.set_num_threads(int(config["cpu_threads"]))
     args.output_dir.mkdir(parents=True, exist_ok=True)
     if batched:
@@ -135,13 +141,23 @@ def run(arguments=None, batched=False):
 
         selections = config["selections"]
         if selections is None:
-            selections = SAM3Segmenter.collect_clicks(first.images, config["objects"])
+            selections = (
+                collect_direct_points(first.images, config["objects"])
+                if config["selection"] == "keypoints"
+                else SAM3Segmenter.collect_clicks(first.images, config["objects"])
+            )
         calibrations = _calibrations(handle, cameras, args.calibration_json, args.depth_scale)
-        segmenter = SAM3Segmenter(cameras, device=config["device"], **config["segmenter"])
+        segmenter = (
+            DirectPointSegmenter(cameras) if config["selection"] == "keypoints"
+            else SAM3Segmenter(cameras, device=config["device"], **config["segmenter"])
+        )
         tracker = OnlineKeypointTracker(cameras, device=config["device"], **config["tracker"])
         pipeline = OnlineTrackingPipeline(segmenter, tracker, calibrations, keep_history=True)
 
-        pipeline.initialize(first.images, selections)
+        if config["selection"] == "keypoints":
+            pipeline.initialize_points(first.images, selections)
+        else:
+            pipeline.initialize(first.images, selections)
         bundle = first
         while bundle is not None:
             if bundle.index > 0:
